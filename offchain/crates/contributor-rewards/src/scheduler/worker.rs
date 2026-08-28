@@ -1,0 +1,877 @@
+use std::{
+    fs,
+    path::PathBuf,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
+};
+
+use anyhow::{Context, Result, anyhow, bail, ensure};
+use backon::{ExponentialBuilder, Retryable};
+use chrono::Utc;
+use doublezero_program_tools::zero_copy;
+use doublezero_revenue_distribution::{
+    state::{Distribution, ProgramConfig},
+    types::DoubleZeroEpoch,
+};
+use doublezero_sdk::record::pubkey::create_record_key;
+use doublezero_solana_client_tools::{
+    payer::Wallet,
+    rpc::{DoubleZeroLedgerConnection, SolanaConnection, try_fetch_zero_copy_data_with_commitment},
+};
+use doublezero_solana_sdk::revenue_distribution::fetch::{SolConversionState, try_fetch_config};
+use slack_notifier::contributor_rewards::{
+    DistributionRewardRow, WriteResultInfo, post_contributor_rewards, post_distribution_rewards,
+};
+use solana_client::client_error::ClientError as SolanaClientError;
+use solana_commitment_config::CommitmentConfig;
+use solana_sdk::pubkey::Pubkey;
+use svm_hash::sha2::Hash;
+use tempfile::NamedTempFile;
+use tokio::{
+    signal,
+    time::{MissedTickBehavior, interval},
+};
+use tracing::{debug, error, info, warn};
+
+use crate::{
+    calculator::{
+        DistributionOutcome, DistributionSummary, WriteConfig, distribute,
+        keypair_loader::load_keypair, ledger_operations::WriteResult, orchestrator::Orchestrator,
+    },
+    cli::snapshot::{CompleteSnapshot, SnapshotMetadata},
+    ingestor::{epoch::EpochFinder, fetcher::Fetcher},
+    scheduler::state::SchedulerState,
+    settings::{aws::StorageBackend, network::Network},
+    storage::SnapshotStorage,
+};
+
+/// Main rewards worker that runs periodically to calculate rewards
+pub struct ScheduleWorker {
+    orchestrator: Orchestrator,
+    state_file: PathBuf,
+    snapshot_dir: PathBuf,
+    storage: Box<dyn SnapshotStorage>,
+    keypair_path: Option<PathBuf>,
+    dry_run: bool,
+    interval: Duration,
+}
+
+impl ScheduleWorker {
+    /// Create a new rewards worker
+    pub fn new(
+        orchestrator: &Orchestrator,
+        state_file: PathBuf,
+        storage: Box<dyn SnapshotStorage>,
+        keypair_path: Option<PathBuf>,
+        dry_run: bool,
+        interval: Duration,
+    ) -> Self {
+        let snapshot_dir = PathBuf::from(&orchestrator.settings.scheduler.snapshot_dir);
+        Self {
+            orchestrator: orchestrator.clone(),
+            state_file,
+            snapshot_dir,
+            storage,
+            keypair_path,
+            dry_run,
+            interval,
+        }
+    }
+
+    /// Run the worker loop
+    pub async fn run(self) -> Result<()> {
+        info!("Starting rewards worker");
+        info!("Configuration:");
+        info!("  Interval: {:?}", self.interval);
+        info!("  Dry run: {}", self.dry_run);
+        info!("  State file: {:?}", self.state_file);
+
+        if self.dry_run {
+            info!("  Running in DRY RUN mode - no chain writes will occur");
+        } else {
+            info!(
+                "  Keypair: {:?}",
+                self.keypair_path.as_ref().map(|p| p.display())
+            );
+        }
+
+        // Load or create worker state
+        let mut state = SchedulerState::load_or_default(&self.state_file)?;
+
+        // Set up shutdown signal
+        let shutdown = Arc::new(AtomicBool::new(false));
+        let shutdown_clone = shutdown.clone();
+
+        // Spawn signal handler
+        tokio::spawn(async move {
+            let _ = signal::ctrl_c().await;
+            info!("Received shutdown signal");
+            shutdown_clone.store(true, Ordering::Relaxed);
+        });
+
+        // Create interval timer
+        let mut ticker = interval(self.interval);
+        ticker.set_missed_tick_behavior(MissedTickBehavior::Skip);
+
+        info!("Worker started, entering main loop");
+
+        // Main worker loop
+        loop {
+            // Check for shutdown
+            if shutdown.load(Ordering::Relaxed) {
+                info!("Shutting down worker");
+                state.save(&self.state_file)?;
+                break;
+            }
+
+            // Wait for next tick
+            ticker.tick().await;
+
+            // Mark that we're checking
+            state.mark_check();
+
+            // Process rewards
+            match self.process_rewards(&mut state).await {
+                Ok(processed) => {
+                    if processed {
+                        info!("Successfully processed rewards");
+                        metrics::counter!("doublezero_contributor_rewards_scheduler_success")
+                            .increment(1);
+                    } else {
+                        debug!("No new rewards to process");
+                    }
+                    // Save state after successful check
+                    state.save(&self.state_file)?;
+                }
+                Err(e) => {
+                    error!("Failed to process rewards: {e:#}");
+                    state.mark_failure();
+                    state.save(&self.state_file)?;
+
+                    metrics::counter!("doublezero_contributor_rewards_scheduler_failure")
+                        .increment(1);
+
+                    // Alert every 10 consecutive failures for Grafana monitoring
+                    if state.consecutive_failures > 0 && state.consecutive_failures % 10 == 0 {
+                        error!(
+                            "Worker has failed {} consecutive times, continuing to retry at normal interval",
+                            state.consecutive_failures
+                        );
+                    }
+                }
+            }
+
+            // Try to distribute rewards for the eligible epoch.
+            if !self.dry_run {
+                match self.try_get_distribution_epoch().await {
+                    Ok((dz_epoch, rewards_accountant_key)) => {
+                        let calc_epoch = state.last_processed_epoch;
+                        info!(
+                            "Calculation epoch: {:?} | Distribution epoch: {dz_epoch}",
+                            calc_epoch
+                        );
+
+                        if !state.should_distribute_epoch(dz_epoch) {
+                            debug!("Epoch {dz_epoch} already fully distributed, skipping");
+                        } else {
+                            match self
+                                .try_distribute_rewards(dz_epoch, &rewards_accountant_key)
+                                .await
+                            {
+                                Ok(summary) => match &summary.outcome {
+                                    DistributionOutcome::Complete { total_contributors } => {
+                                        let total_contributors = *total_contributors;
+                                        info!(
+                                            "Epoch {dz_epoch} complete: {total_contributors}/{total_contributors} distributed"
+                                        );
+                                        state.mark_distribution_success(dz_epoch);
+                                        state.save(&self.state_file)?;
+                                        metrics::counter!(
+                                            "doublezero_contributor_rewards_distribution_success"
+                                        )
+                                        .increment(1);
+
+                                        self.post_distribution_slack_notification(&summary).await;
+                                    }
+                                    DistributionOutcome::PartiallyComplete {
+                                        total_contributors,
+                                        distributed,
+                                        skipped,
+                                    } => {
+                                        let (total_contributors, distributed, skipped) =
+                                            (*total_contributors, *distributed, *skipped);
+                                        info!(
+                                            "Epoch {dz_epoch} partially complete: {distributed}/{total_contributors} distributed, {skipped} skipped (missing ContributorRewards accounts)"
+                                        );
+                                        state.mark_distribution_success(dz_epoch);
+                                        state.save(&self.state_file)?;
+                                        metrics::counter!(
+                                            "doublezero_contributor_rewards_distribution_success"
+                                        )
+                                        .increment(1);
+
+                                        self.post_distribution_slack_notification(&summary).await;
+                                    }
+                                    DistributionOutcome::NotReady => {
+                                        debug!("Distribution not ready for epoch {dz_epoch}");
+                                    }
+                                },
+                                Err(e) => {
+                                    error!(
+                                        "Failed to distribute rewards for epoch {dz_epoch}: {e}"
+                                    );
+                                    state.mark_distribution_failure();
+                                    state.save(&self.state_file)?;
+                                    metrics::counter!(
+                                        "doublezero_contributor_rewards_distribution_failure"
+                                    )
+                                    .increment(1);
+                                    if state.consecutive_distribution_failures % 10 == 0 {
+                                        error!(
+                                            "Distribution has failed {} consecutive times",
+                                            state.consecutive_distribution_failures
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Failed to fetch distribution epoch: {e}");
+                        metrics::counter!(
+                            "doublezero_contributor_rewards_distribution_fetch_failure"
+                        )
+                        .increment(1);
+                    }
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Fetch the config and compute the distribution-eligible epoch.
+    async fn try_get_distribution_epoch(&self) -> Result<(u64, Pubkey)> {
+        let connection =
+            SolanaConnection::new(self.orchestrator.settings.rpc.solana_write_url.clone());
+        let (_, config) = try_fetch_config(&connection).await?;
+
+        let sol_conversion_state = SolConversionState::try_fetch(&connection).await?;
+        let next_sweep = sol_conversion_state
+            .journal
+            .1
+            .next_dz_epoch_to_sweep_tokens
+            .value();
+        ensure!(next_sweep > 0, "No epochs have been swept yet");
+        let dz_epoch_value = next_sweep - 1;
+
+        Ok((dz_epoch_value, config.rewards_accountant_key))
+    }
+
+    /// Attempt to distribute rewards for the given epoch.
+    async fn try_distribute_rewards(
+        &self,
+        dz_epoch_value: u64,
+        rewards_accountant_key: &Pubkey,
+    ) -> Result<DistributionSummary> {
+        let signer = load_keypair(&self.keypair_path)?;
+        let connection =
+            SolanaConnection::new(self.orchestrator.settings.rpc.solana_write_url.clone());
+        let dz_connection =
+            DoubleZeroLedgerConnection::new(self.orchestrator.settings.rpc.dz_url.clone());
+
+        let wallet = Wallet {
+            connection,
+            signer,
+            compute_unit_price_ix: None,
+            verbose: false,
+            fee_payer: None,
+            dry_run: false,
+        };
+
+        let shapley_prefix = self.orchestrator.settings.get_contributor_rewards_prefix();
+
+        distribute::try_distribute_epoch_rewards(
+            &wallet,
+            &dz_connection,
+            rewards_accountant_key,
+            dz_epoch_value,
+            &shapley_prefix,
+        )
+        .await
+    }
+
+    /// Post a Slack notification with the per-contributor distribution table.
+    async fn post_distribution_slack_notification(&self, summary: &DistributionSummary) {
+        if summary.contributors.is_empty() {
+            return;
+        }
+
+        let Some(slack_settings) = &self.orchestrator.settings.slack else {
+            return;
+        };
+        if !slack_settings.enabled {
+            return;
+        }
+        let Some(webhook_url) = &slack_settings.webhook_url else {
+            return;
+        };
+
+        // Fetch contributor labels for human-readable names.
+        let dz_connection =
+            DoubleZeroLedgerConnection::new(self.orchestrator.settings.rpc.dz_url.clone());
+        let labels = crate::calculator::ledger_operations::try_fetch_contributor_labels(
+            &dz_connection,
+            &self
+                .orchestrator
+                .settings
+                .programs
+                .serviceability_program_id,
+        )
+        .await
+        .unwrap_or_default();
+
+        let network = format!("{:?}", self.orchestrator.settings.network);
+        let rows: Vec<DistributionRewardRow> = summary
+            .contributors
+            .iter()
+            .map(|c| {
+                let contributor = labels
+                    .get(&c.contributor_key)
+                    .cloned()
+                    .unwrap_or_else(|| c.contributor_key.to_string());
+                DistributionRewardRow {
+                    index: c.index,
+                    contributor,
+                    proportion: format!("{:.2}%", 100.0 * c.proportion),
+                    reward: format!("{:.1} 2Z", c.reward_tokens),
+                    distributed: if c.distributed { "yes" } else { "no" }.to_string(),
+                }
+            })
+            .collect();
+
+        match post_distribution_rewards(webhook_url, network, summary.dz_epoch, rows).await {
+            Ok(()) => {
+                info!(
+                    "[OK] Posted distribution Slack notification for epoch {}",
+                    summary.dz_epoch
+                );
+            }
+            Err(e) => {
+                warn!(
+                    "[WARN] Failed to post distribution Slack notification: {}",
+                    e
+                );
+            }
+        }
+    }
+
+    /// Process rewards for the current epoch if needed
+    async fn process_rewards(&self, state: &mut SchedulerState) -> Result<bool> {
+        // Get current epoch
+        let fetcher = Fetcher::from_settings(&self.orchestrator.settings)?;
+        let epoch_info = (|| async { fetcher.dz_rpc_client.get_epoch_info().await })
+            .retry(&ExponentialBuilder::default().with_jitter())
+            .notify(|err: &SolanaClientError, dur: Duration| {
+                info!(
+                    "retrying get_epoch_info error: {:?} with sleeping {:?}",
+                    err, dur
+                )
+            })
+            .await?;
+        let current_epoch = epoch_info.epoch;
+
+        // Target epoch is current - 1 (we process the previous completed epoch)
+        if current_epoch == 0 {
+            debug!("Current epoch is 0, nothing to process yet");
+            return Ok(false);
+        }
+
+        let target_epoch = current_epoch - 1;
+
+        info!(
+            "Current epoch: {}, target epoch for processing: {}",
+            current_epoch, target_epoch
+        );
+
+        // Check if we should process this epoch
+        if !state.should_process_epoch(target_epoch) {
+            info!(
+                "Epoch {} already processed (last processed: {:?}), waiting for new epoch",
+                target_epoch, state.last_processed_epoch
+            );
+            return Ok(false);
+        }
+
+        info!("Processing rewards for epoch {}", target_epoch);
+
+        // Step 1: Create snapshot for the target epoch
+        info!("Step 1/2: Creating snapshot for epoch {}", target_epoch);
+        let (snapshot_location, snapshot_path, _temp_guard) =
+            match self.create_epoch_snapshot(target_epoch).await {
+                Ok((location, path, temp_guard)) => {
+                    state.mark_snapshot_created(target_epoch, location.clone());
+                    state.save(&self.state_file)?;
+                    (location, path, temp_guard)
+                }
+                Err(e) => {
+                    // `{:#}` prints the cause chain; plain `{}` prints only the outermost
+                    // context, dropping the reason the fetch failed.
+                    error!("Failed to create snapshot for epoch {target_epoch}: {e:#}");
+                    metrics::counter!(
+                        "doublezero_contributor_rewards_snapshot_failed",
+                        "reason" => "creation_error"
+                    )
+                    .increment(1);
+                    return Err(e);
+                }
+            };
+        // Note: _temp_guard is kept alive here and will be automatically
+        // cleaned up when it goes out of scope at the end of this function
+
+        if self.dry_run {
+            info!(
+                "DRY RUN: Would calculate and write rewards for epoch {}",
+                target_epoch
+            );
+            info!("DRY RUN: Skipping actual ledger writes");
+            info!("DRY RUN: Snapshot saved to: {}", snapshot_location);
+            info!("DRY RUN: Local path for processing: {:?}", snapshot_path);
+
+            // Mark success even in dry run so we track what we've processed
+            state.mark_success(target_epoch);
+            info!(
+                "DRY RUN: Marked epoch {} as processed (no chain writes)",
+                target_epoch
+            );
+        } else {
+            // Check if rewards already exist for this epoch (idempotency, only when not in dry-run)
+            if self.rewards_exist_for_epoch(&fetcher, target_epoch).await? {
+                info!(
+                    "Rewards already exist for epoch {}, marking as processed",
+                    target_epoch
+                );
+                state.mark_success(target_epoch);
+                return Ok(false);
+            }
+
+            // Step 2: Calculate and write rewards using the snapshot
+            info!("Step 2/2: Calculating rewards from snapshot");
+            let write_summary = self
+                .orchestrator
+                .calculate_rewards(
+                    None,
+                    self.keypair_path.clone(),
+                    Some(snapshot_path),
+                    false,
+                    WriteConfig::default(),
+                )
+                .await?;
+
+            // Mark success
+            state.mark_success(target_epoch);
+            info!(
+                "Successfully calculated and wrote rewards for epoch {}",
+                target_epoch
+            );
+
+            // Post Slack notification if enabled
+            if let Some(slack_settings) = &self.orchestrator.settings.slack
+                && slack_settings.enabled
+                && let Some(webhook_url) = &slack_settings.webhook_url
+            {
+                // Convert network to string
+                let network = format!("{:?}", self.orchestrator.settings.network);
+
+                // Convert WriteSummary results to WriteResultInfo
+                let write_results: Vec<WriteResultInfo> = write_summary
+                    .results
+                    .iter()
+                    .map(|result| match result {
+                        WriteResult::Success(description, identifier) => WriteResultInfo::Success {
+                            description: description.clone(),
+                            identifier: identifier.clone(),
+                        },
+                        WriteResult::Failed(description, error) => WriteResultInfo::Failed {
+                            description: description.clone(),
+                            error: error.clone(),
+                        },
+                    })
+                    .collect();
+
+                // Post notification
+                match post_contributor_rewards(webhook_url, network, target_epoch, write_results)
+                    .await
+                {
+                    Ok(_) => {
+                        info!("[OK] Posted Slack notification for epoch {}", target_epoch);
+                    }
+                    Err(e) => {
+                        warn!("[WARN] Failed to post Slack notification: {}", e);
+                    }
+                }
+            }
+        }
+
+        Ok(true)
+    }
+
+    /// Check if rewards already exist for a given epoch
+    ///
+    /// Returns true only if ALL steps are complete:
+    /// 1. Records exist (contributor rewards OR reward input)
+    /// 2. Merkle root posted to Distribution account
+    async fn rewards_exist_for_epoch(&self, fetcher: &Fetcher, epoch: u64) -> Result<bool> {
+        // Check if records exist (either contributor rewards or reward input)
+        let contributor_rewards_exists = self
+            .check_contributor_rewards_record(fetcher, epoch)
+            .await?;
+
+        let reward_input_exists = self.check_reward_input_record(fetcher, epoch).await?;
+
+        let records_exist = contributor_rewards_exists || reward_input_exists;
+
+        // Check if merkle root has been posted
+        let merkle_root_posted = self.check_distribution_merkle_root(fetcher, epoch).await?;
+
+        // All steps must be complete
+        let all_complete = records_exist && merkle_root_posted;
+
+        if all_complete {
+            debug!(
+                "All rewards steps complete for epoch {}: records_exist={}, merkle_root_posted={}",
+                epoch, records_exist, merkle_root_posted
+            );
+        } else {
+            debug!(
+                "Rewards incomplete for epoch {}: records_exist={}, merkle_root_posted={}",
+                epoch, records_exist, merkle_root_posted
+            );
+        }
+
+        Ok(all_complete)
+    }
+
+    /// Check if contributor rewards record exists
+    async fn check_contributor_rewards_record(
+        &self,
+        fetcher: &Fetcher,
+        epoch: u64,
+    ) -> Result<bool> {
+        // Get rewards accountant
+        let rewards_accountant = self.get_rewards_accountant(fetcher).await?;
+
+        // Compute record address
+        let prefix = self
+            .orchestrator
+            .settings
+            .prefixes
+            .contributor_rewards
+            .as_bytes();
+        let epoch_bytes = epoch.to_le_bytes();
+        let seeds: &[&[u8]] = &[prefix, &epoch_bytes, b"shapley_output"];
+        let record_key = create_record_key(&rewards_accountant, seeds);
+
+        debug!("Checking for contributor rewards at: {}", record_key);
+
+        // Check if account exists
+        let exists = self.account_exists(fetcher, &record_key).await?;
+        Ok(exists)
+    }
+
+    /// Check if reward input record exists
+    async fn check_reward_input_record(&self, fetcher: &Fetcher, epoch: u64) -> Result<bool> {
+        // Get rewards accountant
+        let rewards_accountant = self.get_rewards_accountant(fetcher).await?;
+
+        // Compute record address
+        let prefix = self.orchestrator.settings.prefixes.reward_input.as_bytes();
+        let epoch_bytes = epoch.to_le_bytes();
+        let seeds: &[&[u8]] = &[prefix, &epoch_bytes];
+        let record_key = create_record_key(&rewards_accountant, seeds);
+
+        debug!("Checking for reward input at: {}", record_key);
+
+        // Check if account exists
+        let exists = self.account_exists(fetcher, &record_key).await?;
+        Ok(exists)
+    }
+
+    /// Check if merkle root has been posted to Distribution account
+    async fn check_distribution_merkle_root(&self, fetcher: &Fetcher, epoch: u64) -> Result<bool> {
+        let dz_epoch = DoubleZeroEpoch::new(epoch);
+        let (distribution_key, _) = Distribution::find_address(dz_epoch);
+
+        debug!(
+            "Checking for Distribution merkle root at {} for epoch {}",
+            distribution_key, epoch
+        );
+
+        // Try to fetch Distribution account
+        let distribution_result = (|| async {
+            try_fetch_zero_copy_data_with_commitment::<Distribution>(
+                &fetcher.solana_write_client,
+                &distribution_key,
+                CommitmentConfig::confirmed(),
+            )
+            .await
+        })
+        .retry(&ExponentialBuilder::default().with_jitter())
+        .notify(|err, dur: Duration| {
+            debug!(
+                "retrying get Distribution account error: {:?} with sleeping {:?}",
+                err, dur
+            )
+        })
+        .await;
+
+        // If account doesn't exist, merkle root hasn't been posted yet
+        let distribution = match distribution_result {
+            Ok(dist) => dist,
+            Err(_) => {
+                debug!(
+                    "Distribution account does not exist for epoch {}, merkle root not posted",
+                    epoch
+                );
+                return Ok(false);
+            }
+        };
+
+        // Check if merkle root is non-zero (has been set)
+        let is_merkle_root_set = distribution.rewards_merkle_root != Hash::default();
+
+        // Check if total contributors is non-zero
+        let is_contributors_set = distribution.total_contributors > 0;
+
+        // All done?
+        let is_done = is_merkle_root_set && is_contributors_set;
+
+        if is_done {
+            debug!(
+                "Distribution merkle root exists for epoch {}: root={:?}, contributors={}",
+                epoch, distribution.rewards_merkle_root, distribution.total_contributors
+            );
+        } else {
+            debug!(
+                "Distribution merkle root incomplete for epoch {}: merkle_root_set={}, contributors_set={}",
+                epoch, is_merkle_root_set, is_contributors_set
+            );
+        }
+
+        Ok(is_done)
+    }
+
+    /// Get rewards accountant from program config
+    async fn get_rewards_accountant(&self, fetcher: &Fetcher) -> Result<Pubkey> {
+        let (program_config_address, _) = ProgramConfig::find_address();
+        debug!(
+            "Fetching rewards_accountant from ProgramConfig PDA: {}",
+            program_config_address
+        );
+
+        let account = (|| async {
+            fetcher
+                .solana_write_client
+                .get_account(&program_config_address)
+                .await
+        })
+        .retry(&ExponentialBuilder::default().with_jitter())
+        .notify(|err: &SolanaClientError, dur: Duration| {
+            info!(
+                "retrying get_account error: {:?} with sleeping {:?}",
+                err, dur
+            )
+        })
+        .await?;
+
+        let program_config =
+            zero_copy::checked_from_bytes_with_discriminator::<ProgramConfig>(&account.data)
+                .ok_or_else(|| anyhow!("Failed to deserialize ProgramConfig"))?
+                .0;
+
+        Ok(program_config.rewards_accountant_key)
+    }
+
+    /// Check if an account exists on chain
+    async fn account_exists(&self, fetcher: &Fetcher, pubkey: &Pubkey) -> Result<bool> {
+        let maybe_account = (|| async {
+            fetcher
+                .dz_rpc_client
+                .get_account_with_commitment(pubkey, CommitmentConfig::confirmed())
+                .await
+        })
+        .retry(&ExponentialBuilder::default().with_jitter())
+        .notify(|err: &SolanaClientError, dur: Duration| {
+            debug!(
+                "retrying get_account error: {:?} with sleeping {:?}",
+                err, dur
+            )
+        })
+        .await?;
+
+        Ok(maybe_account.value.is_some())
+    }
+
+    /// Create a snapshot for a given epoch and return:
+    /// - Storage location (S3 URL or local file path)
+    /// - Local file path for calculate_rewards
+    /// - Optional temp file guard (for S3 storage - automatically cleaned up when dropped)
+    async fn create_epoch_snapshot(
+        &self,
+        epoch: u64,
+    ) -> Result<(String, PathBuf, Option<NamedTempFile>)> {
+        let start = Instant::now();
+
+        info!(
+            "Creating snapshot for epoch {} using {} storage",
+            epoch,
+            self.storage.storage_type()
+        );
+
+        // Create snapshot directory if it doesn't exist (for local file storage)
+        if matches!(
+            self.orchestrator.settings.scheduler.storage_backend,
+            StorageBackend::LocalFile
+        ) {
+            fs::create_dir_all(&self.snapshot_dir).map_err(|e| {
+                anyhow!(
+                    "Failed to create snapshot directory {:?}: {}",
+                    self.snapshot_dir,
+                    e
+                )
+            })?;
+        }
+
+        // Determine network prefix (mn for mainnet, tn for testnet)
+        let network_prefix = match self.orchestrator.settings.network {
+            Network::MainnetBeta | Network::Mainnet => "mn",
+            Network::Testnet => "tn",
+            Network::Devnet => "dn",
+        };
+
+        // Generate snapshot filename
+        let filename = format!("{}-epoch-{}-snapshot.json", network_prefix, epoch);
+
+        // Fetch all data for the epoch
+        info!("Fetching data for epoch {}", epoch);
+        let fetcher = Fetcher::from_settings(&self.orchestrator.settings)?;
+        let (fetch_epoch, fetch_data) = fetcher.fetch(Some(epoch)).await?;
+
+        if fetch_epoch != epoch {
+            bail!(
+                "Fetched epoch {} does not match target epoch {}",
+                fetch_epoch,
+                epoch
+            );
+        }
+
+        // Required: every consumer rejects a snapshot without a leader schedule.
+        info!("Fetching leader schedule for epoch {}", epoch);
+        let leader_schedule = EpochFinder::new(
+            fetcher.dz_rpc_client.clone(),
+            fetcher.solana_read_client.clone(),
+        )
+        .fetch_leader_schedule(epoch, fetch_data.start_us)
+        .await
+        .with_context(|| format!("Failed to fetch leader schedule for DZ epoch {epoch}"))?;
+        info!(
+            "Leader schedule fetched successfully for Solana epoch {}",
+            leader_schedule.solana_epoch
+        );
+
+        // Create metadata
+        let metadata = SnapshotMetadata {
+            created_at: Utc::now().to_rfc3339(),
+            network: format!("{:?}", self.orchestrator.settings.network),
+            exchanges_count: fetch_data.dz_serviceability.exchanges.len(),
+            locations_count: fetch_data.dz_serviceability.locations.len(),
+            devices_count: fetch_data.dz_serviceability.devices.len(),
+            internet_samples_count: fetch_data.dz_internet.internet_latency_samples.len(),
+            device_samples_count: fetch_data.dz_telemetry.device_latency_samples.len(),
+        };
+
+        // Create complete snapshot
+        let snapshot = CompleteSnapshot {
+            dz_epoch: epoch,
+            solana_epoch: Some(leader_schedule.solana_epoch),
+            fetch_data,
+            leader_schedule: Some(leader_schedule),
+            metadata,
+        };
+
+        // Validate before saving: storage.save writes the canonical per-epoch key, so
+        // an incomplete snapshot overwrites a good one, and a dry run never reads it
+        // back to find out.
+        snapshot.validate()?;
+
+        // Save snapshot using storage abstraction (S3 or local file)
+        info!(
+            "Saving snapshot using {} storage",
+            self.storage.storage_type()
+        );
+        let snapshot_location = self.storage.save(&snapshot, &filename).await?;
+
+        // For calculate_rewards, we need a local file path
+        // If using S3, create a temp file; if local storage, use the path directly
+        let (local_path, temp_file_guard) =
+            match self.orchestrator.settings.scheduler.storage_backend {
+                StorageBackend::S3 => {
+                    // Create a named temp file that will be automatically cleaned up when dropped
+                    let temp_file = NamedTempFile::new()
+                        .map_err(|e| anyhow!("Failed to create temp file: {}", e))?;
+
+                    let temp_path = temp_file.path().to_path_buf();
+
+                    // Write snapshot to temp file
+                    let json_content = serde_json::to_string_pretty(&snapshot)?;
+                    tokio::fs::write(&temp_path, json_content)
+                        .await
+                        .map_err(|e| anyhow!("Failed to write temp file: {}", e))?;
+
+                    info!(
+                        "Created temp file for calculate_rewards: {:?} (will be auto-cleaned)",
+                        temp_path
+                    );
+
+                    (temp_path, Some(temp_file))
+                }
+                StorageBackend::LocalFile => {
+                    // Storage location is already a local path - no temp file needed
+                    (PathBuf::from(&snapshot_location), None)
+                }
+            };
+
+        let duration = start.elapsed();
+
+        // Estimate size from serialized JSON (for metrics)
+        let json_bytes = serde_json::to_vec_pretty(&snapshot)?;
+        let snapshot_size = json_bytes.len() as u64;
+
+        // Record metrics
+        metrics::histogram!("doublezero_contributor_rewards_snapshot_creation_duration_seconds")
+            .record(duration.as_secs_f64());
+        metrics::gauge!(
+            "doublezero_contributor_rewards_snapshot_size_bytes",
+            "epoch" => epoch.to_string()
+        )
+        .set(snapshot_size as f64);
+        metrics::counter!(
+            "doublezero_contributor_rewards_snapshot_created",
+            "epoch" => epoch.to_string()
+        )
+        .increment(1);
+        metrics::gauge!("doublezero_contributor_rewards_last_snapshot_epoch").set(epoch as f64);
+
+        info!(
+            "Snapshot created successfully: {} ({:.2} MB, took {:.2}s)",
+            snapshot_location,
+            snapshot_size as f64 / 1_048_576.0,
+            duration.as_secs_f64()
+        );
+
+        Ok((snapshot_location, local_path, temp_file_guard))
+    }
+}

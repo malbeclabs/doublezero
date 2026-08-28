@@ -1,0 +1,25 @@
+{
+  "operator_count": 4,
+  "operators": [
+    {
+      "operator": "5YbNrJHJJoiRwVEvgAWRGdFRG9gRdZ47hLCKSym8bqbp",
+      "value": 114.5825402808965,
+      "proportion": 0.0582158738145588
+    },
+    {
+      "operator": "895D8oq5ceWQ7uzL6VDBu4YfAywuaThQp8qfcP7TWJjK",
+      "value": 7.018788167339876,
+      "proportion": 0.0035660309614299964
+    },
+    {
+      "operator": "FUYRNmVyxaP6jsm6KmRgkGYfRNoFC8yCaxytyhwy7Hwb",
+      "value": 1770.4535644969292,
+      "proportion": 0.8995131461793304
+    },
+    {
+      "operator": "H647kAwTcWsGXZUK3BTr1JyTBZmbNcYyCmRFFCEnXUVp",
+      "value": 76.18044860254402,
+      "proportion": 0.0387049490446808
+    }
+  ]
+}

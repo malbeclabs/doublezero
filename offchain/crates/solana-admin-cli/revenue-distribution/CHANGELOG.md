@@ -1,0 +1,21 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [Unreleased]
+
+- migrate to Solana 3.0: workspace `solana-*` crates and `solana-sdk` move to the 3.0 line, `solana-program-test` to 3.0.12, and the doublezero SDK git-deps repin from `client/v0.27.1` to the malbeclabs/doublezero#3830 merge revision (malbeclabs/infra#1853)
+- add `initialize-rewards-integration` command (#361)
+
+## [0.0.1](https://github.com/doublezerofoundation/doublezero-offchain/releases/tag/doublezero-revenue-distribution-admin-cli%2Fv0.0.1) - 2025-10-21
+
+- add `--solana_validator_debt_write_off_feature_activation_epoch` ([#237](https://github.com/doublezerofoundation/doublezero-offchain/pull/237))
+- update migration command ([#229](https://github.com/doublezerofoundation/doublezero-offchain/pull/229))
+- use `doublezero-solana-sdk` as dependency ([#225](https://github.com/doublezerofoundation/doublezero-offchain/pull/225))
+- update migration command ([#195](https://github.com/doublezerofoundation/doublezero-offchain/pull/195))
+- add sol-conversion-admin-cli ([#156](https://github.com/doublezerofoundation/doublezero-offchain/pull/156))
+
+## Other

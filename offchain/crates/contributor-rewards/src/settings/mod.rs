@@ -1,0 +1,532 @@
+pub mod aws;
+pub mod network;
+pub mod validation;
+
+use std::{fmt, net::SocketAddr, path::Path};
+
+use anyhow::{Context, Result};
+use aws::{AwsSettings, StorageBackend};
+use borsh::{BorshDeserialize, BorshSerialize};
+use config::{Config as ConfigBuilder, Environment, File};
+use network::Network;
+use serde::{Deserialize, Serialize};
+use validation::validate_config;
+
+/// Main settings configuration for contributor-rewards
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Settings {
+    /// Log level for application logging (e.g., "info", "debug", "warn", "error")
+    pub log_level: String,
+    /// Network configuration (mainnet, testnet, devnet, or localnet)
+    pub network: Network,
+    /// Shapley value calculation parameters
+    pub shapley: ShapleySettings,
+    /// Demand generation parameters
+    #[serde(default)]
+    pub demand: DemandSettings,
+    /// Shapley input preparation parameters
+    #[serde(default)]
+    pub input: InputSettings,
+    /// RPC endpoint configuration
+    pub rpc: RpcSettings,
+    /// Solana program IDs
+    pub programs: ProgramSettings,
+    /// Prefixes for data organization on-chain
+    pub prefixes: PrefixSettings,
+    /// Internet telemetry lookback configuration
+    pub inet_lookback: InetLookbackSettings,
+    /// Telemetry default handling configuration
+    pub telemetry_defaults: TelemetryDefaultSettings,
+    /// Worker settings
+    pub scheduler: SchedulerSettings,
+    /// Metrics settings
+    pub metrics: Option<MetricsSettings>,
+    /// AWS S3 configuration for snapshot storage (required when storage_backend = S3)
+    pub aws: Option<AwsSettings>,
+    /// Slack notification settings
+    #[serde(default)]
+    pub slack: Option<SlackSettings>,
+}
+
+/// Shapley value calculation parameters for reward distribution
+#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+pub struct ShapleySettings {
+    /// Base uptime requirement for operators (0.0-1.0)
+    /// e.g., 0.95 means 95% uptime required
+    pub operator_uptime: f64,
+    /// Bonus multiplier for contiguous network coverage
+    /// Applied when nodes provide continuous coverage across regions
+    pub contiguity_bonus: f64,
+    /// Multiplier for demand-based rewards
+    /// Increases rewards in high-demand areas
+    pub demand_multiplier: f64,
+}
+
+/// Demand generation parameters for Shapley inputs
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct DemandSettings {
+    /// Traffic per receiver in Gbps, used for both IBRL and shred demands
+    pub traffic: f64,
+    /// Priority for IBRL validator-to-validator demands
+    pub priority: f64,
+    /// Demand kind/type for IBRL demands
+    pub kind: u32,
+    /// Multicast flag for IBRL demands
+    pub multicast_enabled: bool,
+    /// Demand kind/type for shred demands
+    pub shred_kind: u32,
+    /// Multicast flag for shred demands
+    pub shred_multicast_enabled: bool,
+}
+
+impl Default for DemandSettings {
+    fn default() -> Self {
+        Self {
+            traffic: 0.15,
+            priority: 0.0,
+            kind: 1,
+            multicast_enabled: false,
+            shred_kind: 2,
+            shred_multicast_enabled: true,
+        }
+    }
+}
+
+/// Shapley input preparation parameters
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct InputSettings {
+    /// Multiplier applied to public internet latency inputs
+    pub public_latency_multiplier: f64,
+}
+
+impl Default for InputSettings {
+    fn default() -> Self {
+        Self {
+            public_latency_multiplier: 1.0,
+        }
+    }
+}
+
+/// RPC endpoint configuration for blockchain interactions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RpcSettings {
+    /// DoubleZero ledger RPC URL
+    pub dz_url: String,
+    /// Solana read RPC endpoint (for reading chain data like leader schedules)
+    pub solana_read_url: String,
+    /// Solana write RPC endpoint (for writing rewards and merkle roots)
+    pub solana_write_url: String,
+    /// Transaction commitment level ("confirmed", "finalized", etc.)
+    pub commitment: String,
+    /// Rate limit for RPC requests per second
+    pub rps_limit: u32,
+}
+
+/// Solana program IDs for on-chain interactions
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProgramSettings {
+    /// DZ Serviceability program ID
+    pub serviceability_program_id: String,
+    /// DZ Telemetry program ID
+    pub telemetry_program_id: String,
+}
+
+/// Prefixes for organizing DZ records on-chain
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PrefixSettings {
+    /// Prefix for device telemetry record account
+    pub device_telemetry: String,
+    /// Prefix for internet telemetry record account
+    pub internet_telemetry: String,
+    /// Prefix for contributor rewards record account
+    pub contributor_rewards: String,
+    /// Prefix for reward input configuration record account
+    pub reward_input: String,
+}
+
+/// Configuration for internet telemetry historical data lookback
+/// Used when current epoch data is insufficient
+#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+pub struct InetLookbackSettings {
+    /// Minimum coverage threshold (0.0-1.0)
+    /// e.g., 0.7 means at least 70% of expected links must have data
+    pub min_coverage_threshold: f64,
+    /// Maximum number of epochs to look back
+    /// e.g., 5 means check up to 5 previous epochs
+    pub max_epochs_lookback: u64,
+    /// Minimum samples per link to consider it valid
+    /// e.g., 10 means each link needs at least 10 samples
+    pub min_samples_per_link: usize,
+    /// Enable lookback accumulator
+    /// When true, combines data from multiple epochs to meet coverage threshold
+    /// This should be defaulted to true (false only when testing)
+    pub enable_accumulator: bool,
+    /// Deduplication window in microseconds
+    /// Samples within this time window are considered duplicates
+    pub dedup_window_us: u64,
+}
+
+/// Telemetry default handling configuration
+/// Controls how missing telemetry data is handled per circuit
+#[derive(Debug, Clone, Serialize, Deserialize, BorshSerialize, BorshDeserialize)]
+pub struct TelemetryDefaultSettings {
+    /// Threshold for missing data (0.0-1.0)
+    /// e.g., 0.7 means if >70% of samples are missing, use defaults
+    pub missing_data_threshold: f64,
+    /// Default latency for private links when data is missing (in milliseconds)
+    /// e.g., 1000.0 means use 1000ms for circuits with insufficient data
+    pub private_default_latency_ms: f64,
+    /// Enable previous epoch lookup for public links
+    /// If true, fetches previous epoch's average when current has insufficient data
+    pub enable_previous_epoch_lookup: bool,
+}
+
+/// Scheduler configuration for automated rewards calculation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SchedulerSettings {
+    /// Check interval in seconds
+    pub interval_seconds: u64,
+    /// Path to worker state file
+    pub state_file: String,
+    /// Directory to store epoch snapshots
+    pub snapshot_dir: String,
+    /// Enable dry run mode for worker
+    pub enable_dry_run: bool,
+    /// Storage backend for snapshots
+    #[serde(default)]
+    pub storage_backend: StorageBackend,
+    /// Maximum time to wait for grace period in seconds (default: 21600 = 6 hours)
+    #[serde(default = "default_grace_period_max_wait_seconds")]
+    pub grace_period_max_wait_seconds: u64,
+}
+
+fn default_grace_period_max_wait_seconds() -> u64 {
+    21600
+}
+
+/// Metrics configuration for Prometheus
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MetricsSettings {
+    pub addr: SocketAddr,
+}
+
+/// Slack notification settings for reward cycle completion alerts
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SlackSettings {
+    /// Enable Slack notifications
+    pub enabled: bool,
+    /// Webhook URL
+    #[serde(default)]
+    pub webhook_url: Option<String>,
+    /// Channel ID
+    #[serde(default)]
+    pub channel_id: Option<String>,
+}
+
+impl Settings {
+    /// Load configuration from a specific config file path
+    pub fn from_path<P: AsRef<Path>>(path: P) -> Result<Self> {
+        // Construct settings, env vars take priority still
+        let settings = ConfigBuilder::builder()
+            .add_source(File::with_name(&path.as_ref().to_string_lossy()))
+            .add_source(
+                Environment::with_prefix("DZ")
+                    .separator("__")
+                    .try_parsing(true),
+            )
+            .build()
+            .context("Failed to build configuration")?
+            .try_deserialize()
+            .context("Failed to deserialize configuration")?;
+
+        // Validate the configuration
+        validate_config(&settings)?;
+
+        Ok(settings)
+    }
+
+    /// Load configuration from environment variables and optional config file
+    pub fn from_env() -> Result<Self> {
+        // Load .env file if it exists
+        // NOTE: It's ok if this fails (file might not exist)
+        let _ = dotenvy::dotenv();
+
+        // Construct settings
+        let settings: Settings = ConfigBuilder::builder()
+            .add_source(
+                Environment::with_prefix("DZ")
+                    .separator("__")
+                    .try_parsing(true),
+            )
+            .build()
+            .context("Failed to build configuration")?
+            .try_deserialize()
+            .context("Failed to deserialize configuration")?;
+
+        // Validate the configuration
+        validate_config(&settings)?;
+
+        Ok(settings)
+    }
+
+    pub fn get_device_telemetry_prefix(&self) -> Vec<u8> {
+        self.prefixes.device_telemetry.as_bytes().to_vec()
+    }
+
+    pub fn get_internet_telemetry_prefix(&self) -> Vec<u8> {
+        self.prefixes.internet_telemetry.as_bytes().to_vec()
+    }
+
+    pub fn get_contributor_rewards_prefix(&self) -> Vec<u8> {
+        self.prefixes.contributor_rewards.as_bytes().to_vec()
+    }
+
+    pub fn get_reward_input_prefix(&self) -> Vec<u8> {
+        self.prefixes.reward_input.as_bytes().to_vec()
+    }
+}
+
+impl fmt::Display for Settings {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Settings {{\n\
+             \tNetwork: {:?}\n\
+             \tLog Level: {}\n\
+             \tDZ RPC URL: {}\n\
+             \tSolana Read RPC URL: {}\n\
+             \tSolana Write RPC URL: {}\n\
+             \tRPS Limit: {}\n\
+             \tShapley Operator Uptime: {}\n\
+             \tShapley Contiguity Bonus: {}\n\
+             \tShapley Demand Multiplier: {}\n\
+             \tDemand Traffic: {}\n\
+             \tDemand Priority: {}\n\
+             \tDemand Kind: {}\n\
+             \tDemand Multicast Enabled: {}\n\
+             \tDemand Shred Kind: {}\n\
+             \tDemand Shred Multicast Enabled: {}\n\
+             \tInput Public Latency Multiplier: {}\n\
+             }}",
+            self.network,
+            self.log_level,
+            self.rpc.dz_url,
+            self.rpc.solana_read_url,
+            self.rpc.solana_write_url,
+            self.rpc.rps_limit,
+            self.shapley.operator_uptime,
+            self.shapley.contiguity_bonus,
+            self.shapley.demand_multiplier,
+            self.demand.traffic,
+            self.demand.priority,
+            self.demand.kind,
+            self.demand.multicast_enabled,
+            self.demand.shred_kind,
+            self.demand.shred_multicast_enabled,
+            self.input.public_latency_multiplier,
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{io::Write, sync::Mutex};
+
+    use super::*;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    const DEMAND_ENV_KEYS: &[&str] = &[
+        "DZ__DEMAND__TRAFFIC",
+        "DZ__DEMAND__PRIORITY",
+        "DZ__DEMAND__KIND",
+        "DZ__DEMAND__SHRED_KIND",
+        "DZ__DEMAND__MULTICAST_ENABLED",
+        "DZ__DEMAND__SHRED_MULTICAST_ENABLED",
+        "DZ__INPUT__PUBLIC_LATENCY_MULTIPLIER",
+    ];
+
+    struct DemandEnvCleanup;
+
+    impl Drop for DemandEnvCleanup {
+        fn drop(&mut self) {
+            clear_demand_env();
+        }
+    }
+
+    fn clear_demand_env() {
+        for key in DEMAND_ENV_KEYS {
+            unsafe {
+                std::env::remove_var(key);
+            }
+        }
+    }
+
+    fn base_config(extra: &str) -> String {
+        format!(
+            r#"
+network = "testnet"
+log_level = "info"
+
+[shapley]
+operator_uptime = 0.98
+contiguity_bonus = 5.0
+demand_multiplier = 1.2
+
+[rpc]
+dz_url = "https://test.com"
+solana_read_url = "https://test.com"
+solana_write_url = "https://test.com"
+commitment = "confirmed"
+rps_limit = 10
+
+[programs]
+serviceability_program_id = "test"
+telemetry_program_id = "test"
+
+[prefixes]
+device_telemetry = "device"
+internet_telemetry = "internet"
+contributor_rewards = "rewards"
+reward_input = "input"
+
+[inet_lookback]
+min_coverage_threshold = 0.8
+max_epochs_lookback = 5
+min_samples_per_link = 20
+enable_accumulator = true
+dedup_window_us = 10000000
+
+[telemetry_defaults]
+missing_data_threshold = 0.7
+private_default_latency_ms = 1000.0
+enable_previous_epoch_lookup = true
+
+[scheduler]
+interval_seconds = 300
+state_file = "/tmp/test.state"
+snapshot_dir = "/tmp/snapshots"
+enable_dry_run = false
+storage_backend = "local-file"
+{extra}
+"#
+        )
+    }
+
+    fn write_config(contents: &str) -> tempfile::TempPath {
+        let mut file = tempfile::Builder::new().suffix(".toml").tempfile().unwrap();
+        file.write_all(contents.as_bytes()).unwrap();
+        file.flush().unwrap();
+        file.into_temp_path()
+    }
+
+    #[test]
+    fn demand_settings_default_when_section_missing() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_demand_env();
+        let _cleanup = DemandEnvCleanup;
+        let path = write_config(&base_config(""));
+
+        let settings = Settings::from_path(&path).unwrap();
+
+        assert_eq!(settings.demand, DemandSettings::default());
+    }
+
+    #[test]
+    fn input_settings_default_when_section_missing() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_demand_env();
+        let _cleanup = DemandEnvCleanup;
+        let path = write_config(&base_config(""));
+
+        let settings = Settings::from_path(&path).unwrap();
+
+        assert_eq!(settings.input, InputSettings::default());
+    }
+
+    #[test]
+    fn input_settings_toml_section() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_demand_env();
+        let _cleanup = DemandEnvCleanup;
+        let path = write_config(&base_config(
+            r#"
+[input]
+public_latency_multiplier = 1.25
+"#,
+        ));
+
+        let settings = Settings::from_path(&path).unwrap();
+
+        assert_eq!(settings.input.public_latency_multiplier, 1.25);
+    }
+
+    #[test]
+    fn demand_settings_partial_section_uses_defaults() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_demand_env();
+        let _cleanup = DemandEnvCleanup;
+        let path = write_config(&base_config(
+            r#"
+[demand]
+traffic = 0.2
+kind = 7
+shred_multicast_enabled = false
+"#,
+        ));
+
+        let settings = Settings::from_path(&path).unwrap();
+
+        assert_eq!(settings.demand.traffic, 0.2);
+        assert_eq!(settings.demand.priority, 0.0);
+        assert_eq!(settings.demand.kind, 7);
+        assert!(!settings.demand.multicast_enabled);
+        assert_eq!(settings.demand.shred_kind, 2);
+        assert!(!settings.demand.shred_multicast_enabled);
+    }
+
+    #[test]
+    fn demand_settings_env_overrides_toml() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_demand_env();
+        let _cleanup = DemandEnvCleanup;
+        unsafe {
+            std::env::set_var("DZ__DEMAND__PRIORITY", "4.25");
+            std::env::set_var("DZ__DEMAND__KIND", "9");
+        }
+        let path = write_config(&base_config(
+            r#"
+[demand]
+priority = 1.0
+kind = 3
+"#,
+        ));
+
+        let settings = Settings::from_path(&path).unwrap();
+
+        assert_eq!(settings.demand.priority, 4.25);
+        assert_eq!(settings.demand.kind, 9);
+    }
+
+    #[test]
+    fn input_settings_env_overrides_toml() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_demand_env();
+        let _cleanup = DemandEnvCleanup;
+        unsafe {
+            std::env::set_var("DZ__INPUT__PUBLIC_LATENCY_MULTIPLIER", "1.25");
+        }
+        let path = write_config(&base_config(
+            r#"
+[input]
+public_latency_multiplier = 1.0
+"#,
+        ));
+
+        let settings = Settings::from_path(&path).unwrap();
+
+        assert_eq!(settings.input.public_latency_multiplier, 1.25);
+    }
+}

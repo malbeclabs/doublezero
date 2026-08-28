@@ -1,0 +1,68 @@
+use doublezero_contributor_rewards::settings;
+
+/// Create test settings with configurable telemetry defaults
+pub fn create_test_settings(
+    missing_threshold: f64,
+    private_default_ms: f64,
+    enable_previous: bool,
+) -> settings::Settings {
+    settings::Settings {
+        log_level: "info".to_string(),
+        network: settings::network::Network::Testnet,
+        shapley: settings::ShapleySettings {
+            operator_uptime: 0.98,
+            contiguity_bonus: 5.0,
+            demand_multiplier: 1.2,
+        },
+        demand: settings::DemandSettings::default(),
+        input: settings::InputSettings::default(),
+        rpc: settings::RpcSettings {
+            dz_url: "https://test.com".to_string(),
+            solana_read_url: "https://test.com".to_string(),
+            solana_write_url: "https://test.com".to_string(),
+            commitment: "confirmed".to_string(),
+            rps_limit: 10,
+        },
+        programs: settings::ProgramSettings {
+            serviceability_program_id: "test".to_string(),
+            telemetry_program_id: "test".to_string(),
+        },
+        prefixes: settings::PrefixSettings {
+            device_telemetry: "device".to_string(),
+            internet_telemetry: "internet".to_string(),
+            contributor_rewards: "rewards".to_string(),
+            reward_input: "input".to_string(),
+        },
+        inet_lookback: settings::InetLookbackSettings {
+            min_coverage_threshold: 0.8,
+            max_epochs_lookback: 5,
+            min_samples_per_link: 20,
+            enable_accumulator: true,
+            dedup_window_us: 10000000,
+        },
+        telemetry_defaults: settings::TelemetryDefaultSettings {
+            missing_data_threshold: missing_threshold,
+            private_default_latency_ms: private_default_ms,
+            enable_previous_epoch_lookup: enable_previous,
+        },
+        scheduler: settings::SchedulerSettings {
+            interval_seconds: 300,
+            state_file: "/var/lib/doublezero-contributor-rewards/scheduler.state".to_string(),
+            snapshot_dir: "/tmp/snapshots".to_string(),
+            enable_dry_run: false,
+            storage_backend: settings::aws::StorageBackend::LocalFile,
+            grace_period_max_wait_seconds: 21600,
+        },
+        metrics: Some(settings::MetricsSettings {
+            addr: "127.0.0.1:9090".parse().unwrap(),
+        }),
+        aws: Some(settings::aws::AwsSettings {
+            region: "us-east-1".to_string(),
+            bucket: "dummy-bucket".to_string(),
+            access_key_id: "dummy-key".to_string(),
+            secret_access_key: "dummy-secret".to_string(),
+            endpoint: None,
+        }),
+        slack: None,
+    }
+}

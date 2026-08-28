@@ -1,0 +1,100 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema-pro.json
+# vim: set ts=2 sw=2 tw=0 fo=cnqoj
+
+version: 2
+
+project_name: doublezero-solana
+
+monorepo:
+  tag_prefix: doublezero-solana/
+
+builds:
+  - id: doublezero-solana
+    binary: doublezero-solana
+    builder: rust
+    tool: cargo
+    command: build
+    flags:
+      - --package=doublezero-solana-cli
+      - --release
+    targets:
+      - x86_64-unknown-linux-musl
+    env:
+      - CC_x86_64_unknown_linux_musl=musl-gcc
+      - CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc
+      - BUILD_VERSION={{ .Version }}
+      - BUILD_COMMIT={{ .ShortCommit }}
+      - DATE={{ .Date }}
+
+archives:
+  - id: doublezero_solana_archive
+    formats: ["tar.gz"]
+    ids: [doublezero-solana]
+    # this name template makes the OS and Arch compatible with the results of `uname`
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+
+nfpms:
+  - id: doublezero-solana
+    package_name: doublezero-solana
+    ids: [doublezero-solana]
+    vendor: doublezero
+    homepage: doublezero.xyz
+    maintainer: tech <tech@malbeclabs.com>
+    description: |-
+      DoubleZero Solana CLI
+    license: Apache 2.0
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+    release: "1"
+    section: default
+    # NOTE: doublezero-solana-cli is not required to be a systemd service
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+
+release:
+  github:
+    owner: malbeclabs
+    name: doublezero-offchain
+  draft: false
+  replace_existing_artifacts: true
+
+announce:
+  slack:
+    enabled: true
+    message_template: "DoubleZero Solana CLI {{ .Tag }} has been released! Check it out at {{ .ReleaseURL }}"
+    channel: "#bots"
+
+git:
+  ignore_tags:
+    - doublezero-solana/daily
+
+nightly:
+  publish_release: true
+  keep_single_release: true
+  version_template: "{{ incpatch .Version }}~git{{ .Env.BUILD_DATE }}.{{ .ShortCommit }}"
+  tag_name: "doublezero-solana/daily"
+
+cloudsmiths:
+  - organization: malbeclabs
+    repository: doublezero
+    distributions:
+      deb: "any-distro/any-version"
+      rpm: "any-distro/any-version"
+  - organization: malbeclabs
+    repository: doublezero-testnet
+    distributions:
+      deb: "any-distro/any-version"
+      rpm: "any-distro/any-version"

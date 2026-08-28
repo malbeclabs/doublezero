@@ -1,0 +1,35 @@
+[package]
+name = "doublezero-solana-sdk"
+description = "SDK for DoubleZero Smart Contracts on Solana"
+
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+readme.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+borsh.workspace = true
+bytemuck.workspace = true
+doublezero-passport.workspace = true
+doublezero-program-tools.workspace = true
+doublezero-revenue-distribution.workspace = true
+doublezero-sol-conversion-interface.workspace = true
+doublezero-solana-client-tools.workspace = true
+hex.workspace = true
+solana-sdk.workspace = true
+solana-sdk-ids.workspace = true
+spl-associated-token-account-interface.workspace = true
+spl-token-interface.workspace = true
+svm-hash.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
+solana-client.workspace = true
+solana-loader-v3-interface.workspace = true
+solana-offchain-message.workspace = true
+solana-program-pack.workspace = true
+tempfile.workspace = true

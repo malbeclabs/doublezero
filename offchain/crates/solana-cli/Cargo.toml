@@ -1,0 +1,62 @@
+[package]
+name = "doublezero-solana-cli"
+description = "Command line to interact with DoubleZero Solana programs"
+version = "0.5.10"
+
+# Workspace inherited keys
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+base64.workspace = true
+borsh.workspace = true
+chrono.workspace = true
+clap.workspace = true
+csv.workspace = true
+eyre.workspace = true
+doublezero-cli-core.workspace = true
+doublezero-config.workspace = true
+doublezero-contributor-rewards.workspace = true
+doublezero-ledger-sentinel.workspace = true
+doublezero-passport-cli.workspace = true
+doublezero-scheduled-command.workspace = true
+doublezero-serviceability.workspace = true
+doublezero-solana-client-tools.workspace = true
+doublezero-solana-sdk.workspace = true
+doublezero-solana-validator-debt.workspace = true
+doublezero_sdk.workspace = true
+futures.workspace = true
+humantime.workspace = true
+itertools.workspace = true
+libc.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+slack-notifier.workspace = true
+solana-account-decoder-client-types.workspace = true
+solana-client.workspace = true
+solana-commitment-config.workspace = true
+solana-compute-budget-interface.workspace = true
+solana-sdk.workspace = true
+solana-sdk-ids.workspace = true
+solana-system-interface.workspace = true
+solana-transaction-status-client-types.workspace = true
+spl-associated-token-account-interface.workspace = true
+spl-token-interface.workspace = true
+tabled.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+url.workspace = true
+
+[dev-dependencies]
+bytemuck.workspace = true
+wiremock = "0.6"
+
+[[bin]]
+name = "doublezero-solana"
+path = "src/main.rs"

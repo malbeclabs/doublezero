@@ -1,0 +1,778 @@
+//! S3 Validator Pubkeys Fetcher
+//!
+//! This module fetches validator public keys from the S3 metrics bucket by:
+//! 1. Downloading hourly Parquet snapshots for a given Solana epoch
+//! 2. Merging gossip, validators, users, and devices datasets
+//! 3. Applying the 12-hour connection rule (validators must appear in >12 hourly snapshots)
+//! 4. Returning the list of qualifying validator public keys
+//!
+//! This replicates the canonical Python script approach for identifying validators
+//! eligible for fees, replacing the point-in-time access pass approach.
+//!
+//! ## Environment Variables
+//!
+//! Required:
+//! - `VALIDATOR_DEBT_AWS_ACCESS_KEY_ID`: AWS access key ID for S3 access
+//! - `VALIDATOR_DEBT_AWS_SECRET_ACCESS_KEY`: AWS secret access key for S3 access
+//!
+//! Optional:
+//! - `VALIDATOR_DEBT_S3_BUCKET`: S3 bucket name (default: "malbeclabs-data-metrics-dev")
+//! - `VALIDATOR_DEBT_AWS_REGION`: AWS region (default: "us-east-1")
+//! - `VALIDATOR_DEBT_S3_MAX_CONSECUTIVE_FAILURES`: Max consecutive failures before stopping (default: 12)
+//! - `VALIDATOR_DEBT_S3_ENDPOINT`: Custom S3 endpoint for S3-compatible services (optional)
+
+use std::{
+    collections::{HashMap, HashSet},
+    env,
+    fs::File as StdFile,
+    sync::Arc,
+};
+
+use anyhow::{Context, Result};
+use arrow::{
+    array::{Array, AsArray, BooleanArray, RecordBatch, StringArray},
+    datatypes::DataType,
+};
+use aws_config::BehaviorVersion;
+use aws_sdk_s3::{
+    Client as S3Client,
+    config::{Credentials, Region},
+};
+use chrono::{DateTime, Duration, Timelike, Utc};
+use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
+use serde::Serialize;
+use solana_client::nonblocking::rpc_client::RpcClient;
+use tempfile::NamedTempFile;
+use tokio::{fs::File, io::AsyncWriteExt, sync::Semaphore, task::JoinSet};
+use tracing::{debug, info, warn};
+
+/// Maximum number of concurrent S3 downloads
+const MAX_CONCURRENT_DOWNLOADS: usize = 10;
+
+/// Vote account key -> Number of hours recorded
+type VoteAccountHours = HashMap<String, usize>;
+
+/// Vote account key -> Set of validator pubkeys
+type VoteAccountIdentities = HashMap<String, HashSet<String>>;
+
+/// Validator identity pubkey with associated vote account
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize)]
+pub struct ValidatorKey {
+    /// The validator's identity pubkey (NodeID)
+    pub pubkey: String,
+    /// The validator's vote account pubkey (stable identifier)
+    pub vote_account_pubkey: String,
+    /// Number of identity pubkeys used by this vote account (>1 indicates rotation)
+    pub identity_count: usize,
+}
+
+impl ValidatorKey {
+    pub fn new(pubkey: String, vote_account_pubkey: String, identity_count: usize) -> Self {
+        Self {
+            pubkey,
+            vote_account_pubkey,
+            identity_count,
+        }
+    }
+}
+
+/// Network type for dataset selection
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Network {
+    MainnetBeta,
+    Testnet,
+}
+
+impl Network {
+    fn prefix(&self) -> &'static str {
+        match self {
+            Network::MainnetBeta => "mainnet-beta",
+            Network::Testnet => "testnet",
+        }
+    }
+}
+
+/// S3 configuration
+#[derive(Clone)]
+struct S3Config {
+    client: S3Client,
+    bucket: String,
+    max_consecutive_failures: usize,
+}
+
+impl S3Config {
+    async fn new() -> Result<Self> {
+        let bucket = env::var("VALIDATOR_DEBT_S3_BUCKET")
+            .unwrap_or_else(|_| "malbeclabs-data-metrics-dev".to_string());
+
+        let max_consecutive_failures = env::var("VALIDATOR_DEBT_S3_MAX_CONSECUTIVE_FAILURES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(12);
+
+        // Load AWS credentials from environment variables
+        let access_key_id = env::var("VALIDATOR_DEBT_AWS_ACCESS_KEY_ID")
+            .context("VALIDATOR_DEBT_AWS_ACCESS_KEY_ID environment variable not set")?;
+
+        let secret_access_key = env::var("VALIDATOR_DEBT_AWS_SECRET_ACCESS_KEY")
+            .context("VALIDATOR_DEBT_AWS_SECRET_ACCESS_KEY environment variable not set")?;
+
+        let region =
+            env::var("VALIDATOR_DEBT_AWS_REGION").unwrap_or_else(|_| "us-east-1".to_string());
+
+        // Create credentials
+        let credentials = Credentials::new(
+            access_key_id,
+            secret_access_key,
+            None,
+            None,
+            "validator-debt-s3-fetcher",
+        );
+
+        // Build S3 config with explicit credentials
+        let mut config_builder = aws_sdk_s3::Config::builder()
+            .region(Region::new(region.clone()))
+            .behavior_version(BehaviorVersion::latest())
+            .credentials_provider(credentials);
+
+        // Support custom endpoint (for MinIO or other S3-compatible services)
+        if let Ok(endpoint) = env::var("VALIDATOR_DEBT_S3_ENDPOINT") {
+            info!("Using custom S3 endpoint: {}", endpoint);
+            config_builder = config_builder.endpoint_url(endpoint).force_path_style(true);
+        }
+
+        let config = config_builder.build();
+        let client = S3Client::from_conf(config);
+
+        info!(
+            "S3 client initialized: bucket={}, region={}, max_consecutive_failures={}",
+            bucket, region, max_consecutive_failures
+        );
+
+        Ok(Self {
+            client,
+            bucket,
+            max_consecutive_failures,
+        })
+    }
+}
+
+/// Fetches validator public keys for a given Solana epoch from S3 metrics bucket
+///
+/// This function replicates the canonical Python script approach:
+/// 1. Converts epoch to timestamp range
+/// 2. Downloads hourly Parquet files from S3
+/// 3. Merges datasets and applies filters
+/// 4. Applies 12-hour connection rule
+/// 5. Returns validator keys
+pub async fn fetch_validator_pubkeys(
+    solana_epoch: u64,
+    rpc_client: &RpcClient,
+    network: Network,
+) -> Result<Vec<ValidatorKey>> {
+    info!(
+        "Fetching validator pubkeys for Solana epoch {} ({:?})",
+        solana_epoch, network
+    );
+
+    let s3_config = S3Config::new().await?;
+
+    // Convert epoch to timestamp range
+    let (start_time, end_time) = epoch_to_timestamps(rpc_client, solana_epoch).await?;
+    info!(
+        "Epoch {} time range: {} to {}",
+        solana_epoch, start_time, end_time
+    );
+
+    // Generate hourly timestamps
+    let hourly_timestamps = generate_hourly_timestamps(start_time, end_time);
+    info!(
+        "Processing {} hourly snapshots for epoch {}",
+        hourly_timestamps.len(),
+        solana_epoch
+    );
+
+    // Fetch and process hourly data in parallel
+    let sem = Arc::new(Semaphore::new(MAX_CONCURRENT_DOWNLOADS));
+    let mut tasks = JoinSet::new();
+
+    // Spawn tasks for all hourly snapshots
+    for timestamp in hourly_timestamps {
+        let s3_config_clone = s3_config.clone();
+        let sem_clone = sem.clone();
+
+        tasks.spawn(async move {
+            // Acquire permit to limit concurrent downloads
+            let _permit = sem_clone.acquire().await.unwrap();
+
+            let result = process_hourly_data(&s3_config_clone, timestamp, network).await;
+
+            (timestamp, result)
+        });
+    }
+
+    let leader_scheduling_epoch = solana_epoch.saturating_sub(2);
+
+    // Convert epoch to timestamp range two epochs ago.
+    let (start_time, end_time) = epoch_to_timestamps(rpc_client, leader_scheduling_epoch).await?;
+    info!(
+        "Leader scheduling epoch {} time range: {} to {}",
+        leader_scheduling_epoch, start_time, end_time
+    );
+
+    // Generate hourly timestamps
+    let hourly_timestamps = generate_hourly_timestamps(start_time, end_time);
+    info!(
+        "Processing {} hourly snapshots for epoch {}",
+        hourly_timestamps.len(),
+        solana_epoch
+    );
+
+    let mut two_epochs_ago_tasks = JoinSet::new();
+
+    // Spawn tasks for all hourly snapshots
+    for timestamp in hourly_timestamps {
+        let s3_config_clone = s3_config.clone();
+        let sem_clone = sem.clone();
+
+        two_epochs_ago_tasks.spawn(async move {
+            // Acquire permit to limit concurrent downloads
+            let _ = sem_clone.acquire().await.unwrap();
+
+            let result = download_and_parse_parquet(
+                &s3_config_clone,
+                &format!("snapshot-solana-{}-validators", network.prefix()),
+                timestamp,
+            )
+            .await;
+
+            (timestamp, result)
+        });
+    }
+
+    // This is a bloody hack to get the identities of validators that had active
+    // stake two epochs ago. We should clean this up later.
+    let mut two_epochs_ago_vote_key_identities = HashMap::new();
+
+    // Collect results as they complete
+    // Count hours by vote_account_pubkey (not identity_pubkey) to prevent rotation
+    let mut vote_account_hours = VoteAccountHours::new();
+    // Track all identity_pubkeys associated with each vote_account_pubkey
+    let mut vote_account_identities = VoteAccountIdentities::new();
+
+    let mut processed_count = 0;
+    let mut failed_count = 0;
+    let total_hours = two_epochs_ago_tasks.len();
+
+    while let Some(task_result) = two_epochs_ago_tasks.join_next().await {
+        match task_result {
+            Ok((timestamp, Ok(batches))) => {
+                processed_count += 1;
+
+                let vote_key_identities = build_lut(&batches, "identity_pubkey")?
+                    .into_iter()
+                    .map(|(k, mut v)| (v.remove("vote_account_pubkey").unwrap(), k))
+                    .collect::<Vec<_>>();
+
+                for (vote_key, identity) in vote_key_identities {
+                    two_epochs_ago_vote_key_identities
+                        .entry(vote_key)
+                        .or_insert(HashSet::new())
+                        .insert(identity);
+                }
+
+                info!(
+                    "Processed vote key identities for two epochs ago hour {} [{}/{}]",
+                    timestamp.format("%Y-%m-%d %H:00"),
+                    processed_count + failed_count,
+                    total_hours,
+                );
+            }
+            Ok((timestamp, Err(e))) => {
+                failed_count += 1;
+                warn!(
+                    "Failed to process hour {} [{}/{}]: {}",
+                    timestamp.format("%Y-%m-%d %H:00"),
+                    processed_count + failed_count,
+                    total_hours,
+                    e
+                );
+            }
+            Err(e) => {
+                failed_count += 1;
+                warn!("Task join error: {}", e);
+            }
+        }
+    }
+
+    let mut processed_count = 0;
+    let mut failed_count = 0;
+    let total_hours = tasks.len();
+
+    while let Some(task_result) = tasks.join_next().await {
+        match task_result {
+            Ok((timestamp, Ok(validators))) => {
+                processed_count += 1;
+                let count = validators.len();
+
+                // Count appearances by vote_account_pubkey and track all identities
+                for validator in validators {
+                    *vote_account_hours
+                        .entry(validator.vote_account_pubkey.clone())
+                        .or_insert(0) += 1;
+
+                    let relevant_identities = two_epochs_ago_vote_key_identities
+                        .get(&validator.vote_account_pubkey)
+                        .cloned()
+                        .unwrap_or_default();
+
+                    vote_account_identities
+                        .entry(validator.vote_account_pubkey)
+                        .or_default()
+                        .extend(relevant_identities);
+                }
+
+                info!(
+                    "Hour {} [{}/{}]: Found {} validators (total unique vote accounts: {})",
+                    timestamp.format("%Y-%m-%d %H:00"),
+                    processed_count,
+                    total_hours,
+                    count,
+                    vote_account_hours.len()
+                );
+            }
+            Ok((timestamp, Err(e))) => {
+                failed_count += 1;
+                warn!(
+                    "Failed to process hour {} [{}/{}]: {}",
+                    timestamp.format("%Y-%m-%d %H:00"),
+                    processed_count + failed_count,
+                    total_hours,
+                    e
+                );
+            }
+            Err(e) => {
+                failed_count += 1;
+                warn!("Task join error: {}", e);
+            }
+        }
+    }
+
+    if failed_count > 0 {
+        warn!(
+            "Completed with {} successful and {} failed hours",
+            processed_count, failed_count
+        );
+
+        // Check if we exceeded the failure threshold
+        if failed_count >= s3_config.max_consecutive_failures {
+            warn!(
+                "Failed hour count ({}) exceeded threshold ({})",
+                failed_count, s3_config.max_consecutive_failures
+            );
+        }
+    }
+
+    // Apply 12-hour connection rule by vote_account_pubkey
+    // When a vote_account qualifies, return ALL associated identity_pubkeys
+    let mut qualified_validators = Vec::new();
+    let mut qualified_vote_accounts = 0;
+
+    for (vote_account, hours) in vote_account_hours {
+        if hours > 12 {
+            qualified_vote_accounts += 1;
+            // Get all identity_pubkeys for this qualifying vote_account
+            if let Some(identities) = vote_account_identities.remove(&vote_account) {
+                let identity_count = identities.len();
+                for identity in identities {
+                    qualified_validators.push(ValidatorKey::new(
+                        identity,
+                        vote_account.clone(),
+                        identity_count,
+                    ));
+                }
+            }
+        }
+    }
+
+    qualified_validators.sort_by(|a, b| a.vote_account_pubkey.cmp(&b.vote_account_pubkey));
+
+    info!(
+        "Applied 12-hour rule: {} vote accounts qualified, {} identity pubkeys returned",
+        qualified_vote_accounts,
+        qualified_validators.len()
+    );
+
+    Ok(qualified_validators)
+}
+
+/// Converts Solana epoch number to start and end timestamps
+async fn epoch_to_timestamps(
+    rpc_client: &RpcClient,
+    epoch: u64,
+) -> Result<(DateTime<Utc>, DateTime<Utc>)> {
+    // Calculate the first slot of the target epoch
+    // Solana epochs have 432,000 slots each
+    const SLOTS_PER_EPOCH: u64 = 432_000;
+    let epoch_start_slot = epoch * SLOTS_PER_EPOCH;
+    let epoch_end_slot = epoch_start_slot + SLOTS_PER_EPOCH - 1;
+
+    // Get block time for first slot of epoch
+    let start_timestamp = rpc_client
+        .get_block_time(epoch_start_slot)
+        .await
+        .context("Failed to get block time for epoch start")?;
+
+    // Get block time for last slot of epoch
+    let end_timestamp = rpc_client
+        .get_block_time(epoch_end_slot)
+        .await
+        .context("Failed to get block time for epoch end")?;
+
+    let start_time =
+        DateTime::from_timestamp(start_timestamp, 0).context("Invalid start timestamp")?;
+    let end_time = DateTime::from_timestamp(end_timestamp, 0).context("Invalid end timestamp")?;
+
+    Ok((start_time, end_time))
+}
+
+/// Generates list of hourly timestamps matching the R script filter logic
+fn generate_hourly_timestamps(start: DateTime<Utc>, end: DateTime<Utc>) -> Vec<DateTime<Utc>> {
+    let mut timestamps = Vec::new();
+
+    // Start from the first hour that is >= start time
+    // If start is 03:27, the first valid hour is 04:00 (since 03:00 < 03:27)
+    let start_hour = start
+        .date_naive()
+        .and_hms_opt(start.hour(), 0, 0)
+        .unwrap()
+        .and_utc();
+
+    let mut current = if start_hour >= start {
+        // If start is exactly on the hour (unlikely), include it
+        start_hour
+    } else {
+        // Otherwise, start from the next hour
+        start_hour + Duration::hours(1)
+    };
+
+    // Include all hours up to and including the hour containing end time
+    // If end is 03:29, we include 03:00 (since 03:00 <= 03:29)
+    while current <= end {
+        timestamps.push(current);
+        current += Duration::hours(1);
+    }
+
+    timestamps
+}
+
+/// Processes data for a single hour: downloads Parquet files, merges, filters
+async fn process_hourly_data(
+    s3_config: &S3Config,
+    timestamp: DateTime<Utc>,
+    network: Network,
+) -> Result<Vec<ValidatorKey>> {
+    // Download Parquet files for this hour
+    let gossip_batches = download_and_parse_parquet(
+        s3_config,
+        &format!("snapshot-solana-{}-gossip", network.prefix()),
+        timestamp,
+    )
+    .await?;
+
+    let validators_batches = download_and_parse_parquet(
+        s3_config,
+        &format!("snapshot-solana-{}-validators", network.prefix()),
+        timestamp,
+    )
+    .await?;
+
+    let users_batches = download_and_parse_parquet(
+        s3_config,
+        &format!("snapshot-doublezero-{}-device-users", network.prefix()),
+        timestamp,
+    )
+    .await?;
+
+    let devices_batches = download_and_parse_parquet(
+        s3_config,
+        &format!("snapshot-doublezero-{}-devices", network.prefix()),
+        timestamp,
+    )
+    .await?;
+
+    // Merge datasets
+    let merged = merge_hourly_datasets(
+        gossip_batches,
+        validators_batches,
+        users_batches,
+        devices_batches,
+    )?;
+
+    // Extract validator identities (with vote account)
+    extract_validator_identities(merged)
+}
+
+/// Downloads a Parquet file from S3 and parses it with Arrow
+async fn download_and_parse_parquet(
+    s3_config: &S3Config,
+    prefix: &str,
+    timestamp: DateTime<Utc>,
+) -> Result<Vec<RecordBatch>> {
+    let key = build_s3_key(prefix, timestamp);
+    debug!("Downloading s3://{}/{}", s3_config.bucket, key);
+
+    // Download to temporary file
+    let temp_file = NamedTempFile::new().context("Failed to create temporary file")?;
+    let temp_path = temp_file.path().to_path_buf();
+
+    let response = s3_config
+        .client
+        .get_object()
+        .bucket(&s3_config.bucket)
+        .key(&key)
+        .send()
+        .await
+        .context(format!("Failed to download S3 object: {}", key))?;
+
+    // Write to temp file
+    let mut file = File::create(&temp_path).await?;
+    let body = response.body.collect().await?;
+    file.write_all(&body.into_bytes()).await?;
+    file.flush().await?;
+    // Close file before reading
+    drop(file);
+
+    // Parse Parquet with Arrow
+    let file = StdFile::open(&temp_path)?;
+    let builder = ParquetRecordBatchReaderBuilder::try_new(file)
+        .context(format!("Failed to create Parquet reader for: {}", key))?;
+
+    let reader = builder.build()?;
+    let mut batches = Vec::new();
+    let mut total_rows = 0;
+
+    for batch_result in reader {
+        let batch = batch_result.context(format!("Failed to read batch from: {}", key))?;
+        total_rows += batch.num_rows();
+        batches.push(batch);
+    }
+
+    debug!(
+        "Parsed {}: {} rows, {} batches",
+        key,
+        total_rows,
+        batches.len()
+    );
+
+    Ok(batches)
+}
+
+/// Builds S3 key for a Parquet file
+/// Format: datasets/{prefix}/date={YYYY-MM-DD}/hour={HH}/part-00000.parquet
+fn build_s3_key(prefix: &str, timestamp: DateTime<Utc>) -> String {
+    format!(
+        "datasets/{}/date={}/hour={:02}/part-00000.parquet",
+        prefix,
+        timestamp.format("%Y-%m-%d"),
+        timestamp.hour()
+    )
+}
+
+/// Merges hourly datasets (gossip + validators + users + devices) using manual joins
+fn merge_hourly_datasets(
+    gossip_batches: Vec<RecordBatch>,
+    validators_batches: Vec<RecordBatch>,
+    users_batches: Vec<RecordBatch>,
+    devices_batches: Vec<RecordBatch>,
+) -> Result<Vec<RecordBatch>> {
+    // Build HashMaps for each dataset
+    let gossip_map = build_lut(&gossip_batches, "identity_pubkey")?;
+    let validators_map = build_lut(&validators_batches, "identity_pubkey")?;
+    let users_map = build_lut(&users_batches, "client_ip")?;
+    let devices_map = build_lut(&devices_batches, "pubkey")?;
+
+    debug!(
+        "Built indexes: gossip={}, validators={}, users={}, devices={}",
+        gossip_map.len(),
+        validators_map.len(),
+        users_map.len(),
+        devices_map.len()
+    );
+
+    // Perform manual joins
+    // Store (identity_pubkey, vote_account_pubkey) pairs
+    let mut identity_results: Vec<String> = Vec::new();
+    let mut vote_account_results: Vec<String> = Vec::new();
+
+    for (identity_pubkey, gossip_row) in &gossip_map {
+        // Join with validators on identity_pubkey
+        if let Some(validator_row) = validators_map.get(identity_pubkey) {
+            // Filter out delinquent validators (matches R script: connection[!(delinquent)])
+            // The gather_data.py script includes delinquent column in output,
+            // but the fee_per_epoch.R script filters it out at line 26
+            if let Some(delinquent_str) = validator_row.get("delinquent")
+                && (delinquent_str == "true" || delinquent_str == "True" || delinquent_str == "1")
+            {
+                // Skip delinquent validators
+                continue;
+            }
+
+            // Extract vote_account_pubkey from validator row
+            let vote_account_pubkey = match validator_row.get("vote_account_pubkey") {
+                Some(v) => v.clone(),
+                None => {
+                    // Skip validators without vote_account_pubkey (should not happen)
+                    warn!(
+                        "Validator {} missing vote_account_pubkey, skipping",
+                        identity_pubkey
+                    );
+                    continue;
+                }
+            };
+
+            // Join with users on ip_address -> client_ip
+            if let Some(ip_address) = get_string_field(gossip_row, "ip_address")
+                && let Some(user_row) = users_map.get(ip_address)
+            {
+                // Join with devices on device_pubkey -> pubkey
+                if let Some(device_pubkey) = get_string_field(user_row, "device_pubkey")
+                    && devices_map.contains_key(device_pubkey)
+                {
+                    // All joins succeeded, keep both identity and vote account
+                    identity_results.push(identity_pubkey.clone());
+                    vote_account_results.push(vote_account_pubkey);
+                }
+            }
+        }
+    }
+
+    debug!(
+        "After merging and filtering: {} validators",
+        identity_results.len()
+    );
+
+    // Convert results to RecordBatch format with both columns
+    let identity_array = Arc::new(StringArray::from(identity_results));
+    let vote_account_array = Arc::new(StringArray::from(vote_account_results));
+    let schema = Arc::new(arrow::datatypes::Schema::new(vec![
+        arrow::datatypes::Field::new("identity_pubkey", DataType::Utf8, false),
+        arrow::datatypes::Field::new("vote_account_pubkey", DataType::Utf8, false),
+    ]));
+
+    let batch = RecordBatch::try_new(schema, vec![identity_array, vote_account_array])?;
+    Ok(vec![batch])
+}
+
+/// Builds a lookup table from record batches using a specific column as key
+fn build_lut(
+    batches: &[RecordBatch],
+    key_column: &str,
+) -> Result<HashMap<String, HashMap<String, String>>> {
+    let mut index = HashMap::new();
+
+    for batch in batches {
+        let schema = batch.schema();
+        let key_col = batch
+            .column_by_name(key_column)
+            .context(format!("Missing column: {}", key_column))?;
+
+        let key_array = key_col
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .context(format!("Column {} is not a string array", key_column))?;
+
+        for row_idx in 0..batch.num_rows() {
+            // Skip rows with null keys
+            if key_array.is_null(row_idx) {
+                continue;
+            }
+
+            let key_value = key_array.value(row_idx).to_string();
+            let mut row_data = HashMap::new();
+
+            // Store all columns for this row
+            for field in schema.fields() {
+                let col_name = field.name();
+                if let Some(col) = batch.column_by_name(col_name)
+                    && let Some(value) = get_column_value_as_string(col, row_idx)
+                {
+                    row_data.insert(col_name.clone(), value);
+                }
+            }
+
+            index.insert(key_value, row_data);
+        }
+    }
+
+    Ok(index)
+}
+
+/// Gets a string field value from a row
+fn get_string_field<'a>(row: &'a HashMap<String, String>, field: &str) -> Option<&'a String> {
+    row.get(field)
+}
+
+/// Converts a column value at a given index to a string
+fn get_column_value_as_string(col: &Arc<dyn Array>, row_idx: usize) -> Option<String> {
+    if col.is_null(row_idx) {
+        return None;
+    }
+
+    match col.data_type() {
+        DataType::Utf8 => {
+            let array: &StringArray = col.as_string();
+            Some(array.value(row_idx).to_string())
+        }
+        DataType::Boolean => {
+            let array = col.as_any().downcast_ref::<BooleanArray>()?;
+            Some(array.value(row_idx).to_string())
+        }
+        DataType::Int64 => {
+            let array = col.as_primitive::<arrow::datatypes::Int64Type>();
+            Some(array.value(row_idx).to_string())
+        }
+        DataType::Float64 => {
+            let array = col.as_primitive::<arrow::datatypes::Float64Type>();
+            Some(array.value(row_idx).to_string())
+        }
+        _ => None,
+    }
+}
+
+/// Extracts validator identities (identity + vote account) from merged record batches
+fn extract_validator_identities(batches: Vec<RecordBatch>) -> Result<Vec<ValidatorKey>> {
+    let mut validators = Vec::new();
+
+    for batch in batches {
+        let identity_col = batch
+            .column_by_name("identity_pubkey")
+            .context("Missing identity_pubkey column")?;
+
+        let vote_account_col = batch
+            .column_by_name("vote_account_pubkey")
+            .context("Missing vote_account_pubkey column")?;
+
+        let identity_array = identity_col
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .context("identity_pubkey is not a string array")?;
+
+        let vote_account_array = vote_account_col
+            .as_any()
+            .downcast_ref::<StringArray>()
+            .context("vote_account_pubkey is not a string array")?;
+
+        for i in 0..batch.num_rows() {
+            if !identity_array.is_null(i) && !vote_account_array.is_null(i) {
+                validators.push(ValidatorKey::new(
+                    identity_array.value(i).to_string(),
+                    vote_account_array.value(i).to_string(),
+                    0,
+                ));
+            }
+        }
+    }
+
+    Ok(validators)
+}

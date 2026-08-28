@@ -1,0 +1,85 @@
+use std::io::Write;
+
+use anyhow::{Context, Result};
+use clap::Args;
+use doublezero_cli_core::CliContext;
+use doublezero_solana_client_tools::rpc::SolanaConnectionOptions;
+use doublezero_solana_sdk::{
+    revenue_distribution::fetch::SolConversionState, sol_conversion::oracle::DiscountParameters,
+};
+
+use crate::command::revenue_distribution::try_request_oracle_conversion_price;
+
+#[derive(Debug, Args)]
+pub struct SolConversionCommand {
+    #[command(flatten)]
+    connection_options: SolanaConnectionOptions,
+}
+
+#[derive(Debug, tabled::Tabled)]
+struct SolConversionTableRow {
+    field: &'static str,
+    description: &'static str,
+    value: String,
+    note: String,
+}
+
+impl SolConversionCommand {
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
+        let Self { connection_options } = self;
+        let connection = crate::command::solana_connection(ctx, &connection_options);
+
+        let SolConversionState {
+            program_state: (_, program_state),
+            configuration_registry: (_, configuration_registry),
+            journal: (_, journal),
+            fixed_fill_quantity,
+        } = SolConversionState::try_fetch(&connection).await?;
+        let last_slot = program_state.last_trade_slot;
+
+        let current_slot = connection.get_slot().await?;
+
+        let discount_parameters =
+            DiscountParameters::from_configuration_registry(&configuration_registry);
+        let discount = discount_parameters
+            .checked_compute(current_slot - last_slot)
+            .context("Failed to calculate discount")?;
+
+        let oracle_price_data = try_request_oracle_conversion_price().await?;
+
+        let discounted_swap_rate = oracle_price_data
+            .checked_discounted_swap_rate(discount)
+            .context("Failed to calculate discounted swap rate")?;
+
+        let value_rows = vec![
+            SolConversionTableRow {
+                field: "Swap rate",
+                description: "2Z amount for 1 SOL",
+                value: format!("{:.8}", oracle_price_data.swap_rate as f64 * 1e-8),
+                note: Default::default(),
+            },
+            SolConversionTableRow {
+                field: "Swap rate",
+                description: "2Z amount for 1 SOL",
+                value: format!("{:.8}", discounted_swap_rate as f64 * 1e-8),
+                note: format!("Includes {:.8}% discount", discount as f64 * 1e-6),
+            },
+            SolConversionTableRow {
+                field: "Journal balance",
+                description: "SOL available for conversion",
+                value: format!("{:.9}", journal.total_sol_balance as f64 * 1e-9),
+                note: Default::default(),
+            },
+            SolConversionTableRow {
+                field: "SOL per swap",
+                description: "Fixed amount",
+                value: format!("{:.9}", fixed_fill_quantity as f64 * 1e-9),
+                note: Default::default(),
+            },
+        ];
+
+        super::write_table(out, value_rows, Default::default())?;
+
+        Ok(())
+    }
+}

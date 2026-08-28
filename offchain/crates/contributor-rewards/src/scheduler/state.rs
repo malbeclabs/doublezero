@@ -1,0 +1,234 @@
+use std::{fs, io::Write, path::Path};
+
+use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+use tracing::{debug, error, info, warn};
+
+/// Worker state persisted to disk
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SchedulerState {
+    /// Last epoch that was successfully processed
+    pub last_processed_epoch: Option<u64>,
+    /// Last snapshot location (S3 URL or local path)
+    #[serde(default)]
+    pub last_snapshot_location: Option<String>,
+    /// Number of consecutive failures
+    pub consecutive_failures: u32,
+    /// Last time the worker checked for new epochs
+    pub last_check_time: DateTime<Utc>,
+    /// Last time rewards were successfully calculated
+    pub last_success_time: Option<DateTime<Utc>>,
+    /// Last epoch for which distribution completed fully
+    #[serde(default)]
+    pub last_distributed_epoch: Option<u64>,
+    /// Number of consecutive distribution failures
+    #[serde(default)]
+    pub consecutive_distribution_failures: u32,
+}
+
+impl Default for SchedulerState {
+    fn default() -> Self {
+        Self {
+            last_processed_epoch: None,
+            last_snapshot_location: None,
+            consecutive_failures: 0,
+            last_check_time: Utc::now(),
+            last_success_time: None,
+            last_distributed_epoch: None,
+            consecutive_distribution_failures: 0,
+        }
+    }
+}
+
+impl SchedulerState {
+    /// Load state from file, or create new if doesn't exist
+    pub fn load_or_default(path: &Path) -> Result<Self> {
+        if path.exists() {
+            debug!("Loading worker state from {:?}", path);
+            let contents = fs::read_to_string(path)
+                .with_context(|| format!("Failed to read state file: {path:?}"))?;
+
+            // Try to parse the state file
+            match serde_json::from_str::<SchedulerState>(&contents) {
+                Ok(state) => {
+                    info!(
+                        "Loaded worker state: last_processed_epoch={:?}, last_check={:?}",
+                        state.last_processed_epoch, state.last_check_time
+                    );
+                    Ok(state)
+                }
+                Err(e) => {
+                    // State file is corrupted, create backup and start fresh
+                    let backup_path = path.with_extension("state.backup");
+                    warn!(
+                        "State file corrupted: {}. Creating backup at {:?} and starting fresh",
+                        e, backup_path
+                    );
+
+                    // Try to backup the corrupted file
+                    if let Err(backup_err) = fs::copy(path, &backup_path) {
+                        warn!("Failed to backup corrupted state file: {}", backup_err);
+                    }
+
+                    // Return default state
+                    Ok(Self::default())
+                }
+            }
+        } else {
+            debug!("No existing worker state found at {:?}, creating new", path);
+            Ok(Self::default())
+        }
+    }
+
+    /// Save state to file atomically
+    pub fn save(&self, path: &Path) -> Result<()> {
+        // Create parent directory if it doesn't exist
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)
+                .with_context(|| format!("Failed to create directory: {parent:?}"))?;
+        }
+
+        // Serialize state
+        let contents =
+            serde_json::to_string_pretty(self).context("Failed to serialize worker state")?;
+
+        // Write to temporary file first (atomic write pattern)
+        let temp_path = path.with_extension("state.tmp");
+
+        // Write to temp file
+        {
+            let mut temp_file = fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(&temp_path)
+                .with_context(|| format!("Failed to create temp file: {temp_path:?}"))?;
+
+            temp_file
+                .write_all(contents.as_bytes())
+                .with_context(|| format!("Failed to write to temp file: {temp_path:?}"))?;
+
+            temp_file
+                .sync_all()
+                .with_context(|| format!("Failed to sync temp file: {temp_path:?}"))?;
+        }
+
+        // Atomically rename temp file to final location
+        fs::rename(&temp_path, path)
+            .with_context(|| format!("Failed to rename {temp_path:?} to {path:?}"))?;
+
+        debug!("Saved worker state atomically to {:?}", path);
+        Ok(())
+    }
+
+    /// Update state after successful processing
+    pub fn mark_success(&mut self, epoch: u64) {
+        self.last_processed_epoch = Some(epoch);
+        self.last_success_time = Some(Utc::now());
+        self.consecutive_failures = 0;
+        info!("Marked epoch {} as successfully processed", epoch);
+    }
+
+    /// Update state after successful snapshot creation
+    pub fn mark_snapshot_created(&mut self, epoch: u64, snapshot_location: String) {
+        self.last_snapshot_location = Some(snapshot_location.clone());
+        info!(
+            "Marked snapshot created for epoch {}: {}",
+            epoch, snapshot_location
+        );
+    }
+
+    /// Update state after check (regardless of outcome)
+    pub fn mark_check(&mut self) {
+        self.last_check_time = Utc::now();
+    }
+
+    /// Update state after failure
+    pub fn mark_failure(&mut self) {
+        self.consecutive_failures += 1;
+        error!(
+            "Marked failure, consecutive failures: {}",
+            self.consecutive_failures
+        );
+    }
+
+    /// Check if we should process a given epoch
+    pub fn should_process_epoch(&self, epoch: u64) -> bool {
+        match self.last_processed_epoch {
+            None => true, // Never processed anything
+            Some(last) => epoch > last,
+        }
+    }
+
+    /// Check if we're in a failure state that should halt processing
+    pub fn is_in_failure_state(&self, max_failures: u32) -> bool {
+        self.consecutive_failures >= max_failures
+    }
+
+    /// Returns true if this epoch hasn't been fully distributed yet.
+    pub fn should_distribute_epoch(&self, epoch: u64) -> bool {
+        self.last_distributed_epoch.is_none_or(|last| epoch > last)
+    }
+
+    /// Record a completed distribution epoch and reset the failure counter.
+    pub fn mark_distribution_success(&mut self, epoch: u64) {
+        self.last_distributed_epoch = Some(epoch);
+        self.consecutive_distribution_failures = 0;
+        info!("Distribution complete for epoch {epoch}");
+    }
+
+    /// Increment the consecutive distribution failure counter.
+    pub fn mark_distribution_failure(&mut self) {
+        self.consecutive_distribution_failures += 1;
+        error!(
+            "Distribution failure #{}",
+            self.consecutive_distribution_failures
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::SchedulerState;
+
+    #[test]
+    fn test_should_distribute_epoch_when_never_distributed() {
+        let state = SchedulerState::default();
+        assert!(state.should_distribute_epoch(0));
+        assert!(state.should_distribute_epoch(42));
+    }
+
+    #[test]
+    fn test_should_distribute_epoch_skips_already_distributed() {
+        let mut state = SchedulerState::default();
+        state.mark_distribution_success(10);
+        assert!(!state.should_distribute_epoch(10));
+        assert!(!state.should_distribute_epoch(9));
+        assert!(state.should_distribute_epoch(11));
+    }
+
+    #[test]
+    fn test_mark_distribution_success_resets_failures() {
+        let mut state = SchedulerState::default();
+        state.mark_distribution_failure();
+        state.mark_distribution_failure();
+        assert_eq!(state.consecutive_distribution_failures, 2);
+        state.mark_distribution_success(5);
+        assert_eq!(state.consecutive_distribution_failures, 0);
+        assert_eq!(state.last_distributed_epoch, Some(5));
+    }
+
+    #[test]
+    fn test_backward_compat_missing_distribution_fields() {
+        let old_json = r#"{
+            "last_processed_epoch": 42,
+            "consecutive_failures": 0,
+            "last_check_time": "2026-01-01T00:00:00Z"
+        }"#;
+        let state: SchedulerState = serde_json::from_str(old_json).unwrap();
+        assert_eq!(state.last_distributed_epoch, None);
+        assert_eq!(state.consecutive_distribution_failures, 0);
+        assert_eq!(state.last_processed_epoch, Some(42));
+    }
+}

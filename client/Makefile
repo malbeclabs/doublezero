@@ -2,7 +2,7 @@ PREFIX:=github.com/malbeclabs/doublezero/smartcontract
 BUILD:=`git rev-parse --short HEAD`
 LDFLAGS=
 CLIPPY_FLAGS=-- -Dclippy::all -D warnings
-CARGO_FLAGS?=
+CARGO_FLAGS?=--release
 
 .PHONY: test
 test:
@@ -30,10 +30,10 @@ SYSTEMD_DIR ?= /usr/lib/systemd/system
 .PHONY: install
 install:
 	@if ! getent group doublezero >/dev/null 2>&1; then \
-		addgroup --system doublezero; \
+		groupadd --system doublezero; \
 	fi
 	@if ! getent passwd doublezero >/dev/null 2>&1; then \
-		adduser --system --ingroup doublezero --no-create-home --home /nonexistent doublezero; \
+		useradd --system --gid doublezero --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin doublezero; \
 	fi
 	install -d $(DESTDIR)$(BINDIR)
 	install -m 755 ../target/release/doublezero $(DESTDIR)$(BINDIR)/doublezero

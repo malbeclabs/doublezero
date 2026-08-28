@@ -302,6 +302,15 @@ func New(spec DevnetSpec, log *slog.Logger, dockerClient *client.Client, subnetA
 		}
 	}
 
+	// A cloned-state devnet cannot provision its own verifier authority: its GlobalState came from
+	// a remote cluster and the local manager cannot write to it, so a generated key would never be
+	// the one the program trusts and the container would exit at startup. Default the verifier off
+	// there. A stack that does have a verifier the cloned state already trusts names its keypair
+	// explicitly, which opts back in.
+	if spec.SkipProgramDeploy && spec.IPVerifier.KeypairPath == "" {
+		spec.IPVerifier.Disabled = true
+	}
+
 	// If the ip-verifier keypair path is not provided, generate a new keypair or use an existing
 	// one in the deploy directory if it exists. Devnet-only: it is written to the deploy
 	// directory rather than checked in, and its pubkey is what the local GlobalState names as the
@@ -575,8 +584,9 @@ func (d *Devnet) Start(ctx context.Context, buildConfig *BuildConfig) error {
 			return fmt.Errorf("failed to prepare ip-verifier: %w", err)
 		}
 		// Skipped for a stack running cloned state: its GlobalState came from a remote cluster
-		// and the local manager is not its authority, so the write would fail. Such a stack has
-		// to name a verifier the cloned state already trusts.
+		// and the local manager is not its authority, so the write would fail. Reaching here with
+		// SkipProgramDeploy means the caller named a keypair explicitly — a verifier the cloned
+		// state already trusts — so the authority is already correct and needs no write.
 		if !d.Spec.SkipProgramDeploy {
 			if err := d.SetIPVerifierAuthority(ctx, d.IPVerifier.Pubkey); err != nil {
 				return fmt.Errorf("failed to set ip-verifier authority: %w", err)

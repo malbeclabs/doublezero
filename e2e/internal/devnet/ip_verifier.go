@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -15,6 +16,7 @@ import (
 	"github.com/docker/go-connections/nat"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
+	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	"github.com/malbeclabs/doublezero/e2e/internal/solana"
 	"github.com/testcontainers/testcontainers-go"
 	tcwait "github.com/testcontainers/testcontainers-go/wait"
@@ -27,6 +29,10 @@ const (
 	// defaultIPVerifierCYOANetworkIPHostID is the host offset the verifier takes on the CYOA
 	// network. Kept well clear of the ranges devices (single digits) and clients (100+) use.
 	defaultIPVerifierCYOANetworkIPHostID = 250
+
+	// ipVerifierStartupTimeout is how long the service gets to report healthy, on both the create
+	// and the restart path.
+	ipVerifierStartupTimeout = 60 * time.Second
 )
 
 // IPVerifierSpec configures the RFC-27 IP ownership verification service container.
@@ -67,7 +73,11 @@ func (s *IPVerifierSpec) Validate(cyoaNetworkSpec CYOANetworkSpec) error {
 	if s.CYOANetworkIPHostID == 0 {
 		s.CYOANetworkIPHostID = defaultIPVerifierCYOANetworkIPHostID
 	}
-	maxHostID := uint32(1) << (32 - cyoaNetworkSpec.CIDRPrefix)
+	// The same bounds the client and device specs enforce: the hostID may not select the network
+	// (0) or broadcast (max) address. 0 cannot reach here — above it is the "use the default"
+	// sentinel, not a caller's choice.
+	hostBits := 32 - cyoaNetworkSpec.CIDRPrefix
+	maxHostID := uint32((1 << hostBits) - 1)
 	if s.CYOANetworkIPHostID >= maxHostID {
 		return fmt.Errorf("hostID %d is out of valid range (1 to %d)", s.CYOANetworkIPHostID, maxHostID-1)
 	}
@@ -129,7 +139,8 @@ func (v *IPVerifier) StartIfNotRunning(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("failed to inspect container: %w", err)
 	}
-	if !container.State.Running {
+	started := !container.State.Running
+	if started {
 		if err := v.dn.dockerClient.ContainerStart(ctx, container.ID, dockercontainer.StartOptions{}); err != nil {
 			return false, fmt.Errorf("failed to start ip-verifier: %w", err)
 		}
@@ -140,7 +151,61 @@ func (v *IPVerifier) StartIfNotRunning(ctx context.Context) (bool, error) {
 	if err := v.setState(container.ID); err != nil {
 		return false, fmt.Errorf("failed to set ip-verifier state: %w", err)
 	}
-	return !container.State.Running, nil
+
+	// A container this call started gets the same readiness gate a fresh one does. `Start` waits
+	// on /health through testcontainers; without the equivalent here, a verifier that exits on
+	// startup would leave the devnet reporting success with clients pointed at a dead service.
+	// That is not hypothetical for this component: the authority can rotate while the container
+	// is stopped, and the service refuses to start when GlobalState no longer names its key.
+	if started {
+		if err := v.waitForHealthy(ctx, container.ID); err != nil {
+			return false, err
+		}
+	}
+	return started, nil
+}
+
+// waitForHealthy blocks until the container reports healthy, or fails as soon as it is clear it
+// never will. /health is 200 only once the cached ledger epoch is fresh and the ledger names this
+// container's key, so it proves the same two things the create path's wait strategy does.
+func (v *IPVerifier) waitForHealthy(ctx context.Context, containerID string) error {
+	port, err := v.dn.waitForContainerPortExposed(ctx, containerID, ipVerifierInternalPort, 10*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to wait for ip-verifier port: %w", err)
+	}
+	url := fmt.Sprintf("http://%s:%d/health", v.dn.ExternalHost, port)
+
+	err = poll.Until(ctx, func() (bool, error) {
+		// A container that has already exited is never going to answer, so say why now rather
+		// than spending the whole budget waiting on it.
+		container, err := v.dn.dockerClient.ContainerInspect(ctx, containerID)
+		if err != nil {
+			return false, fmt.Errorf("failed to inspect container: %w", err)
+		}
+		if !container.State.Running {
+			// Most often the authority moved while this container was stopped: the service exits
+			// when GlobalState no longer names its key. Named as the likely cause, not the only
+			// one — `docker logs` on the container has the actual reason.
+			return false, fmt.Errorf("ip-verifier exited with code %d (check `docker logs %s`); "+
+				"the usual cause is GlobalState.ip_verifier_authority_pk no longer naming its key %s",
+				container.State.ExitCode, v.dockerContainerName(), v.Pubkey)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return false, err
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			return false, nil
+		}
+		defer resp.Body.Close()
+		return resp.StatusCode == http.StatusOK, nil
+	}, ipVerifierStartupTimeout, time.Second)
+	if err != nil {
+		return fmt.Errorf("ip-verifier did not become healthy: %w", err)
+	}
+	return nil
 }
 
 // Prepare reads the verifier keypair and derives the addresses the container will use, without
@@ -230,7 +295,7 @@ func (v *IPVerifier) Start(ctx context.Context) error {
 		// container's key as the verifier authority, so waiting on it proves both.
 		WaitingFor: tcwait.ForHTTP("/health").
 			WithPort(nat.Port(fmt.Sprintf("%d/tcp", ipVerifierInternalPort))).
-			WithStartupTimeout(60 * time.Second).
+			WithStartupTimeout(ipVerifierStartupTimeout).
 			WithPollInterval(1 * time.Second),
 		Resources: dockercontainer.Resources{
 			NanoCPUs: defaultContainerNanoCPUs,

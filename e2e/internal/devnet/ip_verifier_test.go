@@ -36,6 +36,26 @@ func TestIPVerifierSpecValidate(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects the broadcast host ID", func(t *testing.T) {
+		// The bound the client and device specs use. 255 is the broadcast host ID of a /24, and
+		// an earlier version of this check accepted it while its error message claimed otherwise.
+		spec := IPVerifierSpec{CYOANetworkIPHostID: 255}
+		if err := spec.Validate(cyoa); err == nil {
+			t.Fatal("Validate() = nil, want the broadcast address rejected")
+		}
+	})
+
+	t.Run("accepts the last usable host ID", func(t *testing.T) {
+		// The other side of that bound: 254 must still pass, so the fix did not go one too far.
+		spec := IPVerifierSpec{CYOANetworkIPHostID: 254}
+		if err := spec.Validate(cyoa); err != nil {
+			t.Fatalf("Validate() = %v, want nil", err)
+		}
+		if spec.CYOANetworkIPHostID != 254 {
+			t.Errorf("CYOANetworkIPHostID = %d, want it left alone", spec.CYOANetworkIPHostID)
+		}
+	})
+
 	t.Run("rejects a relative keypair path", func(t *testing.T) {
 		// The path is handed to Docker as a host mount source, which only resolves absolutely.
 		spec := IPVerifierSpec{KeypairPath: "ip-verifier-keypair.json"}

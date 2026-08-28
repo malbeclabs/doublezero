@@ -28,8 +28,19 @@ updates:
           - "go.uber.org/mock"
 
   - package-ecosystem: "cargo"
+    # Enumerated rather than "**/*" because that glob would also pick up
+    # offchain/Cargo.toml and solana/Cargo.toml, and no job in this repo builds
+    # either tree yet. A grouped update would edit their lockfiles, merge green
+    # with nothing compiled, and diverge them from the repos that still release
+    # them. These five are every directory that has its own lockfile, which is
+    # what the glob resolved to before the import. Step 4 folds offchain into
+    # the root workspace, at which point "/" covers it.
     directories:
-      - "**/*"
+      - "/"
+      - "/sdk/geolocation/testdata/fixtures/generate-fixtures"
+      - "/sdk/revdist/testdata/fixtures/generate-fixtures"
+      - "/sdk/serviceability/testdata/fixtures/generate-fixtures"
+      - "/sdk/telemetry/testdata/fixtures/generate-fixtures"
     schedule:
       interval: "monthly"
     open-pull-requests-limit: 10

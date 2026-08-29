@@ -582,12 +582,23 @@ class TestFixtureFeed:
                 "GroupsLen": len(feed.groups),
                 "Group0": feed.groups[0],
                 "Group1": feed.groups[1],
+                "Permissionless": feed.permissionless,
             },
         )
         assert feed.account_type == 18
         assert feed.bump_seed == 239
         assert feed.code == "shreds"
         assert feed.name == "Shreds"
+        assert len(feed.groups) == 2
+        assert feed.permissionless is True
+
+    def test_permissionless_defaults_false_on_a_pre_flag_account(self):
+        # An account written before the flag existed lacks the trailing byte; it reads false,
+        # matching the Rust program's TryFrom unwrap_or_default.
+        data, _ = _load_fixture("feed")
+        feed = Feed.from_bytes(data[:-1])
+        assert feed.permissionless is False
+        assert feed.code == "shreds"
         assert len(feed.groups) == 2
 
 

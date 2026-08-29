@@ -1491,7 +1491,8 @@ fn generate_access_pass_edge_seat(dir: &Path) {
 }
 
 /// Borsh-encoded `Feed` account. Field order: account_type, owner, bump_seed, code, name,
-/// exchange (Pubkey), groups (Vec<Pubkey>). Two groups, so the vec decoding is exercised.
+/// exchange (Pubkey), groups (Vec<Pubkey>), permissionless (bool). Two groups, so the vec
+/// decoding is exercised; permissionless is true so a decoder that skips the byte is caught.
 fn generate_feed(dir: &Path) {
     let owner = pubkey_from_byte(0xE0);
     let exchange = pubkey_from_byte(0xE1);
@@ -1506,6 +1507,7 @@ fn generate_feed(dir: &Path) {
         name: "Shreds".into(),
         exchange,
         groups: vec![group0, group1],
+        permissionless: true,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -1523,6 +1525,7 @@ fn generate_feed(dir: &Path) {
             FieldValue { name: "GroupsLen".into(), value: "2".into(), typ: "u32".into() },
             FieldValue { name: "Group0".into(), value: pubkey_bs58(&group0), typ: "pubkey".into() },
             FieldValue { name: "Group1".into(), value: pubkey_bs58(&group1), typ: "pubkey".into() },
+            FieldValue { name: "Permissionless".into(), value: "true".into(), typ: "bool".into() },
         ],
     };
 

@@ -6,13 +6,14 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt;
 
-/// A serviceability catalog entry: one SKU scoped to a single metro (`exchange`), holding the
+/// A serviceability catalog entry: one feed scoped to a single metro (`exchange`), holding the
 /// multicast groups joinable there.
 ///
-/// The pubkey of this account (`feed_key`) is the SKU identifier carried on EdgeSeat access passes.
-/// `code` and `exchange` are the PDA seeds, so both are immutable; `name` and `groups` are mutable.
-/// One `feed_key` is one feed in one metro (e.g. `shreds@tokyo`); a different metro is a
-/// different feed account.
+/// The pubkey of this account is the `feed_key` carried on EdgeSeat access passes.
+/// `code` and `exchange` are the PDA seeds, so both are immutable; `name`, `groups` and
+/// `permissionless` are mutable. One `feed_key` is one feed in one metro (e.g. `shreds@tokyo`);
+/// a different metro is a different feed account. Every account sharing a `code` is one SKU
+/// (malbeclabs/infra#2390) — a readability term for the storefront, not something stored here.
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Feed {
@@ -30,6 +31,11 @@ pub struct Feed {
     pub name: String,              // 4 + len
     pub exchange: Pubkey,          // 32 (PDA seed, immutable) - the metro this feed serves
     pub groups: Vec<Pubkey>,       // 4 + 32*len - multicast groups joinable in this metro
+    /// Whether this feed is offered without an access grant. Declarative: no instruction reads
+    /// it, and the paid gate is still the EdgeSeat FeedSeat. It is a catalog label the storefront
+    /// reads back from `feed list`, so `false` on an account written before this field existed is
+    /// the correct answer, not a missing one.
+    pub permissionless: bool, // 1
 }
 
 impl Feed {
@@ -48,14 +54,15 @@ impl fmt::Display for Feed {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, bump_seed: {}, code: {}, name: {}, exchange: {}, groups: {}",
+            "account_type: {}, owner: {}, bump_seed: {}, code: {}, name: {}, exchange: {}, groups: {}, permissionless: {}",
             self.account_type,
             self.owner,
             self.bump_seed,
             self.code,
             self.name,
             self.exchange,
-            self.groups.len()
+            self.groups.len(),
+            self.permissionless
         )
     }
 }
@@ -72,6 +79,8 @@ impl TryFrom<&[u8]> for Feed {
             name: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             exchange: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             groups: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            // EOF on an account written before this field existed, which reads false.
+            permissionless: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Feed {
@@ -118,6 +127,7 @@ mod tests {
             name: "Shreds".to_string(),
             exchange,
             groups,
+            permissionless: false,
         }
     }
 
@@ -152,5 +162,54 @@ mod tests {
         val.account_type = AccountType::Exchange;
         let data = borsh::to_vec(&val).unwrap();
         assert!(Feed::try_from(&data[..]).is_err());
+    }
+
+    /// A Feed written before `permissionless` existed still decodes, reading false — the
+    /// per-field `unwrap_or_default()` in `TryFrom<&[u8]>` is what makes the 151 accounts
+    /// already on mainnet need no migration.
+    #[test]
+    fn test_feed_backward_compat_no_permissionless() {
+        #[derive(BorshSerialize)]
+        struct LegacyFeed {
+            account_type: AccountType,
+            owner: Pubkey,
+            bump_seed: u8,
+            code: String,
+            name: String,
+            exchange: Pubkey,
+            groups: Vec<Pubkey>,
+        }
+
+        let exchange = Pubkey::new_unique();
+        let group = Pubkey::new_unique();
+        let legacy = LegacyFeed {
+            account_type: AccountType::Feed,
+            owner: Pubkey::new_unique(),
+            bump_seed: 7,
+            code: "shreds".to_string(),
+            name: "Shreds".to_string(),
+            exchange,
+            groups: vec![group],
+        };
+
+        let bytes = borsh::to_vec(&legacy).unwrap();
+        let decoded = Feed::try_from(&bytes[..]).unwrap();
+
+        assert!(!decoded.permissionless);
+        // The fields before it still land where they should: a decoder that mis-read the
+        // missing byte would corrupt these rather than only the flag.
+        assert_eq!(decoded.code, "shreds");
+        assert_eq!(decoded.exchange, exchange);
+        assert_eq!(decoded.groups, vec![group]);
+    }
+
+    /// The flag round-trips when it is set, so the trailing byte is really written and read
+    /// rather than always defaulting.
+    #[test]
+    fn test_feed_permissionless_round_trip() {
+        let mut val = feed_with(Pubkey::new_unique(), vec![Pubkey::new_unique()]);
+        val.permissionless = true;
+        let data = borsh::to_vec(&val).unwrap();
+        assert!(Feed::try_from(&data[..]).unwrap().permissionless);
     }
 }

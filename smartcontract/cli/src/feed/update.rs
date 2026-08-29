@@ -33,6 +33,10 @@ pub struct UpdateFeedCliCommand {
     /// outside their access pass's feeds fails and changes nothing.
     #[arg(long, default_value_t = false)]
     pub force_unsubscribe: bool,
+    /// Offer this feed without an access grant, or stop offering it. Takes a value so that
+    /// turning the flag off is distinguishable from leaving it alone.
+    #[arg(long)]
+    pub permissionless: Option<bool>,
 }
 
 impl UpdateFeedCliCommand {
@@ -88,6 +92,7 @@ impl UpdateFeedCliCommand {
             pubkey,
             name: self.name,
             groups,
+            permissionless: self.permissionless,
         })?;
 
         print_signature(out, &signature)
@@ -142,6 +147,7 @@ mod tests {
                 name: None,
                 groups: vec![g1.to_string()],
                 force_unsubscribe: false,
+                permissionless: None,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -190,6 +196,7 @@ mod tests {
                 pubkey: f.feed_pk,
                 name: None,
                 groups: Some(vec![g1]),
+                permissionless: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -204,6 +211,7 @@ mod tests {
                 name: None,
                 groups: vec![g1.to_string()],
                 force_unsubscribe: true,
+                permissionless: None,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -252,6 +260,7 @@ mod tests {
                 pubkey: f.feed_pk,
                 name: None,
                 groups: Some(vec![g1]),
+                permissionless: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -266,6 +275,7 @@ mod tests {
                 name: None,
                 groups: vec![g1.to_string()],
                 force_unsubscribe: true,
+                permissionless: None,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -294,6 +304,7 @@ mod tests {
                 pubkey: f.feed_pk,
                 name: None,
                 groups: Some(vec![g1, g2]),
+                permissionless: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -308,6 +319,7 @@ mod tests {
                 name: None,
                 groups: vec![g1.to_string(), g2.to_string()],
                 force_unsubscribe: false,
+                permissionless: None,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -366,6 +378,7 @@ mod tests {
                 name: None,
                 groups: vec![g1.to_string()],
                 force_unsubscribe: true,
+                permissionless: None,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -434,6 +447,7 @@ mod tests {
                 name: None,
                 groups: vec![g1.to_string()],
                 force_unsubscribe: true,
+                permissionless: None,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -491,6 +505,7 @@ mod tests {
             name: "Feed".to_string(),
             exchange: exchange_pk,
             groups: vec![],
+            permissionless: false,
         };
         let feed_for_get = feed.clone();
         client
@@ -541,6 +556,7 @@ mod tests {
                 pubkey: feed_pk,
                 name: Some("Feed v2".to_string()),
                 groups: Some(vec![group_pk]),
+                permissionless: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -555,6 +571,7 @@ mod tests {
                 name: Some("Feed v2".to_string()),
                 groups: vec!["mg01".to_string()],
                 force_unsubscribe: false,
+                permissionless: None,
             }
             .execute(&ctx, &client, &mut output),
         );

@@ -1390,6 +1390,7 @@ mod tests {
                 name: "Shreds".to_string(),
                 exchange: Pubkey::new_unique(),
                 groups: vec![Pubkey::new_unique()],
+                permissionless: true,
             }),
             "CreateFeed",
         );
@@ -1397,6 +1398,7 @@ mod tests {
             DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
                 name: Some("Shreds".to_string()),
                 groups: Some(vec![Pubkey::new_unique()]),
+                permissionless: Some(true),
             }),
             "UpdateFeed",
         );

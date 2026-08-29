@@ -286,6 +286,7 @@ async fn create_feed(
             name: code.to_string(),
             exchange,
             groups,
+            permissionless: false,
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),

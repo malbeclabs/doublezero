@@ -8,6 +8,13 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+  - `doublezero feed create --permissionless` marks a feed as offered without an access grant, and `doublezero feed update --permissionless true|false` flips it afterwards. `feed list` gains a `permissionless` column, in the table and both JSON forms. The update flag takes a value rather than being a bare presence flag so that turning it off is distinguishable from leaving it alone: `FeedUpdateArgs` is compared against its default to reject a no-op update, and a bare `false` would be indistinguishable from one. (malbeclabs/infra#2390)
+- Serviceability
+  - `Feed` carries a trailing `permissionless: bool`, set by `CreateFeed` (112) and changed by `UpdateFeed` (113). It is declarative: no instruction reads it, no gate consults it, and the paid gate for a feed is still the EdgeSeat FeedSeat. It exists so the storefront can read whether a feed is offered without a grant from the ledger instead of from a hand-maintained file, which is what a serviceability flag can honestly answer — this program has no purchase path to gate. Old accounts decode as `false` through the existing per-field `unwrap_or_default()` in `TryFrom<&[u8]>`, and old create encodings without the trailing byte decode as `false` through borsh-incremental, so no migration and no backfill is required. Deploy ordering (RFC-1): the program must deploy to all clusters before any client that emits the flag — an old program ignores the trailing byte rather than failing, so a new CLI against an old program would silently create a feed with the flag dropped. Deploy note: an existing feed grows by one byte the first time any `UpdateFeed` writes it, including a `--name`-only update that never mentions the flag, and the rent delta is charged to the signer. (malbeclabs/infra#2390)
+- SDK
+  - The Go, Python and TypeScript `Feed` decoders read the new trailing `permissionless` byte, defaulting to `false` past end-of-input so an account written before the field decodes unchanged. `CreateFeedCommand` gains `permissionless: bool` and `UpdateFeedCommand` gains `permissionless: Option<bool>`. (malbeclabs/infra#2390)
+
 ## [v0.38.0](https://github.com/malbeclabs/doublezero/compare/client/v0.37.0...client/v0.38.0) - 2026-08-28
 
 ### Breaking

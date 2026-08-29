@@ -46,6 +46,11 @@
       "name": "Group1",
       "value": "GH7YkRi9soP4j2JAUYTMEMBtkDFyGf7oYu1aGGRucd5H",
       "typ": "pubkey"
+    },
+    {
+      "name": "Permissionless",
+      "value": "true",
+      "typ": "bool"
     }
   ]
 }

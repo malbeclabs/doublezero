@@ -9,6 +9,8 @@ pub struct UpdateFeedCommand {
     pub name: Option<String>,
     /// Replacement multicast group set. `None` leaves the groups unchanged.
     pub groups: Option<Vec<Pubkey>>,
+    /// `None` leaves the permissionless flag unchanged.
+    pub permissionless: Option<bool>,
 }
 
 impl UpdateFeedCommand {
@@ -20,6 +22,7 @@ impl UpdateFeedCommand {
             FeedUpdateArgs {
                 name: self.name.clone(),
                 groups: self.groups.clone(),
+                permissionless: self.permissionless,
             },
         );
 
@@ -60,6 +63,7 @@ mod tests {
             FeedUpdateArgs {
                 name: Some("Test Feed".to_string()),
                 groups: None,
+                permissionless: None,
             },
         );
         client
@@ -73,6 +77,7 @@ mod tests {
             pubkey: pda_pubkey,
             name: Some("Test Feed".to_string()),
             groups: None,
+            permissionless: None,
         }
         .execute(&client);
         assert!(res.is_ok());
@@ -93,6 +98,7 @@ mod tests {
             FeedUpdateArgs {
                 name: Some("Test Feed".to_string()),
                 groups: None,
+                permissionless: None,
             },
         );
         let (permission_pda_pubkey, _) = get_permission_pda(&program_id, &payer);
@@ -114,6 +120,7 @@ mod tests {
             pubkey: pda_pubkey,
             name: Some("Test Feed".to_string()),
             groups: None,
+            permissionless: None,
         }
         .execute(&client);
         assert!(res.is_ok());

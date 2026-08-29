@@ -1138,7 +1138,7 @@ func (s AccessPassStatus) String() string {
 	}
 }
 
-// FeedSeat is one purchased SKU seat on an EdgeSeat access pass, carrying the feed's whole
+// FeedSeat is one purchased feed's seat on an EdgeSeat access pass, carrying the feed's whole
 // billing lifecycle. FeedKey is the pubkey of the serviceability Feed account. The cap is
 // MaxUsers before WindowEnd and MaxFutureUsers from WindowEnd until TerminatesAt, when the feed
 // is removed from the pass. CurrentUsers is the live count. AnniversaryDay is the original start
@@ -1434,7 +1434,7 @@ type TopologyInfo struct {
 	PubKey         [32]byte
 }
 
-// Feed is a serviceability catalog entry: one SKU scoped to a single metro (Exchange), holding the
+// Feed is a serviceability catalog entry: one feed scoped to a single metro (Exchange), holding the
 // multicast groups joinable there. One feed_key is one feed in one metro.
 type Feed struct {
 	AccountType AccountType
@@ -1444,5 +1444,8 @@ type Feed struct {
 	Name        string
 	Exchange    [32]byte
 	Groups      [][32]byte
-	PubKey      [32]byte
+	// Permissionless is a declarative catalog label: no instruction reads it, and the paid gate
+	// is still the EdgeSeat FeedSeat. False on an account written before the field existed.
+	Permissionless bool
+	PubKey         [32]byte
 }

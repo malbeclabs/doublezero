@@ -34,6 +34,11 @@ pub struct FeedCreateArgs {
     pub exchange: Pubkey,
     /// Multicast groups joinable in this metro.
     pub groups: Vec<Pubkey>,
+    /// Offer the feed without an access grant. Trailing and incremental, so a client built
+    /// before this field existed sends a shorter buffer and gets `false` — the same answer the
+    /// account gives for a feed created then.
+    #[incremental(default = false)]
+    pub permissionless: bool,
 }
 
 pub fn process_create_feed(
@@ -93,6 +98,7 @@ pub fn process_create_feed(
         name: value.name.clone(),
         exchange: value.exchange,
         groups: value.groups.clone(),
+        permissionless: value.permissionless,
     };
 
     try_acc_create(

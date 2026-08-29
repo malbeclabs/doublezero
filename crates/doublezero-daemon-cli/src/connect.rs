@@ -2682,6 +2682,7 @@ mod tests {
             name: code.to_string(),
             exchange,
             groups: vec![Pubkey::new_unique()],
+            permissionless: false,
         }
     }
 
@@ -3504,6 +3505,7 @@ mod tests {
                 name: code.to_string(),
                 exchange,
                 groups,
+                permissionless: false,
             };
             self.feeds.lock().unwrap().insert(pk, feed);
             pk

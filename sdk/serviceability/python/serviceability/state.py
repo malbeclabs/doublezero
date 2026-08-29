@@ -1039,7 +1039,7 @@ class Tenant:
 
 @dataclass
 class FeedSeat:
-    """One purchased SKU seat on an EdgeSeat access pass, carrying a feed's whole billing state.
+    """One purchased feed's seat on an EdgeSeat access pass, carrying a feed's whole billing state.
 
     The cap is ``max_users`` before ``window_end`` and ``max_future_users`` from ``window_end``
     until ``terminates_at``, when the feed is removed from the pass. ``current_users`` is the live
@@ -1242,7 +1242,7 @@ class TopologyInfo:
 
 @dataclass
 class Feed:
-    """Serviceability catalog entry: one SKU scoped to a single metro (exchange), holding the
+    """Serviceability catalog entry: one feed scoped to a single metro (exchange), holding the
     multicast groups joinable there. One feed_key is one feed in one metro.
     """
 
@@ -1253,6 +1253,8 @@ class Feed:
     name: str = ""
     exchange: Pubkey = Pubkey.default()
     groups: list[Pubkey] = field(default_factory=list)
+    # Declarative catalog label; false on an account written before the field existed.
+    permissionless: bool = False
     pub_key: Pubkey = Pubkey.default()  # set from account address after deserialization
 
     @classmethod
@@ -1267,4 +1269,5 @@ class Feed:
         # A feed serves one metro: an exchange pubkey followed by a Vec<Pubkey> of joinable groups.
         f.exchange = _read_pubkey(r)
         f.groups = _read_pubkey_vec(r)
+        f.permissionless = r.read_bool()
         return f

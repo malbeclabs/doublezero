@@ -13,6 +13,8 @@ pub struct CreateFeedCommand {
     pub exchange: Pubkey,
     /// Multicast groups joinable in this metro.
     pub groups: Vec<Pubkey>,
+    /// Offer the feed without an access grant.
+    pub permissionless: bool,
 }
 
 impl CreateFeedCommand {
@@ -31,6 +33,7 @@ impl CreateFeedCommand {
                 name: self.name.clone(),
                 exchange: self.exchange,
                 groups: self.groups.clone(),
+                permissionless: self.permissionless,
             },
         );
 
@@ -71,6 +74,7 @@ mod tests {
                 name: "Test Feed".to_string(),
                 exchange,
                 groups: vec![group],
+                permissionless: false,
             },
         );
         client
@@ -89,6 +93,7 @@ mod tests {
             name: "Test Feed".to_string(),
             exchange,
             groups: vec![group],
+            permissionless: false,
         };
 
         let create_invalid_command = CreateFeedCommand {
@@ -120,6 +125,7 @@ mod tests {
                 name: "Test Feed".to_string(),
                 exchange,
                 groups: vec![group],
+                permissionless: false,
             },
         );
         let (permission_pda_pubkey, _) = get_permission_pda(&program_id, &payer);
@@ -142,6 +148,7 @@ mod tests {
             name: "Test Feed".to_string(),
             exchange,
             groups: vec![group],
+            permissionless: false,
         };
 
         let res = create_command.execute(&client);

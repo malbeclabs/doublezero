@@ -33,7 +33,7 @@ install:
 		groupadd --system doublezero; \
 	fi
 	@if ! getent passwd doublezero >/dev/null 2>&1; then \
-		useradd --system --gid doublezero --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin doublezero; \
+		useradd --system --gid doublezero --no-create-home --home-dir /nonexistent --shell /bin/false doublezero; \
 	fi
 	install -d $(DESTDIR)$(BINDIR)
 	install -m 755 ../target/release/doublezero $(DESTDIR)$(BINDIR)/doublezero

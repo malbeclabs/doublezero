@@ -108,62 +108,46 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", default-features = true, features = ["env-filter", "fmt", "registry"] }
 url = "2"
 
-### Dependencies found in github.com/malbeclabs/doublezero-solana
+### Dependencies from the solana tree of this repository
 
 [workspace.dependencies.doublezero-passport]
 features = ["offchain"]
-git = "https://github.com/malbeclabs/doublezero-solana"
-tag = "revenue-distribution/v0.3.7"
+path = "../solana/programs/passport"
 
 [workspace.dependencies.doublezero-program-tools]
-git = "https://github.com/malbeclabs/doublezero-solana"
-tag = "revenue-distribution/v0.3.7"
+path = "../solana/crates/program-tools"
 
 [workspace.dependencies.doublezero-revenue-distribution]
-git = "https://github.com/malbeclabs/doublezero-solana"
-tag = "revenue-distribution/v0.3.7"
+path = "../solana/programs/revenue-distribution"
 
-### Dependencies found in github.com/malbeclabs/doublezero
+### Dependencies from the root workspace of this repository
 
 # RFC-20 CLI core: provides CliContext, OutputFormat, RequirementCheck, the
-# render_* output helpers, and the eyre-based error type. The whole SDK family
-# is pinned to a single monorepo revision so shared types unify across the
-# boundary. client/v0.31.0 is the first released client tag on the Solana 3.0
-# line (past #3830) and carries the EdgeSeat FeedSeat schema (#3954/#4030)
-# deployed on testnet, replacing the interim #4030 merge-commit pin.
+# render_* output helpers, and the eyre-based error type.
 [workspace.dependencies.doublezero-cli-core]
-git = "https://github.com/malbeclabs/doublezero"
-tag = "client/v0.31.0"
+path = "../crates/doublezero-cli-core"
 
-# Source of the RFC-20 `Environment` enum consumed by `CliContext`. MUST be
-# pinned to the same revision as doublezero-cli-core so the `Environment` type
-# unifies across the boundary.
+# Source of the RFC-20 `Environment` enum consumed by `CliContext`.
 [workspace.dependencies.doublezero-config]
-git = "https://github.com/malbeclabs/doublezero"
-tag = "client/v0.31.0"
+path = "../config"
 
 [workspace.dependencies.doublezero-program-common]
-git = "https://github.com/malbeclabs/doublezero"
-tag = "client/v0.31.0"
+path = "../smartcontract/programs/common"
 
 [workspace.dependencies.doublezero-record]
 features = ["no-entrypoint"]
-git = "https://github.com/malbeclabs/doublezero"
-tag = "client/v0.31.0"
+path = "../smartcontract/programs/doublezero-record"
 
 [workspace.dependencies.doublezero_sdk]
-git = "https://github.com/malbeclabs/doublezero"
-tag = "client/v0.31.0"
+path = "../smartcontract/sdk/rs"
 
 [workspace.dependencies.doublezero-serviceability]
 features = ["no-entrypoint", "serde"]
-git = "https://github.com/malbeclabs/doublezero"
-tag = "client/v0.31.0"
+path = "../smartcontract/programs/doublezero-serviceability"
 
 [workspace.dependencies.doublezero-telemetry]
 features = ["no-entrypoint", "serde"]
-git = "https://github.com/malbeclabs/doublezero"
-tag = "client/v0.31.0"
+path = "../smartcontract/programs/doublezero-telemetry"
 
 ### Other git dependencies
 

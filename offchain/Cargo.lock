@@ -2655,8 +2655,7 @@ checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "doublezero-cli-core"
-version = "0.30.0"
-source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.31.0#25ae6ee721991ba8d660279bcc6eec8a72e6c690"
+version = "0.37.0"
 dependencies = [
  "bitflags 2.13.0",
  "clap",
@@ -2674,8 +2673,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-config"
-version = "0.30.0"
-source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.31.0#25ae6ee721991ba8d660279bcc6eec8a72e6c690"
+version = "0.37.0"
 dependencies = [
  "eyre",
  "serde",
@@ -2740,8 +2738,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-geolocation"
-version = "0.30.0"
-source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.31.0#25ae6ee721991ba8d660279bcc6eec8a72e6c690"
+version = "0.37.0"
 dependencies = [
  "borsh",
  "borsh-incremental",
@@ -2753,6 +2750,18 @@ dependencies = [
  "solana-program",
  "solana-sdk-ids",
  "solana-system-interface 3.2.0",
+ "thiserror 2.0.18",
+]
+
+[[package]]
+name = "doublezero-ip-proof"
+version = "0.37.0"
+dependencies = [
+ "borsh",
+ "solana-keypair",
+ "solana-program",
+ "solana-signature",
+ "solana-signer",
  "thiserror 2.0.18",
 ]
 
@@ -2804,7 +2813,6 @@ dependencies = [
 [[package]]
 name = "doublezero-passport"
 version = "0.2.0"
-source = "git+https://github.com/malbeclabs/doublezero-solana?tag=revenue-distribution%2Fv0.3.7#4368da2c446b799f354aecb6156fc0e77343634b"
 dependencies = [
  "borsh",
  "bytemuck",
@@ -2816,7 +2824,7 @@ dependencies = [
  "solana-program-entrypoint",
  "solana-program-error",
  "solana-pubkey 3.0.0",
- "solana-system-interface 3.2.0",
+ "solana-system-interface 2.0.0",
  "solana-sysvar",
 ]
 
@@ -2857,8 +2865,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-program-common"
-version = "0.30.0"
-source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.31.0#25ae6ee721991ba8d660279bcc6eec8a72e6c690"
+version = "0.37.0"
 dependencies = [
  "borsh",
  "byteorder",
@@ -2871,7 +2878,6 @@ dependencies = [
 [[package]]
 name = "doublezero-program-tools"
 version = "0.0.0"
-source = "git+https://github.com/malbeclabs/doublezero-solana?tag=revenue-distribution%2Fv0.3.7#4368da2c446b799f354aecb6156fc0e77343634b"
 dependencies = [
  "bincode 1.3.3",
  "borsh",
@@ -2886,15 +2892,14 @@ dependencies = [
  "solana-program-error",
  "solana-program-pack",
  "solana-pubkey 3.0.0",
- "solana-system-interface 3.2.0",
+ "solana-system-interface 2.0.0",
  "solana-sysvar",
  "spl-token-interface",
 ]
 
 [[package]]
 name = "doublezero-record"
-version = "0.30.0"
-source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.31.0#25ae6ee721991ba8d660279bcc6eec8a72e6c690"
+version = "0.37.0"
 dependencies = [
  "bytemuck",
  "solana-program",
@@ -2905,7 +2910,6 @@ dependencies = [
 [[package]]
 name = "doublezero-revenue-distribution"
 version = "0.3.7"
-source = "git+https://github.com/malbeclabs/doublezero-solana?tag=revenue-distribution%2Fv0.3.7#4368da2c446b799f354aecb6156fc0e77343634b"
 dependencies = [
  "borsh",
  "bytemuck",
@@ -2920,7 +2924,7 @@ dependencies = [
  "solana-program-memory",
  "solana-program-pack",
  "solana-pubkey 3.0.0",
- "solana-system-interface 3.2.0",
+ "solana-system-interface 2.0.0",
  "solana-sysvar",
  "spl-associated-token-account-interface",
  "spl-token-interface",
@@ -2954,13 +2958,13 @@ dependencies = [
 
 [[package]]
 name = "doublezero-serviceability"
-version = "0.30.0"
-source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.31.0#25ae6ee721991ba8d660279bcc6eec8a72e6c690"
+version = "0.37.0"
 dependencies = [
  "bitflags 2.13.0",
  "borsh",
  "borsh-incremental",
  "bytemuck",
+ "doublezero-ip-proof",
  "doublezero-program-common",
  "ipnetwork",
  "serde",
@@ -2968,6 +2972,18 @@ dependencies = [
  "solana-program",
  "solana-system-interface 3.2.0",
  "thiserror 2.0.18",
+]
+
+[[package]]
+name = "doublezero-serviceability-instruction"
+version = "0.37.0"
+dependencies = [
+ "doublezero-ip-proof",
+ "doublezero-serviceability",
+ "solana-compute-budget-interface",
+ "solana-ed25519-program",
+ "solana-program",
+ "solana-system-interface 3.2.0",
 ]
 
 [[package]]
@@ -3186,8 +3202,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-telemetry"
-version = "0.30.0"
-source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.31.0#25ae6ee721991ba8d660279bcc6eec8a72e6c690"
+version = "0.37.0"
 dependencies = [
  "borsh",
  "borsh-incremental",
@@ -3201,8 +3216,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero_sdk"
-version = "0.30.0"
-source = "git+https://github.com/malbeclabs/doublezero?tag=client%2Fv0.31.0#25ae6ee721991ba8d660279bcc6eec8a72e6c690"
+version = "0.37.0"
 dependencies = [
  "async-trait",
  "backon",
@@ -3215,9 +3229,11 @@ dependencies = [
  "dirs-next",
  "doublezero-config",
  "doublezero-geolocation",
+ "doublezero-ip-proof",
  "doublezero-program-common",
  "doublezero-record",
  "doublezero-serviceability",
+ "doublezero-serviceability-instruction",
  "doublezero-telemetry",
  "eyre",
  "futures",

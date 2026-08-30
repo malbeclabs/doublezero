@@ -597,12 +597,24 @@ describe("Feed fixture", () => {
       GroupsLen: feed.groups.length,
       Group0: feed.groups[0],
       Group1: feed.groups[1],
+      Permissionless: feed.permissionless,
     });
 
     expect(feed.accountType).toBe(18);
     expect(feed.bumpSeed).toBe(239);
     expect(feed.code).toBe("shreds");
     expect(feed.name).toBe("Shreds");
+    expect(feed.groups).toHaveLength(2);
+    expect(feed.permissionless).toBe(true);
+  });
+
+  test("permissionless defaults false on a pre-flag account", () => {
+    // An account written before the flag existed lacks the trailing byte; it reads false,
+    // matching the Rust program's TryFrom unwrap_or_default.
+    const [data] = loadFixture("feed");
+    const feed = deserializeFeed(data.slice(0, -1));
+    expect(feed.permissionless).toBe(false);
+    expect(feed.code).toBe("shreds");
     expect(feed.groups).toHaveLength(2);
   });
 });

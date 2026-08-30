@@ -109,6 +109,7 @@ async fn test_feed_create_get_update_delete() {
             name: "Shreds".to_string(),
             exchange,
             groups: groups.clone(),
+            permissionless: false,
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),
@@ -139,6 +140,7 @@ async fn test_feed_create_get_update_delete() {
         DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
             name: Some("Shreds v2".to_string()),
             groups: Some(new_groups.clone()),
+            permissionless: None,
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),
@@ -197,6 +199,7 @@ async fn test_feed_same_code_different_exchange_allowed() {
                 name: "Shreds".to_string(),
                 exchange,
                 groups: vec![Pubkey::new_unique()],
+                permissionless: false,
             }),
             vec![
                 AccountMeta::new(feed_pubkey, false),
@@ -235,6 +238,7 @@ async fn test_feed_create_duplicate_rejected() {
             name: name.to_string(),
             exchange,
             groups: vec![Pubkey::new_unique()],
+            permissionless: false,
         })
     };
 
@@ -288,6 +292,7 @@ async fn test_feed_create_empty_groups_rejected() {
             name: "Empty".to_string(),
             exchange,
             groups: vec![],
+            permissionless: false,
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),
@@ -318,6 +323,7 @@ async fn test_feed_create_duplicate_group_rejected() {
             name: "Dup group".to_string(),
             exchange,
             groups: vec![group, group],
+            permissionless: false,
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),
@@ -347,6 +353,7 @@ async fn test_feed_create_default_exchange_rejected() {
             name: "No default".to_string(),
             exchange: Pubkey::default(),
             groups: vec![Pubkey::new_unique()],
+            permissionless: false,
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),
@@ -378,6 +385,7 @@ async fn test_feed_create_unauthorized_caller_rejected() {
             name: "Unauthorized".to_string(),
             exchange,
             groups: vec![Pubkey::new_unique()],
+            permissionless: false,
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),
@@ -388,4 +396,149 @@ async fn test_feed_create_unauthorized_caller_rejected() {
     .await;
 
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+}
+
+/// The pre-flag encoding (no trailing `permissionless` byte) still decodes and creates a feed —
+/// wire compatibility for a CLI that has not been upgraded yet.
+///
+/// This is the case the deploy ordering exists to make safe. `borsh-incremental` substitutes the
+/// default only when a field consumes zero bytes, which a trailing bool either does entirely or
+/// not at all, so an old client's shorter buffer lands on `false` rather than erroring.
+#[tokio::test]
+async fn test_feed_create_old_encoding_without_permissionless_byte() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "legacy", &exchange);
+    let group = Pubkey::new_unique();
+
+    // Serialize the current args and strip the trailing byte to get exactly what an old client
+    // emits. `true` so the byte is 1 and the assert below cannot pass by coincidence.
+    let mut data = borsh::to_vec(&DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
+        code: "legacy".to_string(),
+        name: "Legacy".to_string(),
+        exchange,
+        groups: vec![group],
+        permissionless: true,
+    }))
+    .unwrap();
+    assert_eq!(data.pop(), Some(1), "last byte must be permissionless");
+
+    let accounts = vec![
+        AccountMeta::new(feed_pubkey, false),
+        AccountMeta::new(globalstate_pubkey, false),
+        AccountMeta::new(payer.pubkey(), true),
+        AccountMeta::new(solana_system_interface::program::ID, false),
+    ];
+    let instruction =
+        solana_sdk::instruction::Instruction::new_with_bytes(program_id, &data, accounts);
+    let mut tx =
+        solana_sdk::transaction::Transaction::new_with_payer(&[instruction], Some(&payer.pubkey()));
+    tx.try_sign(&[&payer], recent_blockhash).unwrap();
+    banks_client
+        .process_transaction(tx)
+        .await
+        .expect("the pre-flag encoding should still create a feed");
+
+    let feed = get_account_data(&mut banks_client, feed_pubkey)
+        .await
+        .expect("Unable to get Feed")
+        .get_feed()
+        .unwrap();
+    assert_eq!(feed.code, "legacy".to_string());
+    assert_eq!(feed.groups, vec![group]);
+    assert!(
+        !feed.permissionless,
+        "an omitted flag is false, not a decode failure"
+    );
+}
+
+/// The flag is settable at create and flippable both ways afterwards.
+///
+/// Turning it back OFF is the case that pins `Option<bool>` on the update args: with a bare
+/// `bool`, an args value carrying only `permissionless: false` would equal
+/// `FeedUpdateArgs::default()` and be rejected by the no-op guard.
+#[tokio::test]
+async fn test_feed_permissionless_set_at_create_and_flipped_both_ways() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "open", &exchange);
+    let accounts = vec![
+        AccountMeta::new(feed_pubkey, false),
+        AccountMeta::new(globalstate_pubkey, false),
+    ];
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
+            code: "open".to_string(),
+            name: "Open".to_string(),
+            exchange,
+            groups: vec![Pubkey::new_unique()],
+            permissionless: true,
+        }),
+        accounts.clone(),
+        &payer,
+    )
+    .await;
+
+    let feed = get_account_data(&mut banks_client, feed_pubkey)
+        .await
+        .unwrap()
+        .get_feed()
+        .unwrap();
+    assert!(feed.permissionless);
+
+    // Off. A name-only update would leave it alone; this one names it.
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
+            name: None,
+            groups: None,
+            permissionless: Some(false),
+        }),
+        accounts.clone(),
+        &payer,
+    )
+    .await;
+    assert!(
+        !get_account_data(&mut banks_client, feed_pubkey)
+            .await
+            .unwrap()
+            .get_feed()
+            .unwrap()
+            .permissionless
+    );
+
+    // And back on.
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
+            name: None,
+            groups: None,
+            permissionless: Some(true),
+        }),
+        accounts,
+        &payer,
+    )
+    .await;
+    assert!(
+        get_account_data(&mut banks_client, feed_pubkey)
+            .await
+            .unwrap()
+            .get_feed()
+            .unwrap()
+            .permissionless
+    );
 }

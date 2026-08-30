@@ -206,6 +206,7 @@ mod tests {
             name: "Feed".to_string(),
             exchange: exchange_pk,
             groups: vec![],
+            permissionless: false,
         };
         let feed_for_get = feed.clone();
         client

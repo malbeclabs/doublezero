@@ -240,6 +240,20 @@ func TestFixtureFeed(t *testing.T) {
 	require.Len(t, feed.Groups, 2)
 	assert.Equal(t, byte(0xE2), feed.Groups[0][0])
 	assert.Equal(t, byte(0xE3), feed.Groups[1][0])
+	assert.True(t, feed.Permissionless)
+}
+
+// An account written before the flag existed lacks the trailing byte. ReadU8 returns 0 past EOF,
+// so it reads false — matching the Rust program's TryFrom unwrap_or_default.
+func TestFixtureFeedPermissionlessDefaultsFalse(t *testing.T) {
+	data, _ := loadFixture(t, "feed")
+
+	var feed serviceability.Feed
+	serviceability.DeserializeFeed(serviceability.NewByteReader(data[:len(data)-1]), &feed)
+
+	assert.False(t, feed.Permissionless)
+	assert.Equal(t, "shreds", feed.Code)
+	require.Len(t, feed.Groups, 2)
 }
 
 func fixtureFieldValue(t *testing.T, meta fixtureMeta, name string) string {

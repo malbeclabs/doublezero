@@ -512,5 +512,7 @@ func DeserializeFeed(reader *ByteReader, feed *Feed) {
 	// groups.
 	feed.Exchange = reader.ReadPubkey()
 	feed.Groups = reader.ReadPubkeySlice()
+	// ReadU8 returns 0 past EOF, so an account written before this field reads false.
+	feed.Permissionless = (reader.ReadU8() != 0)
 	// Note: feed.PubKey is set from the account address in client.go after deserialization
 }

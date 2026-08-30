@@ -106,6 +106,7 @@ mod tests {
             name: "Feed".to_string(),
             exchange,
             groups: vec![Pubkey::new_unique()],
+            permissionless: false,
         };
         let ix = create_feed(&pid, &payer, args);
         assert_eq!(ix.data[0], 112);
@@ -143,6 +144,7 @@ mod tests {
             FeedUpdateArgs {
                 name: Some("Feed".to_string()),
                 groups: None,
+                permissionless: None,
             },
         );
         assert_eq!(update.data[0], 113);

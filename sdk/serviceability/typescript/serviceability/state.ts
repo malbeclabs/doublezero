@@ -1053,7 +1053,7 @@ export const ACCESS_PASS_TYPE_SOLANA_RPC = 2;
 export const ACCESS_PASS_TYPE_OTHERS = 3;
 export const ACCESS_PASS_TYPE_EDGE_SEAT = 4;
 
-// One purchased SKU seat on an EdgeSeat access pass, carrying a feed's whole billing state. The cap
+// One purchased feed's seat on an EdgeSeat access pass, carrying a feed's whole billing state. The cap
 // is maxUsers before windowEnd and maxFutureUsers from windowEnd until terminatesAt, when the feed
 // is removed from the pass. currentUsers is the live count. anniversaryDay is the original start
 // day-of-month (1..=31) for drift-free renewals. windowEnd and terminatesAt are unix seconds.
@@ -1236,7 +1236,7 @@ export function deserializePermission(data: Uint8Array): Permission {
 // Feed
 // ---------------------------------------------------------------------------
 
-// Serviceability catalog entry: one SKU scoped to a single metro (exchange), holding the
+// Serviceability catalog entry: one feed scoped to a single metro (exchange), holding the
 // multicast groups joinable there. One feed_key is one feed in one metro.
 export interface Feed {
   accountType: number;
@@ -1246,6 +1246,8 @@ export interface Feed {
   name: string;
   exchange: PublicKey;
   groups: PublicKey[];
+  /** Declarative catalog label; false on an account written before the field existed. */
+  permissionless: boolean;
 }
 
 export function deserializeFeed(data: Uint8Array): Feed {
@@ -1258,6 +1260,7 @@ export function deserializeFeed(data: Uint8Array): Feed {
   // A feed serves one metro: an exchange pubkey followed by a Vec<Pubkey> of joinable groups.
   const exchange = readPubkey(r);
   const groups = readPubkeyVec(r);
+  const permissionless = r.readBool();
   return {
     accountType,
     owner,
@@ -1266,5 +1269,6 @@ export function deserializeFeed(data: Uint8Array): Feed {
     name,
     exchange,
     groups,
+    permissionless,
   };
 }

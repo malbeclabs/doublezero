@@ -14,12 +14,17 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-/// `code` and `exchange` are the PDA seeds and therefore immutable; only `name` and the group set
-/// are mutable.
+/// `code` and `exchange` are the PDA seeds and therefore immutable; `name`, the group set and
+/// the permissionless flag are mutable.
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Debug, Clone, Default)]
 pub struct FeedUpdateArgs {
     pub name: Option<String>,
     pub groups: Option<Vec<Pubkey>>,
+    /// `Option`, not a bare `bool`, because of the no-op guard below: a bare `false` would be
+    /// indistinguishable from `FeedUpdateArgs::default()` and rejected, leaving no way to turn
+    /// the flag back off.
+    #[incremental(default = None)]
+    pub permissionless: Option<bool>,
 }
 
 pub fn process_update_feed(
@@ -69,6 +74,9 @@ pub fn process_update_feed(
     }
     if let Some(ref groups) = value.groups {
         feed.groups = groups.clone();
+    }
+    if let Some(permissionless) = value.permissionless {
+        feed.permissionless = permissionless;
     }
 
     try_acc_write(&feed, feed_account, payer_account, accounts)?;

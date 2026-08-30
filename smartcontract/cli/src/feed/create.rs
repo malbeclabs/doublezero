@@ -23,6 +23,9 @@ pub struct CreateFeedCliCommand {
     /// Multicast group pubkey or code joinable in this metro (repeatable)
     #[arg(long = "group", value_parser = validate_pubkey_or_code, num_args = 1..)]
     pub groups: Vec<String>,
+    /// Offer this feed without an access grant. Off unless given.
+    #[arg(long, default_value_t = false)]
+    pub permissionless: bool,
 }
 
 impl CreateFeedCliCommand {
@@ -50,6 +53,7 @@ impl CreateFeedCliCommand {
             name: self.name,
             exchange,
             groups,
+            permissionless: self.permissionless,
         })?;
 
         print_signature(out, &signature)
@@ -142,6 +146,7 @@ mod tests {
                 name: "Feed".to_string(),
                 exchange: exchange_pk,
                 groups: vec![group_pk],
+                permissionless: false,
             }))
             .times(1)
             .returning(move |_| Ok((signature, feed_pk)));
@@ -154,6 +159,7 @@ mod tests {
                 name: "Feed".to_string(),
                 exchange: exchange_pk.to_string(),
                 groups: vec![group_pk.to_string()],
+                permissionless: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -199,6 +205,7 @@ mod tests {
                 name: "Feed".to_string(),
                 exchange: exchange_pk,
                 groups: vec![group_pk],
+                permissionless: false,
             }))
             .times(1)
             .returning(move |_| Ok((signature, feed_pk)));
@@ -211,6 +218,7 @@ mod tests {
                 name: "Feed".to_string(),
                 exchange: "xchi".to_string(),
                 groups: vec!["mg01".to_string()],
+                permissionless: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -243,6 +251,7 @@ mod tests {
                 name: "Feed".to_string(),
                 exchange: exchange_pk.to_string(),
                 groups: vec!["nope".to_string()],
+                permissionless: false,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -270,6 +279,7 @@ mod tests {
                 name: "Feed".to_string(),
                 exchange: "nope".to_string(),
                 groups: vec![],
+                permissionless: false,
             }
             .execute(&ctx, &client, &mut output),
         );

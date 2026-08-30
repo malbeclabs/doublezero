@@ -40,6 +40,7 @@ pub struct FeedDisplay {
     pub exchange: String,
     pub groups: usize,
     pub group_codes: String,
+    pub permissionless: bool,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
 }
@@ -85,6 +86,7 @@ impl ListFeedCliCommand {
                     })
                     .collect::<Vec<_>>()
                     .join(", "),
+                permissionless: feed.permissionless,
                 owner: feed.owner,
             })
             .collect::<Vec<FeedDisplay>>();
@@ -130,6 +132,7 @@ mod tests {
             name: "QA Payments".to_string(),
             exchange: exchange_pk,
             groups: vec![mgroup_pk, unknown_mgroup_pk],
+            permissionless: false,
         };
         client.expect_list_feed().returning(move |_| {
             let mut feeds = HashMap::new();
@@ -194,7 +197,7 @@ mod tests {
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
             output_str,
-            " account                                   | code        | name        | exchange | groups | group_codes                                     | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | qa-payments | QA Payments | xams     | 2      | mg01, 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo4 | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n"
+            " account                                   | code        | name        | exchange | groups | group_codes                                     | permissionless | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | qa-payments | QA Payments | xams     | 2      | mg01, 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo4 | false          | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n"
         );
     }
 
@@ -214,6 +217,7 @@ mod tests {
             name: code.to_string(),
             exchange,
             groups: vec![],
+            permissionless: false,
         };
 
         client.expect_list_feed().returning(move |_| {

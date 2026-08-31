@@ -85,6 +85,28 @@ function assertFields(
 describe("GlobalState fixture", () => {
   test("deserialize", () => {
     const [data, meta] = loadFixture("global_state");
+    // assertFields skips a fixture field the object below does not name, so pin the fixture's
+    // field list: a field added to GlobalState fails here until it is asserted or is
+    // deliberately left out.
+    expect(meta.fields.map((f) => f.name)).toEqual([
+      "AccountType",
+      "BumpSeed",
+      "AccountIndex",
+      "FoundationAllowlistLen",
+      "FoundationAllowlist0",
+      "DeviceAllowlistLen",
+      "UserAllowlistLen",
+      "ActivatorAuthorityPk",
+      "SentinelAuthorityPk",
+      "ContributorAirdropLamports",
+      "UserAirdropLamports",
+      "HealthOraclePk",
+      "QaAllowlistLen",
+      "QaAllowlist0",
+      "FeatureFlags",
+      "FeedAuthorityPk",
+      "IpVerifierAuthorityPk",
+    ]);
     const gs = deserializeGlobalState(data);
     assertFields(meta.fields, {
       AccountType: gs.accountType,

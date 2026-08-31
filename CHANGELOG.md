@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- SDK
+  - The TypeScript and Python `GlobalState` deserializers expose `ip_verifier_authority_pk`, the RFC-27 trust root the Go SDK and the Rust state already carried, so those consumers can read which key signs IP ownership proofs. The field is appended, so an account written before the upgrade decodes it as the default pubkey rather than failing. (#4231)
+
 ## [v0.38.0](https://github.com/malbeclabs/doublezero/compare/client/v0.37.0...client/v0.38.0) - 2026-08-28
 
 ### Breaking

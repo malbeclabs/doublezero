@@ -68,6 +68,28 @@ def _assert_fields(expected_fields: list[dict], got: dict) -> None:
 class TestFixtureGlobalState:
     def test_deserialize(self):
         data, meta = _load_fixture("global_state")
+        # _assert_fields skips a fixture field the dict below does not name, so pin the fixture's
+        # field list: a field added to GlobalState fails here until it is asserted or is
+        # deliberately left out.
+        assert [f["name"] for f in meta["fields"]] == [
+            "AccountType",
+            "BumpSeed",
+            "AccountIndex",
+            "FoundationAllowlistLen",
+            "FoundationAllowlist0",
+            "DeviceAllowlistLen",
+            "UserAllowlistLen",
+            "ActivatorAuthorityPk",
+            "SentinelAuthorityPk",
+            "ContributorAirdropLamports",
+            "UserAirdropLamports",
+            "HealthOraclePk",
+            "QaAllowlistLen",
+            "QaAllowlist0",
+            "FeatureFlags",
+            "FeedAuthorityPk",
+            "IpVerifierAuthorityPk",
+        ]
         gs = GlobalState.from_bytes(data)
         _assert_fields(
             meta["fields"],

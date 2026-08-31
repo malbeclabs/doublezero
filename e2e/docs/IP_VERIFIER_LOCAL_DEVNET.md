@@ -79,11 +79,12 @@ docker exec dz-local-ip-verifier curl -sS localhost:8080/health
 # What the ledger thinks the authority is.
 docker exec dz-local-manager doublezero global-config authority get
 
-# A proof, as a client would ask for it.
-docker exec dz-local-client-<pubkey> \
-  curl -sS -X POST "$DZ_IP_VERIFIER_URL/v1/proof" \
-  -H 'content-type: application/json' \
-  -d '{"payer":"<pubkey>","user_type":0}'
+# A proof, as a client would ask for it. Run through a shell in the container: DZ_IP_VERIFIER_URL
+# is set in the client's environment, and `docker exec curl` would have the host shell expand it.
+docker exec dz-local-client-<pubkey> bash -c \
+  'curl -sS -X POST "$DZ_IP_VERIFIER_URL/v1/proof" \
+   -H "content-type: application/json" \
+   -d "{\"payer\":\"<pubkey>\",\"user_type\":0}"'
 ```
 
 The rate limit is raised well above the production default in the devnet (burst 1000, 6000/min):

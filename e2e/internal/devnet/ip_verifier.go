@@ -171,6 +171,13 @@ func (v *IPVerifier) StartIfNotRunning(ctx context.Context) (bool, error) {
 func (v *IPVerifier) waitForHealthy(ctx context.Context, containerID string) error {
 	port, err := v.dn.waitForContainerPortExposed(ctx, containerID, ipVerifierInternalPort, 10*time.Second)
 	if err != nil {
+		// Docker drops the port bindings of a container that is no longer running, so the case
+		// this whole path exists for — a verifier that exits within milliseconds of starting —
+		// reaches the port wait as a timeout rather than as a published port. Check the state
+		// before reporting the port, or the diagnostic below is lost exactly where it is wanted.
+		if exitErr := v.exitedError(ctx, containerID); exitErr != nil {
+			return exitErr
+		}
 		return fmt.Errorf("failed to wait for ip-verifier port: %w", err)
 	}
 	url := fmt.Sprintf("http://%s:%d/health", v.dn.ExternalHost, port)
@@ -178,17 +185,8 @@ func (v *IPVerifier) waitForHealthy(ctx context.Context, containerID string) err
 	err = poll.Until(ctx, func() (bool, error) {
 		// A container that has already exited is never going to answer, so say why now rather
 		// than spending the whole budget waiting on it.
-		container, err := v.dn.dockerClient.ContainerInspect(ctx, containerID)
-		if err != nil {
-			return false, fmt.Errorf("failed to inspect container: %w", err)
-		}
-		if !container.State.Running {
-			// Most often the authority moved while this container was stopped: the service exits
-			// when GlobalState no longer names its key. Named as the likely cause, not the only
-			// one — `docker logs` on the container has the actual reason.
-			return false, fmt.Errorf("ip-verifier exited with code %d (check `docker logs %s`); "+
-				"the usual cause is GlobalState.ip_verifier_authority_pk no longer naming its key %s",
-				container.State.ExitCode, v.dockerContainerName(), v.Pubkey)
+		if exitErr := v.exitedError(ctx, containerID); exitErr != nil {
+			return false, exitErr
 		}
 
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -206,6 +204,25 @@ func (v *IPVerifier) waitForHealthy(ctx context.Context, containerID string) err
 		return fmt.Errorf("ip-verifier did not become healthy: %w", err)
 	}
 	return nil
+}
+
+// exitedError reports why the container is gone, or nil if it is still running. An inspect that
+// fails is itself reported: at this point the caller is already on an error path and the inspect
+// result is what decides which error it gets.
+func (v *IPVerifier) exitedError(ctx context.Context, containerID string) error {
+	container, err := v.dn.dockerClient.ContainerInspect(ctx, containerID)
+	if err != nil {
+		return fmt.Errorf("failed to inspect container: %w", err)
+	}
+	if container.State.Running {
+		return nil
+	}
+	// Most often the authority moved while this container was stopped: the service exits when
+	// GlobalState no longer names its key. Named as the likely cause, not the only one —
+	// `docker logs` on the container has the actual reason.
+	return fmt.Errorf("ip-verifier exited with code %d (check `docker logs %s`); "+
+		"the usual cause is GlobalState.ip_verifier_authority_pk no longer naming its key %s",
+		container.State.ExitCode, v.dockerContainerName(), v.Pubkey)
 }
 
 // Prepare reads the verifier keypair and derives the addresses the container will use, without
@@ -239,11 +256,18 @@ func (v *IPVerifier) Start(ctx context.Context) error {
 	}
 
 	env := map[string]string{
-		"DZ_IP_VERIFIER_ENV":         "local",
-		"DZ_IP_VERIFIER_LEDGER_RPC":  v.dn.Ledger.InternalRPCURL,
-		"DZ_IP_VERIFIER_KEYPAIR":     containerIPVerifierKeypairPath,
-		"DZ_IP_VERIFIER_LISTEN_ADDR": fmt.Sprintf("0.0.0.0:%d", ipVerifierInternalPort),
-		"DZ_IP_VERIFIER_LOG":         "doublezero_ip_verifier=debug",
+		"DZ_IP_VERIFIER_ENV": "local",
+		// Named explicitly rather than left to the environment's constant: a devnet deploys its
+		// own serviceability program whenever no keypair is pinned, and against the constant the
+		// GlobalState PDA simply does not exist — the startup authority check then finds nothing
+		// to compare against, only warns, and /health still answers 200. The invariant this file
+		// is built around (waiting on /health proves the ledger names this container's key) needs
+		// the program the devnet actually deployed.
+		"DZ_IP_VERIFIER_SERVICEABILITY_PROGRAM_ID": v.dn.Manager.ServiceabilityProgramID,
+		"DZ_IP_VERIFIER_LEDGER_RPC":                v.dn.Ledger.InternalRPCURL,
+		"DZ_IP_VERIFIER_KEYPAIR":                   containerIPVerifierKeypairPath,
+		"DZ_IP_VERIFIER_LISTEN_ADDR":               fmt.Sprintf("0.0.0.0:%d", ipVerifierInternalPort),
+		"DZ_IP_VERIFIER_LOG":                       "doublezero_ip_verifier=debug",
 		// No trusted proxies: clients reach the service directly, so the connection peer
 		// address is signed and forwarded headers are ignored outright.
 		//

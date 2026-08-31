@@ -155,7 +155,7 @@ func (c *Client) RetransmitOnlyExchangeKeys(ctx context.Context) (map[string]boo
 // be exercised, so the caller should fail rather than silently skip and lose
 // the alert signal. Serviceability status and capacity are deliberately not
 // considered: the QA user pubkey is on that program's qa_allowlist. Shred seat
-// capacity is independent and must be considered because `shreds pay` does not
+// capacity is independent and must be considered because a seat fund does not
 // have the same bypass.
 func (c *Client) ClosestRetransmitOnlyDevice(ctx context.Context) (*Device, map[string]bool, error) {
 	retransmitOnly, err := c.RetransmitOnlyExchangeKeys(ctx)
@@ -282,7 +282,7 @@ func (c *Client) FeedSeatPrice(ctx context.Context, devicePubkey string) ([]*pb.
 // withReadFailover runs an agent-driven settlement query against the pool's
 // current Solana RPC endpoint, failing over to the next endpoint on a retryable
 // error. It is ONLY safe for idempotent operations (reads/queries): the
-// settlement WRITES (FeedSeatPay/FeedSeatWithdraw) deliberately bypass this and
+// settlement WRITES (FeedSeatWithdraw) deliberately bypass this and
 // do not retry across endpoints, since a write that timed out on submission may
 // have landed onchain and a blind retry risks double-submission. With a single
 // endpoint (or no pool) it runs fn exactly once.
@@ -314,7 +314,7 @@ func (c *Client) withReadFailover(fn func(rpcURL string) error) error {
 // shred-subscription program enters OpenForRequests phase, which is the only
 // phase that accepts FundPaymentEscrowUsdc transactions. The UpdatingPrices
 // window is short but can collide with a scheduled CI run; callers should
-// invoke this before FeedSeatPay to avoid a spurious failure.
+// invoke this before a fund write to avoid a spurious failure.
 func (c *Client) WaitForOpenForRequests(ctx context.Context) error {
 	programID, err := solana.PublicKeyFromBase58(c.ShredSubscriptionProgramID)
 	if err != nil {
@@ -343,41 +343,8 @@ func (c *Client) WaitForOpenForRequests(ctx context.Context) error {
 	}, backoff.WithContext(exp, ctx))
 }
 
-// FeedSeatPay calls the FeedSeatPay RPC to pay for a seat on a device.
-// The client's public IP is auto-filled. Instant allocation is the default.
-//
-// The settlement transaction is submitted against the pool's current (already
-// health-selected) Solana RPC endpoint. It deliberately does NOT auto-retry
-// across endpoints on failure: a payment that timed out on submission may have
-// landed onchain, so a blind retry against another endpoint risks
-// double-submission. The construction-time slot-lag selection plus read-path
-// failover keep CurrentURL() pointed at a healthy endpoint by the time this is
-// called.
-func (c *Client) FeedSeatPay(ctx context.Context, devicePubkey string, amount string) error {
-	c.log.Debug("Paying for seat", "host", c.Host, "device", devicePubkey, "amount", amount)
-	resp, err := c.grpcClient.FeedSeatPay(ctx, &pb.FeedSeatPayRequest{
-		DevicePubkey:               devicePubkey,
-		ClientIp:                   c.publicIP.To4().String(),
-		Amount:                     amount,
-		SolanaRpcUrl:               c.currentSolanaRPCURL(),
-		ShredSubscriptionProgramId: c.ShredSubscriptionProgramID,
-		DzLedgerUrl:                c.DZLedgerURL,
-		UsdcMint:                   c.USDCMint,
-		Keypair:                    c.Keypair,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to pay for seat on host %s: %w", c.Host, err)
-	}
-	if !resp.GetSuccess() {
-		c.log.Error("Seat payment failed", "host", c.Host, "device", devicePubkey, "output", resp.GetOutput())
-		return fmt.Errorf("seat payment failed on host %s: %s", c.Host, resp.GetOutput())
-	}
-	c.log.Debug("Seat payment successful", "host", c.Host, "device", devicePubkey)
-	return nil
-}
-
 // FeedSeatWithdraw calls the FeedSeatWithdraw RPC to withdraw a seat from a device.
-// Instant withdrawal is the default. Like FeedSeatPay, this targets the pool's
+// Instant withdrawal is the default. This targets the pool's
 // current endpoint and does not auto-retry across endpoints to avoid
 // double-submitting a settlement transaction.
 func (c *Client) FeedSeatWithdraw(ctx context.Context, devicePubkey string) error {
@@ -640,7 +607,7 @@ func (c *Client) GetEffectiveSeatPrice(ctx context.Context, devicePubkey string,
 	clientIPBits := binary.BigEndian.Uint32(c.publicIP.To4())
 	shredsClient := c.shredsClient(programID)
 
-	// This reads state written by the preceding FeedSeatPay. A lagging RPC node
+	// This reads state written by the preceding fund. A lagging RPC node
 	// can briefly serve a view in which the seat account does not yet exist, so
 	// poll until it is visible rather than failing on a single stale read.
 	// (The failover pool fails over on RPC errors, but an account-not-found is a

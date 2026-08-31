@@ -309,6 +309,10 @@ export interface GlobalState {
   qaAllowlist: PublicKey[];
   featureFlags: bigint;
   feedAuthorityPk: PublicKey;
+  // RFC-27 trust root for IP ownership proof validation. The default pubkey means no verifier
+  // is configured, which enforcement must treat as a hard reject rather than "any signature
+  // passes".
+  ipVerifierAuthorityPk: PublicKey;
 }
 
 export function deserializeGlobalState(data: Uint8Array): GlobalState {
@@ -327,6 +331,9 @@ export function deserializeGlobalState(data: Uint8Array): GlobalState {
   const qaAllowlist = readPubkeyVec(r);
   const featureFlags = r.readU128();
   const feedAuthorityPk = readPubkey(r);
+  // Appended after feed_authority_pk: account data written before RFC-27 stops here, and the
+  // defensive reader yields the default pubkey rather than throwing.
+  const ipVerifierAuthorityPk = readPubkey(r);
   return {
     accountType,
     bumpSeed,
@@ -340,6 +347,7 @@ export function deserializeGlobalState(data: Uint8Array): GlobalState {
     qaAllowlist,
     featureFlags,
     feedAuthorityPk,
+    ipVerifierAuthorityPk,
   };
 }
 

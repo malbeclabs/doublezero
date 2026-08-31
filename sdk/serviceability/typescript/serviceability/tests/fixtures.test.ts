@@ -85,6 +85,28 @@ function assertFields(
 describe("GlobalState fixture", () => {
   test("deserialize", () => {
     const [data, meta] = loadFixture("global_state");
+    // assertFields skips a fixture field the object below does not name, so pin the fixture's
+    // field list: a field added to GlobalState fails here until it is asserted or is
+    // deliberately left out.
+    expect(meta.fields.map((f) => f.name)).toEqual([
+      "AccountType",
+      "BumpSeed",
+      "AccountIndex",
+      "FoundationAllowlistLen",
+      "FoundationAllowlist0",
+      "DeviceAllowlistLen",
+      "UserAllowlistLen",
+      "ActivatorAuthorityPk",
+      "SentinelAuthorityPk",
+      "ContributorAirdropLamports",
+      "UserAirdropLamports",
+      "HealthOraclePk",
+      "QaAllowlistLen",
+      "QaAllowlist0",
+      "FeatureFlags",
+      "FeedAuthorityPk",
+      "IpVerifierAuthorityPk",
+    ]);
     const gs = deserializeGlobalState(data);
     assertFields(meta.fields, {
       AccountType: gs.accountType,
@@ -95,7 +117,20 @@ describe("GlobalState fixture", () => {
       SentinelAuthorityPk: gs.sentinelAuthorityPk,
       HealthOraclePk: gs.healthOraclePk,
       FeedAuthorityPk: gs.feedAuthorityPk,
+      IpVerifierAuthorityPk: gs.ipVerifierAuthorityPk,
     });
+  });
+
+  test("pre-RFC-27 account decodes the verifier authority to the default pubkey", () => {
+    // ip_verifier_authority_pk is appended, so account data written before RFC-27 simply ends
+    // after feed_authority_pk. That must decode, not throw: the default pubkey is what "no
+    // verifier configured" looks like everywhere else.
+    const [data] = loadFixture("global_state");
+    const preUpgrade = data.slice(0, data.length - 32);
+    const gs = deserializeGlobalState(preUpgrade);
+    expect(gs.ipVerifierAuthorityPk.equals(PublicKey.default)).toBe(true);
+    // The field before it still decodes, so the truncation landed where it was meant to.
+    expect(gs.feedAuthorityPk.equals(PublicKey.default)).toBe(false);
   });
 });
 

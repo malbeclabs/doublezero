@@ -1,8 +1,6 @@
 package qa
 
 import (
-	"context"
-
 	"github.com/gagliardetto/solana-go"
 	shreds "github.com/malbeclabs/doublezero/sdk/shreds/go"
 )

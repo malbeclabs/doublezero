@@ -252,7 +252,7 @@ The QA client (`e2e/internal/qa/`) handles both automatically:
 
 Settlement **writes** (`FeedSeatWithdraw`) target the pool's
 current (health-selected) endpoint but deliberately do **not** auto-retry across
-endpoints, since a payment that timed out on submission may have landed onchain
+endpoints, since a withdraw that timed out on submission may have landed onchain
 and a blind retry risks double-submission.
 
 ### Environment variables

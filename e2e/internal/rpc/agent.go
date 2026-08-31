@@ -22,6 +22,8 @@ import (
 	"golang.org/x/net/ipv4"
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -450,7 +452,7 @@ func parseDevicePrices(out []byte) ([]*pb.DevicePrice, error) {
 }
 
 func (q *QAAgent) FeedSeatPay(context.Context, *pb.FeedSeatPayRequest) (*pb.Result, error) {
-	return nil, fmt.Errorf("FeedSeatPay was removed")
+	return nil, status.Error(codes.Unimplemented, "FeedSeatPay was removed")
 }
 
 // FeedSeatWithdraw implements the FeedSeatWithdraw RPC, which withdraws a seat from a device.

@@ -14,7 +14,7 @@ All notable changes to this project will be documented in this file.
 - CI
   - `.cursor/BUGBOT.md` and `.github/copilot-instructions.md` now tell Bugbot and Copilot to read the nearest sibling, flag a path that skips a zero or a duplicate, and assert a specific error and the exact log line at the expected index. Onchain checks apply only when the repository has onchain code. The eight path-scoped files under `.github/instructions/` are removed so Copilot reads only the repo-wide file. (#4247)
 - E2E/QA
-  - Remove `TestQA_MulticastSettlement`. It funded a seat through `doublezero-solana shreds pay`, which is going away. The agent seat-pay RPC now returns an error if something still calls it. Withdraw stays. (#4248)
+  - Remove `TestQA_MulticastSettlement`. It funded a seat through `doublezero-solana shreds pay`, which is going away. The agent seat-pay RPC now returns Unimplemented if something still calls it. Unused settlement helpers go with the test. (#4248)
 
 ## [v0.38.0](https://github.com/malbeclabs/doublezero/compare/client/v0.37.0...client/v0.38.0) - 2026-08-28
 

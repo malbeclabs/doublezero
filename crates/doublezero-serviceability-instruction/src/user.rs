@@ -11,6 +11,7 @@ use doublezero_serviceability::{
         update::UserUpdateArgs,
     },
     resource::ResourceType,
+    state::accesspass::AccessPassKind,
 };
 use solana_program::{
     instruction::{AccountMeta, Instruction},
@@ -309,7 +310,9 @@ pub fn update_user(
     )
 }
 
-/// `DeleteUser` (variant 42).
+/// `Delete<Kind>User` (variants 124-128), chosen by `kind`. The program refuses the call when
+/// the stored access pass is a different kind, so `kind` must be what the caller intends to
+/// delete, not a value read back from the pass.
 ///
 /// Account layout, before the trailing accounts:
 ///
@@ -326,8 +329,8 @@ pub fn update_user(
 /// owner                       (writable)  — user.owner
 /// ```
 ///
-/// `DeleteUser` detects its optional tenant from onchain state (not `accounts.len()`)
-/// and calls `authorize()` positionally, so it routes to
+/// The processor detects the optional tenant from onchain state (not `accounts.len()`)
+/// and calls `authorize()` positionally, so this builder routes to
 /// [`common::build_with_permission`].
 #[allow(clippy::too_many_arguments)]
 pub fn delete_user(
@@ -339,6 +342,7 @@ pub fn delete_user(
     dz_prefix_count: u8,
     tenant: Option<Pubkey>,
     owner: &Pubkey,
+    kind: AccessPassKind,
     mut args: UserDeleteArgs,
 ) -> Instruction {
     // The processor rejects `dz_prefix_count == 0` as its first statement
@@ -348,6 +352,7 @@ pub fn delete_user(
         dz_prefix_count > 0,
         "dz_prefix_count must be > 0; DeleteUser requires on-chain deallocation"
     );
+
     args.dz_prefix_count = dz_prefix_count;
     // This builder always emits the `multicast_publisher_block` account, so the
     // declared count MUST be > 0 or the processor (which reads that account only
@@ -385,12 +390,15 @@ pub fn delete_user(
     }
     accounts.push(AccountMeta::new(*owner, false));
 
-    common::build_with_permission(
-        program_id,
-        DoubleZeroInstruction::DeleteUser(args),
-        accounts,
-        payer,
-    )
+    let instruction = match kind {
+        AccessPassKind::Prepaid => DoubleZeroInstruction::DeletePrepaidUser(args),
+        AccessPassKind::SolanaValidator => DoubleZeroInstruction::DeleteSolanaValidatorUser(args),
+        AccessPassKind::SolanaRPC => DoubleZeroInstruction::DeleteSolanaRPCUser(args),
+        AccessPassKind::Others => DoubleZeroInstruction::DeleteOthersUser(args),
+        AccessPassKind::EdgeSeat => DoubleZeroInstruction::DeleteEdgeSeatUser(args),
+    };
+
+    common::build_with_permission(program_id, instruction, accounts, payer)
 }
 
 /// `RequestBanUser` (variant 44).
@@ -1076,6 +1084,43 @@ mod tests {
     }
 
     #[test]
+    fn test_delete_user_picks_variant_per_kind() {
+        let pid = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let user = Pubkey::new_unique();
+        let accesspass = Pubkey::new_unique();
+        let device = Pubkey::new_unique();
+        let owner = Pubkey::new_unique();
+
+        let cases = [
+            (AccessPassKind::Prepaid, 124u8),
+            (AccessPassKind::SolanaValidator, 125),
+            (AccessPassKind::SolanaRPC, 126),
+            (AccessPassKind::Others, 127),
+            (AccessPassKind::EdgeSeat, 128),
+        ];
+
+        for (kind, want) in cases {
+            let ix = delete_user(
+                &pid,
+                &payer,
+                &user,
+                &accesspass,
+                &device,
+                1,
+                None,
+                &owner,
+                kind,
+                UserDeleteArgs {
+                    dz_prefix_count: 1,
+                    multicast_publisher_count: 1,
+                },
+            );
+            assert_eq!(ix.data[0], want, "{kind}");
+        }
+    }
+
+    #[test]
     fn test_delete_user() {
         let pid = Pubkey::new_unique();
         let payer = Pubkey::new_unique();
@@ -1093,15 +1138,18 @@ mod tests {
             1,
             None,
             &owner,
+            AccessPassKind::Prepaid,
             UserDeleteArgs::default(),
         );
-        assert_eq!(ix.data[0], 42);
+        assert_eq!(ix.data[0], 124);
         // The builder always emits the mpb account, so it MUST pin
         // multicast_publisher_count > 0 to keep the declared count and the
         // account list in lockstep (else the processor skips the mpb slot and
         // misreads every following account).
         match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
-            DoubleZeroInstruction::DeleteUser(a) => assert_eq!(a.multicast_publisher_count, 1),
+            DoubleZeroInstruction::DeletePrepaidUser(a) => {
+                assert_eq!(a.multicast_publisher_count, 1)
+            }
             other => panic!("unexpected variant: {other:?}"),
         }
         let (globalstate, _) = get_globalstate_pda(&pid);
@@ -1148,9 +1196,10 @@ mod tests {
             1,
             Some(tenant),
             &owner,
+            AccessPassKind::Prepaid,
             UserDeleteArgs::default(),
         );
-        assert_eq!(ix.data[0], 42);
+        assert_eq!(ix.data[0], 124);
         let (globalstate, _) = get_globalstate_pda(&pid);
         let (utb, _, _) = get_resource_extension_pda(&pid, ResourceType::UserTunnelBlock);
         let (mpb, _, _) = get_resource_extension_pda(&pid, ResourceType::MulticastPublisherBlock);
@@ -1184,6 +1233,7 @@ mod tests {
             1,
             Some(Pubkey::default()),
             &owner,
+            AccessPassKind::Prepaid,
             UserDeleteArgs::default(),
         );
         assert_eq!(ix2.accounts.len(), 11);

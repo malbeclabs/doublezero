@@ -12,6 +12,7 @@ use doublezero_serviceability::{
         set::SetAccessPassArgs, set_feeds::SetAccessPassFeedsArgs,
         set_flags::SetAccessPassFlagsArgs,
     },
+    state::accesspass::AccessPassKind,
 };
 use solana_program::{
     instruction::{AccountMeta, Instruction},
@@ -52,17 +53,29 @@ pub fn set_access_pass(
     )
 }
 
-/// `CloseAccessPass` (variant 69). Accounts: `[accesspass, globalstate]`.
+/// `Close<Kind>AccessPass` (variants 119-123), chosen by `kind`. The program refuses the call
+/// when the stored pass is a different kind, so `kind` must be what the caller intends to
+/// close, not a value read back from the pass. Accounts: `[accesspass, globalstate]`.
 pub fn close_access_pass(
     program_id: &Pubkey,
     payer: &Pubkey,
     accesspass: &Pubkey,
+    kind: AccessPassKind,
     args: CloseAccessPassArgs,
 ) -> Instruction {
+    let instruction = match kind {
+        AccessPassKind::Prepaid => DoubleZeroInstruction::ClosePrepaidAccessPass(args),
+        AccessPassKind::SolanaValidator => {
+            DoubleZeroInstruction::CloseSolanaValidatorAccessPass(args)
+        }
+        AccessPassKind::SolanaRPC => DoubleZeroInstruction::CloseSolanaRPCAccessPass(args),
+        AccessPassKind::Others => DoubleZeroInstruction::CloseOthersAccessPass(args),
+        AccessPassKind::EdgeSeat => DoubleZeroInstruction::CloseEdgeSeatAccessPass(args),
+    };
     let (globalstate, _) = get_globalstate_pda(program_id);
     common::build_with_permission(
         program_id,
-        DoubleZeroInstruction::CloseAccessPass(args),
+        instruction,
         vec![
             AccountMeta::new(*accesspass, false),
             AccountMeta::new(globalstate, false),
@@ -257,8 +270,14 @@ mod tests {
         let accesspass = Pubkey::new_unique();
         let (globalstate, _) = get_globalstate_pda(&pid);
 
-        let close = close_access_pass(&pid, &payer, &accesspass, CloseAccessPassArgs {});
-        assert_eq!(close.data[0], 69);
+        let close = close_access_pass(
+            &pid,
+            &payer,
+            &accesspass,
+            AccessPassKind::Prepaid,
+            CloseAccessPassArgs {},
+        );
+        assert_eq!(close.data[0], 119);
         assert_eq!(
             close.accounts,
             vec![
@@ -289,6 +308,26 @@ mod tests {
                 AccountMeta::new(system_program::ID, false),
             ]
         );
+    }
+
+    #[test]
+    fn test_close_access_pass_picks_variant_per_kind() {
+        let pid = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let accesspass = Pubkey::new_unique();
+
+        let cases = [
+            (AccessPassKind::Prepaid, 119u8),
+            (AccessPassKind::SolanaValidator, 120),
+            (AccessPassKind::SolanaRPC, 121),
+            (AccessPassKind::Others, 122),
+            (AccessPassKind::EdgeSeat, 123),
+        ];
+
+        for (kind, want) in cases {
+            let ix = close_access_pass(&pid, &payer, &accesspass, kind, CloseAccessPassArgs {});
+            assert_eq!(ix.data[0], want, "{kind}");
+        }
     }
 
     #[test]

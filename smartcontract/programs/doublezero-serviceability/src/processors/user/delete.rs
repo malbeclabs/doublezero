@@ -5,7 +5,7 @@ use crate::{
     processors::validation::validate_program_account,
     serializer::{try_acc_close, try_acc_write},
     state::{
-        accesspass::{AccessPass, AccessPassStatus},
+        accesspass::{AccessPass, AccessPassKind, AccessPassStatus},
         device::Device,
         globalstate::GlobalState,
         permission::permission_flags,
@@ -52,6 +52,7 @@ pub fn process_delete_user(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     value: &UserDeleteArgs,
+    expected: AccessPassKind,
 ) -> ProgramResult {
     if value.dz_prefix_count == 0 {
         msg!("dz_prefix_count must be > 0; DeleteUser requires on-chain deallocation");
@@ -154,6 +155,11 @@ pub fn process_delete_user(
     if !accesspass_account.data_is_empty() {
         // Read Access Pass
         let mut accesspass = AccessPass::try_from(accesspass_account)?;
+        let actual = AccessPassKind::from(&accesspass.accesspass_type);
+        if actual != expected {
+            msg!("this instruction deletes a user on a {expected} pass, but the pass is {actual}");
+            return Err(DoubleZeroError::AccessPassTypeMismatch.into());
+        }
         if accesspass.user_payer != user.owner {
             msg!(
                 "Invalid user_payer accesspass.user_payer: {} = user_payer: {} ",

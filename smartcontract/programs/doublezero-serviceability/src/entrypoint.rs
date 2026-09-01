@@ -176,11 +176,27 @@ pub fn process_instruction(
         DoubleZeroInstruction::ActivateUser()
         | DoubleZeroInstruction::RejectUser()
         | DoubleZeroInstruction::CloseAccountUser()
-        | DoubleZeroInstruction::BanUser() => {
+        | DoubleZeroInstruction::BanUser()
+        | DoubleZeroInstruction::DeleteUser() => {
             return Err(DoubleZeroError::Deprecated.into());
         }
-        DoubleZeroInstruction::DeleteUser(value) => {
-            process_delete_user(program_id, accounts, &value)?
+        DoubleZeroInstruction::DeletePrepaidUser(value) => {
+            process_delete_user(program_id, accounts, &value, AccessPassKind::Prepaid)?
+        }
+        DoubleZeroInstruction::DeleteSolanaValidatorUser(value) => process_delete_user(
+            program_id,
+            accounts,
+            &value,
+            AccessPassKind::SolanaValidator,
+        )?,
+        DoubleZeroInstruction::DeleteSolanaRPCUser(value) => {
+            process_delete_user(program_id, accounts, &value, AccessPassKind::SolanaRPC)?
+        }
+        DoubleZeroInstruction::DeleteOthersUser(value) => {
+            process_delete_user(program_id, accounts, &value, AccessPassKind::Others)?
+        }
+        DoubleZeroInstruction::DeleteEdgeSeatUser(value) => {
+            process_delete_user(program_id, accounts, &value, AccessPassKind::EdgeSeat)?
         }
         DoubleZeroInstruction::DeleteDevice(value) => {
             process_delete_device(program_id, accounts, &value)?

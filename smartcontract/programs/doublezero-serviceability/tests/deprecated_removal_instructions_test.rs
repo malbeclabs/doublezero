@@ -58,3 +58,8 @@ async fn assert_returns_deprecated(instruction: DoubleZeroInstruction) {
 async fn close_access_pass_returns_deprecated() {
     assert_returns_deprecated(DoubleZeroInstruction::CloseAccessPass()).await;
 }
+
+#[tokio::test]
+async fn delete_user_returns_deprecated() {
+    assert_returns_deprecated(DoubleZeroInstruction::DeleteUser()).await;
+}

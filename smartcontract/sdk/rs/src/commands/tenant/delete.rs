@@ -2,14 +2,17 @@ use std::time::Duration;
 
 use crate::{
     commands::{
-        accesspass::{list::ListAccessPassCommand, set::SetAccessPassCommand},
+        accesspass::{
+            get::resolve_user_accesspass, list::ListAccessPassCommand, set::SetAccessPassCommand,
+        },
         user::{delete::DeleteUserCommand, list::ListUserCommand},
     },
     DoubleZeroClient,
 };
 use backon::{BlockingRetryable, ExponentialBuilder};
 use doublezero_serviceability::{
-    processors::tenant::delete::TenantDeleteArgs, state::accountdata::AccountData,
+    processors::tenant::delete::TenantDeleteArgs,
+    state::{accesspass::AccessPassKind, accountdata::AccountData},
 };
 use doublezero_serviceability_instruction::tenant::delete_tenant;
 use eyre::WrapErr;
@@ -32,7 +35,18 @@ impl DeleteTenantCommand {
                 .collect();
 
             for (user_pk, user) in &tenant_users {
-                let result = DeleteUserCommand::new(*user_pk).execute(client);
+                // This cascade removes every user under the tenant, whatever kind of
+                // access pass each one holds; there is no single operator-declared kind
+                // to state here, so the kind comes from the pass itself. The lookup is
+                // the same one DeleteUserCommand performs internally.
+                let (_, accesspass) = resolve_user_accesspass(client, *user_pk, user, None)?;
+
+                let result = DeleteUserCommand {
+                    pubkey: *user_pk,
+                    accesspass_pk: None,
+                    kind: AccessPassKind::from(&accesspass.accesspass_type),
+                }
+                .execute(client);
                 if user.accesspass_pk == Pubkey::default() {
                     result.wrap_err_with(|| {
                         format!(
@@ -135,7 +149,7 @@ mod tests {
             user::delete::UserDeleteArgs,
         },
         state::{
-            accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+            accesspass::{AccessPass, AccessPassKind, AccessPassStatus, AccessPassType},
             accountdata::AccountData,
             accounttype::AccountType,
             device::Device,
@@ -327,6 +341,7 @@ mod tests {
             1,
             Some(tenant_pubkey),
             &payer,
+            AccessPassKind::Prepaid,
             UserDeleteArgs {
                 dz_prefix_count: 1,
                 multicast_publisher_count: 1,

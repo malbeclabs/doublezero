@@ -132,18 +132,22 @@ func TestE2E_IPOwnershipProof_Enforced(t *testing.T) {
 		requireNoUserForIP(t, dn, unverified.CYOANetworkIP)
 	})
 
-	// The sentinel exemption, which is what keeps enforcement from breaking the shred-oracle.
+	// The bound on the sentinel exemption, after #4215 narrowed it.
 	//
-	// The oracle provisions multicast publishers owned by validators, for addresses the
-	// verification service never sees a request from, so there is no proof it could obtain. The
-	// program waives the *requirement* for a creation paid for by
-	// `globalstate.sentinel_authority_pk`.
+	// The exemption exists so enforcement does not break the shred-oracle, which provisions
+	// multicast publishers owned by validators for addresses the verification service never sees a
+	// request from. It is now scoped to exactly that shape — `UserType::Multicast` with an owner
+	// other than the payer — rather than to any creation the sentinel pays for.
 	//
-	// In this devnet the manager is that authority (`smartcontract_init.go` runs
-	// `authority set --sentinel-authority me`), and `doublezero user create` never attaches a
-	// proof at all, so a manager-side create is the exemption in action. The contrast with
-	// wildcard_pass_without_a_proof is the transaction payer, which is what `is_sentinel` compares.
-	t.Run("sentinel_authority_is_exempt", func(t *testing.T) {
+	// In this devnet the manager is the sentinel authority (`smartcontract_init.go` runs
+	// `authority set --sentinel-authority me`) and `doublezero user create` attaches no proof, owns
+	// the user itself, and is unicast. Before the narrowing that combination was admitted; it is
+	// the privilege #4215 removed, so it must now be refused like any other unproven creation.
+	//
+	// The oracle shape itself is covered onchain by
+	// `test_sentinel_exemption_covers_the_oracle_shape`, which can construct a validator-owned
+	// multicast create directly; reproducing it here would mean standing up the sentinel service.
+	t.Run("sentinel_authority_is_not_exempt_for_a_unicast_self_owned_create", func(t *testing.T) {
 		// An address the manager owns a pass for. It has no container behind it; this subtest is
 		// about whether the creation is admitted, not about tunnels.
 		const sentinelUserIP = "9.0.0.9"
@@ -153,15 +157,18 @@ func TestE2E_IPOwnershipProof_Enforced(t *testing.T) {
 				sentinelUserIP + " --user-payer me"})
 		require.NoError(t, err)
 
-		log.Info("==> Creating a user as the sentinel authority, with no proof")
+		log.Info("==> Creating a unicast user as the sentinel authority, with no proof")
 		out, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c",
 			"doublezero user create --device " + device.Spec.Code + " --client-ip " + sentinelUserIP + " 2>&1"})
-		log.Info("==> User create output", "output", string(out))
-		require.NoError(t, err, "the sentinel authority must be exempt from the proof requirement: %s", string(out))
+		output := string(out)
+		log.Info("==> User create output", "output", output)
+		require.Error(t, err,
+			"a sentinel-paid unicast create owns its own user, so the narrowed exemption must not cover it: %s",
+			output)
+		require.Contains(t, output, "An IP ownership proof is required to create a user",
+			"the refusal must be the program's IpOwnershipProofRequired, not an incidental failure")
 
-		users, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero user list"})
-		require.NoError(t, err)
-		require.Contains(t, string(users), sentinelUserIP)
+		requireNoUserForIP(t, dn, sentinelUserIP)
 	})
 }
 

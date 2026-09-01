@@ -859,13 +859,14 @@ async fn test_owner_override_proof_naming_the_payer_is_rejected() {
 }
 
 #[tokio::test]
-async fn test_sentinel_payer_may_create_without_a_proof_while_the_flag_is_set() {
+async fn test_sentinel_exemption_covers_the_oracle_shape() {
     let mut f = setup().await;
     f.require_proof().await;
 
-    // The shred-oracle provisions multicast publishers owned by validators, so a proof would have
-    // to name the validator for an address the oracle never observes a request from — there is no
-    // proof it could obtain. The exemption is keyed on the sentinel authority, a
+    // The shape `crates/sentinel` actually creates: a multicast user owned by somebody other than
+    // the payer. A proof would have to name the validator for an address the oracle never observes
+    // a request from, so there is no proof it could obtain, and without the exemption setting the
+    // flag would break this path outright. The exemption is keyed on the sentinel authority, a
     // DoubleZero-operated key, so it is not a path a registrant can reach.
     let sentinel = f.payer.pubkey();
     f.set_sentinel_authority(sentinel).await;
@@ -875,9 +876,45 @@ async fn test_sentinel_payer_may_create_without_a_proof_while_the_flag_is_set() 
 
     f.create_subscribe_with_owner(owner, accesspass, CLIENT_IP, None)
         .await
-        .expect("the sentinel authority is exempt from the proof requirement");
+        .expect("the oracle shape is exempt from the proof requirement");
 
     assert!(f.user_exists(CLIENT_IP, UserType::Multicast).await);
+}
+
+#[tokio::test]
+async fn test_sentinel_payer_is_not_exempt_for_a_unicast_create() {
+    let mut f = setup().await;
+    f.require_proof().await;
+
+    // #4215. A unicast create is not a shape the oracle produces, so the sentinel gets no waiver
+    // for it even though it is the payer. Before the narrowing this succeeded, which meant a
+    // compromised sentinel key could bind any client_ip to an IBRL user of its own.
+    let sentinel = f.payer.pubkey();
+    f.set_sentinel_authority(sentinel).await;
+
+    let result = f.create_user(None, &[], false).await;
+    assert_rejected(result, DoubleZeroError::IpOwnershipProofRequired);
+    assert!(!f.user_exists(CLIENT_IP, UserType::IBRL).await);
+}
+
+#[tokio::test]
+async fn test_sentinel_payer_is_not_exempt_when_it_owns_the_user_itself() {
+    let mut f = setup().await;
+    f.require_proof().await;
+
+    // The other half of the narrowing: multicast, but owned by the payer rather than a validator.
+    // The oracle always names a separate owner, so a self-owned creation has no claim on the
+    // exemption — and the sentinel can obtain a proof for an address it does operate.
+    let sentinel = f.payer.pubkey();
+    f.set_sentinel_authority(sentinel).await;
+
+    let accesspass = f.provision_owner(sentinel, CLIENT_IP).await;
+
+    let result = f
+        .create_subscribe_with_owner(sentinel, accesspass, CLIENT_IP, None)
+        .await;
+    assert_rejected(result, DoubleZeroError::IpOwnershipProofRequired);
+    assert!(!f.user_exists(CLIENT_IP, UserType::Multicast).await);
 }
 
 #[tokio::test]
@@ -885,9 +922,10 @@ async fn test_sentinel_payer_still_has_a_supplied_proof_validated() {
     let mut f = setup().await;
     f.require_proof().await;
 
-    // The exemption waives the requirement, not validation. Keeping a supplied proof checked is
-    // what lets the oracle start carrying real proofs without a program change, and it means a
-    // broken one is a visible error rather than a silent bypass.
+    // The exemption waives the requirement, not validation, so this uses the oracle shape and
+    // still gets its proof checked. That is what lets the oracle start carrying real proofs
+    // without a program change, and it means a broken one is a visible error rather than a silent
+    // bypass.
     let sentinel = f.payer.pubkey();
     f.set_sentinel_authority(sentinel).await;
 

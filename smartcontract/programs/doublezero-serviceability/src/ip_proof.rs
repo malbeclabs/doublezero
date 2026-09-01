@@ -69,16 +69,22 @@ pub fn split_trailing_instructions_sysvar<'a, 'info>(
 /// enforcement has been switched on, and letting it through would mask that until the flag flips.
 /// With the flag set, a proof is required for every user creation, wildcard and specific-IP passes
 /// alike (#4192 item 3: a legacy path that skips the proof is exactly the hole the RFC exists to
-/// close) — with one exception, `payer_is_sentinel`.
+/// close) — with one narrow exception, `sentinel_exemption`.
 ///
-/// `payer_is_sentinel` waives the *requirement* only, never validation. The shred-oracle
+/// `sentinel_exemption` waives the *requirement* only, never validation. The shred-oracle
 /// provisions multicast publishers owned by validators (`crates/sentinel`), so the proof would have
 /// to name the validator for an address the oracle never observes a request from; there is no proof
 /// the oracle could obtain today. Unlike the wildcard-pass hole this RFC closes, the exemption is
 /// not reachable by a registrant: it requires `globalstate.sentinel_authority_pk`, a
-/// DoubleZero-operated key. The residual risk is that a compromised sentinel key can bind any IP,
-/// which it already could. A proof the sentinel *does* attach is still checked in full, so the
-/// oracle can start carrying real proofs without a program change (#4215).
+/// DoubleZero-operated key. A proof the sentinel *does* attach is still checked in full, so the
+/// oracle can start carrying real proofs without a program change.
+///
+/// #4215 narrowed it. The caller must decide the exemption applies only for the *shape* the oracle
+/// actually creates — a multicast publisher owned by somebody other than the payer — not for any
+/// creation the sentinel happens to pay for. A blanket exemption let a compromised sentinel key
+/// bind any `client_ip` to any user type, including a plain unicast user for itself; narrowing it
+/// leaves only the case that would otherwise break outright. See
+/// `create_user_core` for the predicate.
 ///
 /// `user_type` binds the proof to the account it authorizes: the User PDA is
 /// `f(client_ip, user_type)`, so `client_ip` alone would leave a proof reusable for a different
@@ -92,12 +98,12 @@ pub fn validate_ip_ownership_proof(
     client_ip: &Ipv4Addr,
     user_type: u8,
     current_epoch: u64,
-    payer_is_sentinel: bool,
+    sentinel_exemption: bool,
 ) -> Result<(), ProgramError> {
     let proof = match proof {
         Some(proof) => proof,
         None => {
-            return if payer_is_sentinel {
+            return if sentinel_exemption {
                 Ok(())
             } else if is_feature_enabled(
                 globalstate.feature_flags,

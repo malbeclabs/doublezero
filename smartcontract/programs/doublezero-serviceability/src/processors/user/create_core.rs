@@ -183,6 +183,22 @@ pub fn create_user_core(
     // who must have demonstrated control of `client_ip` — which is also the identity the AccessPass
     // is keyed on (`accesspass.user_payer` below). On the ordinary path the two are the same
     // account.
+    //
+    // #4215. The exemption is narrowed to the shape the shred-oracle actually creates: a multicast
+    // publisher owned by somebody other than the payer. `crates/sentinel` builds exactly that —
+    // `owner` set to the validator, `UserType::Multicast`, `publisher: true` — and it is the only
+    // creation for which no obtainable proof exists, because the verifier signs only the address it
+    // observes a request originate from and the oracle never sends one from the validator's
+    // address.
+    //
+    // Everything else a sentinel-paid transaction could create now needs a proof like any other
+    // registrant. A blanket `is_sentinel` waiver let a compromised sentinel key bind any client_ip
+    // to any user type, including a plain unicast user for itself, which is the privilege this
+    // narrowing removes.
+    let sentinel_exemption = is_sentinel
+        && effective_owner != *core.payer_account.key
+        && user_type == UserType::Multicast;
+
     validate_ip_ownership_proof(
         core.instructions_sysvar_account,
         ip_proof,
@@ -191,7 +207,7 @@ pub fn create_user_core(
         &client_ip,
         user_type as u8,
         clock.epoch,
-        is_sentinel,
+        sentinel_exemption,
     )?;
 
     // Check account Types

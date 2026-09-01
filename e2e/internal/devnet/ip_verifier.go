@@ -35,6 +35,13 @@ const (
 	ipVerifierStartupTimeout = 60 * time.Second
 )
 
+// ipVerifierHealthClient bounds a single health probe. poll.Until calls its condition
+// synchronously, so without a per-request timeout a probe that hangs rather than being refused —
+// an accepting docker-proxy port with nothing behind it — would block past the startup budget
+// until the caller's context died, which is the opposite of the bounded failure waitForHealthy
+// exists to give.
+var ipVerifierHealthClient = &http.Client{Timeout: 5 * time.Second}
+
 // IPVerifierSpec configures the RFC-27 IP ownership verification service container.
 //
 // The service must sit on the CYOA network, not only on the default network. It signs the source
@@ -193,7 +200,7 @@ func (v *IPVerifier) waitForHealthy(ctx context.Context, containerID string) err
 		if err != nil {
 			return false, err
 		}
-		resp, err := http.DefaultClient.Do(req)
+		resp, err := ipVerifierHealthClient.Do(req)
 		if err != nil {
 			return false, nil
 		}

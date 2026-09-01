@@ -246,7 +246,15 @@ func (c *Client) Start(ctx context.Context) error {
 	// NoIPVerifier leaves it unset, which is how a test covers the no-proof path: the CLI reports
 	// nothing to reach and creates the user without a proof, which the program accepts while
 	// require-ip-ownership-proof is clear.
-	if c.dn.IPVerifier != nil && c.dn.IPVerifier.InternalURL != "" && !c.Spec.NoIPVerifier {
+	if c.dn.IPVerifier != nil && !c.Spec.NoIPVerifier {
+		// An empty URL here means Prepare never ran, which cannot happen through Devnet.Start —
+		// it prepares the verifier before any client is added. Refused rather than tolerated: a
+		// client silently dropped to the no-proof path would leave every test that connects
+		// still passing while no longer covering the proof, which is the property this whole
+		// change rests on.
+		if c.dn.IPVerifier.InternalURL == "" {
+			return fmt.Errorf("ip-verifier has no internal URL: Prepare has not run")
+		}
 		env["DZ_IP_VERIFIER_URL"] = c.dn.IPVerifier.InternalURL
 	}
 	if c.Spec.EnableQAAgent {

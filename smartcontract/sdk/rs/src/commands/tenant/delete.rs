@@ -36,8 +36,13 @@ impl DeleteTenantCommand {
             for (user_pk, user) in &tenant_users {
                 // This cascade removes every user under the tenant, whatever kind of
                 // access pass each one holds; there is no single operator-declared kind
-                // to state here, so the kind comes from the pass itself. The lookup
-                // mirrors the one DeleteUserCommand performs internally.
+                // to state here, so the kind comes from the pass itself. That means the
+                // program's per-kind refusal cannot fire on this path: the value we assert
+                // and the value the program checks both come from the same account, read
+                // moments apart, so a mismatch can never be caught here. Forcing a declared
+                // kind would turn "delete every user under this tenant" into "delete only
+                // users of one kind", stranding the tenant record, since the code below
+                // waits for reference_count to reach 0.
                 let (_, accesspass) = GetAccessPassCommand {
                     client_ip: user.client_ip,
                     user_payer: user.owner,

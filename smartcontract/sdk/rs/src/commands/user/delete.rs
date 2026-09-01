@@ -957,6 +957,124 @@ mod tests {
     }
 
     #[test]
+    fn test_delete_user_threads_a_different_kind() {
+        // A second, distinct kind from the other tests in this file: proves the command
+        // reads self.kind rather than passing through a hardcoded value. The stored pass's
+        // accesspass_type is irrelevant to this SDK-level test (the mock doesn't enforce
+        // the program's guard); only the kind carried on the command matters here.
+        let mut client = create_test_client();
+
+        let payer = client.get_payer();
+        let program_id = client.get_program_id();
+
+        let user_pubkey = Pubkey::new_unique();
+        let device_pk = Pubkey::new_unique();
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+
+        let user = User {
+            account_type: AccountType::User,
+            owner: payer,
+            bump_seed: 0,
+            index: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::IBRLWithAllocatedIP,
+            device_pk,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip,
+            dz_ip: Ipv4Addr::new(10, 0, 0, 1),
+            tunnel_id: 100,
+            tunnel_net: "10.1.0.0/31".parse().unwrap(),
+            status: UserStatus::Activated,
+            publishers: vec![],
+            subscribers: vec![],
+            validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
+            ..Default::default()
+        };
+
+        client
+            .expect_get()
+            .with(predicate::eq(user_pubkey))
+            .returning(move |_| Ok(AccountData::User(user.clone())));
+
+        let (accesspass_pubkey, _) =
+            get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
+        let accesspass = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 0,
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: Ipv4Addr::UNSPECIFIED,
+            user_payer: payer,
+            last_access_epoch: 0,
+            connection_count: 0,
+            status: AccessPassStatus::Requested,
+            owner: payer,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(accesspass_pubkey))
+            .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
+
+        let device = Device {
+            account_type: AccountType::Device,
+            dz_prefixes: "10.0.0.0/24".parse().unwrap(),
+            ..Default::default()
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(device_pk))
+            .returning(move |_| Ok(AccountData::Device(device.clone())));
+
+        client
+            .expect_gets()
+            .with(predicate::eq(AccountType::MulticastGroup))
+            .returning(|_| Ok(std::collections::HashMap::new()));
+
+        let expected = delete_user(
+            &program_id,
+            &payer,
+            &user_pubkey,
+            &accesspass_pubkey,
+            &device_pk,
+            1,
+            None,
+            &payer,
+            AccessPassKind::SolanaValidator,
+            UserDeleteArgs {
+                dz_prefix_count: 1,
+                multicast_publisher_count: 1,
+            },
+        );
+        client
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
+
+        expect_missing_permission_account(&mut client);
+
+        let res = DeleteUserCommand {
+            pubkey: user_pubkey,
+            kind: AccessPassKind::SolanaValidator,
+        }
+        .execute(&client);
+
+        assert!(res.is_ok());
+    }
+
+    #[test]
     fn test_delete_user_with_permission_pda() {
         let mut client = create_test_client();
 

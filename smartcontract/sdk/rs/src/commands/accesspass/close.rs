@@ -70,4 +70,37 @@ mod tests {
         .execute(&client);
         assert!(res.is_ok());
     }
+
+    #[test]
+    fn test_commands_close_accesspass_command_threads_a_different_kind() {
+        // A second, distinct kind from the test above: proves the command reads
+        // self.kind rather than passing through a hardcoded value.
+        let mut client = create_test_client();
+
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let client_ip = [10, 0, 0, 1].into();
+        let user_payer = Pubkey::new_unique();
+
+        let (pda_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
+
+        let expected = close_access_pass(
+            &program_id,
+            &payer,
+            &pda_pubkey,
+            AccessPassKind::SolanaValidator,
+            CloseAccessPassArgs {},
+        );
+        client
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
+
+        let res = CloseAccessPassCommand {
+            pubkey: pda_pubkey,
+            kind: AccessPassKind::SolanaValidator,
+        }
+        .execute(&client);
+        assert!(res.is_ok());
+    }
 }

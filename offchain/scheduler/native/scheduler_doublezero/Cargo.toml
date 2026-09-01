@@ -1,5 +1,9 @@
 [package]
 name = "scheduler_doublezero"
+# Never published, and nothing reads this: the NIF is loaded by the scheduler's
+# mix release, not by cargo. Stated anyway so every crate in the tree names its
+# own version rather than defaulting to 0.0.0.
+version = "0.0.1"
 edition = "2024"
 homepage.workspace = true
 license.workspace = true

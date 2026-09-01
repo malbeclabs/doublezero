@@ -86,6 +86,47 @@ impl AccessPassType {
     }
 }
 
+/// The `AccessPassType` variant with no payload attached.
+///
+/// `AccessPassType` carries a `Pubkey`, a `String` pair or a `Vec<FeedSeat>` depending on the
+/// variant. The close and delete instructions only need to know which variant a pass is, so
+/// they use this type: it is `Copy`, it compares in one instruction, and it never reaches the
+/// wire. There is deliberately no `Borsh` derive — the kind is chosen by the instruction
+/// variant, not sent as an argument (see malbeclabs/infra#2470).
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
+pub enum AccessPassKind {
+    Prepaid,
+    SolanaValidator,
+    SolanaRPC,
+    Others,
+    EdgeSeat,
+}
+
+impl From<&AccessPassType> for AccessPassKind {
+    fn from(value: &AccessPassType) -> Self {
+        match value {
+            AccessPassType::Prepaid => AccessPassKind::Prepaid,
+            AccessPassType::SolanaValidator(_) => AccessPassKind::SolanaValidator,
+            AccessPassType::SolanaRPC(_) => AccessPassKind::SolanaRPC,
+            AccessPassType::Others(_, _) => AccessPassKind::Others,
+            AccessPassType::EdgeSeat(_) => AccessPassKind::EdgeSeat,
+        }
+    }
+}
+
+impl fmt::Display for AccessPassKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            AccessPassKind::Prepaid => "prepaid",
+            AccessPassKind::SolanaValidator => "solana_validator",
+            AccessPassKind::SolanaRPC => "solana_rpc",
+            AccessPassKind::Others => "others",
+            AccessPassKind::EdgeSeat => "edge_seat",
+        };
+        f.write_str(name)
+    }
+}
+
 impl fmt::Display for AccessPassType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -397,6 +438,52 @@ mod tests {
     use borsh::object_length;
 
     use super::*;
+
+    #[test]
+    fn test_access_pass_kind_from_type() {
+        let cases = [
+            (AccessPassType::Prepaid, AccessPassKind::Prepaid),
+            (
+                AccessPassType::SolanaValidator(Pubkey::new_unique()),
+                AccessPassKind::SolanaValidator,
+            ),
+            (
+                AccessPassType::SolanaRPC(Pubkey::new_unique()),
+                AccessPassKind::SolanaRPC,
+            ),
+            (
+                AccessPassType::Others("thing".to_string(), "key".to_string()),
+                AccessPassKind::Others,
+            ),
+            (AccessPassType::EdgeSeat(vec![]), AccessPassKind::EdgeSeat),
+        ];
+
+        for (pass_type, want) in cases {
+            assert_eq!(AccessPassKind::from(&pass_type), want, "{pass_type}");
+        }
+    }
+
+    #[test]
+    fn test_access_pass_kind_display_matches_discriminant_string() {
+        // The kind and the pass type must print the same name, so an error message
+        // and a CLI flag value cannot drift apart.
+        let cases = [
+            AccessPassType::Prepaid,
+            AccessPassType::SolanaValidator(Pubkey::new_unique()),
+            AccessPassType::SolanaRPC(Pubkey::new_unique()),
+            AccessPassType::EdgeSeat(vec![]),
+        ];
+
+        for pass_type in cases {
+            assert_eq!(
+                AccessPassKind::from(&pass_type).to_string(),
+                pass_type.to_discriminant_string(),
+            );
+        }
+        // `Others` carries its own type_name in `to_discriminant_string`, so the kind
+        // prints the fixed name instead.
+        assert_eq!(AccessPassKind::Others.to_string(), "others");
+    }
 
     #[test]
     fn test_state_compatibility_accesspass() {

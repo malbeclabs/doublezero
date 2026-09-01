@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `shreds payments`: keep reading leftover fund-seat transactions after the SDK drops that instruction (malbeclabs/infra#2411)
 - `shreds pay`: remove the command. `shreds withdraw`, `list`, `payments`, and `price` stay (malbeclabs/infra#2410)
 - `shreds`: collapse `pay`'s `SLOT_DURATION_SECS` and `prepare-offchain-message`'s `SLOT_DURATION_MS` into one `NOMINAL_SLOT_DURATION` at 350ms, matching mainnet-beta from epoch 1020 (2026-08-21). Deliberately cluster-independent, because a `~` prefixed estimate and a deadline slot the CLI and operator must both compute want reproducibility over accuracy. `--valid-for 1h` now resolves to 10,285 slots rather than 9,000, and the epoch-remaining estimates shrink by an eighth. Testnet runs at 200ms, so its estimates stay wrong in the other direction, and SIMD-0525 will need one more bump here (malbeclabs/infra#2317)
 - `shreds validator-client-rewards`: read the `ValidatorClientRewards` account through the SDK's zero-copy mirror instead of the hand-written byte-offset parser. Every subcommand now requires at least 184 bytes of account data rather than 116

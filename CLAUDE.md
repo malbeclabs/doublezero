@@ -17,7 +17,7 @@ DoubleZero is a protocol for building and operating high-performance, permission
 | `controlplane/`  | Go                                                  | Controller pushes configs to devices; agent runs on Arista EOS; funder, monitor, admin tools |
 | `telemetry/`     | Go                                                  | Flow ingestion (NetFlow/IPFIX), gNMI writer, global monitor → ClickHouse/InfluxDB            |
 | `api/`           | Go                                                  | API server                                                                                   |
-| `sdk/`           | Go, Python, TypeScript                              | Read-only account deserialization for serviceability, telemetry, revenue distribution        |
+| `sdk/`           | Go, Python, TypeScript                              | Account deserialization for serviceability, telemetry, revenue distribution. Python and TypeScript are read-only; the Go serviceability SDK also writes (`Executor` submits `CreateUser`, `DeleteUser`, health and BGP-status instructions) |
 | `e2e/`           | Go                                                  | End-to-end tests using testcontainers-go with Arista cEOS devices                            |
 
 **Onchain state lifecycle:** Created in `Activated`; admin/operator instructions drive subsequent transitions.

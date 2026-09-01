@@ -39,6 +39,12 @@ type Executor struct {
 
 	permissionOnce sync.Once
 	permissionPDA  *solana.PublicKey // nil if no Permission account exists for this signer
+
+	// Cached GlobalState feature flags, read once on the first user creation.
+	// See requireIPOwnershipProofEnabled.
+	featureFlagsOnce sync.Once
+	featureFlags     Uint128
+	featureFlagsErr  error
 }
 
 type ExecutorRPCClient interface {
@@ -206,9 +212,17 @@ func (e *Executor) CreateUser(ctx context.Context, args UserCreateArgs) (solana.
 		return solana.Signature{}, solana.PublicKey{}, fmt.Errorf("build CreateUser instruction: %w", err)
 	}
 
+	// RFC-27. This builder cannot carry an IpOwnershipProof, so once the
+	// environment enforces one every creation it submits would be rejected
+	// onchain with IpOwnershipProofRequired (105). Fail before spending a
+	// transaction, and say why.
+	if err := e.checkIPOwnershipProofNotRequired(ctx); err != nil {
+		return solana.Signature{}, userPDA, err
+	}
+
 	sig, _, err := e.executeTransaction(ctx, []solana.Instruction{instr})
 	if err != nil {
-		return sig, userPDA, err
+		return sig, userPDA, ClassifyProgramError(err)
 	}
 
 	if err := e.waitForAccountVisible(ctx, userPDA, e.waitForVisibleTimeout); err != nil {
@@ -278,13 +292,24 @@ func (e *Executor) DeleteUser(ctx context.Context, userPubkey solana.PublicKey) 
 //	 user_tunnel_block, multicast_publisher_block, device_tunnel_ids,
 //	 dz_prefix_block[0..N], optional_tenant, payer, system]
 func (e *Executor) buildCreateUserInstruction(args UserCreateArgs) (solana.Instruction, solana.PublicKey, error) {
-	data := make([]byte, 12)
+	// Layout: variant || user_type || cyoa_type || client_ip[4] || tunnel_endpoint[4]
+	// || dz_prefix_count || ip_proof discriminant.
+	//
+	// The trailing zero is Borsh's Option::None for the RFC-27 ip_proof field
+	// (see UserCreateArgs in processors/user/create.rs). It is emitted
+	// explicitly rather than left off: UserCreateArgs is
+	// BorshDeserializeIncremental, so a shorter payload would also decode as
+	// None, but relying on that makes the Go payload disagree with the Rust
+	// fixture and hides the omission. This builder cannot carry a real proof —
+	// see CreateUser for why.
+	data := make([]byte, 13)
 	data[0] = instructionCreateUser
 	data[1] = byte(args.UserType)
 	data[2] = byte(args.CyoaType)
 	copy(data[3:7], args.ClientIP[:])
 	copy(data[7:11], args.TunnelEndpoint[:])
 	data[11] = args.DzPrefixCount
+	data[12] = 0
 
 	userPDA, _, err := GetUserPDA(e.programID, args.ClientIP, args.UserType)
 	if err != nil {
@@ -517,6 +542,70 @@ func (e *Executor) resolvePermissionPDA(ctx context.Context) {
 		e.permissionPDA = &pda
 		e.log.Debug("Permission account found, will include in transactions", "pda", pda)
 	})
+}
+
+// ErrIPOwnershipProofUnsupported is returned by CreateUser when the environment
+// has FeatureRequireIPOwnershipProof set. This SDK's CreateUser builder cannot
+// attach an IpOwnershipProof, and it deliberately does not try: the verifier
+// signs only the address it observes a request originate from, so an address
+// this executor merely names — a synthetic stress-test address in particular —
+// cannot be proven at all. RFC-27 exists to stop exactly that binding.
+//
+// Run against an environment with the flag clear, or create the users with the
+// doublezero CLI, which obtains a real proof during connect.
+var ErrIPOwnershipProofUnsupported = errors.New(
+	"serviceability: require-ip-ownership-proof is set for this environment, but the Go SDK's " +
+		"CreateUser cannot attach an RFC-27 IpOwnershipProof (the verifier signs only the address it " +
+		"observes a request from); use an environment with the flag clear, or the doublezero CLI")
+
+// loadFeatureFlags reads GlobalState.feature_flags once and caches the result,
+// including a failure, so a sweep does not re-read it per user.
+func (e *Executor) loadFeatureFlags(ctx context.Context) (Uint128, error) {
+	e.featureFlagsOnce.Do(func() {
+		pda, _, err := GetGlobalStatePDA(e.programID)
+		if err != nil {
+			e.featureFlagsErr = fmt.Errorf("derive globalstate PDA: %w", err)
+			return
+		}
+		info, err := e.rpc.GetAccountInfo(ctx, pda)
+		if err != nil {
+			e.featureFlagsErr = fmt.Errorf("read globalstate account: %w", err)
+			return
+		}
+		if info == nil || info.Value == nil {
+			e.featureFlagsErr = fmt.Errorf("globalstate account %s not found", pda)
+			return
+		}
+		data := info.Value.Data.GetBinary()
+		if len(data) == 0 {
+			e.featureFlagsErr = fmt.Errorf("globalstate account %s is empty", pda)
+			return
+		}
+		var gs GlobalState
+		DeserializeGlobalState(NewByteReader(data), &gs)
+		e.featureFlags = gs.FeatureFlags
+	})
+	return e.featureFlags, e.featureFlagsErr
+}
+
+// checkIPOwnershipProofNotRequired returns ErrIPOwnershipProofUnsupported when
+// the environment requires an RFC-27 proof that this SDK cannot supply.
+//
+// When global state cannot be read the check warns and allows the creation
+// through: the program is the authority on enforcement, and a rejection now
+// surfaces as a named ErrIPOwnershipProofRequired via ClassifyProgramError. An
+// unreadable account is not grounds for refusing to submit anything.
+func (e *Executor) checkIPOwnershipProofNotRequired(ctx context.Context) error {
+	flags, err := e.loadFeatureFlags(ctx)
+	if err != nil {
+		e.log.Warn("could not read feature flags; submitting without checking RFC-27 enforcement",
+			"flag", FeatureRequireIPOwnershipProof.String(), "error", err)
+		return nil
+	}
+	if flags.Lo64()&FeatureRequireIPOwnershipProof.Mask() != 0 {
+		return ErrIPOwnershipProofUnsupported
+	}
+	return nil
 }
 
 func (e *Executor) executeTransaction(ctx context.Context, instructions []solana.Instruction) (solana.Signature, *solanarpc.GetTransactionResult, error) {

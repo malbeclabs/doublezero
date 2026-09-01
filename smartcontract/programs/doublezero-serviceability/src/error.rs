@@ -505,12 +505,6 @@ impl From<u32> for DoubleZeroError {
     }
 }
 
-impl From<u8> for DoubleZeroError {
-    fn from(e: u8) -> Self {
-        Self::from(e as u32)
-    }
-}
-
 impl From<ProgramError> for DoubleZeroError {
     fn from(e: ProgramError) -> Self {
         match e {
@@ -533,7 +527,9 @@ mod tests {
     fn test_access_pass_type_mismatch_roundtrip() {
         let err = DoubleZeroError::AccessPassTypeMismatch;
         assert_eq!(ProgramError::from(err.clone()), ProgramError::Custom(119));
-        assert_eq!(DoubleZeroError::from(119u8), err);
+        let pe: ProgramError = ProgramError::Custom(119);
+        let err2: DoubleZeroError = pe.into();
+        assert_eq!(err2, err);
     }
 
     #[test]

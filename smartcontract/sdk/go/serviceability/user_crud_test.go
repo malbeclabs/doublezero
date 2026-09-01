@@ -206,7 +206,7 @@ func TestDeleteUserValidation(t *testing.T) {
 		programID := solana.NewWallet().PublicKey()
 		executor := NewExecutor(slog.Default(), &mockRPCClient{}, nil, programID)
 
-		_, err := executor.DeleteUser(context.Background(), solana.NewWallet().PublicKey())
+		_, err := executor.DeleteUser(context.Background(), solana.NewWallet().PublicKey(), AccessPassKindPrepaid)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, ErrNoPrivateKey)
 	})
@@ -216,7 +216,7 @@ func TestDeleteUserValidation(t *testing.T) {
 		signer := solana.NewWallet().PrivateKey
 		executor := NewExecutor(slog.Default(), &mockRPCClient{}, &signer, solana.PublicKey{})
 
-		_, err := executor.DeleteUser(context.Background(), solana.NewWallet().PublicKey())
+		_, err := executor.DeleteUser(context.Background(), solana.NewWallet().PublicKey(), AccessPassKindPrepaid)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, ErrNoProgramID)
 	})
@@ -238,7 +238,7 @@ func TestDeleteUserRejectsBadAccount(t *testing.T) {
 		}
 		executor := NewExecutor(slog.Default(), rpc, &signer, programID)
 
-		_, err := executor.DeleteUser(context.Background(), userPubkey)
+		_, err := executor.DeleteUser(context.Background(), userPubkey, AccessPassKindPrepaid)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "fetch user account")
 	})
@@ -259,7 +259,7 @@ func TestDeleteUserRejectsBadAccount(t *testing.T) {
 		}
 		executor := NewExecutor(slog.Default(), rpc, &signer, programID)
 
-		_, err := executor.DeleteUser(context.Background(), userPubkey)
+		_, err := executor.DeleteUser(context.Background(), userPubkey, AccessPassKindPrepaid)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "empty data")
 	})
@@ -284,7 +284,7 @@ func TestDeleteUserRejectsBadAccount(t *testing.T) {
 		}
 		executor := NewExecutor(slog.Default(), rpc, &signer, programID)
 
-		_, err := executor.DeleteUser(context.Background(), userPubkey)
+		_, err := executor.DeleteUser(context.Background(), userPubkey, AccessPassKindPrepaid)
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "is not a User")
 	})
@@ -310,13 +310,13 @@ func TestBuildDeleteUserInstruction(t *testing.T) {
 	// Use the fixture's (3, 1) values to exercise the borsh layout end-to-end
 	// against Rust output; production DeleteUser hard-codes (1, 1) — see the
 	// constant in DeleteUser itself.
-	instr, err := executor.buildDeleteUserInstruction(userPubkey, user, 3, 1)
+	instr, err := executor.buildDeleteUserInstruction(userPubkey, user, 3, 1, AccessPassKindPrepaid)
 	require.NoError(t, err)
 
 	data, err := instr.Data()
 	require.NoError(t, err)
 	require.Len(t, data, 3, "opcode (1) + borsh UserDeleteArgs (2) = 3 bytes")
-	assert.Equal(t, byte(instructionDeleteUser), data[0])
+	assert.Equal(t, byte(instructionDeletePrepaidUser), data[0])
 	assert.Equal(t, loadArgsFixture(t, "user_delete_args"), data[1:],
 		"borsh body must match Rust-generated user_delete_args.bin")
 
@@ -331,6 +331,45 @@ func TestBuildDeleteUserInstruction(t *testing.T) {
 	assert.Equal(t, executor.signer.PublicKey(), accs[len(accs)-2].PublicKey)
 	assert.True(t, accs[len(accs)-2].IsSigner)
 	assert.Equal(t, solana.SystemProgramID, accs[len(accs)-1].PublicKey)
+}
+
+func TestBuildDeleteUserInstructionPicksVariantPerKind(t *testing.T) {
+	t.Parallel()
+
+	e, _ := newTestExecutor(t, &mockRPCClient{})
+	user := User{}
+
+	cases := map[AccessPassKind]byte{
+		AccessPassKindPrepaid:         124,
+		AccessPassKindSolanaValidator: 125,
+		AccessPassKindSolanaRPC:       126,
+		AccessPassKindOthers:          127,
+		AccessPassKindEdgeSeat:        128,
+	}
+
+	for kind, want := range cases {
+		instr, err := e.buildDeleteUserInstruction(solana.NewWallet().PublicKey(), user, 1, 1, kind)
+		if err != nil {
+			t.Fatalf("kind %v: %v", kind, err)
+		}
+		data, err := instr.Data()
+		if err != nil {
+			t.Fatalf("kind %v: %v", kind, err)
+		}
+		if data[0] != want {
+			t.Errorf("kind %v: got instruction %d, want %d", kind, data[0], want)
+		}
+	}
+}
+
+func TestBuildDeleteUserInstructionRejectsUnspecifiedKind(t *testing.T) {
+	t.Parallel()
+
+	e, _ := newTestExecutor(t, &mockRPCClient{})
+	user := User{}
+
+	_, err := e.buildDeleteUserInstruction(solana.NewWallet().PublicKey(), user, 1, 1, AccessPassKindUnspecified)
+	require.Error(t, err)
 }
 
 func TestBuildDeleteUserInstruction_WithTenant(t *testing.T) {
@@ -349,7 +388,7 @@ func TestBuildDeleteUserInstruction_WithTenant(t *testing.T) {
 		ClientIp:     [4]byte{10, 0, 0, 5},
 	}
 
-	instr, err := executor.buildDeleteUserInstruction(solana.NewWallet().PublicKey(), user, 1, 1)
+	instr, err := executor.buildDeleteUserInstruction(solana.NewWallet().PublicKey(), user, 1, 1, AccessPassKindPrepaid)
 	require.NoError(t, err)
 
 	accs := instr.Accounts()
@@ -452,7 +491,7 @@ func TestDeleteUserWaitsForAccountGone(t *testing.T) {
 	}
 	executor := NewExecutor(slog.Default(), rpc, &signer, programID, WithWaitForVisibleTimeout(500*time.Millisecond))
 
-	sig, err := executor.DeleteUser(context.Background(), userPubkey)
+	sig, err := executor.DeleteUser(context.Background(), userPubkey, AccessPassKindPrepaid)
 	require.NoError(t, err)
 	assert.NotEqual(t, solana.Signature{}, sig)
 	require.NotEmpty(t, rpc.sentTransactions)
@@ -482,7 +521,7 @@ func TestDeleteUserNotFound(t *testing.T) {
 	}
 	executor := NewExecutor(slog.Default(), rpc, &signer, programID)
 
-	_, err := executor.DeleteUser(context.Background(), solana.NewWallet().PublicKey())
+	_, err := executor.DeleteUser(context.Background(), solana.NewWallet().PublicKey(), AccessPassKindPrepaid)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not found")
 }
@@ -526,7 +565,7 @@ func TestDeleteUserTreatsNotFoundAsClosure(t *testing.T) {
 	// hanging for the default 3s.
 	executor := NewExecutor(slog.Default(), rpc, &signer, programID, WithWaitForVisibleTimeout(500*time.Millisecond))
 
-	sig, err := executor.DeleteUser(context.Background(), userPubkey)
+	sig, err := executor.DeleteUser(context.Background(), userPubkey, AccessPassKindPrepaid)
 	require.NoError(t, err, "ErrNotFound from GetAccountInfo must be treated as closure-success")
 	assert.NotEqual(t, solana.Signature{}, sig)
 }

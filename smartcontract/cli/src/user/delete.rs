@@ -1,4 +1,5 @@
 use crate::{
+    accesspass::types::CliAccessPassType,
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
     validators::validate_pubkey,
@@ -17,6 +18,10 @@ pub struct DeleteUserCliCommand {
     /// Access pass for a legacy user
     #[arg(long, value_parser = validate_pubkey)]
     pub access_pass: Option<String>,
+    /// The kind of access pass the user holds. Required: the program refuses the call when the
+    /// pass is a different kind, so stating it here is what makes the delete targeted.
+    #[arg(long = "access-pass-type")]
+    pub accesspass_type: CliAccessPassType,
 }
 
 impl DeleteUserCliCommand {
@@ -38,6 +43,7 @@ impl DeleteUserCliCommand {
         let signature = client.delete_user(DeleteUserCommand {
             pubkey,
             accesspass_pk,
+            kind: self.accesspass_type.into(),
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -50,6 +56,7 @@ mod tests {
     use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
 
     use crate::{
+        accesspass::types::CliAccessPassType,
         doublezerocommand::CliCommand,
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
         tests::utils::create_test_client,
@@ -59,7 +66,7 @@ mod tests {
         commands::user::{delete::DeleteUserCommand, get::GetUserCommand},
         AccountType, User, UserCYOA, UserStatus, UserType,
     };
-    use doublezero_serviceability::pda::get_user_old_pda;
+    use doublezero_serviceability::{pda::get_user_old_pda, state::accesspass::AccessPassKind};
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -116,6 +123,7 @@ mod tests {
             .with(predicate::eq(DeleteUserCommand {
                 pubkey: pda_pubkey,
                 accesspass_pk: Some(accesspass_pk),
+                kind: AccessPassKind::Prepaid,
             }))
             .returning(move |_| Ok(signature));
 
@@ -126,6 +134,7 @@ mod tests {
             DeleteUserCliCommand {
                 pubkey: pda_pubkey.to_string(),
                 access_pass: Some(accesspass_pk.to_string()),
+                accesspass_type: CliAccessPassType::Prepaid,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -134,5 +143,42 @@ mod tests {
         assert_eq!(
             output_str,"Signature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
         );
+    }
+
+    #[test]
+    fn test_cli_user_delete_requires_access_pass_type() {
+        use clap::Parser;
+
+        #[derive(Parser, Debug)]
+        struct TestCli {
+            #[command(subcommand)]
+            command: TestCommand,
+        }
+
+        #[derive(clap::Subcommand, Debug)]
+        enum TestCommand {
+            Delete(DeleteUserCliCommand),
+        }
+
+        // Omitting --access-pass-type is a parse error: there is no default, so an
+        // operator who forgets the flag is stopped here rather than the program
+        // guessing a kind.
+        let missing_type = TestCli::try_parse_from([
+            "test",
+            "delete",
+            "--pubkey",
+            &Pubkey::new_unique().to_string(),
+        ]);
+        assert!(missing_type.is_err(), "{missing_type:?}");
+
+        let with_type = TestCli::try_parse_from([
+            "test",
+            "delete",
+            "--pubkey",
+            &Pubkey::new_unique().to_string(),
+            "--access-pass-type",
+            "prepaid",
+        ]);
+        assert!(with_type.is_ok(), "{with_type:?}");
     }
 }

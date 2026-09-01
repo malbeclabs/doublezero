@@ -2,10 +2,13 @@ use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
 use doublezero_cli_core::{require, CliContext, RequirementCheck};
 use doublezero_sdk::commands::{
-    accesspass::{list::ListAccessPassCommand, set::SetAccessPassCommand},
+    accesspass::{
+        get::GetAccessPassCommand, list::ListAccessPassCommand, set::SetAccessPassCommand,
+    },
     tenant::{delete::DeleteTenantCommand, get::GetTenantCommand},
     user::{delete::DeleteUserCommand, list::ListUserCommand},
 };
+use doublezero_serviceability::state::accesspass::AccessPassKind;
 use eyre::WrapErr;
 use indicatif::{ProgressBar, ProgressStyle};
 use solana_sdk::pubkey::Pubkey;
@@ -71,7 +74,22 @@ impl DeleteTenantCliCommand {
 
                 for (user_pk, user) in &tenant_users {
                     spinner.set_message(format!("Deleting user {user_pk}"));
-                    let result = client.delete_user(DeleteUserCommand::new(*user_pk));
+                    // This cascade removes every user under the tenant, whatever kind of access
+                    // pass each one holds; there is no single operator-declared kind to state
+                    // here, so the kind comes from the pass itself. That means the program's
+                    // per-kind refusal cannot fire on this path: the value we assert and the
+                    // value the program checks both come from the same account, read moments
+                    // apart, so a mismatch can never be caught here.
+                    let (_, accesspass) = client
+                        .get_accesspass(GetAccessPassCommand {
+                            client_ip: user.client_ip,
+                            user_payer: user.owner,
+                        })?
+                        .ok_or_else(|| eyre::eyre!("User {user_pk} has no Access Pass"))?;
+                    let result = client.delete_user(DeleteUserCommand::new(
+                        *user_pk,
+                        AccessPassKind::from(&accesspass.accesspass_type),
+                    ));
                     if user.accesspass_pk == Pubkey::default() {
                         result.wrap_err_with(|| {
                             format!(
@@ -365,7 +383,10 @@ mod tests {
     #[test]
     fn test_cli_tenant_delete_with_references_and_allow_delete_users() {
         use doublezero_program_common::types::NetworkV4;
-        use doublezero_serviceability::state::user::{User, UserCYOA, UserStatus, UserType};
+        use doublezero_serviceability::state::{
+            accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+            user::{User, UserCYOA, UserStatus, UserType},
+        };
         use mockall::Sequence;
         use std::net::Ipv4Addr;
 
@@ -417,6 +438,26 @@ mod tests {
             ..Default::default()
         };
 
+        let accesspass = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 0,
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: user.client_ip,
+            user_payer: user.owner,
+            last_access_epoch: u64::MAX,
+            connection_count: 0,
+            status: AccessPassStatus::Connected,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
+            owner: Pubkey::default(),
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
+        };
+
         let tenant_after = Tenant {
             reference_count: 0,
             ..tenant.clone()
@@ -451,6 +492,15 @@ mod tests {
                 map.insert(user_pubkey, user_cloned.clone());
                 Ok(map)
             });
+
+        // Fetch the user's access pass to learn its kind for the delete call.
+        let accesspass_pubkey = Pubkey::new_unique();
+        let accesspass_cloned = accesspass.clone();
+        client
+            .expect_get_accesspass()
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(Some((accesspass_pubkey, accesspass_cloned.clone()))));
 
         // Delete user
         client

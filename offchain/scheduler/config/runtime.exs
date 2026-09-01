@@ -2,10 +2,15 @@ import Config
 
 config :scheduler,
   genesis_epoch: 31,
-  ledger_rpc: System.get_env("DZ_LEDGER_RPC"),
-  solana_rpc: System.get_env("SOLANA_RPC"),
   prometheus_endpoint: System.get_env("PROMETHEUS_ENDPOINT", "localhost"),
   plug_router_port: String.to_integer(System.get_env("SCHEDULER_HTTP_PORT", "4001"))
+
+# Every worker hands this value straight to the NIF, which wants a String. An
+# unset variable used to arrive there as nil, so fail the boot instead. Tests
+# set the key themselves and never read this.
+if config_env() != :test do
+  config :scheduler, solana_rpc: System.fetch_env!("SOLANA_RPC")
+end
 
 config :scheduler, Scheduler.PromEx,
   disabled: false,

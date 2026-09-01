@@ -16,6 +16,8 @@ To run the scheduler locally:
 
    ```sh
    mix deps.get
+   ```
+
 ## Installation
 
 If [available in Hex](https://hex.pm/docs/publish), the package can be installed

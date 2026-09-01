@@ -17,6 +17,11 @@ All notable changes to this project will be documented in this file.
   - `.cursor/BUGBOT.md` and `.github/copilot-instructions.md` now tell Bugbot and Copilot to read the nearest sibling, flag a path that skips a zero or a duplicate, and assert a specific error and the exact log line at the expected index. Onchain checks apply only when the repository has onchain code. The eight path-scoped files under `.github/instructions/` are removed so Copilot reads only the repo-wide file. (#4247)
 - E2E/QA
   - Remove `TestQA_MulticastSettlement`. It funded a seat through `doublezero-solana shreds pay`, which is going away. The agent seat-pay RPC now returns Unimplemented if something still calls it. Unused settlement helpers go with the test. (#4248)
+- Offchain
+  - The scheduler refuses to boot when `SOLANA_RPC` is unset, rather than handing `nil` to the Rust NIF. All three workers read the one config key, so the check sits in `config/runtime.exs` where the single cause was. The test environment is exempt, since the tests set the key themselves. `DZ_LEDGER_RPC` no longer sets a `ledger_rpc` key that nothing in the application read. (#4240 follow-up)
+  - The scheduler README closes its shell code block, so the Installation heading and everything after it stop rendering inside it.
+- Solana programs
+  - Rename `test_lifetime_swept_2z_amount` to match the `lifetime_swapped_2z_amount` field and method it covers, so a search for the swapped-amount tests finds it.
 
 ## [v0.38.0](https://github.com/malbeclabs/doublezero/compare/client/v0.37.0...client/v0.38.0) - 2026-08-28
 

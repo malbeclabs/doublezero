@@ -59,7 +59,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_lifetime_swept_2z_amount() {
+    fn test_lifetime_swapped_2z_amount() {
         let journal = Journal {
             lifetime_swapped_2z_amount: Uint::from(69_420),
             ..Default::default()

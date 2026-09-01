@@ -176,7 +176,7 @@ func TestE2E_User_AllocationLifecycle(t *testing.T) {
 	// Delete user to trigger deallocation
 	userPubkey := base58.Encode(activatedUser.PubKey[:])
 	log.Debug("==> Deleting user to trigger deallocation", "pubkey", userPubkey)
-	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero user delete --pubkey " + userPubkey})
+	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero user delete --pubkey " + userPubkey + " --access-pass-type prepaid"})
 	require.NoError(t, err)
 
 	// Wait for user to be deleted (removed from program data)
@@ -884,7 +884,7 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 	log.Debug("==> Phase 5: Cleanup - deleting user")
 
 	userPubkey := base58.Encode(reactivatedUser.PubKey[:])
-	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero user delete --pubkey " + userPubkey})
+	_, err = client.Exec(ctx, []string{"bash", "-c", "doublezero user delete --pubkey " + userPubkey + " --access-pass-type prepaid"})
 	require.NoError(t, err)
 
 	// Wait for user to be closed

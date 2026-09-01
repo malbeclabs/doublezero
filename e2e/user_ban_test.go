@@ -376,7 +376,7 @@ func runUserBanIBRLWorkflowTest(t *testing.T, log *slog.Logger, client1 *devnet.
 
 	// Unban by deleting the user account.
 	log.Debug("==> Unbanning client1")
-	_, err = dn.Manager.Exec(t.Context(), []string{"doublezero", "user", "delete", "--pubkey", user_pk})
+	_, err = dn.Manager.Exec(t.Context(), []string{"doublezero", "user", "delete", "--pubkey", user_pk, "--access-pass-type", "prepaid"})
 	require.NoError(t, err)
 
 	waitForUserDeleted(t, log, dn, user_pk, 60*time.Second)

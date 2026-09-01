@@ -159,6 +159,16 @@ var knownIncompatibilities = map[string]knownIncompat{
 	"write/device_interface_delete_2": {ranges: []versionRange{{before: "0.19.0"}}},
 	"write/device_interface_delete_3": {ranges: []versionRange{{before: "0.19.0"}}},
 	"write/device_interface_delete_4": {ranges: []versionRange{{before: "0.19.0"}}},
+
+	// malbeclabs/infra#2470 split the single DeleteUser (variant 42) and CloseAccessPass
+	// (variant 69) instructions into one variant per access pass type. Variants 42 and 69
+	// now return DoubleZeroError::Deprecated, and the `user delete` / `access-pass close`
+	// CLI verbs gained a required type flag the old binaries don't send. Old CLIs can't
+	// pass these steps against the upgraded program. This ships in 0.39.0.
+	"write/user_delete":        {ranges: before("0.39.0")},
+	"write/user_delete_2":      {ranges: before("0.39.0")},
+	"write/accesspass_close":   {ranges: before("0.39.0")},
+	"write/accesspass_close_2": {ranges: before("0.39.0")},
 }
 
 // versionInRange checks whether ver falls within the half-open range [from, before).
@@ -1253,7 +1263,7 @@ func runWriteWorkflows(
 
 		// Start all 4 delete streams: user1 delete, user2 ban, WAN link wait, DZX link wait.
 		{name: "delete_start", parallel: true, steps: []writeStep{
-			{name: "user_delete", cmd: cli + " user delete --pubkey " +
+			{name: "user_delete", cmd: cli + " user delete --access-pass-type prepaid --pubkey " +
 				fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP)},
 			{name: "user_request_ban_2", cmd: cli + " user request-ban --pubkey " +
 				fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s ' | awk '{print $1}')", user2ClientIP), noCascade: true},
@@ -1267,7 +1277,7 @@ func runWriteWorkflows(
 				`count=$(doublezero user list 2>/dev/null | grep '` + userClientIP + `' | wc -l); ` +
 				`[ "$count" -eq 0 ] && exit 0; sleep 1; done; ` +
 				`echo "user1 not removed after 30s"; exit 1`},
-			{name: "user_delete_2", cmd: cli + " user delete --pubkey " +
+			{name: "user_delete_2", cmd: cli + " user delete --access-pass-type prepaid --pubkey " +
 				fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s ' | awk '{print $1}')", user2ClientIP)},
 			{name: "link_drain", cascadeKnownFail: true, cmd: cli + " link update --pubkey " + lookupPubkeyByCode("link list", linkCode) + " --status soft-drained"},
 			{name: "link_drain_dzx", cascadeKnownFail: true, cmd: cli + " link update --pubkey " + lookupPubkeyByCode("link list", dzxLinkCode) + " --status soft-drained"},
@@ -1281,7 +1291,7 @@ func runWriteWorkflows(
 
 		// Finish user streams + multicast delete + start interface wait.
 		{name: "delete_users_done", parallel: true, steps: []writeStep{
-			{name: "accesspass_close", cmd: cli + " access-pass close --pubkey " +
+			{name: "accesspass_close", cmd: cli + " access-pass close --type prepaid --pubkey " +
 				fmt.Sprintf("$(doublezero access-pass list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP)},
 			{name: "user_wait_removed_2", cmd: `for i in $(seq 1 30); do ` +
 				`count=$(doublezero user list 2>/dev/null | grep '` + user2ClientIP + ` ' | wc -l); ` +
@@ -1296,7 +1306,7 @@ func runWriteWorkflows(
 
 		// Close accesspass2 + delete all interfaces.
 		{name: "delete_interfaces", parallel: true, steps: []writeStep{
-			{name: "accesspass_close_2", cmd: cli + " access-pass close --pubkey " +
+			{name: "accesspass_close_2", cmd: cli + " access-pass close --type prepaid --pubkey " +
 				fmt.Sprintf("$(doublezero access-pass list 2>/dev/null | grep '%s ' | awk '{print $1}')", user2ClientIP)},
 			{name: "device_interface_delete", cmd: cli + " device interface delete " + deviceCode + " " + ifaceName},
 			{name: "device_interface_delete_2", cmd: cli + " device interface delete " + deviceCode2 + " " + ifaceName},

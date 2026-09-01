@@ -48,7 +48,7 @@ async-trait = "0"
 axum = { version = "0", default-features = false }
 backon = "1"
 # NOTE: We need to maintain base64 version 0.22.1
-base64 = "0.22.1"
+base64 = "0.23.1"
 bincode = { version = "2", features = ["serde"] }
 bitvec = "1"
 borsh = "1"

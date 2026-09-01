@@ -55,7 +55,7 @@ jobs:
         uses: actions/github-script@v7
         env:
           CHECK_NAME: shard-e2e
-          # 3 pinned shards + 2 round-robin shards; must match the required
+          # 1 pinned shard + 2 round-robin shards; must match the required
           # status check contexts in the main ruleset.
           CHECK_SHARDS: "3"
         with:
@@ -192,9 +192,9 @@ jobs:
           echo "Discovered $count tests"
           echo "$tests"
 
-          # Pinned heavy tests: each gets its own shard slot to keep the
-          # biggest rocks off the same runner. Update this list if a new test
-          # exceeds ~5min, or if a pinned test is renamed/removed upstream
+          # Pinned heavy test: it gets its own shard slot to keep the biggest
+          # rock off a shared runner. Add to this list if a new test exceeds
+          # ~5min, or update it if a pinned test is renamed/removed upstream
           # (the validation below will fail fast in that case).
           # ~9min, over half of it a single 40-day ledger warp (three validator
           # restart hops). On a round-robin shard it only passed when Go's

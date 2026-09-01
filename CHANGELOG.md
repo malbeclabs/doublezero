@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 - SDK
   - The TypeScript and Python `GlobalState` deserializers expose `ip_verifier_authority_pk`, the RFC-27 trust root the Go SDK and the Rust state already carried, so those consumers can read which key signs IP ownership proofs. The field is appended, so an account written before the upgrade decodes it as the default pubkey rather than failing. (#4231)
 - CI
+  - The e2e matrix runs 5 round-robin shards instead of 4. Shards are filled by test count, not by duration, so the heaviest one was carrying ~3735s of tests against a 15-minute job timeout and was cancelled mid-run; the extra shard brings the worst case back to ~3050s. Adding `e2e (shard 6)` to the required status checks in the main ruleset is a separate, manual step.
   - `.cursor/BUGBOT.md` and `.github/copilot-instructions.md` now tell Bugbot and Copilot to read the nearest sibling, flag a path that skips a zero or a duplicate, and assert a specific error and the exact log line at the expected index. Onchain checks apply only when the repository has onchain code. The eight path-scoped files under `.github/instructions/` are removed so Copilot reads only the repo-wide file. (#4247)
 - E2E/QA
   - Remove `TestQA_MulticastSettlement`. It funded a seat through `doublezero-solana shreds pay`, which is going away. The agent seat-pay RPC now returns Unimplemented if something still calls it. Unused settlement helpers go with the test. (#4248)

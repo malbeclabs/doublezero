@@ -1,5 +1,4 @@
 pub mod list;
-pub mod pay;
 pub mod payments;
 pub mod price;
 pub mod publisher_rewards;
@@ -55,8 +54,6 @@ impl ShredsCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum ShredsSubcommand {
-    /// Initialize a client seat (if needed) and fund a payment escrow with USDC.
-    Pay(pay::PayCommand),
     /// Close a payment escrow and withdraw any remaining USDC.
     Withdraw(withdraw::WithdrawCommand),
     /// List client seats.
@@ -79,7 +76,6 @@ impl ShredsSubcommand {
         out: &mut impl Write,
     ) -> Result<()> {
         match self {
-            Self::Pay(command) => command.execute(dz_ledger_url, ctx, out).await,
             Self::Withdraw(command) => command.execute(dz_ledger_url, ctx, out).await,
             Self::List(command) => command.execute(dz_ledger_url, ctx, out).await,
             Self::Payments(command) => command.execute(dz_ledger_url, ctx, out).await,
@@ -134,22 +130,6 @@ pub(in crate::command::shreds) fn make_dz_connection(
     match dz_ledger_url {
         Some(url) => DoubleZeroLedgerConnection::new(url.clone()),
         None => DoubleZeroLedgerConnection::from(network_env),
-    }
-}
-
-/// Known shred oracle pubkey per environment. Returns `None` on localnet
-/// (the multicast-user guard is already skipped there because
-/// `serviceability_program_id` returns `Err`).
-pub(in crate::command::shreds) fn shred_oracle_key(env: NetworkEnvironment) -> Option<Pubkey> {
-    match env {
-        NetworkEnvironment::MainnetBeta => Some(solana_sdk::pubkey!(
-            "3b2Ze7VYUvhwQBfx5oCMCmsc2xvyZ74s2Lata5vmQeeN"
-        )),
-        NetworkEnvironment::Testnet => Some(solana_sdk::pubkey!(
-            "BUtAWK4GaUV42YRp7jSHZhchspsshabn67HnBHnKxzsY"
-        )),
-        NetworkEnvironment::Devnet => None,
-        NetworkEnvironment::Localnet => None,
     }
 }
 

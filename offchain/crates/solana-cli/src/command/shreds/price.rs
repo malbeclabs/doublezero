@@ -71,11 +71,11 @@ struct PriceRow {
     premium: i32,
     #[tabled(rename = "Epoch Price (USDC)")]
     epoch_price: i32,
-    // What `shreds pay` charges right now: the price at the execution
-    // controller's `last_settled_epoch`, which the instant seat allocation is
-    // priced from. Diverges from `epoch_price` for one epoch after a
-    // reprice. `None` when the device or metro ring has no entry for that
-    // epoch, in which case an instant allocation would fail onchain.
+    // Price at the execution controller's `last_settled_epoch`, which an
+    // instant seat allocation is priced from. Diverges from `epoch_price` for
+    // one epoch after a reprice. `None` when the device or metro ring has no
+    // entry for that epoch, in which case an instant allocation would fail
+    // onchain.
     #[tabled(rename = "Instant Price (USDC)")]
     #[tabled(display("display_instant_allocation_price"))]
     instant_allocation_price: Option<u16>,
@@ -353,7 +353,7 @@ impl PriceCommand {
             match last_settled_epoch {
                 Some(epoch) => writeln!(
                     out,
-                    "Instant Price is what `shreds pay` charges now, for the remainder of epoch \
+                    "Instant Price is the remainder-of-epoch price for epoch \
                      {epoch}. Epoch Price applies from the next settlement.\n"
                 )?,
                 None => writeln!(

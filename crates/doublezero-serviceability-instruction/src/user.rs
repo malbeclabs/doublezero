@@ -309,7 +309,8 @@ pub fn update_user(
     )
 }
 
-/// `DeleteUser` (variant 42).
+/// Deprecated: `DeleteUser` (variant 42) now returns `DoubleZeroError::Deprecated`. Use one of
+/// the `Delete<Kind>User` builders instead. See malbeclabs/infra#2470.
 ///
 /// Account layout, before the trailing accounts:
 ///
@@ -339,7 +340,7 @@ pub fn delete_user(
     dz_prefix_count: u8,
     tenant: Option<Pubkey>,
     owner: &Pubkey,
-    mut args: UserDeleteArgs,
+    _args: UserDeleteArgs,
 ) -> Instruction {
     // The processor rejects `dz_prefix_count == 0` as its first statement
     // (delete.rs) — DeleteUser requires on-chain deallocation — so a zero here can
@@ -348,13 +349,6 @@ pub fn delete_user(
         dz_prefix_count > 0,
         "dz_prefix_count must be > 0; DeleteUser requires on-chain deallocation"
     );
-    args.dz_prefix_count = dz_prefix_count;
-    // This builder always emits the `multicast_publisher_block` account, so the
-    // declared count MUST be > 0 or the processor (which reads that account only
-    // when `multicast_publisher_count > 0`) would skip it and misread every
-    // following account. Written back here for the same reason as
-    // `dz_prefix_count`: keep the declared count and the account list in lockstep.
-    args.multicast_publisher_count = 1;
 
     let (globalstate, _) = get_globalstate_pda(program_id);
     let (user_tunnel_block, _, _) =
@@ -387,7 +381,7 @@ pub fn delete_user(
 
     common::build_with_permission(
         program_id,
-        DoubleZeroInstruction::DeleteUser(args),
+        DoubleZeroInstruction::DeleteUser(),
         accounts,
         payer,
     )
@@ -1096,14 +1090,9 @@ mod tests {
             UserDeleteArgs::default(),
         );
         assert_eq!(ix.data[0], 42);
-        // The builder always emits the mpb account, so it MUST pin
-        // multicast_publisher_count > 0 to keep the declared count and the
-        // account list in lockstep (else the processor skips the mpb slot and
-        // misreads every following account).
-        match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
-            DoubleZeroInstruction::DeleteUser(a) => assert_eq!(a.multicast_publisher_count, 1),
-            other => panic!("unexpected variant: {other:?}"),
-        }
+        // Deprecated: DeleteUser is payload-free (variant 42 always errors with
+        // Deprecated), so the wire data carries only the discriminant byte.
+        assert_eq!(ix.data.len(), 1);
         let (globalstate, _) = get_globalstate_pda(&pid);
         let (utb, _, _) = get_resource_extension_pda(&pid, ResourceType::UserTunnelBlock);
         let (mpb, _, _) = get_resource_extension_pda(&pid, ResourceType::MulticastPublisherBlock);

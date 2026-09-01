@@ -358,7 +358,7 @@ async fn test_delete_user_is_dynamic_pass() {
         &mut env.banks_client,
         recent_blockhash,
         env.program_id,
-        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+        DoubleZeroInstruction::DeletePrepaidUser(UserDeleteArgs {
             dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),
@@ -445,7 +445,7 @@ async fn test_delete_user_allow_multiple_ip_resets_client_ip() {
         &mut env.banks_client,
         recent_blockhash,
         env.program_id,
-        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+        DoubleZeroInstruction::DeletePrepaidUser(UserDeleteArgs {
             dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),
@@ -516,7 +516,7 @@ async fn test_delete_user_specific_ip_pass() {
         &mut env.banks_client,
         recent_blockhash,
         env.program_id,
-        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+        DoubleZeroInstruction::DeletePrepaidUser(UserDeleteArgs {
             dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),
@@ -601,7 +601,7 @@ async fn test_delete_multicast_user_dynamic_pass() {
         &mut env.banks_client,
         recent_blockhash,
         env.program_id,
-        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+        DoubleZeroInstruction::DeletePrepaidUser(UserDeleteArgs {
             dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),

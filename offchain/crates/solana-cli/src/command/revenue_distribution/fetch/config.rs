@@ -1,0 +1,374 @@
+use std::io::Write;
+
+use anyhow::Result;
+use clap::Args;
+use doublezero_cli_core::CliContext;
+use doublezero_solana_client_tools::rpc::SolanaConnectionOptions;
+use doublezero_solana_sdk::{
+    environment_2z_token_mint_key,
+    revenue_distribution::{
+        fetch::try_fetch_config,
+        state::{CommunityBurnRateMode, Journal},
+    },
+};
+use spl_associated_token_account_interface::address::get_associated_token_address;
+
+#[derive(Debug, Args)]
+pub struct ConfigCommand {
+    #[command(flatten)]
+    connection_options: SolanaConnectionOptions,
+}
+
+#[derive(Debug, tabled::Tabled)]
+struct ConfigTableRow {
+    field: &'static str,
+    value: String,
+    note: String,
+}
+
+impl ConfigCommand {
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
+        let Self { connection_options } = self;
+        let connection = crate::command::solana_connection(ctx, &connection_options);
+        let (config_key, config) = try_fetch_config(&connection).await?;
+
+        if config.is_paused() {
+            writeln!(out, "⚠️  Warning: Program is paused")?;
+            writeln!(out)?;
+        }
+
+        let network_env =
+            crate::command::resolve_network_env(&connection, connection_options.moniker_env())
+                .await?;
+        let dz_mint_key = environment_2z_token_mint_key(network_env);
+
+        let (journal_key, _) = Journal::find_address();
+        let journal_ata = get_associated_token_address(&journal_key, &dz_mint_key);
+
+        let distribution_parameters = &config.distribution_parameters;
+        let community_burn_rate_params = &distribution_parameters.community_burn_rate_parameters;
+        let community_burn_rate_mode = community_burn_rate_params.mode();
+        let validator_fee_params = &distribution_parameters.solana_validator_fee_parameters;
+
+        let mut value_rows = vec![
+            ConfigTableRow {
+                field: "PDA key",
+                value: config_key.to_string(),
+                note: Default::default(),
+            },
+            ConfigTableRow {
+                field: "2Z Token key",
+                value: dz_mint_key.to_string(),
+                note: Default::default(),
+            },
+            ConfigTableRow {
+                field: "Journal key",
+                value: journal_key.to_string(),
+                note: Default::default(),
+            },
+            ConfigTableRow {
+                field: "Direct 2Z Payment key",
+                value: journal_ata.to_string(),
+                note: "Journal's ATA".to_string(),
+            },
+            ConfigTableRow {
+                field: "Administrator",
+                value: config.admin_key.to_string(),
+                note: Default::default(),
+            },
+            ConfigTableRow {
+                field: "Debt accountant",
+                value: config.debt_accountant_key.to_string(),
+                note: Default::default(),
+            },
+            ConfigTableRow {
+                field: "Rewards accountant",
+                value: config.rewards_accountant_key.to_string(),
+                note: Default::default(),
+            },
+            ConfigTableRow {
+                field: "Contributor manager",
+                value: config.contributor_manager_key.to_string(),
+                note: Default::default(),
+            },
+            ConfigTableRow {
+                field: "SOL Conversion program",
+                value: config.sol_2z_swap_program_id.to_string(),
+                note: Default::default(),
+            },
+            ConfigTableRow {
+                field: "Next distribution",
+                value: config.next_completed_dz_epoch.value().to_string(),
+                note: "Current DoubleZero Ledger epoch".to_string(),
+            },
+            ConfigTableRow {
+                field: "Calculation grace period",
+                value: format!(
+                    "{:?}",
+                    std::time::Duration::from_secs(
+                        u64::from(
+                            config
+                                .distribution_parameters
+                                .calculation_grace_period_minutes,
+                        ) * 60,
+                    )
+                ),
+                note: Default::default(),
+            },
+            ConfigTableRow {
+                field: "Duration to finalize rewards",
+                value: format!(
+                    "{} epochs",
+                    config
+                        .distribution_parameters
+                        .minimum_epoch_duration_to_finalize_rewards
+                ),
+                note: "Minimum number required for distribution".to_string(),
+            },
+            ConfigTableRow {
+                field: "Next community burn rate",
+                value: format!(
+                    "({}) {:.7}%",
+                    community_burn_rate_params.mode().to_string().to_lowercase(),
+                    u32::from(community_burn_rate_params.next_burn_rate().unwrap()) as f64
+                        / 10_000_000.0,
+                ),
+                note: "Burn rate for the next distribution".to_string(),
+            },
+            ConfigTableRow {
+                field: "Community burn rate limit",
+                value: format!(
+                    "{:.7}%",
+                    u32::from(community_burn_rate_params.limit) as f64 / 10_000_000.0
+                ),
+                note: "Absolute maximum burn rate".to_string(),
+            },
+        ];
+
+        match community_burn_rate_mode {
+            CommunityBurnRateMode::Static => {
+                value_rows.push(ConfigTableRow {
+                    field: "Community burn rate increases after",
+                    value: format!(
+                        "{} epoch{}",
+                        community_burn_rate_params.dz_epochs_to_increasing,
+                        if community_burn_rate_params.dz_epochs_to_increasing == 1 {
+                            ""
+                        } else {
+                            "s"
+                        },
+                    ),
+                    note: "How long until the rate increases".to_string(),
+                });
+                value_rows.push(ConfigTableRow {
+                    field: "Community burn rate limit reached after",
+                    value: format!(
+                        "{} epoch{}",
+                        community_burn_rate_params.dz_epochs_to_limit,
+                        if community_burn_rate_params.dz_epochs_to_limit == 1 {
+                            ""
+                        } else {
+                            "s"
+                        }
+                    ),
+                    note: "How long until the limit is reached".to_string(),
+                });
+            }
+            CommunityBurnRateMode::Increasing => {
+                value_rows.push(ConfigTableRow {
+                    field: "Community burn rate limit reached after",
+                    value: format!(
+                        "{} epoch{}",
+                        community_burn_rate_params.dz_epochs_to_limit,
+                        if community_burn_rate_params.dz_epochs_to_limit == 1 {
+                            ""
+                        } else {
+                            "s"
+                        }
+                    ),
+                    note: "How long until the limit is reached".to_string(),
+                });
+            }
+            CommunityBurnRateMode::Limit => {}
+        }
+
+        let validator_fee_rows = vec![
+            ConfigTableRow {
+                field: "Solana validator base block rewards fee",
+                value: format!(
+                    "{:.2}%",
+                    u16::from(validator_fee_params.base_block_rewards_pct) as f64 / 100.0
+                ),
+                note: "Proportion of base block rewards charged".to_string(),
+            },
+            ConfigTableRow {
+                field: "Solana validator priority block rewards fee",
+                value: format!(
+                    "{:.2}%",
+                    u16::from(validator_fee_params.priority_block_rewards_pct) as f64 / 100.0
+                ),
+                note: "Proportion of priority block rewards charged".to_string(),
+            },
+            ConfigTableRow {
+                field: "Solana validator inflation rewards fee",
+                value: format!(
+                    "{:.2}%",
+                    u16::from(validator_fee_params.inflation_rewards_pct) as f64 / 100.0
+                ),
+                note: "Proportion of inflation rewards charged".to_string(),
+            },
+            ConfigTableRow {
+                field: "Solana validator Jito tips fee",
+                value: format!(
+                    "{:.2}%",
+                    u16::from(validator_fee_params.jito_tips_pct) as f64 / 100.0
+                ),
+                note: "Proportion of Jito tips charged".to_string(),
+            },
+            ConfigTableRow {
+                field: "Solana validator fixed SOL fee",
+                value: format!(
+                    "{:.9} SOL",
+                    validator_fee_params.fixed_sol_amount as f64 * 1e-9
+                ),
+                note: "Fixed SOL amount charged".to_string(),
+            },
+        ];
+        value_rows.extend(validator_fee_rows);
+
+        let (write_off_value, write_off_note) = format_write_off_activation_epoch(
+            config.debt_write_off_feature_activation_epoch.value(),
+            config.is_debt_write_off_feature_activated(),
+        );
+        value_rows.push(ConfigTableRow {
+            field: "Solana validator debt write-off activation",
+            value: write_off_value,
+            note: write_off_note,
+        });
+
+        super::write_table(
+            out,
+            value_rows,
+            super::TableOptions {
+                columns_aligned_right: Some(&[1]),
+            },
+        )?;
+
+        Ok(())
+    }
+}
+
+fn format_write_off_activation_epoch(
+    activation_epoch: u64,
+    is_activated: bool,
+) -> (String, String) {
+    if activation_epoch == 0 {
+        ("disabled".to_string(), String::new())
+    } else if is_activated {
+        (format!("epoch {activation_epoch}"), "Active".to_string())
+    } else {
+        (format!("epoch {activation_epoch}"), "Pending".to_string())
+    }
+}
+
+#[derive(Debug, Args)]
+pub struct ValidatorFeesCommand {
+    #[command(flatten)]
+    connection_options: SolanaConnectionOptions,
+}
+
+impl ValidatorFeesCommand {
+    pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
+        let Self { connection_options } = self;
+        let connection = crate::command::solana_connection(ctx, &connection_options);
+        let (_, config) = try_fetch_config(&connection).await?;
+
+        let mut value_rows = Vec::new();
+
+        if let Some(fee_params) = config.checked_solana_validator_fee_parameters() {
+            if fee_params.base_block_rewards_pct != Default::default() {
+                value_rows.push(ConfigTableRow {
+                    field: "Base block rewards fee",
+                    value: format!(
+                        "{:.2}%",
+                        u16::from(fee_params.base_block_rewards_pct) as f64 / 100.0
+                    ),
+                    note: "Amount charged to Solana validators for base block rewards".to_string(),
+                });
+            }
+            if fee_params.priority_block_rewards_pct != Default::default() {
+                value_rows.push(ConfigTableRow {
+                    field: "Priority block rewards fee",
+                    value: format!(
+                        "{:.2}%",
+                        u16::from(fee_params.priority_block_rewards_pct) as f64 / 100.0
+                    ),
+                    note: "Amount charged to Solana validators for priority block rewards"
+                        .to_string(),
+                });
+            }
+            if fee_params.inflation_rewards_pct != Default::default() {
+                value_rows.push(ConfigTableRow {
+                    field: "Inflation rewards fee",
+                    value: format!(
+                        "{:.2}%",
+                        u16::from(fee_params.inflation_rewards_pct) as f64 / 100.0
+                    ),
+                    note: "Amount charged to Solana validators for inflation rewards".to_string(),
+                });
+            }
+            if fee_params.jito_tips_pct != Default::default() {
+                value_rows.push(ConfigTableRow {
+                    field: "Jito tips fee",
+                    value: format!("{:.2}%", u16::from(fee_params.jito_tips_pct) as f64 / 100.0),
+                    note: "Amount charged to Solana validators for Jito tips".to_string(),
+                });
+            }
+            if fee_params.fixed_sol_amount != 0 {
+                value_rows.push(ConfigTableRow {
+                    field: "Fixed SOL fee",
+                    value: format!("{:.9} SOL", fee_params.fixed_sol_amount as f64 * 1e-9),
+                    note: "Fixed SOL amount charged to Solana validators".to_string(),
+                });
+            }
+        }
+
+        if value_rows.is_empty() {
+            writeln!(
+                out,
+                "... Solana validator fee parameters not configured yet"
+            )?;
+            return Ok(());
+        }
+
+        super::write_table(out, value_rows, Default::default())?;
+
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_write_off_activation_epoch_disabled() {
+        let (value, note) = format_write_off_activation_epoch(0, false);
+        assert_eq!(value, "disabled");
+        assert_eq!(note, "");
+    }
+
+    #[test]
+    fn test_format_write_off_activation_epoch_pending() {
+        let (value, note) = format_write_off_activation_epoch(42, false);
+        assert_eq!(value, "epoch 42");
+        assert_eq!(note, "Pending");
+    }
+
+    #[test]
+    fn test_format_write_off_activation_epoch_active() {
+        let (value, note) = format_write_off_activation_epoch(42, true);
+        assert_eq!(value, "epoch 42");
+        assert_eq!(note, "Active");
+    }
+}

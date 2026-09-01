@@ -1,0 +1,62 @@
+
+/target
+programs/mock-shred-history-program/target
+
+# IDE
+.vscode
+
+# Secrets
+.env
+.envrc
+.private
+config.toml
+mainnet-beta.toml
+testnet.toml
+devnet.toml
+
+# Local configuration
+config/local.toml
+config/*.local.toml
+config/*.secret.toml
+
+# DB
+*.db
+*.wal
+
+# Cache directories
+cache/
+.cache/
+
+# Temporary files
+*.tmp
+*.bak
+*.txt
+*.log
+*.out
+dist/
+
+# Local test data
+forked-accounts/
+test-data/
+test-ledger/
+*.parquet
+*.json.gz
+*.info
+*.py
+*.xml
+*.diff
+*.csv
+*.geojson
+*.jsonl
+*.duckdb
+*.sql
+*.gz
+.DS_Store
+*.state
+.tool-versions
+crates/contributor-rewards/dry-run-output/
+crates/contributor-rewards/mainnet-beta.config.toml
+!crates/contributor-rewards/tests/goldens/make-fixture.py
+crates/solana-client-tools/target/
+docs/plans
+docs/superpowers

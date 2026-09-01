@@ -1,0 +1,341 @@
+use std::{collections::HashMap, fs, path::Path};
+
+use anyhow::Result;
+use doublezero_contributor_rewards::{
+    calculator::shapley::handler::{PreviousEpochCache, build_public_links},
+    ingestor::types::{FetchData, apply_json_compat_migrations},
+    processor::internet::InternetTelemetryProcessor,
+    settings,
+};
+use serde_json::Value;
+
+fn load_test_data() -> Result<FetchData> {
+    let data_path = Path::new("tests/testnet_snapshot.json");
+    let json = fs::read_to_string(data_path)?;
+    let mut data: Value = serde_json::from_str(&json)?;
+    apply_json_compat_migrations(&mut data);
+
+    // Parse the JSON into FetchData manually
+    let fetch_data: FetchData = serde_json::from_value(data)?;
+    Ok(fetch_data)
+}
+
+fn test_settings() -> settings::Settings {
+    // Create test settings with testnet network (since data is from testnet)
+    settings::Settings {
+        log_level: "info".to_string(),
+        network: settings::network::Network::Testnet,
+        shapley: settings::ShapleySettings {
+            operator_uptime: 0.98,
+            contiguity_bonus: 5.0,
+            demand_multiplier: 1.2,
+        },
+        demand: settings::DemandSettings::default(),
+        input: settings::InputSettings::default(),
+        rpc: settings::RpcSettings {
+            dz_url: "https://test.com".to_string(),
+            solana_read_url: "https://test.com".to_string(),
+            solana_write_url: "https://test.com".to_string(),
+            commitment: "confirmed".to_string(),
+            rps_limit: 10,
+        },
+        programs: settings::ProgramSettings {
+            serviceability_program_id: "test".to_string(),
+            telemetry_program_id: "test".to_string(),
+        },
+        prefixes: settings::PrefixSettings {
+            device_telemetry: "device".to_string(),
+            internet_telemetry: "internet".to_string(),
+            contributor_rewards: "rewards".to_string(),
+            reward_input: "input".to_string(),
+        },
+        inet_lookback: settings::InetLookbackSettings {
+            min_coverage_threshold: 0.8,
+            max_epochs_lookback: 5,
+            min_samples_per_link: 20,
+            enable_accumulator: true,
+            dedup_window_us: 10000000,
+        },
+        telemetry_defaults: settings::TelemetryDefaultSettings {
+            missing_data_threshold: 0.7,
+            private_default_latency_ms: 1000.0,
+            enable_previous_epoch_lookup: true,
+        },
+        scheduler: settings::SchedulerSettings {
+            interval_seconds: 300,
+            state_file: "/var/lib/doublezero-contributor-rewards/scheduler.state".to_string(),
+            snapshot_dir: "/tmp/snapshots".to_string(),
+            enable_dry_run: false,
+            storage_backend: settings::aws::StorageBackend::LocalFile,
+            grace_period_max_wait_seconds: 21600,
+        },
+        metrics: Some(settings::MetricsSettings {
+            addr: "127.0.0.1:9090".parse().unwrap(),
+        }),
+        aws: Some(settings::aws::AwsSettings {
+            region: "us-east-1".to_string(),
+            bucket: "dummy-bucket".to_string(),
+            access_key_id: "dummy-key".to_string(),
+            secret_access_key: "dummy-secret".to_string(),
+            endpoint: None,
+        }),
+        slack: None,
+    }
+}
+
+fn create_expected_results() -> HashMap<(String, String), f64> {
+    let mut expected = HashMap::new();
+
+    // These are the exact values from the public links output (updated after snapshot rebuild)
+    expected.insert(("ams".to_string(), "fra".to_string()), 7.320);
+    expected.insert(("ams".to_string(), "lax".to_string()), 148.240);
+    expected.insert(("ams".to_string(), "lon".to_string()), 12.622);
+    expected.insert(("ams".to_string(), "nyc".to_string()), 80.040);
+    expected.insert(("ams".to_string(), "prg".to_string()), 16.645);
+    expected.insert(("ams".to_string(), "sin".to_string()), 211.876);
+    expected.insert(("ams".to_string(), "tyo".to_string()), 286.482);
+
+    expected.insert(("fra".to_string(), "lax".to_string()), 142.718);
+    expected.insert(("fra".to_string(), "lon".to_string()), 12.018);
+    expected.insert(("fra".to_string(), "nyc".to_string()), 87.938);
+    expected.insert(("fra".to_string(), "prg".to_string()), 10.914);
+    expected.insert(("fra".to_string(), "sin".to_string()), 170.642);
+    expected.insert(("fra".to_string(), "tyo".to_string()), 243.183);
+
+    expected.insert(("lax".to_string(), "lon".to_string()), 147.642);
+    expected.insert(("lax".to_string(), "nyc".to_string()), 64.951);
+    expected.insert(("lax".to_string(), "prg".to_string()), 154.809);
+    expected.insert(("lax".to_string(), "sin".to_string()), 184.499);
+    expected.insert(("lax".to_string(), "tyo".to_string()), 101.735);
+
+    expected.insert(("lon".to_string(), "nyc".to_string()), 84.530);
+    expected.insert(("lon".to_string(), "prg".to_string()), 21.166);
+    expected.insert(("lon".to_string(), "sin".to_string()), 235.639);
+    expected.insert(("lon".to_string(), "tyo".to_string()), 284.035);
+
+    expected.insert(("nyc".to_string(), "prg".to_string()), 95.203);
+    expected.insert(("nyc".to_string(), "sin".to_string()), 386.875);
+    expected.insert(("nyc".to_string(), "tyo".to_string()), 166.375);
+
+    expected.insert(("prg".to_string(), "sin".to_string()), 208.615);
+    expected.insert(("prg".to_string(), "tyo".to_string()), 262.659);
+
+    expected.insert(("sin".to_string(), "tyo".to_string()), 73.031);
+
+    expected
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_public_links_generation() -> Result<()> {
+        // Load test data from JSON file
+        let fetch_data = load_test_data()?;
+
+        // Test settings
+        let settings = test_settings();
+
+        println!(
+            "Loaded snapshot with {} exchanges, {} locations, {} devices",
+            fetch_data.dz_serviceability.exchanges.len(),
+            fetch_data.dz_serviceability.locations.len(),
+            fetch_data.dz_serviceability.devices.len()
+        );
+        println!(
+            "Internet telemetry samples: {}",
+            fetch_data.dz_internet.internet_latency_samples.len()
+        );
+
+        // Process internet telemetry to get stats
+        let internet_stats = InternetTelemetryProcessor::process(&fetch_data)?;
+        println!(
+            "Processed {} internet telemetry stats",
+            internet_stats.len()
+        );
+
+        // Create an empty cache for tests
+        let previous_epoch_cache = PreviousEpochCache::new();
+
+        // Generate public links
+        let public_links = build_public_links(
+            &settings,
+            &internet_stats,
+            &fetch_data,
+            &previous_epoch_cache,
+        )?;
+
+        // Print results for verification
+        println!("\nPublic Links Generated:");
+        println!("{:<5} | {:<5} | {:>15}", "city1", "city2", "latency(ms)");
+        println!("{:-<35}", "");
+        for link in &public_links {
+            println!(
+                "{:<5} | {:<5} | {:>15.3}",
+                link.city1, link.city2, link.latency
+            );
+        }
+
+        // Verify we have the expected number of city pairs
+        // With 8 cities, we expect C(8,2) = 28 city pairs
+        let expected_count = 28;
+        println!(
+            "\nExpected {} city pairs, got {}",
+            expected_count,
+            public_links.len()
+        );
+
+        // Allow for some missing pairs due to data availability
+        assert!(
+            public_links.len() >= expected_count / 2,
+            "Expected at least {} city pairs, got {}",
+            expected_count / 2,
+            public_links.len()
+        );
+
+        // Get expected results
+        let expected = create_expected_results();
+
+        // Create a map from public_links for easier comparison
+        let mut result_map: HashMap<(String, String), f64> = HashMap::new();
+        for link in &public_links {
+            result_map.insert((link.city1.clone(), link.city2.clone()), link.latency);
+        }
+
+        // Verify that we have reasonable latency values
+        for link in &public_links {
+            // Allow 0.0 for links with no data or same location
+            assert!(
+                link.latency >= 0.0 && link.latency < 1000.0,
+                "Unreasonable latency value for {} -> {}: {}",
+                link.city1,
+                link.city2,
+                link.latency
+            );
+        }
+
+        // Verify the exact values match expected results with small tolerance
+        for ((city1, city2), expected_latency) in expected.iter() {
+            if let Some(actual_latency) = result_map.get(&(city1.clone(), city2.clone())) {
+                // Allow very small difference due to floating point precision
+                let diff = (actual_latency - expected_latency).abs();
+                println!(
+                    "Checking {city1}->{city2}: expected {expected_latency:.3}, got {actual_latency:.3}, diff {diff:.6}",
+                );
+
+                // We should get exact or very close values since we're using the same test data
+                // Allow slightly more tolerance due to updated statistics calculations (population vs sample variance)
+                // The new calculations are more accurate (using Welford's algorithm, proper percentiles, etc)
+                assert!(
+                    diff < 1.0,
+                    "Latency mismatch for {city1} -> {city2}: got {actual_latency}, expected {expected_latency}"
+                );
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_public_latency_multiplier() -> Result<()> {
+        let fetch_data = load_test_data()?;
+        let internet_stats = InternetTelemetryProcessor::process(&fetch_data)?;
+        let previous_epoch_cache = PreviousEpochCache::new();
+
+        let settings = test_settings();
+        let public_links = build_public_links(
+            &settings,
+            &internet_stats,
+            &fetch_data,
+            &previous_epoch_cache,
+        )?;
+
+        let mut adjusted_settings = test_settings();
+        adjusted_settings.input.public_latency_multiplier = 1.25;
+        let adjusted_public_links = build_public_links(
+            &adjusted_settings,
+            &internet_stats,
+            &fetch_data,
+            &previous_epoch_cache,
+        )?;
+
+        assert_eq!(public_links.len(), adjusted_public_links.len());
+        for (base_link, adjusted_link) in public_links.iter().zip(adjusted_public_links.iter()) {
+            assert_eq!(base_link.city1, adjusted_link.city1);
+            assert_eq!(base_link.city2, adjusted_link.city2);
+            let expected_latency = base_link.latency * 1.25;
+            let diff = (adjusted_link.latency - expected_latency).abs();
+            assert!(
+                diff < f64::EPSILON,
+                "Latency mismatch for {} -> {}: got {}, expected {}",
+                adjusted_link.city1,
+                adjusted_link.city2,
+                adjusted_link.latency,
+                expected_latency
+            );
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_snapshot_data_integrity() -> Result<()> {
+        let fetch_data = load_test_data()?;
+
+        // Verify we have the expected cities
+        let expected_cities = vec!["ams", "fra", "lax", "lon", "nyc", "prg", "sin", "tyo"];
+
+        let location_codes: Vec<String> = fetch_data
+            .dz_serviceability
+            .locations
+            .values()
+            .map(|loc| loc.code.clone())
+            .collect();
+
+        for city in expected_cities {
+            assert!(
+                location_codes.contains(&city.to_string()),
+                "Missing expected city: {city}",
+            );
+        }
+
+        // Verify exchanges have 'x' prefix
+        for exchange in fetch_data.dz_serviceability.exchanges.values() {
+            assert!(
+                exchange.code.starts_with('x'),
+                "Exchange code should start with 'x': {}",
+                exchange.code
+            );
+        }
+
+        // Verify we have internet telemetry samples
+        assert!(
+            !fetch_data.dz_internet.internet_latency_samples.is_empty(),
+            "No internet telemetry samples found"
+        );
+
+        // Verify telemetry samples use exchange PKs that exist
+        for sample in &fetch_data.dz_internet.internet_latency_samples {
+            let origin_exists = fetch_data
+                .dz_serviceability
+                .exchanges
+                .contains_key(&sample.origin_exchange_pk);
+            let target_exists = fetch_data
+                .dz_serviceability
+                .exchanges
+                .contains_key(&sample.target_exchange_pk);
+
+            // Some samples might still use old location PKs, that's OK
+            if origin_exists && target_exists {
+                println!(
+                    "Valid sample: {} -> {}",
+                    fetch_data.dz_serviceability.exchanges[&sample.origin_exchange_pk].code,
+                    fetch_data.dz_serviceability.exchanges[&sample.target_exchange_pk].code
+                );
+            }
+        }
+
+        Ok(())
+    }
+}

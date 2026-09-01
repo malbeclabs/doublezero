@@ -1,0 +1,34 @@
+[package]
+name = "doublezero-solana-fork-cli"
+version = "0.0.1"
+
+# Workspace inherited keys
+edition.workspace = true
+authors.workspace = true
+readme.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+base64.workspace = true
+borsh.workspace = true
+bytemuck.workspace = true
+clap.workspace = true
+doublezero-solana-client-tools.workspace = true
+doublezero-solana-sdk.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+solana-account-decoder-client-types.workspace = true
+solana-client.workspace = true
+solana-sdk.workspace = true
+spl-associated-token-account-interface.workspace = true
+spl-token-interface.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[[bin]]
+name = "doublezero-solana-fork"
+path = "src/main.rs"

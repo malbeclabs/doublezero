@@ -20,6 +20,10 @@ members = [
 ]
 default-members = []
 exclude = [
+    # Both trees keep their own workspace, lockfile and toolchain until step 4
+    # of the monorepo migration merges them in.
+    "offchain",
+    "solana",
     "sdk/revdist/testdata/fixtures/generate-fixtures",
     "sdk/serviceability/testdata/fixtures/generate-fixtures",
     "sdk/telemetry/testdata/fixtures/generate-fixtures",

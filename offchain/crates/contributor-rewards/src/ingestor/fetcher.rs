@@ -1,0 +1,119 @@
+use std::sync::Arc;
+
+use anyhow::Result;
+use chrono::Utc;
+use doublezero_solana_client_tools::rpc::DoubleZeroLedgerConnection;
+use doublezero_solana_sdk::shred_subscription::ID as SHRED_SUBSCRIPTION_PROGRAM_ID;
+use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_commitment_config::CommitmentConfig;
+use tracing::info;
+
+use crate::{
+    ingestor::{internet, serviceability, shred_subscription, telemetry, types::FetchData},
+    settings::Settings,
+};
+
+/// Combined network and telemetry data
+#[derive(Clone)]
+pub struct Fetcher {
+    pub dz_rpc_client: Arc<DoubleZeroLedgerConnection>,
+    pub solana_read_client: Arc<RpcClient>,
+    pub solana_write_client: Arc<RpcClient>,
+    pub settings: Settings,
+}
+
+impl Fetcher {
+    pub fn from_settings(settings: &Settings) -> Result<Self> {
+        let dz_rpc_client = DoubleZeroLedgerConnection::new_with_commitment(
+            settings.rpc.dz_url.to_string(),
+            CommitmentConfig::finalized(),
+        );
+        let solana_read_client = RpcClient::new_with_commitment(
+            settings.rpc.solana_read_url.to_string(),
+            CommitmentConfig::finalized(),
+        );
+        let solana_write_client = RpcClient::new_with_commitment(
+            settings.rpc.solana_write_url.to_string(),
+            CommitmentConfig::finalized(),
+        );
+        Ok(Self {
+            dz_rpc_client: Arc::new(dz_rpc_client),
+            solana_read_client: Arc::new(solana_read_client),
+            solana_write_client: Arc::new(solana_write_client),
+            settings: settings.clone(),
+        })
+    }
+
+    /// Fetch all data for the previous epoch
+    pub async fn fetch(&self, epoch: Option<u64>) -> Result<(u64, FetchData)> {
+        let search_epoch = match epoch {
+            None => {
+                // Get DZ epoch info from DZ RPC
+                let rpc_start = std::time::Instant::now();
+                let dz_epoch_info = self.dz_rpc_client.get_epoch_info().await?;
+
+                metrics::histogram!("doublezero_contributor_rewards_rpc_request_duration", "type" => "get_epoch_info")
+                    .record(rpc_start.elapsed().as_secs_f64());
+                metrics::counter!("doublezero_contributor_rewards_rpc_requests", "type" => "get_epoch_info")
+                    .increment(1);
+
+                info!("Current dz_epoch: {}", dz_epoch_info.epoch);
+                let dz_prev_epoch = dz_epoch_info.epoch.saturating_sub(1);
+                info!("Fetching data for previous DZ epoch: {}", dz_prev_epoch);
+                dz_prev_epoch
+            }
+            Some(e) => e,
+        };
+
+        self.with_epoch(search_epoch).await
+    }
+
+    /// Fetch all data for a specific epoch
+    async fn with_epoch(&self, epoch: u64) -> Result<(u64, FetchData)> {
+        info!(
+            "Using serviceability program: {}",
+            self.settings.programs.serviceability_program_id
+        );
+        info!(
+            "Using telemetry program: {}",
+            self.settings.programs.telemetry_program_id
+        );
+        info!(
+            "Using shred subscription program: {}",
+            *SHRED_SUBSCRIPTION_PROGRAM_ID
+        );
+
+        // Fetch all data in parallel
+        let fetch_start = std::time::Instant::now();
+        let (serviceability_data, telemetry_data, internet_data, metro_prices) = tokio::try_join!(
+            serviceability::fetch(&self.dz_rpc_client, &self.settings),
+            telemetry::fetch(&self.dz_rpc_client, &self.settings, epoch),
+            internet::fetch(&self.dz_rpc_client, &self.settings, epoch),
+            shred_subscription::fetch_metro_prices(&self.solana_read_client),
+        )?;
+
+        metrics::histogram!("doublezero_contributor_rewards_data_fetch_duration", "epoch" => epoch.to_string())
+            .record(fetch_start.elapsed().as_secs_f64());
+        metrics::counter!("doublezero_contributor_rewards_data_fetches", "epoch" => epoch.to_string())
+            .increment(1);
+
+        let (start_us, end_us) = telemetry_data.start_end_us()?;
+
+        info!(
+            "Epoch {} time range: {} to {} microseconds",
+            epoch, start_us, end_us
+        );
+
+        let data = FetchData {
+            dz_serviceability: serviceability_data,
+            dz_telemetry: telemetry_data,
+            dz_internet: internet_data,
+            metro_prices,
+            start_us,
+            end_us,
+            fetched_at: Utc::now(),
+        };
+
+        Ok((epoch, data))
+    }
+}

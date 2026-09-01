@@ -1,0 +1,19 @@
+[package]
+name = "doublezero-scheduled-command"
+description = "Schedule CLI commands"
+
+authors.workspace = true
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+readme.workspace = true
+repository.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+clap.workspace = true
+tokio.workspace = true
+tokio-cron-scheduler.workspace = true
+tracing.workspace = true

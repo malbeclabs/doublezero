@@ -1,0 +1,18 @@
+# NOTE: This is a placeholder unit.
+# It will NOT start the monitor with correct runtime flags.
+# Expected: Ansible will manage an override file at:
+#   /etc/systemd/system/doublezero-offchain-scheduler.service.d/override.conf
+# which will set the real ExecStart and options.
+
+[Unit]
+Description=DoubleZero Offchain Scheduler
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/doublezero-offchain-scheduler
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target

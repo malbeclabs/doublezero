@@ -1,0 +1,22 @@
+[package]
+name = "doublezero-revenue-distribution-admin-cli"
+version = "0.0.1"
+
+# Workspace inherited keys
+edition.workspace = true
+homepage.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+doublezero-solana-client-tools.workspace = true
+doublezero-solana-sdk.workspace = true
+solana-compute-budget-interface.workspace = true
+solana-sdk.workspace = true
+tokio.workspace = true
+
+[[bin]]
+name = "doublezero-revenue-distribution-admin"
+path = "src/main.rs"

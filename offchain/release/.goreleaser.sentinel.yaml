@@ -55,13 +55,13 @@ nfpms:
     release: 1
     section: default
     contents:
-      - src: release/packaging/systemd/doublezero-sentinel.service
+      - src: offchain/release/packaging/systemd/doublezero-sentinel.service
         dst: /lib/systemd/system/doublezero-sentinel.service
         type: config
     overrides:
       rpm:
         contents:
-          - src: release/packaging/systemd/doublezero-sentinel.service
+          - src: offchain/release/packaging/systemd/doublezero-sentinel.service
             dst: /usr/lib/systemd/system/doublezero-sentinel.service
             type: config
 
@@ -75,7 +75,7 @@ changelog:
 release:
   github:
     owner: malbeclabs
-    name: doublezero-offchain
+    name: doublezero
   draft: false
   replace_existing_artifacts: true
 

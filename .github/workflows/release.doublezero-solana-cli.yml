@@ -1,4 +1,4 @@
-name: releaser.doublezero-solana
+name: releaser.doublezero-solana-cli
 
 on:
   push:
@@ -20,21 +20,22 @@ jobs:
           cache-targets: |
             target
             target/x86_64-unknown-linux-musl/release
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.97.1
         with:
-          toolchain: 1.92.0
           targets: x86_64-unknown-linux-musl
       - name: Install dependencies for rpm packaging and musl static build
         run: |
           sudo apt update
           sudo apt install squashfs-tools rpm musl-tools cmake -y
+      # goreleaser runs from the repository root, not from offchain/: the merged
+      # workspace writes to the root target/ directory, which is where the rust
+      # builder looks for the binary it packages.
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser-pro
-          args: release -f release/.goreleaser.doublezero-solana-cli.yaml --clean
+          args: release -f offchain/release/.goreleaser.doublezero-solana-cli.yaml --clean
         env:
-          SERVICEABILITY_PROGRAM_ID: devnet
           SLACK_WEBHOOK: ${{ secrets.SLACK_BOTS_WEBHOOK }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}

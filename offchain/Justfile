@@ -1,46 +1,12 @@
-# Export required env
-export SERVICEABILITY_PROGRAM_ID := "devnet"
-
-# Fail on warnings
-export RUSTFLAGS := "-Dwarnings"
+# Elixir recipes for the offchain scheduler. The Rust recipes that used to live
+# here are gone: these crates are members of the root Cargo workspace now, so
+# `make rust-build`, `make rust-lint`, `make rust-test` and `make rust-fmt` at the
+# repository root cover them, and running cargo from here would act on the whole
+# workspace with a different fmt and clippy line than CI uses.
 
 # Default (list of commands)
 default:
     just -l
-
-# Run fmt
-fmt:
-    @rustup component add rustfmt
-    @cargo fmt --all -- --config imports_granularity=Crate,group_imports=StdExternalCrate
-
-# Check fmt
-fmt-check:
-	@rustup component add rustfmt
-	@cargo fmt --all -- --check --config imports_granularity=Crate,group_imports=StdExternalCrate || (echo "Formatting check failed. Please run 'just fmt' to fix formatting issues." && exit 1)
-
-# Build (release)
-build:
-    cargo build --release
-
-# Run clippy
-clippy:
-    cargo clippy --all-features --all-targets -- -Dclippy::all
-
-# Run tests
-test:
-    cargo nextest run
-
-# Clean
-clean:
-    cargo clean
-
-# Coverage
-cov:
-    cargo llvm-cov nextest --lcov --output-path lcov.info
-
-# Coverage check (fail if below threshold)
-cov-check:
-    cargo llvm-cov nextest --fail-under-lines 25
 
 # Check Elixir formatting
 elixir-fmt-check:
@@ -62,28 +28,17 @@ elixir-credo:
 elixir-test:
     cd scheduler && mix test
 
-# Run CI pipeline
-ci:
-    @just fmt-check
-    @just clippy
-    @just test
-    @just cov-check
+# Everything the elixir workflow runs
+elixir-ci:
+    @just elixir-fmt-check
+    @just elixir-compile
+    @just elixir-credo
+    @just elixir-test
 
-# Run unit tests only (fast, no external dependencies)
-test-unit:
-    cargo nextest run
-    cd scheduler && mix test --cover
+# Start a Solana mainnet-beta fork and drive the CLIs against it
+test-fork:
+    cd .. && bash offchain/sh/test_doublezero_solana_fork.sh
 
-# Run integration tests (requires local validator)
-test-integration:
-    cargo test --features integration -p doublezero-solana-validator-debt
-
-# Run end-to-end tests (starts fork, runs full lifecycle)
-test-e2e:
-    bash sh/test_full_debt_flow.sh
-
-# Run all tests (unit + integration + e2e)
-test-all:
-    @just test-unit
-    @just test-integration
-    @just test-e2e
+# Run the full debt flow against a running fork
+test-debt-flow:
+    cd .. && bash offchain/sh/test_full_debt_flow.sh

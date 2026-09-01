@@ -147,6 +147,7 @@ The local devnet runs in Docker containers with the naming convention `dz-local-
 - **Clients**: `dz-local-client-{pubkey}` - Client containers running doublezerod
 - **Manager**: `dz-local-manager` - Runs the doublezero CLI for admin operations
 - **Controller**: `dz-local-controller` - Pushes configs to devices
+- **IP verifier**: `dz-local-ip-verifier` - Signs RFC-27 IP ownership proofs for `connect` (see `e2e/docs/IP_VERIFIER_LOCAL_DEVNET.md`)
 
 ### Arista Device Interaction
 

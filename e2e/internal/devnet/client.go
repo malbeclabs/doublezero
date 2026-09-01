@@ -61,6 +61,10 @@ type ClientSpec struct {
 	// CYOANetworkIPHostID is the offset into the host portion of the subnet (must be < 2^(32 - prefixLen)).
 	CYOANetworkIPHostID uint32
 
+	// NoIPVerifier leaves DZ_IP_VERIFIER_URL unset for this client, so its `connect` obtains no
+	// RFC-27 proof even in a devnet running a verifier.
+	NoIPVerifier bool
+
 	// EnableQAAgent starts the QA agent inside the client container for local QA testing.
 	EnableQAAgent bool
 	// QAAgentPort is the port the QA agent listens on inside the container (default: 7009).
@@ -233,6 +237,25 @@ func (c *Client) Start(ctx context.Context) error {
 		"DZ_LEDGER_WS":                 c.dn.Ledger.InternalRPCWSURL,
 		"DZ_SERVICEABILITY_PROGRAM_ID": c.dn.Manager.ServiceabilityProgramID,
 		"DZ_CLIENT_EXTRA_ARGS":         strings.Join(extraArgs, " "),
+	}
+	// Point `connect` at the devnet verifier. The `--env local` config carries no verifier URL,
+	// so without this a client obtains no proof at all. The URL is the verifier's CYOA address,
+	// so the source address it observes is the same one the client binds its tunnel to —
+	// `connect` hard-fails on a proof for any other address.
+	//
+	// NoIPVerifier leaves it unset, which is how a test covers the no-proof path: the CLI reports
+	// nothing to reach and creates the user without a proof, which the program accepts while
+	// require-ip-ownership-proof is clear.
+	if c.dn.IPVerifier != nil && !c.Spec.NoIPVerifier {
+		// An empty URL here means Prepare never ran, which cannot happen through Devnet.Start —
+		// it prepares the verifier before any client is added. Refused rather than tolerated: a
+		// client silently dropped to the no-proof path would leave every test that connects
+		// still passing while no longer covering the proof, which is the property this whole
+		// change rests on.
+		if c.dn.IPVerifier.InternalURL == "" {
+			return fmt.Errorf("ip-verifier has no internal URL: Prepare has not run")
+		}
+		env["DZ_IP_VERIFIER_URL"] = c.dn.IPVerifier.InternalURL
 	}
 	if c.Spec.EnableQAAgent {
 		env["DZ_QAAGENT_ENABLE"] = "true"

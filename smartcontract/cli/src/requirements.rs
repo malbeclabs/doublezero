@@ -1,12 +1,6 @@
-use std::net::Ipv4Addr;
-
 use crate::doublezerocommand::CliCommand;
 use doublezero_sdk::{
-    commands::{
-        accesspass::get::GetAccessPassCommand,
-        allowlist::foundation::list::ListFoundationAllowlistCommand,
-    },
-    get_doublezero_pubkey,
+    commands::allowlist::foundation::list::ListFoundationAllowlistCommand, get_doublezero_pubkey,
 };
 use indicatif::ProgressBar;
 
@@ -79,32 +73,6 @@ pub fn check_balance(client: &dyn CliCommand, spinner: Option<&ProgressBar>) -> 
         }
         Err(e) => Err(eyre::eyre!("Unable to get balance: {:?}", e)),
     }
-}
-
-/// Mirrors `check_accesspass` in `doublezero-daemon-cli`
-/// (`crates/doublezero-daemon-cli/src/connect.rs`) — keep the two in sync if
-/// AccessPass validity semantics change.
-pub fn check_accesspass(
-    client: &dyn CliCommand,
-    client_ip: Ipv4Addr,
-    enforce_epoch: bool,
-) -> eyre::Result<bool> {
-    // A missing AccessPass returns Ok(false) (not an error) so the caller can
-    // render its own diagnostic (e.g. the client IP and UserPayer) before
-    // bailing, rather than surfacing a generic "not found" message.
-    let Some((_, accesspass)) = client.get_accesspass(GetAccessPassCommand {
-        client_ip,
-        user_payer: client.get_payer(),
-    })?
-    else {
-        return Ok(false);
-    };
-
-    if !enforce_epoch {
-        return Ok(true);
-    }
-    let epoch = client.get_epoch()?;
-    Ok(accesspass.last_access_epoch >= epoch)
 }
 
 pub fn check_allowlist(

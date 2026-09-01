@@ -68,6 +68,28 @@ def _assert_fields(expected_fields: list[dict], got: dict) -> None:
 class TestFixtureGlobalState:
     def test_deserialize(self):
         data, meta = _load_fixture("global_state")
+        # _assert_fields skips a fixture field the dict below does not name, so pin the fixture's
+        # field list: a field added to GlobalState fails here until it is asserted or is
+        # deliberately left out.
+        assert [f["name"] for f in meta["fields"]] == [
+            "AccountType",
+            "BumpSeed",
+            "AccountIndex",
+            "FoundationAllowlistLen",
+            "FoundationAllowlist0",
+            "DeviceAllowlistLen",
+            "UserAllowlistLen",
+            "ActivatorAuthorityPk",
+            "SentinelAuthorityPk",
+            "ContributorAirdropLamports",
+            "UserAirdropLamports",
+            "HealthOraclePk",
+            "QaAllowlistLen",
+            "QaAllowlist0",
+            "FeatureFlags",
+            "FeedAuthorityPk",
+            "IpVerifierAuthorityPk",
+        ]
         gs = GlobalState.from_bytes(data)
         _assert_fields(
             meta["fields"],
@@ -80,8 +102,20 @@ class TestFixtureGlobalState:
                 "SentinelAuthorityPk": gs.sentinel_authority_pk,
                 "HealthOraclePk": gs.health_oracle_pk,
                 "FeedAuthorityPk": gs.feed_authority_pk,
+                "IpVerifierAuthorityPk": gs.ip_verifier_authority_pk,
             },
         )
+
+    def test_pre_rfc27_account_decodes_verifier_authority_to_default(self):
+        """ip_verifier_authority_pk is appended, so account data written before RFC-27 simply
+        ends after feed_authority_pk. That must decode, not raise: the default pubkey is what
+        "no verifier configured" looks like everywhere else.
+        """
+        data, _ = _load_fixture("global_state")
+        gs = GlobalState.from_bytes(data[:-32])
+        assert gs.ip_verifier_authority_pk == Pubkey.default()
+        # The field before it still decodes, so the truncation landed where it was meant to.
+        assert gs.feed_authority_pk != Pubkey.default()
 
 
 class TestFixtureGlobalConfig:

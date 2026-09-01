@@ -250,23 +250,10 @@ The QA client (`e2e/internal/qa/`) handles both automatically:
   client seat) poll until the expected state is observed rather than trusting a
   single read after a write.
 
-Settlement **writes** (`FeedSeatPay`/`FeedSeatWithdraw`) target the pool's
+Settlement **writes** (`FeedSeatWithdraw`) target the pool's
 current (health-selected) endpoint but deliberately do **not** auto-retry across
-endpoints, since a payment that timed out on submission may have landed onchain
+endpoints, since a withdraw that timed out on submission may have landed onchain
 and a blind retry risks double-submission.
-
-### Multicast settlement device eligibility
-
-When choosing a device automatically, the multicast settlement probe selects
-the lowest-latency reachable device in the required metro class whose enabled
-shred `DeviceHistory` has remaining capacity
-(`ActiveGrantedSeats < ActiveTotalAvailableSeats`). It intentionally does not
-filter on serviceability status or `max_users`, because the QA identity's
-onchain allowlist entry bypasses those checks. That bypass does not apply to the
-independent shred capacity check enforced by `shreds pay`. Devices with no
-remaining shred seats are therefore excluded before the CLI price query; if the
-required metros contain no eligible device, the test fails with an explicit
-eligibility error instead of reporting a misleading missing-price failure.
 
 ### Environment variables
 

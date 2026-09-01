@@ -6,6 +6,22 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+### Changes
+
+
+- SDK
+  - The TypeScript and Python `GlobalState` deserializers expose `ip_verifier_authority_pk`, the RFC-27 trust root the Go SDK and the Rust state already carried, so those consumers can read which key signs IP ownership proofs. The field is appended, so an account written before the upgrade decodes it as the default pubkey rather than failing. (#4231)
+- CI
+  - The e2e matrix runs 5 round-robin shards instead of 4. Shards are filled by test count, not by duration, so the heaviest one was carrying ~3735s of tests against a 15-minute job timeout and was cancelled mid-run; the extra shard brings the worst case back to ~3022s. Adding `e2e (shard 6)` to the required status checks in the main ruleset is a separate, manual step.
+  - shreds-e2e pins one heavy test to its own shard instead of three. `TestE2E_MultiUserInstantAllocationAndWithdrawal` and `TestE2E_DeviceScale` no longer exist in doublezero-shreds, so the pin validation failed every run and the matrix was never built. Only `TestE2E_FeedSubscriptionOracleExpiryTeardown` stays pinned, leaving 1 pinned + 2 round-robin shards. Dropping `shard-e2e (shard 4)` and `shard-e2e (shard 5)` from the required status checks in the main ruleset is a separate, manual step — until it happens those contexts are required but never reported.
+  - `.cursor/BUGBOT.md` and `.github/copilot-instructions.md` now tell Bugbot and Copilot to read the nearest sibling, flag a path that skips a zero or a duplicate, and assert a specific error and the exact log line at the expected index. Onchain checks apply only when the repository has onchain code. The eight path-scoped files under `.github/instructions/` are removed so Copilot reads only the repo-wide file. (#4247)
+- E2E/QA
+  - Remove `TestQA_MulticastSettlement`. It funded a seat through `doublezero-solana shreds pay`, which is going away. The agent seat-pay RPC now returns Unimplemented if something still calls it. Unused settlement helpers go with the test. (#4248)
+
+## [v0.38.0](https://github.com/malbeclabs/doublezero/compare/client/v0.37.0...client/v0.38.0) - 2026-08-28
+
+### Breaking
+
 - SDK
   - `UpdateMulticastGroupRolesCommand.group_pk: Pubkey` becomes `group_pks: Vec<Pubkey>` and `CreateSubscribeUserCommand.mgroup_pk: Pubkey` becomes `mgroup_pks: Vec<Pubkey>` (non-empty; the first entry is the instruction's primary group). The RFC-26 builders `update_multicast_group_roles` and `create_subscribe_user` gain an `extra_groups: &[Pubkey]` parameter and derive the new `extra_group_count` arg from it. Single-group callers pass a one-element vec / empty slice. `CreateSubscribeUserCommand` measures the built transaction's wire size and rejects a group set that cannot fit under the 1232-byte limit, naming how many groups do fit: the create also carries the device's dz_prefix accounts and an optional feed, so the 16-group role-update chunk does not bound it. (malbeclabs/infra#2114)
 
@@ -23,6 +39,8 @@ All notable changes to this project will be documented in this file.
   - `doublezero connect Multicast` with N groups is one transaction in the common case (all groups sharing one publisher/subscriber flag pair fold into the create, skipping the activation wait); `doublezero multicast subscribe|unsubscribe|publish|unpublish`, `doublezero user subscribe`, and the role-strip cleanup in `user delete`/`request-ban` batch their role changes by flag pair, chunked to 16 groups per transaction. Failure reporting in the multicast verbs is per batch: a failed batch lists every group it carried, since none was applied. (malbeclabs/infra#2114)
   - `doublezero feed update|delete --force-unsubscribe` strips each user's orphaned groups with one batched role update per user (chunked to 16 groups per transaction) instead of one transaction per group. (malbeclabs/infra#2114)
   - `doublezero connect` obtains an RFC-27 IP ownership proof from the verification service and attaches it to user creation; the address the service observes is authoritative, and where it disagrees with the daemon's own discovery `connect` stops and names both. A verifier that is unreachable, unconfigured, or that declines is reported and the connect continues without a proof, which the program accepts until `require-ip-ownership-proof` is set; `--ip-verifier-url` or `DZ_IP_VERIFIER_URL` points at one, and no environment has a built-in default yet. (#4201)
+- Client
+  - From-source builds per `client/INSTALL.md` now succeed. `client/Makefile` defaulted `CARGO_FLAGS` to empty, so `make build` produced `target/debug/doublezero` while `make install` copied from `target/release/doublezero`, which never existed; `CARGO_FLAGS` now defaults to `--release` so the two agree. `make install` also called Debian-only `addgroup`/`adduser`, which are absent on RHEL/Rocky/Amazon Linux (in the documented support matrix), failing with `addgroup: command not found`; it now uses the portable `groupadd`/`useradd` with equivalent flags. (#4175)
 - Serviceability
   - `UpdateMulticastGroupRoles` (58) and `CreateSubscribeUser` (59) accept additional writable MulticastGroup accounts (counted by a new borsh-incremental `extra_group_count: u8` arg), so subscribing a user to N groups is one atomic transaction instead of N: one signature/fee, and a failure rolls back every group. Each batch member is authorized exactly like a single-group call (per-group allowlist checks; in `CreateSubscribeUser`, EdgeSeat extras are coverage-checked against the single passed feed and the seat still ticks once per user per feed, so a seat tick can no longer outlive a partial subscription). Duplicate group accounts in a batch are rejected. Old encodings without the count byte decode as 0, so existing clients are unaffected. Deploy ordering (RFC-1): the program must deploy to all clusters before any client that emits batches — an old program would misread the extra group accounts as the trailing optional accounts. (malbeclabs/infra#2114)
 - SDK

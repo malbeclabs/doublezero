@@ -21,7 +21,7 @@ const (
 	// Default per-call timeout for a single Solana RPC request before it is
 	// treated as a failover-triggering failure.
 	defaultRPCTimeout = 30 * time.Second
-	// Default backoff budget for the GetUSDCBalance retry loop.
+	// Default backoff budget for Solana RPC retries.
 	defaultRPCInitialBackoff = 1 * time.Second
 	defaultRPCMaxElapsed     = 30 * time.Second
 	defaultRPCMaxRetries     = uint64(5)
@@ -212,8 +212,8 @@ func (p *solanaRPCPool) CurrentURL() string {
 }
 
 // Failover advances to the next endpoint unconditionally. Used by write paths
-// (FeedSeat*) that drive an external command with CurrentURL() and want to
-// retry against a different endpoint on failure.
+// that drive an external command with CurrentURL() and want to retry against
+// a different endpoint on failure.
 func (p *solanaRPCPool) Failover() {
 	p.mu.Lock()
 	defer p.mu.Unlock()

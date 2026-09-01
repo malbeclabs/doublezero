@@ -18,6 +18,11 @@ All notable changes to this project will be documented in this file.
 - E2E/QA
   - New e2e coverage for RFC-27 proof enforcement with `require-ip-ownership-proof` set: the working path still reaches BGP, a client with no verifier to reach is rejected with `IpOwnershipProofRequired`, a wildcard (`0.0.0.0`) access pass binds `client_ip` only when a proof is attached, the sentinel authority stays exempt so the oracle path keeps working, and `connect` refuses a proof whose address disagrees with the one it provisions. (#4243)
   - Remove `TestQA_MulticastSettlement`. It funded a seat through `doublezero-solana shreds pay`, which is going away. The agent seat-pay RPC now returns Unimplemented if something still calls it. Unused settlement helpers go with the test. (#4248)
+- Offchain
+  - The scheduler refuses to boot when `SOLANA_RPC` is unset or empty, rather than handing `nil` or an empty string to the Rust NIF. All three workers read the one config key, so the check sits in `config/runtime.exs` where the single cause was. The test environment is exempt, since the tests set the key themselves. `DZ_LEDGER_RPC` no longer sets a `ledger_rpc` key that nothing in the application read. (#4240 follow-up)
+  - The scheduler README closes its shell code block, so the Installation heading and everything after it stop rendering inside it.
+- Solana programs
+  - Rename `test_lifetime_swept_2z_amount` to match the `lifetime_swapped_2z_amount` field and method it covers, so a search for the swapped-amount tests finds it.
 
 ## [v0.38.0](https://github.com/malbeclabs/doublezero/compare/client/v0.37.0...client/v0.38.0) - 2026-08-28
 

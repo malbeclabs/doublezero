@@ -28,7 +28,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  SHARD_COUNT: "4"
+  SHARD_COUNT: "5"
   # Use registry-qualified image names so we can push/pull between jobs
   DZ_IMAGE_REPO: ghcr.io/malbeclabs/dz-e2e
   DZ_IMAGE_TAG: ${{ github.event.inputs.image_tag || github.sha }}
@@ -153,7 +153,7 @@ jobs:
           CHECK_NAME: e2e
           # SHARD_COUNT round-robin shards + 1 dedicated shard; must match the
           # required status check contexts in the main ruleset.
-          CHECK_SHARDS: "5"
+          CHECK_SHARDS: "6"
         with:
           script: |
             try {

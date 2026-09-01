@@ -27,6 +27,10 @@ const NON_MIGRATED_SUBSYSTEMS: &[&str] = &[
      via the USER_ADMIN legacy mapping, Permission holders directly — so only the sentinel_authority \
      direct check remains un-migrated; qa_allowlist/foundation_allowlist still bypass device status & \
      seat limits)",
+    "user create RFC-27 IP ownership proof (sentinel_authority may omit a proof for the shred-oracle \
+     shape — UserType::Multicast owned by somebody other than the payer — via a direct \
+     sentinel_authority_pk check, not through authorize(); see the IP ownership proof section above \
+     for whether it is currently active)",
 ];
 
 /// A legacy key that authorizes a migrated instruction today but lacks an equivalent
@@ -48,9 +52,22 @@ struct Gap {
 /// `true` and drop the rendered paragraph when the builder-side append is re-enabled.
 const SDK_ATTACHES_PERMISSION_ACCOUNTS: bool = false;
 
+/// The RFC-27 sentinel exemption from IP ownership proof validation, reported so a
+/// privileged path is never invisible. `None` means enforcement is off, so the
+/// exemption grants nothing today.
+#[derive(Serialize, Debug, PartialEq)]
+struct SentinelIpProofExemption {
+    /// The key the exemption belongs to (`globalstate.sentinel_authority_pk`).
+    key: String,
+    /// The creation shape it covers. Anything else needs a proof.
+    scope: String,
+}
+
 #[derive(Serialize, Debug)]
 struct AuditReport {
     strict_mode_enabled: bool,
+    require_ip_ownership_proof_enabled: bool,
+    sentinel_ip_proof_exemption: Option<SentinelIpProofExemption>,
     /// See [`SDK_ATTACHES_PERMISSION_ACCOUNTS`].
     sdk_attaches_permission_accounts: bool,
     gaps: Vec<Gap>,
@@ -69,6 +86,20 @@ fn build_report(gs: &GlobalState, permissions: &HashMap<Pubkey, Permission>) -> 
 
     let strict_mode_enabled =
         is_feature_enabled(gs.feature_flags, FeatureFlag::RequirePermissionAccounts);
+
+    // RFC-27 (#4215). The exemption is narrowed to the shape the shred-oracle creates, but a
+    // narrowed privilege is still a privilege, so it is reported whenever it can be exercised.
+    let require_ip_ownership_proof_enabled =
+        is_feature_enabled(gs.feature_flags, FeatureFlag::RequireIpOwnershipProof);
+    let sentinel_ip_proof_exemption = (require_ip_ownership_proof_enabled
+        && gs.sentinel_authority_pk != Pubkey::default())
+    .then(|| SentinelIpProofExemption {
+        key: gs.sentinel_authority_pk.to_string(),
+        scope: "may omit an IP ownership proof for a UserType::Multicast creation whose owner is \
+                not the payer (the shred-oracle shape); every other creation it pays for needs a \
+                proof"
+            .to_string(),
+    });
 
     // Coverage gaps for every flag routed through `authorize()`. The set of gated
     // flags and the legacy→key mapping both come from the serviceability crate, so
@@ -133,6 +164,8 @@ fn build_report(gs: &GlobalState, permissions: &HashMap<Pubkey, Permission>) -> 
 
     AuditReport {
         strict_mode_enabled,
+        require_ip_ownership_proof_enabled,
+        sentinel_ip_proof_exemption,
         sdk_attaches_permission_accounts: SDK_ATTACHES_PERMISSION_ACCOUNTS,
         gaps,
         permission_admin_holders,
@@ -271,6 +304,33 @@ fn render_text<W: Write>(out: &mut W, report: &AuditReport) -> eyre::Result<()> 
     }
     writeln!(
         out,
+        "IP ownership proof (require-ip-ownership-proof): {}",
+        if report.require_ip_ownership_proof_enabled {
+            "ON"
+        } else {
+            "OFF"
+        }
+    )?;
+    match &report.sentinel_ip_proof_exemption {
+        Some(e) => {
+            writeln!(out, "  Sentinel exemption ACTIVE — held by {}", e.key)?;
+            writeln!(out, "  Scope: {}", e.scope)?;
+        }
+        None if report.require_ip_ownership_proof_enabled => {
+            writeln!(out, "  No sentinel authority set, so no exemption is held.")?;
+        }
+        None => {
+            writeln!(
+                out,
+                "  Enforcement is off, so no proof is required of anyone and the sentinel"
+            )?;
+            writeln!(out, "  exemption grants nothing.")?;
+        }
+    }
+    writeln!(out)?;
+
+    writeln!(
+        out,
         "foundation_allowlist ({} member(s)): {}",
         report.foundation_allowlist.len(),
         fmt_list(&report.foundation_allowlist)
@@ -400,6 +460,46 @@ mod tests {
         assert!(pks.contains(&foundation));
         assert!(pks.contains(&sentinel));
         assert!(pks.contains(&feed));
+    }
+
+    #[test]
+    fn test_sentinel_ip_proof_exemption_is_reported_only_while_enforced() {
+        // RFC-27 (#4215). The exemption is a privileged path, so the audit must name the key that
+        // holds it — but only when the flag makes it exercisable, or the report cries wolf in
+        // every environment that has not turned enforcement on.
+        let sentinel = Pubkey::new_unique();
+
+        // Enforcement off: nothing to report even though a sentinel is set.
+        let mut gs = globalstate_with_foundation(vec![], 0);
+        gs.sentinel_authority_pk = sentinel;
+        let report = build_report(&gs, &HashMap::new());
+        assert!(!report.require_ip_ownership_proof_enabled);
+        assert_eq!(report.sentinel_ip_proof_exemption, None);
+
+        // Enforcement on: the holder is named.
+        let mut gs =
+            globalstate_with_foundation(vec![], FeatureFlag::RequireIpOwnershipProof.to_mask());
+        gs.sentinel_authority_pk = sentinel;
+        let report = build_report(&gs, &HashMap::new());
+        assert!(report.require_ip_ownership_proof_enabled);
+        let exemption = report
+            .sentinel_ip_proof_exemption
+            .as_ref()
+            .expect("an active exemption must be reported");
+        assert_eq!(exemption.key, sentinel.to_string());
+        assert!(exemption.scope.contains("Multicast"));
+
+        // Enforcement on with no sentinel set: nobody holds it.
+        let gs =
+            globalstate_with_foundation(vec![], FeatureFlag::RequireIpOwnershipProof.to_mask());
+        let report = build_report(&gs, &HashMap::new());
+        assert_eq!(report.sentinel_ip_proof_exemption, None);
+
+        // The rendered text has to say so, not just the JSON.
+        let mut out = Vec::new();
+        render_text(&mut out, &report).unwrap();
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.contains("require-ip-ownership-proof"));
     }
 
     #[test]

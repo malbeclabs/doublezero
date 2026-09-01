@@ -258,8 +258,8 @@ The program MUST reject when any of the following holds:
 - no verifier public key is configured in global state;
 - the proof is malformed.
 
-A proof that is *absent* is rejected only when the flag is set and the payer is not the sentinel
-authority; see Backward Compatibility.
+A proof that is *absent* is rejected only when the flag is set and the creation is not the narrow
+oracle shape the sentinel authority is exempt for; see Backward Compatibility.
 
 Each class has its own `DoubleZeroError` variant, so an operator can tell a stale proof from a
 rotated verifier key from a client that never attached the Ed25519 instruction.
@@ -331,8 +331,9 @@ set per environment through the existing `SetFeatureFlags` instruction.
   working. A creation that *does* supply one is still validated in full: a client attaching a broken
   proof is broken now, not at rollout, and letting it through would hide that until the flag flips.
 - **Flag set.** Every user creation requires a valid proof — wildcard and specific-IP passes alike,
-  and on the idempotent rerun path as well as on first creation. One exception: a creation paid for
-  by `globalstate.sentinel_authority_pk` may omit the proof.
+  and on the idempotent rerun path as well as on first creation. One narrow exception: a creation
+  paid for by `globalstate.sentinel_authority_pk` may omit the proof **when it is the shape the
+  shred-oracle produces** — a `UserType::Multicast` user whose owner is not the payer.
 
 **The sentinel exemption.** The shred-oracle provisions multicast publishers owned by validators, so
 the proof would have to name the validator for an address the verification service never sees a
@@ -340,10 +341,30 @@ request from — there is no proof the oracle could obtain, and without the exem
 would break that path outright. Unlike the wildcard-pass gap this RFC closes, the exemption is not
 reachable by a registrant: it requires a DoubleZero-operated key. It waives the *requirement* only;
 a proof the sentinel does attach is still validated in full, so the oracle can start carrying real
-proofs without a program change. The residual risk is that a compromised sentinel key can bind any
-IP, and that `InitGlobalState` seeds `sentinel_authority_pk` to whoever initialized global state, so
-in a fresh environment the exemption belongs to the deployer until the key is rotated. Replacing it
-is tracked in issue #4215.
+proofs without a program change.
+
+**Scoped to the oracle shape (#4215).** The exemption is *not* a blanket waiver for anything the
+sentinel pays for. The predicate is
+
+```rust
+is_sentinel && effective_owner != payer && user_type == UserType::Multicast
+```
+
+which is exactly what `crates/sentinel/src/dz_ledger_writer.rs` builds (`owner` set to the
+validator, `UserType::Multicast`, `publisher: true`). A sentinel-paid creation of any other shape —
+a unicast user, or a multicast user the sentinel owns itself — requires a proof like any other
+registrant, and for those shapes the sentinel operates the address and so can obtain one.
+
+The residual risk that remains is confined to that shape: a compromised sentinel key can bind an
+arbitrary `client_ip` to a validator-owned multicast publisher. It can no longer bind an address to
+a unicast user or to a user it owns. Note also that `InitGlobalState` seeds `sentinel_authority_pk`
+to whoever initialized global state, so in a fresh environment even the narrowed exemption belongs
+to the deployer until the key is rotated. `doublezero permission audit` reports the exemption and
+the key that holds it.
+
+Fully removing it needs the oracle to relay a proof the validator obtained for its own address,
+which is work in `doublezero-shreds` rather than here; the program already validates a proof the
+sentinel supplies, so no program change is required when that lands.
 
 The proof is optional on the wire rather than on the instruction: `BorshDeserializeIncremental`
 decodes an older client's shorter payload as `None`, and whether `None` is acceptable is the flag's

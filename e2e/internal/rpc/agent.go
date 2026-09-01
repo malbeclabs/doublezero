@@ -22,6 +22,8 @@ import (
 	"golang.org/x/net/ipv4"
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -449,52 +451,8 @@ func parseDevicePrices(out []byte) ([]*pb.DevicePrice, error) {
 	return prices, nil
 }
 
-// FeedSeatPay implements the FeedSeatPay RPC, which pays for a seat on a device.
-// This executes `doublezero-solana shreds pay` with the provided parameters.
-// Instant allocation is always the default in the CLI (--now was removed).
-// --accept-partial-epoch is hardcoded to prevent the interactive prompt from
-// hanging in non-interactive QA test runs.
-func (q *QAAgent) FeedSeatPay(ctx context.Context, req *pb.FeedSeatPayRequest) (*pb.Result, error) {
-	if req.GetDevicePubkey() == "" {
-		return nil, fmt.Errorf("device_pubkey is required")
-	}
-	if req.GetClientIp() == "" {
-		return nil, fmt.Errorf("client_ip is required")
-	}
-	if req.GetAmount() == "" {
-		return nil, fmt.Errorf("amount is required")
-	}
-	q.log.Debug("Received SeatPay request", "device", req.GetDevicePubkey(), "clientIP", req.GetClientIp(), "amount", req.GetAmount())
-
-	args := []string{"shreds"}
-	if req.GetDzLedgerUrl() != "" {
-		args = append(args, "--dz-ledger-url", req.GetDzLedgerUrl())
-	}
-	args = append(args, "pay", "--device", req.GetDevicePubkey(), "--client-ip", req.GetClientIp(), "--amount", req.GetAmount(), "--accept-partial-epoch")
-	if req.GetSolanaRpcUrl() != "" {
-		args = append(args, "--url", req.GetSolanaRpcUrl())
-	}
-	if req.GetUsdcMint() != "" {
-		args = append(args, "--usdc-mint", req.GetUsdcMint())
-	}
-	if req.GetKeypair() != "" {
-		args = append(args, "--keypair", os.ExpandEnv(req.GetKeypair()))
-	}
-
-	cmdCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(cmdCtx, "doublezero-solana", args...)
-	if req.GetShredSubscriptionProgramId() != "" {
-		cmd.Env = append(cmd.Environ(), "SHRED_SUBSCRIPTION_PROGRAM_ID="+req.GetShredSubscriptionProgramId())
-	}
-	res, err := runCmd(cmd)
-	if err != nil {
-		q.log.Error("Failed to pay for seat", "device", req.GetDevicePubkey(), "output", res.GetOutput())
-		return res, fmt.Errorf("failed to pay for seat on device %s: %w", req.GetDevicePubkey(), err)
-	}
-	q.log.Debug("Seat payment successful", "device", req.GetDevicePubkey(), "output", res.GetOutput())
-	return res, nil
+func (q *QAAgent) FeedSeatPay(context.Context, *pb.FeedSeatPayRequest) (*pb.Result, error) {
+	return nil, status.Error(codes.Unimplemented, "FeedSeatPay was removed")
 }
 
 // FeedSeatWithdraw implements the FeedSeatWithdraw RPC, which withdraws a seat from a device.

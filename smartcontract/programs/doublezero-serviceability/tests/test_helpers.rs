@@ -1,6 +1,7 @@
 use borsh::to_vec;
 use doublezero_serviceability::{
     entrypoint::process_instruction,
+    error::DoubleZeroError,
     instructions::*,
     pda::{
         get_contributor_pda, get_exchange_pda, get_globalconfig_pda, get_globalstate_pda,
@@ -18,6 +19,7 @@ use doublezero_serviceability::{
         topology::TopologyConstraint,
     },
 };
+use solana_program::program_error::ProgramError;
 use solana_program_test::*;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction},
@@ -986,4 +988,19 @@ pub fn custom_error_code(err: &BanksClientError) -> Option<u32> {
         ) => Some(*code),
         _ => None,
     }
+}
+
+/// Asserts a failed transaction was rejected with the `ProgramError::Custom` code that
+/// `expected` maps to. Takes the expected error as a parameter rather than hardcoding one, so
+/// any test in this crate can use it to check any `DoubleZeroError`.
+#[allow(dead_code)]
+pub fn assert_custom_error(err: &BanksClientError, expected: DoubleZeroError) {
+    let ProgramError::Custom(want) = ProgramError::from(expected.clone()) else {
+        panic!("{expected:?} must map to ProgramError::Custom");
+    };
+    assert_eq!(
+        custom_error_code(err),
+        Some(want),
+        "expected Custom({want}), got {err:?}"
+    );
 }

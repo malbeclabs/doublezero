@@ -142,7 +142,7 @@ async fn test_accesspass() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CloseAccessPass(CloseAccessPassArgs {}),
+        DoubleZeroInstruction::CloseSolanaValidatorAccessPass(CloseAccessPassArgs {}),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -728,7 +728,7 @@ async fn test_close_accesspass_rejects_nonzero_connection_count() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::CloseAccessPass(CloseAccessPassArgs {}),
+        DoubleZeroInstruction::ClosePrepaidAccessPass(CloseAccessPassArgs {}),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),

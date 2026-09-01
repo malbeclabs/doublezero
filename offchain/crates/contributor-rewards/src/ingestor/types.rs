@@ -130,8 +130,9 @@ fn apply_serviceability_json_compat_migrations(serviceability: &mut Value) {
 
     // doublezero-serviceability v0.20 added durable tunnel/BGP state to User;
     // client/v0.25.0 then appended `bgp_rtt_ns`, and #4030 (per-feed EdgeSeat
-    // billing) appended `feed_pk`. All default to the same values onchain/Borsh
-    // deserialization uses for absent tails.
+    // billing) appended `feed_pk`, which malbeclabs/infra#2114 replaced with the
+    // plural `feed_pks` so one user can hold several feeds. All default to the
+    // same values onchain/Borsh deserialization uses for absent tails.
     if let Some(users) = serviceability
         .get_mut("users")
         .and_then(|users| users.as_object_mut())
@@ -149,8 +150,21 @@ fn apply_serviceability_json_compat_migrations(serviceability: &mut Value) {
                 .or_insert_with(|| Value::Number(0.into()));
             user.entry("bgp_rtt_ns")
                 .or_insert_with(|| Value::Number(0.into()));
-            user.entry("feed_pk")
-                .or_insert_with(|| Value::String(Pubkey::default().to_string()));
+            // A snapshot from before infra#2114 carries the singular key, where the
+            // default value meant the user held no feed. Fold it into the list so
+            // both eras land on the shape the current struct reads. Like
+            // `publishers` and `subscribers`, the list serializes as one
+            // comma-separated string rather than a JSON array, so an absent feed
+            // is the empty string.
+            let legacy_feed_pk = user.remove("feed_pk");
+            user.entry("feed_pks").or_insert_with(|| {
+                match legacy_feed_pk.as_ref().and_then(Value::as_str) {
+                    Some(key) if key != Pubkey::default().to_string() => {
+                        Value::String(key.to_string())
+                    }
+                    _ => Value::String(String::new()),
+                }
+            });
         }
     }
 

@@ -288,7 +288,7 @@ func TestE2E_DzPrefix_ResourceExhaustion(t *testing.T) {
 		log.Debug("==> Deleting first fill user to free a DzPrefix slot", "pubkey", freedUser.pubkey)
 
 		_, err := freedUser.client.Exec(ctx, []string{"bash", "-c",
-			"doublezero user delete --pubkey " + freedUser.pubkey})
+			"doublezero user delete --pubkey " + freedUser.pubkey + " --access-pass-type prepaid"})
 		require.NoError(t, err)
 
 		// Wait for the deleted user to be fully closed (IP deallocated).
@@ -337,7 +337,7 @@ func TestE2E_DzPrefix_ResourceExhaustion(t *testing.T) {
 		for _, fillUser := range fillUsers[1:] {
 			log.Debug("==> Deleting fill user", "pubkey", fillUser.pubkey)
 			_, err := fillUser.client.Exec(ctx, []string{"bash", "-c",
-				"doublezero user delete --pubkey " + fillUser.pubkey})
+				"doublezero user delete --pubkey " + fillUser.pubkey + " --access-pass-type prepaid"})
 			require.NoError(t, err)
 		}
 
@@ -349,7 +349,7 @@ func TestE2E_DzPrefix_ResourceExhaustion(t *testing.T) {
 				pubkey := base58.Encode(user.PubKey[:])
 				log.Debug("==> Deleting recovery user", "pubkey", pubkey)
 				_, err := recoveryClient.Exec(ctx, []string{"bash", "-c",
-					"doublezero user delete --pubkey " + pubkey})
+					"doublezero user delete --pubkey " + pubkey + " --access-pass-type prepaid"})
 				require.NoError(t, err)
 				break
 			}

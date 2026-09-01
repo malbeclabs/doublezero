@@ -279,7 +279,7 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 
 	for i, user := range users {
 		log.Debug("==> Deleting user", "number", i+1, "pubkey", user.pubkey)
-		_, err = user.client.Exec(ctx, []string{"bash", "-c", "doublezero user delete --pubkey " + user.pubkey})
+		_, err = user.client.Exec(ctx, []string{"bash", "-c", "doublezero user delete --pubkey " + user.pubkey + " --access-pass-type prepaid"})
 		require.NoError(t, err)
 	}
 

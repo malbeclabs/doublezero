@@ -271,6 +271,8 @@ pub enum DoubleZeroError {
     RetiringFeedCannotBeDeleted, // variant 129
     #[error("This feed has no conformance verdict outstanding")]
     FeedNotActivatable, // variant 130
+    #[error("This instruction is for a different access pass type")]
+    AccessPassTypeMismatch, // variant 131
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -407,6 +409,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::RetirementNoticeNotElapsed => ProgramError::Custom(128),
             DoubleZeroError::RetiringFeedCannotBeDeleted => ProgramError::Custom(129),
             DoubleZeroError::FeedNotActivatable => ProgramError::Custom(130),
+            DoubleZeroError::AccessPassTypeMismatch => ProgramError::Custom(131),
         }
     }
 }
@@ -544,8 +547,15 @@ impl From<u32> for DoubleZeroError {
             128 => DoubleZeroError::RetirementNoticeNotElapsed,
             129 => DoubleZeroError::RetiringFeedCannotBeDeleted,
             130 => DoubleZeroError::FeedNotActivatable,
+            131 => DoubleZeroError::AccessPassTypeMismatch,
             _ => DoubleZeroError::Custom(e),
         }
+    }
+}
+
+impl From<u8> for DoubleZeroError {
+    fn from(e: u8) -> Self {
+        Self::from(e as u32)
     }
 }
 
@@ -568,6 +578,13 @@ mod tests {
     use strum::IntoEnumIterator;
 
     #[test]
+    fn test_access_pass_type_mismatch_roundtrip() {
+        let err = DoubleZeroError::AccessPassTypeMismatch;
+        assert_eq!(ProgramError::from(err.clone()), ProgramError::Custom(131));
+        assert_eq!(DoubleZeroError::from(131u8), err);
+    }
+
+    #[test]
     fn test_error_enum_conversions() {
         // Using EnumIter ensures all variants are tested - if a new variant is added
         // to the enum, this test will automatically include it.
@@ -578,7 +595,7 @@ mod tests {
         }
 
         // EnumIter generates Custom(0) by default, so we explicitly test values
-        // outside the known variant range (currently 0-128) to ensure the conversion
+        // outside the known variant range (currently 0-131) to ensure the conversion
         // logic handles arbitrary custom codes correctly.
         for code in [1000u32, 100_000, u32::MAX] {
             let err = DoubleZeroError::Custom(code);

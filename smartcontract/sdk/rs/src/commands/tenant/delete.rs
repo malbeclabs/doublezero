@@ -2,14 +2,17 @@ use std::time::Duration;
 
 use crate::{
     commands::{
-        accesspass::{list::ListAccessPassCommand, set::SetAccessPassCommand},
+        accesspass::{
+            get::GetAccessPassCommand, list::ListAccessPassCommand, set::SetAccessPassCommand,
+        },
         user::{delete::DeleteUserCommand, list::ListUserCommand},
     },
     DoubleZeroClient,
 };
 use backon::{BlockingRetryable, ExponentialBuilder};
 use doublezero_serviceability::{
-    processors::tenant::delete::TenantDeleteArgs, state::accountdata::AccountData,
+    processors::tenant::delete::TenantDeleteArgs,
+    state::{accesspass::AccessPassKind, accountdata::AccountData},
 };
 use doublezero_serviceability_instruction::tenant::delete_tenant;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -25,14 +28,28 @@ impl DeleteTenantCommand {
         if self.allow_delete_users {
             // 1. List all users belonging to this tenant and delete them
             let users = ListUserCommand.execute(client)?;
-            let tenant_users: Vec<Pubkey> = users
+            let tenant_users: Vec<_> = users
                 .into_iter()
                 .filter(|(_, user)| user.tenant_pk == self.tenant_pubkey)
-                .map(|(pk, _)| pk)
                 .collect();
 
-            for user_pk in &tenant_users {
-                DeleteUserCommand { pubkey: *user_pk }.execute(client)?;
+            for (user_pk, user) in &tenant_users {
+                // This cascade removes every user under the tenant, whatever kind of
+                // access pass each one holds; there is no single operator-declared kind
+                // to state here, so the kind comes from the pass itself. The lookup
+                // mirrors the one DeleteUserCommand performs internally.
+                let (_, accesspass) = GetAccessPassCommand {
+                    client_ip: user.client_ip,
+                    user_payer: user.owner,
+                }
+                .execute(client)?
+                .ok_or_else(|| eyre::eyre!("User {} has no Access Pass", user_pk))?;
+
+                DeleteUserCommand {
+                    pubkey: *user_pk,
+                    kind: AccessPassKind::from(&accesspass.accesspass_type),
+                }
+                .execute(client)?;
             }
 
             // 2. Clean up access passes before waiting for reference_count to reach 0
@@ -126,7 +143,7 @@ mod tests {
             user::delete::UserDeleteArgs,
         },
         state::{
-            accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+            accesspass::{AccessPass, AccessPassKind, AccessPassStatus, AccessPassType},
             accountdata::AccountData,
             accounttype::AccountType,
             device::Device,
@@ -317,6 +334,7 @@ mod tests {
             1,
             Some(tenant_pubkey),
             &payer,
+            AccessPassKind::Prepaid,
             UserDeleteArgs {
                 dz_prefix_count: 1,
                 multicast_publisher_count: 1,

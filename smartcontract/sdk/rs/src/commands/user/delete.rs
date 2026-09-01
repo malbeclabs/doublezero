@@ -12,18 +12,24 @@ use crate::{
     },
     DoubleZeroClient,
 };
-use doublezero_serviceability::processors::user::delete::UserDeleteArgs;
+use doublezero_serviceability::{
+    processors::user::delete::UserDeleteArgs, state::accesspass::AccessPassKind,
+};
 use doublezero_serviceability_instruction::user::delete_user;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
+/// Deletes a user. `kind` names the kind of access pass the caller means to remove; the
+/// program refuses the call when the stored pass is a different kind, so `kind` must carry
+/// the caller's intent rather than a value read back from the pass.
 #[derive(Debug, PartialEq, Clone)]
 pub struct DeleteUserCommand {
     pub pubkey: Pubkey,
+    pub kind: AccessPassKind,
 }
 
 impl DeleteUserCommand {
-    pub fn new(pubkey: Pubkey) -> Self {
-        Self { pubkey }
+    pub fn new(pubkey: Pubkey, kind: AccessPassKind) -> Self {
+        Self { pubkey, kind }
     }
 }
 
@@ -107,6 +113,7 @@ impl DeleteUserCommand {
             dz_prefix_count_u8,
             tenant,
             &user.owner,
+            self.kind,
             UserDeleteArgs {
                 dz_prefix_count: dz_prefix_count_u8,
                 multicast_publisher_count: 1,
@@ -133,7 +140,7 @@ mod tests {
             multicastgroup::subscribe::UpdateMulticastGroupRolesArgs, user::delete::UserDeleteArgs,
         },
         state::{
-            accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+            accesspass::{AccessPass, AccessPassKind, AccessPassStatus, AccessPassType},
             accountdata::AccountData,
             accounttype::AccountType,
             device::Device,
@@ -342,6 +349,7 @@ mod tests {
                 1,
                 None,
                 &payer,
+                AccessPassKind::Prepaid,
                 UserDeleteArgs {
                     dz_prefix_count: 1,
                     multicast_publisher_count: 1,
@@ -355,6 +363,7 @@ mod tests {
 
         let res = DeleteUserCommand {
             pubkey: user_pubkey,
+            kind: AccessPassKind::Prepaid,
         }
         .execute(&client);
 
@@ -547,6 +556,7 @@ mod tests {
                 1,
                 None,
                 &payer,
+                AccessPassKind::Prepaid,
                 UserDeleteArgs {
                     dz_prefix_count: 1,
                     multicast_publisher_count: 1,
@@ -560,6 +570,7 @@ mod tests {
 
         let res = DeleteUserCommand {
             pubkey: user_pubkey,
+            kind: AccessPassKind::Prepaid,
         }
         .execute(&client);
 
@@ -804,6 +815,7 @@ mod tests {
                 1,
                 None,
                 &user_owner,
+                AccessPassKind::Prepaid,
                 UserDeleteArgs {
                     dz_prefix_count: 1,
                     multicast_publisher_count: 1,
@@ -817,6 +829,7 @@ mod tests {
 
         let res = DeleteUserCommand {
             pubkey: user_pubkey,
+            kind: AccessPassKind::Prepaid,
         }
         .execute(&client);
 
@@ -921,6 +934,7 @@ mod tests {
             1,
             None,
             &payer,
+            AccessPassKind::Prepaid,
             UserDeleteArgs {
                 dz_prefix_count: 1,
                 multicast_publisher_count: 1,
@@ -935,6 +949,7 @@ mod tests {
 
         let res = DeleteUserCommand {
             pubkey: user_pubkey,
+            kind: AccessPassKind::Prepaid,
         }
         .execute(&client);
 
@@ -1033,6 +1048,7 @@ mod tests {
             1,
             None,
             &payer,
+            AccessPassKind::Prepaid,
             UserDeleteArgs {
                 dz_prefix_count: 1,
                 multicast_publisher_count: 1,
@@ -1055,6 +1071,7 @@ mod tests {
 
         let res = DeleteUserCommand {
             pubkey: user_pubkey,
+            kind: AccessPassKind::Prepaid,
         }
         .execute(&client);
 

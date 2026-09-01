@@ -46,24 +46,21 @@ func TestBuildCreateUserInstruction(t *testing.T) {
 	instr, userPDA, err := executor.buildCreateUserInstruction(args)
 	require.NoError(t, err)
 
-	// Variant byte + 11-byte borsh body matching Rust UserCreateArgs.
+	// Variant byte + 12-byte borsh body matching Rust UserCreateArgs.
 	data, err := instr.Data()
 	require.NoError(t, err)
-	require.Len(t, data, 12, "opcode (1) + borsh UserCreateArgs (11) = 12 bytes")
+	require.Len(t, data, 13, "opcode (1) + borsh UserCreateArgs (12) = 13 bytes")
 	assert.Equal(t, byte(instructionCreateUser), data[0])
 
-	// Rust's UserCreateArgs gained a trailing RFC-27 ip_proof (issue #4197), so the
-	// fixture is one byte longer: an Option discriminant of 0 for "no proof". This
-	// builder does not carry a proof yet (issue #4200), and the program decodes the
-	// shorter payload as None via BorshDeserializeIncremental, so what the builder
-	// emits must equal the fixture with that discriminant removed. Both halves are
-	// asserted, so neither the shared fields nor the assumption of an absent proof
-	// can drift unnoticed.
+	// The borsh body must equal the Rust-generated fixture byte for byte,
+	// trailing RFC-27 ip_proof discriminant included. The builder emits that
+	// discriminant explicitly (issue #4225): BorshDeserializeIncremental would
+	// also decode a shorter payload as None, but then this assertion could not
+	// tell an intentionally absent proof from a truncated payload.
 	fixture := loadArgsFixture(t, "user_create_args")
-	require.Len(t, fixture, 12, "fixture is the borsh body including the ip_proof discriminant")
-	assert.Equal(t, byte(0), fixture[len(fixture)-1], "fixture must encode ip_proof as absent")
-	assert.Equal(t, fixture[:len(fixture)-1], data[1:],
-		"borsh body must match Rust-generated user_create_args.bin up to ip_proof")
+	assert.Equal(t, fixture, data[1:],
+		"borsh body must match Rust-generated user_create_args.bin exactly")
+	assert.Equal(t, byte(0), data[len(data)-1], "ip_proof must be encoded as absent")
 
 	// User PDA derivation is deterministic from (program_id, client_ip, user_type).
 	expectedPDA, _, err := GetUserPDA(executor.programID, args.ClientIP, args.UserType)

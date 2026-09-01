@@ -116,12 +116,15 @@ RUN --mount=type=cache,id=cargo-${CARGO_LOCK_HASH},target=/cargo \
 ENV BIN_DIR=/doublezero/bin
 RUN mkdir -p ${BIN_DIR}
 
-# Build all rust components except the Solana program
+# Build the four rust binaries this image serves. Named one by one rather than
+# --workspace: the workspace now carries the offchain crates, and nothing here
+# runs them.
 RUN --mount=type=cache,id=cargo-${CARGO_LOCK_HASH},target=/cargo \
     --mount=type=cache,id=target-${CARGO_LOCK_HASH},target=/target \
-    RUSTFLAGS="-C link-arg=-fuse-ld=mold" cargo build --workspace --release --exclude doublezero-serviceability --exclude doublezero-telemetry && \
+    RUSTFLAGS="-C link-arg=-fuse-ld=mold" cargo build --release \
+      -p doublezero -p doublezero-sentinel -p doublezero-ip-verifier -p fork-accounts && \
     cp /target/release/doublezero ${BIN_DIR}/ && \
-    cp /target/release/doublezero-sentinel ${BIN_DIR}/ && \
+    cp /target/release/dz-e2e-sentinel ${BIN_DIR}/ && \
     cp /target/release/doublezero-ip-verifier ${BIN_DIR}/ && \
     cp /target/release/fork-accounts ${BIN_DIR}/
 

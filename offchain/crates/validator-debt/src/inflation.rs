@@ -91,8 +91,8 @@ mod tests {
                 epoch_vote_account: true,
                 epoch_credits: vec![(812, 256, 128), (811, 128, 64)],
                 commission: 10,
-                last_vote: 123456789,
-                root_slot: 123456700,
+                last_vote: 123_456_789,
+                root_slot: 123_456_700,
             }],
             delinquent: vec![],
         };
@@ -104,7 +104,7 @@ mod tests {
 
         let mock_rpc_inflation_reward = vec![Some(RpcInflationReward {
             epoch: 812,
-            effective_slot: 123456789,
+            effective_slot: 123_456_789,
             amount: 2500,
             post_balance: 1_500_002_500,
             commission: Some(1),

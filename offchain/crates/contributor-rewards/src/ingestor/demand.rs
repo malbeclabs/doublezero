@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{cmp::Reverse, collections::BTreeMap};
 
 use anyhow::{Result, anyhow, bail};
 use doublezero_serviceability::state::user::{User as DZUser, UserStatus, UserType};
@@ -267,7 +267,7 @@ pub fn build_city_stats(
     // Log per-city stats
     info!("Per-city statistics:");
     let mut sorted_cities: Vec<_> = city_stats.iter().collect();
-    sorted_cities.sort_by(|a, b| b.1.total_stake_proxy.cmp(&a.1.total_stake_proxy));
+    sorted_cities.sort_by_key(|(_, stats)| Reverse(stats.total_stake_proxy));
     for (city, stats) in sorted_cities.iter().take(5) {
         info!(
             "  {}: validators={}, slots={}, subscribers={}, price={}",

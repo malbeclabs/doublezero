@@ -3,7 +3,7 @@ name = "doublezero-ledger-sentinel"
 description = "Sentinel for access to DoubleZero Ledger Network"
 version = "0.2.5"
 
-edition.workspace = true
+edition = "2024"
 homepage.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -12,7 +12,10 @@ repository.workspace = true
 anyhow.workspace = true
 async-trait.workspace = true
 base64.workspace = true
-bincode.workspace = true
+# bincode 1, not the workspace entry: this repo's own crates are on bincode 2,
+# whose API (bincode::serde::encode_to_vec) is a different one. Unifying is a
+# code change, not a manifest change.
+bincode = "1"
 borsh.workspace = true
 clap.workspace = true
 config.workspace = true
@@ -31,7 +34,10 @@ retainer.workspace = true
 # Direct dependency so the workspace TLS root features (rustls-tls-native-roots)
 # unify into this binary; sentinel otherwise reaches reqwest only through
 # solana-client, which enables webpki roots alone.
-reqwest.workspace = true
+# reqwest 0.12 with rustls and the OS root store, not the workspace entry: this
+# repo's own crates are on 0.13 with the default native TLS backend, and
+# switching either side's TLS stack is not a manifest change.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "rustls-tls-native-roots"] }
 serde.workspace = true
 serde_json.workspace = true
 solana-account-decoder-client-types.workspace = true

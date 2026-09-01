@@ -4,7 +4,7 @@ readme = "README.md"
 version = "0.6.1"
 
 # Workspace inherited keys
-edition.workspace = true
+edition = "2024"
 authors.workspace = true
 homepage.workspace = true
 license.workspace = true

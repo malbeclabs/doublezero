@@ -165,7 +165,7 @@ impl ListCommand {
 
             let mut balances: HashMap<Pubkey, u64> = HashMap::new();
             let mut matching_seats = Vec::new();
-            for (seat, account) in parsed_seats.into_iter().zip(escrow_accounts.into_iter()) {
+            for (seat, account) in parsed_seats.into_iter().zip(escrow_accounts) {
                 if let Some((seat_key, _, balance)) = state::parse_payment_escrow(&account.data) {
                     balances.insert(seat_key, balance);
                     matching_seats.push(seat);

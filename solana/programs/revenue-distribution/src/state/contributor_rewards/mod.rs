@@ -7,7 +7,7 @@ pub use recipient_shares::*;
 use bytemuck::{Pod, Zeroable};
 use doublezero_program_tools::{
     types::{Flags, StorageGap},
-    {Discriminator, PrecomputedDiscriminator},
+    Discriminator, PrecomputedDiscriminator,
 };
 use solana_pubkey::Pubkey;
 

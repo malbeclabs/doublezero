@@ -204,7 +204,7 @@ impl ShowCommand {
                     .subscription_epochs
                     .iter()
                     .zip(holding_keys.iter())
-                    .zip(holding_accounts.into_iter())
+                    .zip(holding_accounts)
                 {
                     let status = classify_token_account(maybe_acct.as_ref(), Some(&mint));
                     writeln!(

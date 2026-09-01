@@ -85,11 +85,11 @@ mod tests {
             debts: vec![
                 ComputedSolanaValidatorDebt {
                     node_id: Pubkey::new_unique(),
-                    amount: 1343542456,
+                    amount: 1_343_542_456,
                 },
                 ComputedSolanaValidatorDebt {
                     node_id: Pubkey::new_unique(),
-                    amount: 234234324,
+                    amount: 234_234_324,
                 },
             ],
         };

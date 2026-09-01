@@ -17,13 +17,32 @@ members = [
     "crates/doublezero-ip-proof",
     "crates/doublezero-ip-verifier",
     "crates/sentinel",
+    # from doublezero-offchain
+    "offchain/crates/contributor-rewards",
+    "offchain/crates/passport-cli",
+    "offchain/crates/scheduled-command",
+    "offchain/crates/sentinel",
+    "offchain/crates/slack-notifier",
+    "offchain/crates/solana-admin-cli/passport",
+    "offchain/crates/solana-admin-cli/revenue-distribution",
+    "offchain/crates/solana-admin-cli/sol-conversion",
+    "offchain/crates/solana-cli",
+    "offchain/crates/solana-client-tools",
+    "offchain/crates/solana-fork",
+    "offchain/crates/solana-interface/sol-conversion",
+    "offchain/crates/solana-sdk",
+    "offchain/crates/validator-debt",
+    "offchain/scheduler/native/scheduler_doublezero",
 ]
 default-members = []
 exclude = [
-    # Both trees keep their own workspace, lockfile and toolchain until step 4
-    # of the monorepo migration merges them in.
-    "offchain",
+    # The Solana L1 programs keep their own workspace, lockfile and toolchain.
+    # 62 of the 96 crates in their build closure resolve to a different version
+    # under this workspace's lockfile, which would change the compiled bytes and
+    # break `solana/programs/sha256sums_*.txt`.
     "solana",
+    # Not a member in doublezero-offchain either.
+    "offchain/programs/mock-shred-subscription-program",
     "sdk/revdist/testdata/fixtures/generate-fixtures",
     "sdk/serviceability/testdata/fixtures/generate-fixtures",
     "sdk/telemetry/testdata/fixtures/generate-fixtures",
@@ -44,27 +63,27 @@ repository = "https://github.com/malbeclabs/doublezero"
 [workspace.dependencies]
 anyhow = "1"
 assert_cmd = "2"
-async-trait = "0"
+async-trait = "0.1"
 axum = { version = "0", default-features = false }
 backon = "1"
 # NOTE: We need to maintain base64 version 0.22.1
 base64 = "0.22.1"
 bincode = { version = "2", features = ["serde"] }
 bitvec = "1"
-borsh = "1"
+borsh = { version = "1", features = ["derive"] }
 borsh-incremental = { version = "0" }
-bytemuck = { version = "1", features = ["derive"] }
+bytemuck = { version = "1", features = ["derive", "min_const_generics"] }
 byteorder = "1"
-chrono = "0"
-clap = { version = "4", features = ["derive"] }
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive", "env"] }
 clap_complete = { version = "4", features = ["unstable-dynamic"] }
 console = "0"
 ctor = "1"
 directories-next = "2"
 dirs-next = "2"
 env_logger = "0"
-eyre = "0"
-futures = "0"
+eyre = "0.6"
+futures = "0.3"
 futures-util = "0"
 hex = "0.4"
 http = "1"
@@ -72,18 +91,18 @@ http-body-util = "0"
 hyper = "1"
 hyper-util = "0"
 hyperlocal = { version = "0" }
-indexmap = "2"
+indexmap = { version = "2", features = ["serde"] }
 indicatif = "0"
 ipnetwork = "0"
-libc = "0"
+libc = "0.2"
 log = "0"
-metrics = "0"
-metrics-exporter-prometheus = "0"
+metrics = "0.24"
+metrics-exporter-prometheus = "0.17"
 metrics-util = "0"
 mockall = "0.15"
 reqwest = "0.13"
 regex = "1"
-serde = "1"
+serde = { version = "1", features = ["derive"] }
 serde_bytes = "0"
 serde_json = "1"
 serde_yaml = "0"
@@ -109,22 +128,57 @@ solana-signer = "3.0"
 solana-system-interface = { version = "3", features = ["bincode"] }
 solana-transaction-status = "3.0"
 bitflags = "2"
-tabled = "0"
+tabled = { version = "0.20", features = ["std", "derive"] }
 temp-env = "0"
 tempfile = "3"
 thiserror = "2"
 tokio-util = "0.7"
 tower = "0"
 tower-http = { version = "0", default-features = false }
-tracing = "0"
-tracing-subscriber = { version = "0", default-features = true, features = ["env-filter", "fmt", "registry"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", default-features = true, features = ["env-filter", "fmt", "registry"] }
 url = "2"
-strum = "0.28"
+strum = { version = "0.28", features = ["derive"] }
 strum_macros = "0.28"
 tokio = { version = "1", default-features = false, features = [
+    "macros",
     "rt-multi-thread",
     "signal",
 ] }
+arrow = "57"
+aws-config = "1"
+aws-sdk-s3 = "1"
+bs58 = "0.5"
+config = "0.15"
+csv = "1"
+dotenvy = "0.15"
+governor = "0.6"
+home = "0.5"
+humantime = "2"
+itertools = "0.14"
+leaky-bucket = "1"
+md5 = "0.8"
+parquet = { version = "57", features = ["async"] }
+percent-encoding = "2"
+rayon = "1"
+retainer = "0.4"
+rust_decimal = { version = "1", features = ["serde", "macros"] }
+solana-account-decoder-client-types = "3.0"
+solana-address-lookup-table-interface = { version = "3", features = ["bincode", "bytemuck"] }
+solana-message = { version = "3.0", features = ["bincode"] }
+solana-offchain-message = { version = "3.0", features = ["verify"] }
+solana-program-pack = "3.0"
+solana-pubkey = { version = "3.0", features = ["borsh", "bytemuck"] }
+solana-reward-info = "3.0"
+solana-rpc-client-types = "3.0"
+solana-sanitize = "3.0"
+solana-transaction-status-client-types = "3.0"
+spl-associated-token-account-interface = "2"
+spl-memo-interface = "2"
+spl-token-interface = "2"
+svm-hash = { version = "0.2", features = ["bytemuck", "borsh"] }
+tokio-cron-scheduler = "0.14"
+
 doublezero-cli-core = { path = "crates/doublezero-cli-core" }
 doublezero-config = { path = "config" }
 doublezero-daemon-cli = { path = "crates/doublezero-daemon-cli" }
@@ -147,12 +201,64 @@ features = ["no-entrypoint"]
 
 [workspace.dependencies.doublezero-serviceability]
 path = "smartcontract/programs/doublezero-serviceability"
-features = ["no-entrypoint"]
+features = ["no-entrypoint", "serde"]
 
 [workspace.dependencies.doublezero-telemetry]
 path = "smartcontract/programs/doublezero-telemetry"
-features = ["no-entrypoint"]
+features = ["no-entrypoint", "serde"]
 
 [workspace.dependencies.doublezero-geolocation]
 path = "smartcontract/programs/doublezero-geolocation"
 features = ["no-entrypoint"]
+
+### The offchain crates
+
+[workspace.dependencies.doublezero-contributor-rewards]
+path = "offchain/crates/contributor-rewards"
+
+[workspace.dependencies.doublezero-ledger-sentinel]
+path = "offchain/crates/sentinel"
+
+[workspace.dependencies.doublezero-passport-cli]
+path = "offchain/crates/passport-cli"
+
+[workspace.dependencies.doublezero-scheduled-command]
+path = "offchain/crates/scheduled-command"
+
+[workspace.dependencies.doublezero-sol-conversion-interface]
+path = "offchain/crates/solana-interface/sol-conversion"
+features = ["serde"]
+
+[workspace.dependencies.doublezero-solana-client-tools]
+path = "offchain/crates/solana-client-tools"
+
+[workspace.dependencies.doublezero-solana-sdk]
+path = "offchain/crates/solana-sdk"
+
+[workspace.dependencies.doublezero-solana-validator-debt]
+path = "offchain/crates/validator-debt"
+
+[workspace.dependencies.slack-notifier]
+path = "offchain/crates/slack-notifier"
+
+### The Solana L1 programs, which keep their own workspace and lockfile per D2 of
+### docs/superpowers/specs/2026-08-27-monorepo-migration-design.md. A path
+### dependency may point into an excluded tree, so these three compile once per
+### lockfile, exactly as they did when the trees were separate repositories.
+
+[workspace.dependencies.doublezero-passport]
+path = "solana/programs/passport"
+features = ["offchain"]
+
+[workspace.dependencies.doublezero-program-tools]
+path = "solana/crates/program-tools"
+
+[workspace.dependencies.doublezero-revenue-distribution]
+path = "solana/programs/revenue-distribution"
+
+### Outside this repository
+
+[workspace.dependencies.network-shapley]
+features = ["serde", "borsh"]
+git = "https://github.com/doublezerofoundation/network-shapley-rs"
+tag = "v0.6.0"

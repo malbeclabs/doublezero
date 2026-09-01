@@ -54,6 +54,8 @@ mockall.workspace = true
 path = "src/lib.rs"
 
 [[bin]]
-name = "doublezero-sentinel"
+# Renamed from doublezero-sentinel: offchain/crates/sentinel ships a deb of that
+# name, and two workspace members cannot write the same file into target/release.
+name = "dz-e2e-sentinel"
 path = "src/main.rs"
 required-features = ["server"]

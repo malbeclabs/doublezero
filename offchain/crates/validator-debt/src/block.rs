@@ -198,8 +198,8 @@ mod tests {
         let mock_epoch_info = EpochInfo {
             epoch: 101,
             slot_index: 1000,
-            absolute_slot: 100000,
-            block_height: 1030303,
+            absolute_slot: 100_000,
+            block_height: 1_030_303,
             slots_in_epoch: 4000,
             transaction_count: Some(1000),
         };

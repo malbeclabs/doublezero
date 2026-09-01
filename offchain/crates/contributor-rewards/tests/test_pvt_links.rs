@@ -29,7 +29,7 @@ fn create_expected_results() -> HashMap<(String, String), ExpectedLink> {
         ExpectedLink {
             latency_ms: 154.520,
             bandwidth_mbps: 10000.0,
-            uptime: 0.9968580219, // raw true_uptime; penalty applied inside network-shapley-rs
+            uptime: 0.996_858_021_9, // raw true_uptime; penalty applied inside network-shapley-rs
         },
     );
 
@@ -128,7 +128,7 @@ fn test_settings() -> settings::Settings {
             max_epochs_lookback: 5,
             min_samples_per_link: 20,
             enable_accumulator: true,
-            dedup_window_us: 10000000,
+            dedup_window_us: 10_000_000,
         },
         telemetry_defaults: settings::TelemetryDefaultSettings {
             missing_data_threshold: 0.7,

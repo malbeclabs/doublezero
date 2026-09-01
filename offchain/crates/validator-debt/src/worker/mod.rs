@@ -744,8 +744,8 @@ async fn create_or_validate_ledger_record(
             if existing_computed_debt.blockhash == new_computed_debt.blockhash {
                 bail!(
                     "retrieved record blockhash {} is equal to created record blockhash {}",
-                    &existing_computed_debt.blockhash,
-                    &new_computed_debt.blockhash
+                    existing_computed_debt.blockhash,
+                    new_computed_debt.blockhash
                 );
             }
 

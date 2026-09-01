@@ -19,6 +19,7 @@ use doublezero_serviceability::{
         topology::TopologyConstraint,
     },
 };
+use solana_program::program_error::ProgramError;
 use solana_program_test::*;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction, InstructionError},
@@ -1083,4 +1084,19 @@ pub async fn try_execute_and_get_error(
         .await
         .expect("banks client failed")
         .result
+}
+
+/// Asserts a failed transaction was rejected with the `ProgramError::Custom` code that
+/// `expected` maps to. Takes the expected error as a parameter rather than hardcoding one, so
+/// any test in this crate can use it to check any `DoubleZeroError`.
+#[allow(dead_code)]
+pub fn assert_custom_error(err: &BanksClientError, expected: DoubleZeroError) {
+    let ProgramError::Custom(want) = ProgramError::from(expected.clone()) else {
+        panic!("{expected:?} must map to ProgramError::Custom");
+    };
+    assert_eq!(
+        custom_error_code(err),
+        Some(want),
+        "expected Custom({want}), got {err:?}"
+    );
 }

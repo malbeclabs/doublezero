@@ -194,7 +194,9 @@ pub enum DoubleZeroInstruction {
     AcceptLink(LinkAcceptArgs),               // variant 66
     SetAccessPass(SetAccessPassArgs),         // variant 67
     SetAirdrop(SetAirdropArgs),               // variant 68
-    CloseAccessPass(CloseAccessPassArgs),     // variant 69
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. Use
+    /// `Close<Kind>AccessPass` (variants 119-123). See malbeclabs/infra#2470.
+    CloseAccessPass(), // variant 69
     CheckStatusAccessPass(CheckStatusAccessPassArgs), // variant 70
     CheckUserAccessPass(CheckUserAccessPassArgs), // variant 71
 
@@ -271,6 +273,14 @@ pub enum DoubleZeroInstruction {
     RetireFeed(FeedRetireArgs),                         // variant 122
     FinalizeFeedRetirement(FeedFinalizeRetirementArgs), // variant 123
     ActivateFeed(FeedActivateArgs),                     // variant 124
+
+    /// One close instruction per `AccessPassType`. Each refuses a pass of any other
+    /// kind with `AccessPassTypeMismatch`. See malbeclabs/infra#2470.
+    ClosePrepaidAccessPass(CloseAccessPassArgs), // variant 125
+    CloseSolanaValidatorAccessPass(CloseAccessPassArgs), // variant 126
+    CloseSolanaRPCAccessPass(CloseAccessPassArgs),       // variant 127
+    CloseOthersAccessPass(CloseAccessPassArgs),          // variant 128
+    CloseEdgeSeatAccessPass(CloseAccessPassArgs),        // variant 129
 }
 
 impl DoubleZeroInstruction {
@@ -365,7 +375,7 @@ impl DoubleZeroInstruction {
             67 => Ok(Self::SetAccessPass(SetAccessPassArgs::try_from(rest).unwrap())),
 
             68 => Ok(Self::SetAirdrop(SetAirdropArgs::try_from(rest).unwrap())),
-            69 => Ok(Self::CloseAccessPass(CloseAccessPassArgs::try_from(rest).unwrap())),
+            69 => Ok(Self::CloseAccessPass()),
             70 => Ok(Self::CheckStatusAccessPass(CheckStatusAccessPassArgs::try_from(rest).unwrap())),
             71 => Ok(Self::CheckUserAccessPass(CheckUserAccessPassArgs::try_from(rest).unwrap())),
 
@@ -433,6 +443,12 @@ impl DoubleZeroInstruction {
             124 => Ok(Self::ActivateFeed(
                 FeedActivateArgs::try_from(rest).unwrap(),
             )),
+
+            125 => Ok(Self::ClosePrepaidAccessPass(CloseAccessPassArgs::try_from(rest).unwrap())),
+            126 => Ok(Self::CloseSolanaValidatorAccessPass(CloseAccessPassArgs::try_from(rest).unwrap())),
+            127 => Ok(Self::CloseSolanaRPCAccessPass(CloseAccessPassArgs::try_from(rest).unwrap())),
+            128 => Ok(Self::CloseOthersAccessPass(CloseAccessPassArgs::try_from(rest).unwrap())),
+            129 => Ok(Self::CloseEdgeSeatAccessPass(CloseAccessPassArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -525,7 +541,7 @@ impl DoubleZeroInstruction {
             Self::AcceptLink(_) => "AcceptLink".to_string(),               // variant 66
             Self::SetAccessPass(_) => "SetAccessPass".to_string(),         // variant 67
             Self::SetAirdrop(_) => "SetAirdrop".to_string(),               // variant 68
-            Self::CloseAccessPass(_) => "CloseAccessPass".to_string(),     // variant 69
+            Self::CloseAccessPass() => "CloseAccessPass".to_string(),      // variant 69
             Self::CheckStatusAccessPass(_) => "CheckStatusAccessPass".to_string(), // variant 70
             Self::CheckUserAccessPass(_) => "CheckUserAccessPass".to_string(), // variant 71
 
@@ -591,6 +607,12 @@ impl DoubleZeroInstruction {
             Self::SetAccessPassFlags(_) => "SetAccessPassFlags".to_string(), // variant 116
             Self::SubscribeFeed(_) => "SubscribeFeed".to_string(), // variant 117
             Self::UnsubscribeFeed(_) => "UnsubscribeFeed".to_string(), // variant 118
+
+            Self::ClosePrepaidAccessPass(_) => "ClosePrepaidAccessPass".to_string(), // variant 125
+            Self::CloseSolanaValidatorAccessPass(_) => "CloseSolanaValidatorAccessPass".to_string(), // variant 126
+            Self::CloseSolanaRPCAccessPass(_) => "CloseSolanaRPCAccessPass".to_string(), // variant 127
+            Self::CloseOthersAccessPass(_) => "CloseOthersAccessPass".to_string(), // variant 128
+            Self::CloseEdgeSeatAccessPass(_) => "CloseEdgeSeatAccessPass".to_string(), // variant 129
         }
     }
 
@@ -675,7 +697,7 @@ impl DoubleZeroInstruction {
             Self::AcceptLink(args) => format!("{args:?}"),        // variant 66
             Self::SetAccessPass(args) => format!("{args:?}"),     // variant 67
             Self::SetAirdrop(args) => format!("{args:?}"),        // variant 68
-            Self::CloseAccessPass(args) => format!("{args:?}"),   // variant 69
+            Self::CloseAccessPass() => "".to_string(),            // variant 69
             Self::CheckStatusAccessPass(args) => format!("{args:?}"), // variant 70
             Self::CheckUserAccessPass(args) => format!("{args:?}"), // variant 71
 
@@ -741,6 +763,12 @@ impl DoubleZeroInstruction {
             Self::SetAccessPassFlags(args) => format!("{args:?}"), // variant 116
             Self::SubscribeFeed(args) => format!("{args:?}"), // variant 117
             Self::UnsubscribeFeed(args) => format!("{args:?}"), // variant 118
+
+            Self::ClosePrepaidAccessPass(args) => format!("{args:?}"), // variant 125
+            Self::CloseSolanaValidatorAccessPass(args) => format!("{args:?}"), // variant 126
+            Self::CloseSolanaRPCAccessPass(args) => format!("{args:?}"), // variant 127
+            Self::CloseOthersAccessPass(args) => format!("{args:?}"),  // variant 128
+            Self::CloseEdgeSeatAccessPass(args) => format!("{args:?}"), // variant 129
         }
     }
 }
@@ -1216,9 +1244,26 @@ mod tests {
             }),
             "SetAirdrop",
         );
+        test_instruction(DoubleZeroInstruction::CloseAccessPass(), "CloseAccessPass");
         test_instruction(
-            DoubleZeroInstruction::CloseAccessPass(CloseAccessPassArgs {}),
-            "CloseAccessPass",
+            DoubleZeroInstruction::ClosePrepaidAccessPass(CloseAccessPassArgs {}),
+            "ClosePrepaidAccessPass",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CloseSolanaValidatorAccessPass(CloseAccessPassArgs {}),
+            "CloseSolanaValidatorAccessPass",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CloseSolanaRPCAccessPass(CloseAccessPassArgs {}),
+            "CloseSolanaRPCAccessPass",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CloseOthersAccessPass(CloseAccessPassArgs {}),
+            "CloseOthersAccessPass",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CloseEdgeSeatAccessPass(CloseAccessPassArgs {}),
+            "CloseEdgeSeatAccessPass",
         );
         test_instruction(
             DoubleZeroInstruction::CheckStatusAccessPass(CheckStatusAccessPassArgs {}),

@@ -20,6 +20,25 @@ make fmt
 make ci
 ```
 
+## The imported trees
+
+`offchain/` and `solana/` came from `doublezero-offchain` and `doublezero-solana`.
+The offchain Rust crates are ordinary members of the root workspace, so the
+Quickstart targets above cover them. Two parts are not covered:
+
+```bash
+# The Solana L1 programs keep their own workspace, lockfile and 1.91 toolchain,
+# so nothing at the root builds them. Their program bytes have to stay
+# reproducible against solana/programs/sha256sums_*.txt, which is why they are
+# held out.
+cd solana && make lint && make test-lib && make test-sbf
+
+# The offchain scheduler is Elixir. `just elixir-ci` runs what CI runs.
+cd offchain/scheduler && mix deps.get && mix test
+```
+
+Both have their own CI workflows (`solana`, `elixir`), path-scoped to their trees.
+
 ## Local end-to-end testing
 
 The local devnet and end-to-end test environments both run entirely in Docker containers.

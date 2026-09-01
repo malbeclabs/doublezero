@@ -20,6 +20,10 @@ make ci
 
 For coding standards, local test instructions, and devnet usage, refer to [DEVELOPMENT](./DEVELOPMENT.md).
 
+This project is intended to be a safe, welcoming space for collaboration, and
+contributors are expected to adhere to the [Contributor Covenant Code of
+Conduct](http://contributor-covenant.org/).
+
 ## License
 
 Licensed under the **Apache License 2.0**.

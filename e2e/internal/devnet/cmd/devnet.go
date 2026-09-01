@@ -90,6 +90,10 @@ func NewLocalDevnet(log *slog.Logger, deployID string) (*LocalDevnet, error) {
 			Verbose:  true,
 			Interval: 10 * time.Second,
 		},
+		// The RFC-27 verifier is on by default (IPVerifierSpec.Disabled), so `connect` always
+		// has one to reach. Enforcement is a separate switch: the require-ip-ownership-proof
+		// feature flag stays clear, so a proof is attached but not demanded. See
+		// e2e/docs/IP_VERIFIER_LOCAL_DEVNET.md.
 	}, log, dockerClient, subnetAllocator)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create devnet: %w", err)

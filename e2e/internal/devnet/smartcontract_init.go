@@ -161,3 +161,49 @@ func (dn *Devnet) SetOnchainAllocationFeatureFlag(ctx context.Context) error {
 	dn.log.Debug("--> Onchain-allocation feature flag enabled")
 	return nil
 }
+
+// SetIPVerifierAuthority writes the RFC-27 verifier pubkey to
+// GlobalState.ip_verifier_authority_pk. Must run before the ip-verifier container starts: the
+// service reads the authority from the ledger at startup and refuses to serve if it does not name
+// its own key.
+func (dn *Devnet) SetIPVerifierAuthority(ctx context.Context, pubkey string) error {
+	dn.log.Debug("==> Setting ip-verifier authority", "pubkey", pubkey)
+
+	dn.onchainWriteMutex.Lock()
+	defer dn.onchainWriteMutex.Unlock()
+
+	_, err := dn.Manager.Exec(ctx, []string{
+		"doublezero", "global-config", "authority", "set", "--ip-verifier-authority", pubkey,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to set ip-verifier authority: %w", err)
+	}
+
+	dn.log.Debug("--> Ip-verifier authority set", "pubkey", pubkey)
+	return nil
+}
+
+// SetIPOwnershipProofFeatureFlag turns RFC-27 enforcement on or off in GlobalState. Off is the
+// local default: with it clear a user is created whether or not a proof is attached, so a devnet
+// with no reachable verifier still works. Turning it on makes the program reject a create without
+// a valid proof, which is what a test of the enforcement path wants.
+func (dn *Devnet) SetIPOwnershipProofFeatureFlag(ctx context.Context, enable bool) error {
+	toggle := "--disable"
+	if enable {
+		toggle = "--enable"
+	}
+	dn.log.Debug("==> Setting require-ip-ownership-proof feature flag", "enable", enable)
+
+	dn.onchainWriteMutex.Lock()
+	defer dn.onchainWriteMutex.Unlock()
+
+	_, err := dn.Manager.Exec(ctx, []string{
+		"doublezero", "global-config", "feature-flags", "set", toggle, "require-ip-ownership-proof",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to set require-ip-ownership-proof feature flag: %w", err)
+	}
+
+	dn.log.Debug("--> Require-ip-ownership-proof feature flag set", "enable", enable)
+	return nil
+}

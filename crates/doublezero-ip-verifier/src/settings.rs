@@ -9,6 +9,7 @@ use clap::Parser;
 use doublezero_config::Environment;
 use ipnetwork::IpNetwork;
 use solana_keypair::{read_keypair_file, Keypair};
+use solana_program::pubkey::Pubkey;
 use std::{net::SocketAddr, path::PathBuf, sync::Arc, time::Duration};
 
 /// Every flag also reads a `DZ_IP_VERIFIER_`-prefixed environment variable, which is how the
@@ -28,6 +29,13 @@ pub struct AppArgs {
     /// DoubleZero Ledger RPC URL. Defaults to the URL for `--env`.
     #[arg(long, env = "DZ_IP_VERIFIER_LEDGER_RPC")]
     pub ledger_rpc: Option<String>,
+
+    /// Serviceability program ID `GlobalState` is read from. Defaults to the program `--env`
+    /// names. Needed wherever the deployed program is not that one — a devnet deploys its own,
+    /// and reading the environment's program ID there finds no `GlobalState` account at all, so
+    /// the authority check has nothing to compare against and never fails.
+    #[arg(long, env = "DZ_IP_VERIFIER_SERVICEABILITY_PROGRAM_ID")]
+    pub serviceability_program_id: Option<Pubkey>,
 
     /// Path to the verifier keypair JSON file. Its public key must match
     /// `GlobalState.ip_verifier_authority_pk` or every proof this service issues is rejected
@@ -159,17 +167,23 @@ impl AppArgs {
         }
     }
 
+    pub fn serviceability_program_id(&self) -> anyhow::Result<Pubkey> {
+        match self.serviceability_program_id {
+            Some(program_id) => Ok(program_id),
+            None => Ok(self
+                .env
+                .config()
+                .map_err(|err| anyhow::anyhow!("{err}"))
+                .with_context(|| format!("no network config for environment {}", self.env))?
+                .serviceability_program_id),
+        }
+    }
+
     /// The ledger client both background loops read through.
     pub fn ledger(&self) -> anyhow::Result<Ledger> {
-        let config = self
-            .env
-            .config()
-            .map_err(|err| anyhow::anyhow!("{err}"))
-            .with_context(|| format!("no network config for environment {}", self.env))?;
-
         Ok(Ledger::new(
             self.ledger_rpc_url()?,
-            config.serviceability_program_id,
+            self.serviceability_program_id()?,
         ))
     }
 
@@ -248,6 +262,30 @@ mod tests {
     fn an_explicit_ledger_rpc_url_wins() {
         let args = parse(&["--env", "testnet", "--ledger-rpc", "http://localhost:8899"]);
         assert_eq!(args.ledger_rpc_url().unwrap(), "http://localhost:8899");
+    }
+
+    #[test]
+    fn the_serviceability_program_id_defaults_to_the_environment() {
+        let args = parse(&["--env", "testnet"]);
+        assert_eq!(
+            args.serviceability_program_id().unwrap(),
+            Environment::Testnet
+                .config()
+                .unwrap()
+                .serviceability_program_id
+        );
+    }
+
+    #[test]
+    fn an_explicit_serviceability_program_id_wins() {
+        let program_id = Pubkey::new_unique();
+        let args = parse(&[
+            "--env",
+            "testnet",
+            "--serviceability-program-id",
+            &program_id.to_string(),
+        ]);
+        assert_eq!(args.serviceability_program_id().unwrap(), program_id);
     }
 
     #[test]

@@ -43,6 +43,7 @@ env:
   DZ_DEVICE_HEALTH_ORACLE_IMAGE: ghcr.io/malbeclabs/dz-e2e/device-health-oracle:${{ github.event.inputs.image_tag || github.sha }}
   DZ_GEOPROBE_IMAGE: ghcr.io/malbeclabs/dz-e2e/geoprobe:${{ github.event.inputs.image_tag || github.sha }}
   DZ_SENTINEL_IMAGE: ghcr.io/malbeclabs/dz-e2e/sentinel:${{ github.event.inputs.image_tag || github.sha }}
+  DZ_IP_VERIFIER_IMAGE: ghcr.io/malbeclabs/dz-e2e/ip-verifier:${{ github.event.inputs.image_tag || github.sha }}
   DZ_VALIDATOR_METADATA_SERVICE_MOCK_IMAGE: ghcr.io/malbeclabs/dz-e2e/validator-metadata-service-mock:${{ github.event.inputs.image_tag || github.sha }}
 
 jobs:
@@ -291,6 +292,7 @@ jobs:
           docker push ${{ env.DZ_IMAGE_REPO }}/device-health-oracle:${{ env.DZ_IMAGE_TAG }}
           docker push ${{ env.DZ_IMAGE_REPO }}/geoprobe:${{ env.DZ_IMAGE_TAG }}
           docker push ${{ env.DZ_IMAGE_REPO }}/sentinel:${{ env.DZ_IMAGE_TAG }}
+          docker push ${{ env.DZ_IMAGE_REPO }}/ip-verifier:${{ env.DZ_IMAGE_TAG }}
           docker push ${{ env.DZ_IMAGE_REPO }}/validator-metadata-service-mock:${{ env.DZ_IMAGE_TAG }}
       - name: Discover tests and distribute across shards
         if: steps.gate.outputs.run-e2e == 'true'
@@ -434,6 +436,7 @@ jobs:
           pull_with_retry ${{ env.DZ_IMAGE_REPO }}/device-health-oracle:${{ env.DZ_IMAGE_TAG }}
           pull_with_retry ${{ env.DZ_IMAGE_REPO }}/geoprobe:${{ env.DZ_IMAGE_TAG }}
           pull_with_retry ${{ env.DZ_IMAGE_REPO }}/sentinel:${{ env.DZ_IMAGE_TAG }}
+          pull_with_retry ${{ env.DZ_IMAGE_REPO }}/ip-verifier:${{ env.DZ_IMAGE_TAG }}
           pull_with_retry ${{ env.DZ_IMAGE_REPO }}/validator-metadata-service-mock:${{ env.DZ_IMAGE_TAG }}
           pull_with_retry ghcr.io/malbeclabs/dz-e2e/prometheus:v2.54.1
           pull_with_retry public.ecr.aws/influxdb/influxdb:1.8

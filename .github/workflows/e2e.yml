@@ -444,6 +444,12 @@ jobs:
         id: test
         env:
           DZ_E2E_NO_BUILD: "1"
+          # TestE2E_BackwardCompatibility asks the GitHub API which client
+          # releases exist. Unauthenticated, that is 60 requests an hour shared
+          # across every runner on the same address, so the shard failed on a
+          # 403 rate limit before it reached a devnet. The token raises the
+          # limit to 1,000 an hour for this repository.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: go test -tags=e2e -timeout=20m -parallel=12 -run '${{ matrix.run }}' -v
       - name: Report check-run result on PR head
         if: always() && github.event_name == 'workflow_dispatch' && steps.check.outputs.id

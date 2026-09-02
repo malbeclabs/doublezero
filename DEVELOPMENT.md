@@ -33,8 +33,8 @@ Quickstart targets above cover them. Two parts are not covered:
 # held out.
 cd solana && make lint && make test-lib && make test-sbf
 
-# The offchain scheduler is Elixir. `just elixir-ci` runs what CI runs.
-cd offchain/scheduler && mix deps.get && mix test
+# The offchain scheduler is Elixir. Run the same checks as `.github/workflows/elixir.yml`.
+cd offchain/scheduler && mix deps.get && mix format --check-formatted && mix compile --warnings-as-errors && mix credo --strict && mix test --cover
 ```
 
 Both have their own CI workflows (`solana`, `elixir`), path-scoped to their trees.

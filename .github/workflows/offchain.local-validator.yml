@@ -21,6 +21,11 @@ on:
 env:
   SOLANA_CLI: v3.0.12
 
+# Every cargo invocation names its package. The root workspace sets
+# `default-members = []`, so a bare `cargo build --bin X` selects nothing and
+# fails with "the workspace has no members". These commands came from a
+# repository whose workspace had no such restriction.
+
 jobs:
   test-doublezero-solana-fork:
     runs-on: ubuntu-latest
@@ -46,9 +51,9 @@ jobs:
       - name: Start Solana mainnet-beta fork in background
         run: |
           MANAGER_PUBKEY=$(solana address -k manager_keypair.json)
-          cargo run --bin doublezero-solana-fork -- -um --reset --synthetic-validator-client-rewards-manager "$MANAGER_PUBKEY" > /dev/null 2>&1 &
+          cargo run -p doublezero-solana-fork-cli --bin doublezero-solana-fork -- -um --reset --synthetic-validator-client-rewards-manager "$MANAGER_PUBKEY" > /dev/null 2>&1 &
       - name: Build `doublezero-solana`
-        run: cargo build --bin doublezero-solana
+        run: cargo build -p doublezero-solana-cli --bin doublezero-solana
       - name: Run `doublezero-solana` tests
         run: bash offchain/sh/test_doublezero_solana_fork.sh
 
@@ -72,8 +77,12 @@ jobs:
       - name: Generate ~/.config/solana/id.json
         run: solana-keygen new --silent --no-bip39-passphrase
       - name: Start Solana mainnet-beta fork in background
-        run: cargo run --bin doublezero-solana-fork -- -um --reset --god-mode > /dev/null 2>&1 &
+        run: cargo run -p doublezero-solana-fork-cli --bin doublezero-solana-fork -- -um --reset --god-mode > /dev/null 2>&1 &
       - name: Build the admin and validator-debt CLIs
-        run: cargo build --bin doublezero-revenue-distribution-admin --bin doublezero-solana-validator-debt --bin doublezero-solana
+        run: |
+          cargo build \
+            -p doublezero-revenue-distribution-admin-cli --bin doublezero-revenue-distribution-admin \
+            -p doublezero-solana-validator-debt --bin doublezero-solana-validator-debt \
+            -p doublezero-solana-cli --bin doublezero-solana
       - name: Run `doublezero-solana-validator-debt` tests
         run: bash offchain/sh/test_validator_debt_fork.sh

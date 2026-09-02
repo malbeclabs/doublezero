@@ -31,7 +31,7 @@ builds:
         - cmd: mix release
           dir: offchain/scheduler
     prebuilt:
-      path: ./scheduler/_build/prod/rel/scheduler/bin/scheduler
+      path: ./offchain/scheduler/_build/prod/rel/scheduler/bin/scheduler
 
 archives:
   - id: doublezero_offchain_scheduler_archive

@@ -7,9 +7,11 @@ mod tests {
         calculator::keypair_loader::load_keypair,
         processor::{internet::InternetTelemetryStatMap, telemetry::DZDTelemetryStatMap},
     };
+    use serial_test::serial;
     use tempfile::TempDir;
 
     #[test]
+    #[serial]
     fn test_keypair_cli_takes_precedence() -> Result<()> {
         // Create a temporary directory and keypair file
         let temp_dir = TempDir::new()?;
@@ -40,6 +42,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_keypair_env_fallback() -> Result<()> {
         // Create a temporary directory and keypair file
         let temp_dir = TempDir::new()?;
@@ -70,6 +73,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn test_keypair_not_provided_error() {
         // Ensure no env var is set
         unsafe {

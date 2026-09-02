@@ -69,3 +69,9 @@ thiserror.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+
+[dev-dependencies]
+# Three tests in tests/test_sanity.rs set and remove REWARDER_KEYPAIR_PATH, which
+# is process-wide state. cargo test runs them as threads in one process, so they
+# have to take turns.
+serial_test.workspace = true

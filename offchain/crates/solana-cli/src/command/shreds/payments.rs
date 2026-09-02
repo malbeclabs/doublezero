@@ -83,6 +83,15 @@ impl std::fmt::Display for EventType {
     }
 }
 
+const LEGACY_FUND_PAYMENT_ESCROW_USDC: [u8; 8] = [111, 6, 96, 2, 121, 92, 68, 147];
+
+fn parse_legacy_fund_payment_escrow_usdc(data: &[u8]) -> Option<u64> {
+    if data.len() < 16 || data[..8] != LEGACY_FUND_PAYMENT_ESCROW_USDC {
+        return None;
+    }
+    Some(u64::from_le_bytes(data[8..16].try_into().ok()?))
+}
+
 impl PaymentsCommand {
     pub async fn execute(
         self,
@@ -194,14 +203,16 @@ impl PaymentsCommand {
                         continue;
                     }
 
+                    if let Some(amount) = parse_legacy_fund_payment_escrow_usdc(&ix.data) {
+                        events.push(PaymentEvent {
+                            event_type: EventType::Funded,
+                            amount_micro: amount as i64,
+                            block_time: tx_response.block_time,
+                        });
+                        continue;
+                    }
+
                     match ShredSubscriptionInstructionData::try_from_slice(&ix.data) {
-                        Ok(ShredSubscriptionInstructionData::FundPaymentEscrowUsdc(amount)) => {
-                            events.push(PaymentEvent {
-                                event_type: EventType::Funded,
-                                amount_micro: amount as i64,
-                                block_time: tx_response.block_time,
-                            });
-                        }
                         // TODO: ClosePaymentEscrow (withdrawal) — the actual
                         // refunded amount is in the tx log message "Withdrew {}
                         // USDC from payment escrow to refund account". Parse that

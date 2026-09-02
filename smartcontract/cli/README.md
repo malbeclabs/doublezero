@@ -339,9 +339,10 @@ Below is a list of available CLI commands for each main on-chain structure:
     | --dz-ip       | Ipv4Addr | DoubleZero IPv4 address    |
     | -a            | Option   | Allocate DZ IP             |
 - `user delete` — Delete a user
-    | Argument   | Type   | Description         |
-    |------------|--------|---------------------|
-    | --pubkey   | Pubkey | User public key     |
+    | Argument              | Type   | Description                        |
+    |----------------------|--------|-------------------------------------|
+    | --pubkey             | Pubkey | User public key                    |
+    | --access-pass-type   | Enum   | Access pass type to delete         |
 - `user get` — Get user details
     | Argument   | Type   | Description         |
     |------------|--------|---------------------|

@@ -157,7 +157,9 @@ pub enum DoubleZeroInstruction {
     UpdateUser(UserUpdateArgs), // variant 39
     SuspendUser(),              // variant 40
     ResumeUser(),               // variant 41
-    DeleteUser(UserDeleteArgs), // variant 42
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. Use `Delete<Kind>User`
+    /// (variants 124-128). See malbeclabs/infra#2470.
+    DeleteUser(), // variant 42
     /// Deprecated: handler returns DoubleZeroError::Deprecated. See #3622.
     CloseAccountUser(), // variant 43
     RequestBanUser(UserRequestBanArgs), // variant 44
@@ -194,7 +196,9 @@ pub enum DoubleZeroInstruction {
     AcceptLink(LinkAcceptArgs),               // variant 66
     SetAccessPass(SetAccessPassArgs),         // variant 67
     SetAirdrop(SetAirdropArgs),               // variant 68
-    CloseAccessPass(CloseAccessPassArgs),     // variant 69
+    /// Deprecated: handler returns DoubleZeroError::Deprecated. Use
+    /// `Close<Kind>AccessPass` (variants 119-123). See malbeclabs/infra#2470.
+    CloseAccessPass(), // variant 69
     CheckStatusAccessPass(CheckStatusAccessPassArgs), // variant 70
     CheckUserAccessPass(CheckUserAccessPassArgs), // variant 71
 
@@ -349,7 +353,7 @@ impl DoubleZeroInstruction {
             39 => Ok(Self::UpdateUser(UserUpdateArgs::try_from(rest).unwrap())),
             40 => Ok(Self::SuspendUser()),
             41 => Ok(Self::ResumeUser()),
-            42 => Ok(Self::DeleteUser(UserDeleteArgs::try_from(rest).unwrap())),
+            42 => Ok(Self::DeleteUser()),
             43 => Ok(Self::CloseAccountUser()),
             44 => Ok(Self::RequestBanUser(UserRequestBanArgs::try_from(rest).unwrap())),
             45 => Ok(Self::BanUser()),
@@ -382,7 +386,7 @@ impl DoubleZeroInstruction {
             67 => Ok(Self::SetAccessPass(SetAccessPassArgs::try_from(rest).unwrap())),
 
             68 => Ok(Self::SetAirdrop(SetAirdropArgs::try_from(rest).unwrap())),
-            69 => Ok(Self::CloseAccessPass(CloseAccessPassArgs::try_from(rest).unwrap())),
+            69 => Ok(Self::CloseAccessPass()),
             70 => Ok(Self::CheckStatusAccessPass(CheckStatusAccessPassArgs::try_from(rest).unwrap())),
             71 => Ok(Self::CheckUserAccessPass(CheckUserAccessPassArgs::try_from(rest).unwrap())),
 
@@ -517,7 +521,7 @@ impl DoubleZeroInstruction {
             Self::UpdateUser(_) => "UpdateUser".to_string(), // variant 39
             Self::SuspendUser() => "SuspendUser".to_string(), // variant 40
             Self::ResumeUser() => "ResumeUser".to_string(),  // variant 41
-            Self::DeleteUser(_) => "DeleteUser".to_string(), // variant 42
+            Self::DeleteUser() => "DeleteUser".to_string(),  // variant 42
             Self::CloseAccountUser() => "CloseAccountUser".to_string(), // variant 43
 
             Self::RequestBanUser(_) => "RequestBanUser".to_string(), // variant 44
@@ -554,7 +558,7 @@ impl DoubleZeroInstruction {
             Self::AcceptLink(_) => "AcceptLink".to_string(),               // variant 66
             Self::SetAccessPass(_) => "SetAccessPass".to_string(),         // variant 67
             Self::SetAirdrop(_) => "SetAirdrop".to_string(),               // variant 68
-            Self::CloseAccessPass(_) => "CloseAccessPass".to_string(),     // variant 69
+            Self::CloseAccessPass() => "CloseAccessPass".to_string(),      // variant 69
             Self::CheckStatusAccessPass(_) => "CheckStatusAccessPass".to_string(), // variant 70
             Self::CheckUserAccessPass(_) => "CheckUserAccessPass".to_string(), // variant 71
 
@@ -685,7 +689,7 @@ impl DoubleZeroInstruction {
             Self::UpdateUser(args) => format!("{args:?}"), // variant 39
             Self::SuspendUser() => "".to_string(),         // variant 40
             Self::ResumeUser() => "".to_string(),          // variant 41
-            Self::DeleteUser(args) => format!("{args:?}"), // variant 42
+            Self::DeleteUser() => "".to_string(),          // variant 42
             Self::CloseAccountUser() => "".to_string(),    // variant 43
 
             Self::RequestBanUser(args) => format!("{args:?}"), // variant 44
@@ -716,7 +720,7 @@ impl DoubleZeroInstruction {
             Self::AcceptLink(args) => format!("{args:?}"),        // variant 66
             Self::SetAccessPass(args) => format!("{args:?}"),     // variant 67
             Self::SetAirdrop(args) => format!("{args:?}"),        // variant 68
-            Self::CloseAccessPass(args) => format!("{args:?}"),   // variant 69
+            Self::CloseAccessPass() => "".to_string(),            // variant 69
             Self::CheckStatusAccessPass(args) => format!("{args:?}"), // variant 70
             Self::CheckUserAccessPass(args) => format!("{args:?}"), // variant 71
 
@@ -1025,13 +1029,7 @@ mod tests {
         );
         test_instruction(DoubleZeroInstruction::SuspendUser(), "SuspendUser");
         test_instruction(DoubleZeroInstruction::ResumeUser(), "ResumeUser");
-        test_instruction(
-            DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
-                dz_prefix_count: 0,
-                multicast_publisher_count: 0,
-            }),
-            "DeleteUser",
-        );
+        test_instruction(DoubleZeroInstruction::DeleteUser(), "DeleteUser");
         test_instruction(
             DoubleZeroInstruction::CloseAccountDevice(),
             "CloseAccountDevice",
@@ -1269,10 +1267,7 @@ mod tests {
             }),
             "SetAirdrop",
         );
-        test_instruction(
-            DoubleZeroInstruction::CloseAccessPass(CloseAccessPassArgs {}),
-            "CloseAccessPass",
-        );
+        test_instruction(DoubleZeroInstruction::CloseAccessPass(), "CloseAccessPass");
         test_instruction(
             DoubleZeroInstruction::ClosePrepaidAccessPass(CloseAccessPassArgs {}),
             "ClosePrepaidAccessPass",

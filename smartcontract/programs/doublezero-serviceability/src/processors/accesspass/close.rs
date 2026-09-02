@@ -32,7 +32,7 @@ pub fn process_close_access_pass(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     _value: &CloseAccessPassArgs,
-    expected: AccessPassKind,
+    expected: Option<AccessPassKind>,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -98,10 +98,15 @@ pub fn process_close_access_pass(
     }
     let accesspass = AccessPass::try_from(accesspass_account)?;
 
-    let actual = AccessPassKind::from(&accesspass.accesspass_type);
-    if actual != expected {
-        msg!("this instruction closes a {expected} pass, but the pass is {actual}");
-        return Err(DoubleZeroError::AccessPassTypeMismatch.into());
+    // `None` is the deprecated `CloseAccessPass` (variant 69), which predates the
+    // per-pass-type split and performs no kind check. It is removed, along with this
+    // `Option`, in the follow-up that moves every caller. See malbeclabs/infra#2470.
+    if let Some(expected) = expected {
+        let actual = AccessPassKind::from(&accesspass.accesspass_type);
+        if actual != expected {
+            msg!("this instruction closes a {expected} pass, but the pass is {actual}");
+            return Err(DoubleZeroError::AccessPassTypeMismatch.into());
+        }
     }
 
     // Feed authority can only close access passes they own

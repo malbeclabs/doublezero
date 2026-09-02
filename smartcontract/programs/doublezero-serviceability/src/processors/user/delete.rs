@@ -52,7 +52,7 @@ pub fn process_delete_user(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     value: &UserDeleteArgs,
-    expected: AccessPassKind,
+    expected: Option<AccessPassKind>,
 ) -> ProgramResult {
     if value.dz_prefix_count == 0 {
         msg!("dz_prefix_count must be > 0; DeleteUser requires on-chain deallocation");
@@ -155,10 +155,17 @@ pub fn process_delete_user(
     if !accesspass_account.data_is_empty() {
         // Read Access Pass
         let mut accesspass = AccessPass::try_from(accesspass_account)?;
-        let actual = AccessPassKind::from(&accesspass.accesspass_type);
-        if actual != expected {
-            msg!("this instruction deletes a user on a {expected} pass, but the pass is {actual}");
-            return Err(DoubleZeroError::AccessPassTypeMismatch.into());
+        // `None` is the deprecated `DeleteUser` (variant 42), which predates the
+        // per-pass-type split and performs no kind check. It is removed, along with this
+        // `Option`, in the follow-up that moves every caller. See malbeclabs/infra#2470.
+        if let Some(expected) = expected {
+            let actual = AccessPassKind::from(&accesspass.accesspass_type);
+            if actual != expected {
+                msg!(
+                    "this instruction deletes a user on a {expected} pass, but the pass is {actual}"
+                );
+                return Err(DoubleZeroError::AccessPassTypeMismatch.into());
+            }
         }
         if accesspass.user_payer != user.owner {
             msg!(

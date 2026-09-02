@@ -22,7 +22,7 @@ For coding standards, local test instructions, and devnet usage, refer to [DEVEL
 
 This project is intended to be a safe, welcoming space for collaboration, and
 contributors are expected to adhere to the [Contributor Covenant Code of
-Conduct](http://contributor-covenant.org/).
+Conduct](https://www.contributor-covenant.org/).
 
 ## License
 

@@ -52,19 +52,17 @@ pub fn set_access_pass(
     )
 }
 
-/// Deprecated: `CloseAccessPass` (variant 69) now returns `DoubleZeroError::Deprecated`. Use
-/// one of the `Close<Kind>AccessPass` builders instead. See malbeclabs/infra#2470.
-/// Accounts: `[accesspass, globalstate]`.
+/// `CloseAccessPass` (variant 69). Accounts: `[accesspass, globalstate]`.
 pub fn close_access_pass(
     program_id: &Pubkey,
     payer: &Pubkey,
     accesspass: &Pubkey,
-    _args: CloseAccessPassArgs,
+    args: CloseAccessPassArgs,
 ) -> Instruction {
     let (globalstate, _) = get_globalstate_pda(program_id);
     common::build_with_permission(
         program_id,
-        DoubleZeroInstruction::CloseAccessPass(),
+        DoubleZeroInstruction::CloseAccessPass(args),
         vec![
             AccountMeta::new(*accesspass, false),
             AccountMeta::new(globalstate, false),

@@ -6,14 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
-- Serviceability
-  - `CloseAccessPass` (variant 69) and `DeleteUser` (variant 42) now return `Deprecated`. Callers must use the per-pass-type instructions instead: `ClosePrepaidAccessPass`, `CloseSolanaValidatorAccessPass`, `CloseSolanaRPCAccessPass`, `CloseOthersAccessPass`, `CloseEdgeSeatAccessPass` for close; `DeletePrepaidUser`, `DeleteSolanaValidatorUser`, `DeleteSolanaRPCUser`, `DeleteOthersUser`, `DeleteEdgeSeatUser` for delete. Each new instruction reads the access pass and refuses unless the pass matches the instruction. (#2470)
-  - The oracle in `doublezero-shreds` must ship its matching change with this program deploy. Its user removals fail until it names the pass type on each instruction. (#2470)
-
 ### Changes
 
 - Collector
   - The RIPE Atlas collector skips probes that RIPE tags `system-ipv4-doesnt-work`, in every role: measurement target, measurement source, fallback candidate and `list-probes` output. The tag is RIPE's own statement that the probe cannot perform IPv4 measurements, and the collector only ever measures IPv4, so such a probe is unusable everywhere. Columbus (`cmh`) has no anchor, so selection fell back to the nearest Connected probe carrying an IPv4 address — 1009793 at 0.36 km, which holds the tag and never answers a ping. It was selected, produced nothing for an hour, was marked unresponsive and blacklisted for 24h, then re-selected the moment the mark expired because it was still nearest; mainnet-beta went around that loop repeatedly. Excluding the tag at fetch time takes the probe out of candidacy for good and needs no new state. The mirror tag `system-ipv4-works` is deliberately not required: RIPE leaves working probes untagged (1012487 near cmh answers pings and carries neither tag), so only the explicit negative is a safe exclusion. (#4334)
+
+- Serviceability
+  - Ten new instructions remove an access pass or a user for one specific `AccessPassType`: `ClosePrepaidAccessPass`, `CloseSolanaValidatorAccessPass`, `CloseSolanaRPCAccessPass`, `CloseOthersAccessPass`, `CloseEdgeSeatAccessPass`, and `DeletePrepaidUser`, `DeleteSolanaValidatorUser`, `DeleteSolanaRPCUser`, `DeleteOthersUser`, `DeleteEdgeSeatUser`. Each reads the access pass and refuses with `AccessPassTypeMismatch` unless the pass matches the instruction. `CloseAccessPass` and `DeleteUser` keep working unchanged; a follow-up change deprecates them and moves every caller. (#2470)
 
 ## [v0.41.0](https://github.com/malbeclabs/doublezero/compare/client/v0.40.0...client/v0.41.0) - 2026-09-16
 

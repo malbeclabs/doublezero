@@ -2,12 +2,11 @@ mod common;
 
 //
 
-use doublezero_revenue_distribution::DOUBLEZERO_MINT_KEY;
 use doublezero_revenue_distribution::{
     instruction::{ProgramConfiguration, ProgramFlagConfiguration},
     state::{self, CommunityBurnRateParameters, Distribution, Journal, ProgramConfig},
-    types::ValidatorFee,
-    types::{BurnRate, DoubleZeroEpoch},
+    types::{BurnRate, DoubleZeroEpoch, ValidatorFee},
+    DOUBLEZERO_MINT_KEY,
 };
 use solana_program_test::tokio;
 use solana_sdk::signature::{Keypair, Signer};

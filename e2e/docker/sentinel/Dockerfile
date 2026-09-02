@@ -8,6 +8,6 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && \
     apt-get install -y curl bash
 
-COPY --from=base /doublezero/bin/doublezero-sentinel /usr/local/bin/doublezero-sentinel
+COPY --from=base /doublezero/bin/dz-e2e-sentinel /usr/local/bin/dz-e2e-sentinel
 
-ENTRYPOINT ["doublezero-sentinel"]
+ENTRYPOINT ["dz-e2e-sentinel"]

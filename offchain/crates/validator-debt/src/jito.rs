@@ -87,7 +87,7 @@ mod tests {
         let pubkey = "CvSb7wdQAFpHuSpTYTJnX5SYH4hCfQ9VuGnqrKaKwycB";
         let validator_ids: &[String] = &[String::from(pubkey)];
         let epoch = 812;
-        let expected_mev_revenue = 503423196855;
+        let expected_mev_revenue = 503_423_196_855;
         jito_mock_fetcher
             .expect_get::<JitoRewards>()
             .withf(move |url| url.contains(&format!("epoch={epoch}")))

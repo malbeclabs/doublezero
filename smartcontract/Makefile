@@ -35,8 +35,26 @@ test-programs: test-sbf
 		-p doublezero-geolocation
 
 .PHONY: test-sbf
+# Run from each program's directory, the way build-programs below does, rather
+# than unscoped from here. Two reasons, and only the first is new:
+#
+#   1. An unscoped cargo test-sbf resolves the whole workspace against the
+#      platform-tools rustc, which reports itself as 1.89.0-dev. The workspace
+#      now carries crates declaring a higher minimum, aws-sdk-s3 at 1.94.1 and
+#      rustler at 1.91, both reached through the offchain crates. Neither is in
+#      any program's dependency graph, but resolution fails before the build.
+#   2. A `-p` list avoids that resolve and then fails differently: cargo test-sbf
+#      builds the .so for the package in the current directory, so with no
+#      package there, solana-program-test finds nothing in target/deploy and
+#      every test panics with "Program file data not available".
+#
+# Serviceability runs before telemetry, whose test helper loads the
+# serviceability .so through add_program with no processor.
 test-sbf:
-	cargo test-sbf --tools-version $(SBF_TOOLS_VERSION)
+	cd programs/doublezero-record && cargo test-sbf --tools-version $(SBF_TOOLS_VERSION)
+	cd programs/doublezero-serviceability && cargo test-sbf --tools-version $(SBF_TOOLS_VERSION)
+	cd programs/doublezero-telemetry && cargo test-sbf --tools-version $(SBF_TOOLS_VERSION)
+	cd programs/doublezero-geolocation && cargo test-sbf --tools-version $(SBF_TOOLS_VERSION)
 
 .PHONY: lint
 lint: lint-programs

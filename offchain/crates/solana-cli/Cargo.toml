@@ -4,7 +4,7 @@ description = "Command line to interact with DoubleZero Solana programs"
 version = "0.5.10"
 
 # Workspace inherited keys
-edition.workspace = true
+edition = "2024"
 homepage.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -33,7 +33,10 @@ futures.workspace = true
 humantime.workspace = true
 itertools.workspace = true
 libc.workspace = true
-reqwest.workspace = true
+# reqwest 0.12 with rustls and the OS root store, not the workspace entry: this
+# repo's own crates are on 0.13 with the default native TLS backend, and
+# switching either side's TLS stack is not a manifest change.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "rustls-tls-native-roots"] }
 serde.workspace = true
 serde_json.workspace = true
 slack-notifier.workspace = true

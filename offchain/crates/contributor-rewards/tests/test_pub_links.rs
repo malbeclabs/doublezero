@@ -54,7 +54,7 @@ fn test_settings() -> settings::Settings {
             max_epochs_lookback: 5,
             min_samples_per_link: 20,
             enable_accumulator: true,
-            dedup_window_us: 10000000,
+            dedup_window_us: 10_000_000,
         },
         telemetry_defaults: settings::TelemetryDefaultSettings {
             missing_data_threshold: 0.7,

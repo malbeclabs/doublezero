@@ -3,7 +3,7 @@ use std::ops::Range;
 use bytemuck::{Pod, Zeroable};
 use doublezero_program_tools::{
     types::{Flags, StorageGap},
-    {Discriminator, PrecomputedDiscriminator},
+    Discriminator, PrecomputedDiscriminator,
 };
 use ruint::Uint;
 use solana_pubkey::Pubkey;

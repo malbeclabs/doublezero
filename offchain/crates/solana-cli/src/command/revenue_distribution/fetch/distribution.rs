@@ -489,16 +489,8 @@ async fn try_write_distribution_debt_table(
         try_distribution_solana_validator_debt_iter(distribution, &computed_debt)?
     {
         match view_mode {
-            DistributionViewMode::UnprocessedValidatorDebt => {
-                if is_processed_leaf {
-                    continue;
-                }
-            }
-            DistributionViewMode::WrittenOffValidatorDebt => {
-                if !is_written_off_leaf {
-                    continue;
-                }
-            }
+            DistributionViewMode::UnprocessedValidatorDebt if is_processed_leaf => continue,
+            DistributionViewMode::WrittenOffValidatorDebt if !is_written_off_leaf => continue,
             _ => (),
         }
 

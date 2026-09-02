@@ -1,6 +1,10 @@
 [package]
 name = "scheduler_doublezero"
-edition.workspace = true
+# Never published, and nothing reads this: the NIF is loaded by the scheduler's
+# mix release, not by cargo. Stated anyway so every crate in the tree names its
+# own version rather than defaulting to 0.0.0.
+version = "0.0.1"
+edition = "2024"
 homepage.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -13,7 +17,10 @@ anyhow.workspace = true
 doublezero-solana-client-tools.workspace = true
 doublezero-solana-sdk.workspace = true
 doublezero-solana-validator-debt.workspace = true
-reqwest.workspace = true
+# reqwest 0.12 with rustls and the OS root store, not the workspace entry: this
+# repo's own crates are on 0.13 with the default native TLS backend, and
+# switching either side's TLS stack is not a manifest change.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "rustls-tls-native-roots"] }
 rustler = "0.37.0"
 serde_json.workspace = true
 solana-client.workspace = true

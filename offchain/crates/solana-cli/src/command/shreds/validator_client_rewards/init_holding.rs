@@ -100,7 +100,7 @@ impl InitHoldingCommand {
             .subscription_epochs
             .iter()
             .zip(holding_keys.iter())
-            .zip(holding_accounts.into_iter())
+            .zip(holding_accounts)
         {
             if maybe_acct.is_some() {
                 writeln!(

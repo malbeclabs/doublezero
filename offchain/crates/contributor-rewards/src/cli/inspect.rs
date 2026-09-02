@@ -337,9 +337,8 @@ async fn handle_inspect_shapley(
 /// Generate uniform test demands for debugging - equal traffic between all city pairs
 fn generate_uniform_test_demands(cities: &[String]) -> Result<Demands> {
     let mut demands = Vec::new();
-    let mut demand_type = 1u32;
 
-    for source in cities {
+    for (demand_type, source) in (1u32..).zip(cities) {
         for destination in cities {
             if source != destination {
                 demands.push(Demand::new(
@@ -353,7 +352,6 @@ fn generate_uniform_test_demands(cities: &[String]) -> Result<Demands> {
                 ));
             }
         }
-        demand_type += 1;
     }
 
     info!(

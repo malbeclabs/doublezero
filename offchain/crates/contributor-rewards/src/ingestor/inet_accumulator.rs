@@ -278,8 +278,8 @@ mod tests {
             oracle_agent_pk: Pubkey::new_unique(),
             origin_exchange_pk: origin,
             target_exchange_pk: target,
-            sampling_interval_us: 1000000,
-            start_timestamp_us: epoch * 1000000000,
+            sampling_interval_us: 1_000_000,
+            start_timestamp_us: epoch * 1_000_000_000,
             samples: latency_samples,
             sample_count: num_samples as u32,
         }

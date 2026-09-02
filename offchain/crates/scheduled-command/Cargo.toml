@@ -3,12 +3,12 @@ name = "doublezero-scheduled-command"
 description = "Schedule CLI commands"
 
 authors.workspace = true
-edition.workspace = true
+edition = "2024"
 homepage.workspace = true
 license.workspace = true
 readme.workspace = true
 repository.workspace = true
-version.workspace = true
+version = "0.0.1"
 
 [dependencies]
 anyhow.workspace = true

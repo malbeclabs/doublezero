@@ -672,14 +672,14 @@ mod tests {
 
     #[test]
     fn test_estimate_slot_from_timestamp() {
-        let current_slot = 1000000;
+        let current_slot = 1_000_000;
         let current_time_us = 1_000_000_000_000; // 1 million seconds in microseconds
 
         // Test normal case - 500 seconds ago (500_000_000 us / 500_000 us per
         // slot = 1000 slots)
         let timestamp_us = current_time_us - 500_000_000;
         let result = estimate_slot_from_timestamp(timestamp_us, current_slot, current_time_us);
-        assert_eq!(result.unwrap(), 999000);
+        assert_eq!(result.unwrap(), 999_000);
 
         // Test future timestamp. find_epoch_at_timestamp seeds its search with
         // this call, so this guard is what keeps a future timestamp out of the

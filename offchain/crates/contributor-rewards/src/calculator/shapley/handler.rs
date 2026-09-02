@@ -617,7 +617,7 @@ mod tests {
         // Test scenario: if a link had only 92.65% valid samples (below 98% threshold)
         // Input: true_uptime = 0.9265 (92.65% of samples are valid)
         // Expected output: ~0 (link should be effectively dropped)
-        let true_uptime = 0.9265342099820373;
+        let true_uptime = 0.926_534_209_982_037_3;
         let result = penalized_uptime(true_uptime);
 
         // Should be heavily penalized (effectively 0) since below 98% threshold

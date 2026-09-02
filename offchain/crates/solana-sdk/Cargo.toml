@@ -2,8 +2,8 @@
 name = "doublezero-solana-sdk"
 description = "SDK for DoubleZero Smart Contracts on Solana"
 
-version.workspace = true
-edition.workspace = true
+version = "0.0.1"
+edition = "2024"
 authors.workspace = true
 readme.workspace = true
 license.workspace = true

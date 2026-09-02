@@ -3,7 +3,7 @@ name = "doublezero-solana-validator-debt"
 description = "Crate that processes debt for validators"
 version = "0.1.0-rc6"
 
-edition.workspace = true
+edition = "2024"
 homepage.workspace = true
 license.workspace = true
 readme.workspace = true
@@ -16,7 +16,10 @@ async-trait.workspace = true
 aws-config.workspace = true
 aws-sdk-s3.workspace = true
 backon.workspace = true
-bincode.workspace = true
+# bincode 1, not the workspace entry: this repo's own crates are on bincode 2,
+# whose API (bincode::serde::encode_to_vec) is a different one. Unifying is a
+# code change, not a manifest change.
+bincode = "1"
 borsh.workspace = true
 chrono.workspace = true
 clap.workspace = true
@@ -32,7 +35,10 @@ metrics.workspace = true
 metrics-exporter-prometheus.workspace = true
 mockall.workspace = true
 parquet.workspace = true
-reqwest.workspace = true
+# reqwest 0.12 with rustls and the OS root store, not the workspace entry: this
+# repo's own crates are on 0.13 with the default native TLS backend, and
+# switching either side's TLS stack is not a manifest change.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "rustls-tls-native-roots"] }
 serde.workspace = true
 serde_json.workspace = true
 slack-notifier.workspace = true

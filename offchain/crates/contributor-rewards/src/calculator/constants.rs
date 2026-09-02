@@ -1,5 +1,5 @@
 // slots in epoch
-pub const SLOTS_IN_EPOCH: f64 = 432000.0;
+pub const SLOTS_IN_EPOCH: f64 = 432_000.0;
 
 // bits/sec to Mbps
 pub const BPS_TO_MBPS: u64 = 1_000_000;

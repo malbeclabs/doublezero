@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- Serviceability
+  - `CloseAccessPass` (variant 69) and `DeleteUser` (variant 42) now return `Deprecated`. Callers must use the per-pass-type instructions instead: `ClosePrepaidAccessPass`, `CloseSolanaValidatorAccessPass`, `CloseSolanaRPCAccessPass`, `CloseOthersAccessPass`, `CloseEdgeSeatAccessPass` for close; `DeletePrepaidUser`, `DeleteSolanaValidatorUser`, `DeleteSolanaRPCUser`, `DeleteOthersUser`, `DeleteEdgeSeatUser` for delete. Each new instruction reads the access pass and refuses unless the pass matches the instruction. (#2470)
+  - The oracle in `doublezero-shreds` must ship its matching change with this program deploy. Its user removals fail until it names the pass type on each instruction. (#2470)
+
 ### Changes
 
 

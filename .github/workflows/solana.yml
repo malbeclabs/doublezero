@@ -27,7 +27,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # Installs what solana/rust-toolchain.toml pins, 1.91 with rustfmt and
+      # clippy, rather than a toolchain named here. Pinning the version in two
+      # places would let them drift, and the root toolchain file does not apply
+      # to this tree.
+      - name: Rust toolchain from solana/rust-toolchain.toml
+        run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: solana
@@ -37,7 +42,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # Installs what solana/rust-toolchain.toml pins, 1.91 with rustfmt and
+      # clippy, rather than a toolchain named here. Pinning the version in two
+      # places would let them drift, and the root toolchain file does not apply
+      # to this tree.
+      - name: Rust toolchain from solana/rust-toolchain.toml
+        run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: solana
@@ -47,7 +57,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # Installs what solana/rust-toolchain.toml pins, 1.91 with rustfmt and
+      # clippy, rather than a toolchain named here. Pinning the version in two
+      # places would let them drift, and the root toolchain file does not apply
+      # to this tree.
+      - name: Rust toolchain from solana/rust-toolchain.toml
+        run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: solana
@@ -60,7 +75,12 @@ jobs:
         network: [mainnet-beta, development]
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      # Installs what solana/rust-toolchain.toml pins, 1.91 with rustfmt and
+      # clippy, rather than a toolchain named here. Pinning the version in two
+      # places would let them drift, and the root toolchain file does not apply
+      # to this tree.
+      - name: Rust toolchain from solana/rust-toolchain.toml
+        run: rustup toolchain install
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: solana

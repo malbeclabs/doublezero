@@ -6,10 +6,16 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- Serviceability
+  - `CloseAccessPass` (variant 69) and `DeleteUser` (variant 42) now return `Deprecated`. Callers must use the per-pass-type instructions instead: `ClosePrepaidAccessPass`, `CloseSolanaValidatorAccessPass`, `CloseSolanaRPCAccessPass`, `CloseOthersAccessPass`, `CloseEdgeSeatAccessPass` for close; `DeletePrepaidUser`, `DeleteSolanaValidatorUser`, `DeleteSolanaRPCUser`, `DeleteOthersUser`, `DeleteEdgeSeatUser` for delete. Each new instruction reads the access pass and refuses unless the pass matches the instruction. (#2470)
+  - The oracle in `doublezero-shreds` must ship its matching change with this program deploy. Its user removals fail until it names the pass type on each instruction. (#2470)
+  - `doublezero access-pass close` requires a new flag `--type` with one of `prepaid`, `solana-validator`, `solana-rpc`, `others`, `edge-seat`. (#2470)
+  - `doublezero user delete` requires a new flag `--access-pass-type` with the same values. (#2470)
+
 ### Changes
 
 - Serviceability
-  - Ten new instructions remove an access pass or a user for one specific `AccessPassType`: `ClosePrepaidAccessPass`, `CloseSolanaValidatorAccessPass`, `CloseSolanaRPCAccessPass`, `CloseOthersAccessPass`, `CloseEdgeSeatAccessPass`, and `DeletePrepaidUser`, `DeleteSolanaValidatorUser`, `DeleteSolanaRPCUser`, `DeleteOthersUser`, `DeleteEdgeSeatUser`. Each reads the access pass and refuses with `InvalidAccessPassType` unless the pass matches the instruction. `CloseAccessPass` and `DeleteUser` keep working unchanged; a follow-up change deprecates them and moves every caller. (#2470)
+  - Ten new instructions remove an access pass or a user for one specific `AccessPassType`: `ClosePrepaidAccessPass`, `CloseSolanaValidatorAccessPass`, `CloseSolanaRPCAccessPass`, `CloseOthersAccessPass`, `CloseEdgeSeatAccessPass`, and `DeletePrepaidUser`, `DeleteSolanaValidatorUser`, `DeleteSolanaRPCUser`, `DeleteOthersUser`, `DeleteEdgeSeatUser`. Each reads the access pass and refuses with `InvalidAccessPassType` unless the pass matches the instruction. (#2470)
 - SDK
   - The TypeScript and Python `GlobalState` deserializers expose `ip_verifier_authority_pk`, the RFC-27 trust root the Go SDK and the Rust state already carried, so those consumers can read which key signs IP ownership proofs. The field is appended, so an account written before the upgrade decodes it as the default pubkey rather than failing. (#4231)
 - CI

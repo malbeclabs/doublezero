@@ -7,6 +7,9 @@ name: solana
 on:
   push:
     branches: [main, 'hotfix/**']
+    paths:
+      - 'solana/**'
+      - '.github/workflows/solana.yml'
   pull_request:
     paths:
       - 'solana/**'

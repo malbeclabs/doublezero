@@ -10,6 +10,12 @@ name: offchain-local-validator
 on:
   push:
     branches: [main, 'hotfix/**']
+    paths:
+      - 'offchain/**'
+      - 'solana/**'
+      - 'Cargo.lock'
+      - 'Cargo.toml'
+      - '.github/workflows/offchain.local-validator.yml'
   pull_request:
     paths:
       - 'offchain/**'

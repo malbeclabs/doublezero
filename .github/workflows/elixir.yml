@@ -5,6 +5,9 @@ name: elixir
 on:
   push:
     branches: [main, 'hotfix/**']
+    paths:
+      - 'offchain/scheduler/**'
+      - '.github/workflows/elixir.yml'
   pull_request:
     paths:
       - 'offchain/scheduler/**'

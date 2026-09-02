@@ -1,0 +1,44 @@
+# The offchain scheduler is the only Elixir component. Its checks ran on a release
+# tag alone before the merge; here they run on the pull request that changes it.
+name: elixir
+
+on:
+  push:
+    branches: [main, 'hotfix/**']
+    paths:
+      - 'offchain/scheduler/**'
+      - '.github/workflows/elixir.yml'
+  pull_request:
+    paths:
+      - 'offchain/scheduler/**'
+      - '.github/workflows/elixir.yml'
+
+defaults:
+  run:
+    working-directory: offchain/scheduler
+
+jobs:
+  elixir-scheduler:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Elixir and Erlang
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.19.3"
+          otp-version: "28.1"
+      # mix compile builds the Rust NIF, which is a root workspace member.
+      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: Swatinem/rust-cache@v2
+      - name: Cache deps
+        uses: actions/cache@v4
+        with:
+          path: offchain/scheduler/deps
+          key: mix-deps-${{ hashFiles('offchain/scheduler/mix.lock') }}
+          restore-keys: |
+            mix-deps-
+      - run: mix deps.get
+      - run: mix format --check-formatted
+      - run: mix compile --warnings-as-errors
+      - run: mix credo --strict
+      - run: mix test --cover

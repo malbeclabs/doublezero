@@ -23,15 +23,15 @@ builds:
       pre:
         - cmd: echo $MIX_ENV
         - cmd: mix deps.clean --all
-          dir: scheduler
+          dir: offchain/scheduler
         - cmd: mix deps.get --only prod
-          dir: scheduler
+          dir: offchain/scheduler
         - cmd: mix compile --warnings-as-errors --verbose
-          dir: scheduler
+          dir: offchain/scheduler
         - cmd: mix release
-          dir: scheduler
+          dir: offchain/scheduler
     prebuilt:
-      path: ./scheduler/_build/prod/rel/scheduler/bin/scheduler
+      path: ./offchain/scheduler/_build/prod/rel/scheduler/bin/scheduler
 
 archives:
   - id: doublezero_offchain_scheduler_archive
@@ -61,10 +61,10 @@ nfpms:
     release: 1
     section: default
     contents:
-      - src: release/packaging/systemd/doublezero-offchain-scheduler.service
+      - src: offchain/release/packaging/systemd/doublezero-offchain-scheduler.service
         dst: /lib/systemd/system/doublezero-offchain-scheduler.service
         type: config
-      - src: scheduler/_build/prod/rel/scheduler
+      - src: offchain/scheduler/_build/prod/rel/scheduler
         dst: /opt/doublezero-offchain-scheduler
         type: tree
       - src: /opt/doublezero-offchain-scheduler/bin/scheduler
@@ -81,7 +81,7 @@ changelog:
 release:
   github:
     owner: malbeclabs
-    name: doublezero-offchain
+    name: doublezero
   draft: false
   replace_existing_artifacts: true
 

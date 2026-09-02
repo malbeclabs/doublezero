@@ -1,0 +1,94 @@
+# Fork tests for the offchain Solana tooling: they start a mainnet-beta fork with
+# doublezero-solana-fork and drive the CLIs against it.
+#
+# Every step runs from the repository root, not from offchain/, because the shell
+# scripts resolve their binaries as target/debug/<name> and the merged workspace
+# writes to the root target/ directory. The fork and the keypairs the scripts read
+# also land in the working directory, so all of it has to agree.
+name: offchain-local-validator
+
+on:
+  push:
+    branches: [main, 'hotfix/**']
+    paths:
+      - 'offchain/**'
+      - 'solana/**'
+      - 'Cargo.lock'
+      - 'Cargo.toml'
+      - '.github/workflows/offchain.local-validator.yml'
+  pull_request:
+    paths:
+      - 'offchain/**'
+      - 'solana/**'
+      - 'Cargo.lock'
+      - 'Cargo.toml'
+      - '.github/workflows/offchain.local-validator.yml'
+
+env:
+  SOLANA_CLI: v3.0.12
+
+# Every cargo invocation names its package. The root workspace sets
+# `default-members = []`, so a bare `cargo build --bin X` selects nothing and
+# fails with "the workspace has no members". These commands came from a
+# repository whose workspace had no such restriction.
+
+jobs:
+  test-doublezero-solana-fork:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk space
+        run: |
+          df -h
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          sudo docker builder prune -a --force
+          df -h
+      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: Swatinem/rust-cache@v2
+      - name: Solana toolchain
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/$SOLANA_CLI/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+      - name: Generate ~/.config/solana/id.json
+        run: solana-keygen new --silent --no-bip39-passphrase
+      - name: Generate manager keypair for synthetic ValidatorClientRewards
+        run: solana-keygen new --silent --no-bip39-passphrase -o manager_keypair.json
+      - name: Start Solana mainnet-beta fork in background
+        run: |
+          MANAGER_PUBKEY=$(solana address -k manager_keypair.json)
+          cargo run -p doublezero-solana-fork-cli --bin doublezero-solana-fork -- -um --reset --synthetic-validator-client-rewards-manager "$MANAGER_PUBKEY" > /dev/null 2>&1 &
+      - name: Build `doublezero-solana`
+        run: cargo build -p doublezero-solana-cli --bin doublezero-solana
+      - name: Run `doublezero-solana` tests
+        run: bash offchain/sh/test_doublezero_solana_fork.sh
+
+  test-doublezero-solana-validator-debt-fork-current:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Free disk space
+        run: |
+          df -h
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+          sudo docker builder prune -a --force
+          df -h
+      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: Swatinem/rust-cache@v2
+      - name: Solana toolchain
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/$SOLANA_CLI/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+      - name: Generate ~/.config/solana/id.json
+        run: solana-keygen new --silent --no-bip39-passphrase
+      - name: Start Solana mainnet-beta fork in background
+        run: cargo run -p doublezero-solana-fork-cli --bin doublezero-solana-fork -- -um --reset --god-mode > /dev/null 2>&1 &
+      - name: Build the admin and validator-debt CLIs
+        run: |
+          cargo build \
+            -p doublezero-revenue-distribution-admin-cli --bin doublezero-revenue-distribution-admin \
+            -p doublezero-solana-validator-debt --bin doublezero-solana-validator-debt \
+            -p doublezero-solana-cli --bin doublezero-solana
+      - name: Run `doublezero-solana-validator-debt` tests
+        run: bash offchain/sh/test_validator_debt_fork.sh

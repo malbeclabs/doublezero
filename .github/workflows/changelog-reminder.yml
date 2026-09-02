@@ -36,10 +36,49 @@ jobs:
 
           changed_files=$(git diff --name-only "$base_ref"..."$head_ref")
 
-          if echo "$changed_files" | grep -q "^CHANGELOG.md$"; then
+          if ! echo "$changed_files" | grep -q "^CHANGELOG.md$"; then
+            echo "CHANGELOG.md was not updated."
+            echo "If this change intentionally does not require a changelog, add the 'skip-changelog' label to the PR."
+            exit 1
+          fi
+
+          # The offchain crates each keep their own changelog as well, which is
+          # what their releases read. This list comes from the changelog-reminder
+          # that doublezero-offchain ran before the merge, with its paths moved
+          # under offchain/.
+          projects=(
+            "offchain/crates/contributor-rewards"
+            "offchain/crates/scheduled-command"
+            "offchain/crates/sentinel"
+            "offchain/crates/slack-notifier"
+            "offchain/crates/solana-admin-cli/passport"
+            "offchain/crates/solana-admin-cli/revenue-distribution"
+            "offchain/crates/solana-admin-cli/sol-conversion"
+            "offchain/crates/solana-cli"
+            "offchain/crates/solana-client-tools"
+            "offchain/crates/solana-fork"
+            "offchain/crates/solana-interface/sol-conversion"
+            "offchain/crates/validator-debt"
+            "offchain/scheduler"
+          )
+
+          missing=()
+          for subdir in "${projects[@]}"; do
+            if echo "$changed_files" | grep -q "^${subdir}/"; then
+              if ! echo "$changed_files" | grep -q "^${subdir}/CHANGELOG.md$"; then
+                missing+=("$subdir")
+              fi
+            fi
+          done
+
+          if [ ${#missing[@]} -eq 0 ]; then
             exit 0
           fi
 
-          echo "CHANGELOG.md was not updated."
+          echo "These subprojects changed but their own changelog was not updated:"
+          for m in "${missing[@]}"; do
+            echo "  - $m (expected $m/CHANGELOG.md)"
+          done
+          echo
           echo "If this change intentionally does not require a changelog, add the 'skip-changelog' label to the PR."
           exit 1

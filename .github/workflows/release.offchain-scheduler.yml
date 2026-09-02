@@ -11,12 +11,7 @@ permissions:
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        platform: [linux/amd64]
     steps:
-      - name: Set platform
-        run: echo "Running on ${{ matrix.platform }}"
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
@@ -32,50 +27,50 @@ jobs:
           elixir-version: "1.19.3"
           otp-version: "28.1"
 
+      # The Rust NIF the release builds is a member of the root workspace, so it
+      # needs this repository's toolchain rather than whatever rustup defaults to.
+      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: Swatinem/rust-cache@v2
+
       - name: Cache deps
-        id: cache-deps
-        uses: actions/cache@v3
-        env:
-          cache-name: cache-elixir-deps
+        uses: actions/cache@v4
         with:
-          path: deps
-          key: mix-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+          path: offchain/scheduler/deps
+          key: mix-deps-${{ hashFiles('offchain/scheduler/mix.lock') }}
           restore-keys: |
-            mix-${{ env.cache-name }}-
+            mix-deps-
 
       - name: Cache compiled build
-        id: cache-build
-        uses: actions/cache@v3
-        env:
-          cache-name: cache-compiled-build
+        uses: actions/cache@v4
         with:
-          path: _build
-          key: mix-${{ env.cache-name }}-${{ hashFiles('**/mix.lock') }}
+          path: offchain/scheduler/_build
+          key: mix-build-${{ hashFiles('offchain/scheduler/mix.lock') }}
           restore-keys: |
-            mix-${{ env.cache-name }}-
-            ${{ runner.os }}-mix-
+            mix-build-
 
       - name: Install deps
-        working-directory: scheduler
+        working-directory: offchain/scheduler
         run: mix deps.get
 
       - name: Compile (warnings as errors)
-        working-directory: scheduler
+        working-directory: offchain/scheduler
         run: mix compile --warnings-as-errors
 
       - name: Credo
-        working-directory: scheduler
+        working-directory: offchain/scheduler
         run: mix credo --strict
 
       - name: Tests
-        working-directory: scheduler
+        working-directory: offchain/scheduler
         run: mix test --cover
 
+      # goreleaser runs from the repository root and its `mix release` hooks name
+      # offchain/scheduler as their directory.
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
           distribution: goreleaser-pro
-          args: release -f release/.goreleaser.doublezero-offchain-scheduler.yaml --clean --verbose
+          args: release -f offchain/release/.goreleaser.doublezero-offchain-scheduler.yaml --clean --verbose
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_BOTS_WEBHOOK }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,102 @@
+# CI for the solana/ tree, which is a nested workspace excluded from the root one
+# (D2 of docs/superpowers/specs/2026-08-27-monorepo-migration-design.md). Nothing
+# in rust.yml reaches it, so it needs its own jobs. Every step runs from solana/,
+# where its own Cargo.lock and rust-toolchain.toml apply.
+name: solana
+
+on:
+  push:
+    branches: [main, 'hotfix/**']
+    paths:
+      - 'solana/**'
+      - '.github/workflows/solana.yml'
+  pull_request:
+    paths:
+      - 'solana/**'
+      - '.github/workflows/solana.yml'
+
+env:
+  SOLANA_CLI: v3.0.12
+
+defaults:
+  run:
+    working-directory: solana
+
+jobs:
+  solana-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Installs what solana/rust-toolchain.toml pins, 1.91 with rustfmt and
+      # clippy, rather than a toolchain named here. Pinning the version in two
+      # places would let them drift, and the root toolchain file does not apply
+      # to this tree.
+      - name: Rust toolchain from solana/rust-toolchain.toml
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: solana
+      - run: make lint
+
+  solana-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Installs what solana/rust-toolchain.toml pins, 1.91 with rustfmt and
+      # clippy, rather than a toolchain named here. Pinning the version in two
+      # places would let them drift, and the root toolchain file does not apply
+      # to this tree.
+      - name: Rust toolchain from solana/rust-toolchain.toml
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: solana
+      - run: make test-lib
+
+  solana-doc:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Installs what solana/rust-toolchain.toml pins, 1.91 with rustfmt and
+      # clippy, rather than a toolchain named here. Pinning the version in two
+      # places would let them drift, and the root toolchain file does not apply
+      # to this tree.
+      - name: Rust toolchain from solana/rust-toolchain.toml
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: solana
+      - run: make doc
+
+  solana-test-sbf:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        network: [mainnet-beta, development]
+    steps:
+      - uses: actions/checkout@v4
+      # Installs what solana/rust-toolchain.toml pins, 1.91 with rustfmt and
+      # clippy, rather than a toolchain named here. Pinning the version in two
+      # places would let them drift, and the root toolchain file does not apply
+      # to this tree.
+      - name: Rust toolchain from solana/rust-toolchain.toml
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: solana
+      - name: Solana toolchain
+        run: |
+          sh -c "$(curl -sSfL https://release.anza.xyz/$SOLANA_CLI/install)"
+          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+      - run: NETWORK=${{ matrix.network }} make test-sbf
+
+  # The gate that makes holding this tree out of the root workspace worth it: the
+  # deployed artifacts still hash to what programs/sha256sums_*.txt records.
+  solana-verify-build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        network: [mainnet-beta, development]
+    steps:
+      - uses: actions/checkout@v4
+      - run: NETWORK=${{ matrix.network }} make build-checked-artifacts

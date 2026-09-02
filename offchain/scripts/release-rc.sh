@@ -10,7 +10,7 @@
 #   ./scripts/release-rc.sh sentinel --version 0.2.6 --dry-run
 #
 # The <config-name> corresponds to a goreleaser config file at:
-#   release/.goreleaser.<config-name>.yaml
+#   offchain/release/.goreleaser.<config-name>.yaml
 #
 # Requirements: docker, gh (GitHub CLI, authenticated)
 # Environment:  GORELEASER_KEY (goreleaser pro license key)
@@ -24,7 +24,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# The repository root, two levels up: the offchain crates are members of the root
+# Cargo workspace, so the build and its target/ directory live there, and every
+# path in the goreleaser configs is relative to it.
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # --- Formatting ---
 
@@ -53,10 +56,10 @@ while [[ $# -gt 0 ]]; do
             echo ""
             echo "Arguments:"
             echo "  <config-name>   Name of the goreleaser config (e.g. doublezero-solana-cli)"
-            echo "                  Must match: release/.goreleaser.<config-name>.yaml"
+            echo "                  Must match: offchain/release/.goreleaser.<config-name>.yaml"
             echo ""
             echo "Available configs:"
-            ls release/.goreleaser.*.yaml 2>/dev/null | sed 's|.*/\.goreleaser\.||; s|\.yaml$||; s|^|    |'
+            ls offchain/release/.goreleaser.*.yaml 2>/dev/null | sed 's|.*/\.goreleaser\.||; s|\.yaml$||; s|^|    |'
             echo ""
             echo "Flags:"
             echo "  --version <ver>   Base version for the RC (e.g. 0.4.2); defaults to latest RC series"
@@ -86,7 +89,7 @@ command -v gh >/dev/null 2>&1 || die "gh (GitHub CLI) is required"
 
 cd "$REPO_ROOT"
 
-GORELEASER_CONFIG="release/.goreleaser.${CONFIG_NAME}.yaml"
+GORELEASER_CONFIG="offchain/release/.goreleaser.${CONFIG_NAME}.yaml"
 [[ -f "$GORELEASER_CONFIG" ]] || die "Config not found: $GORELEASER_CONFIG"
 
 # --- Parse goreleaser config ---
@@ -154,8 +157,8 @@ if ! docker image inspect "$RELEASE_IMAGE" >/dev/null 2>&1; then
     echo ""
     docker build --platform linux/amd64 \
         -t "$RELEASE_IMAGE" \
-        -f release/Dockerfile.release \
-        release/
+        -f offchain/release/Dockerfile.release \
+        offchain/release/
     echo ""
 fi
 

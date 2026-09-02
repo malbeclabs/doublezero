@@ -47,9 +47,10 @@ jobs:
           sh -c "$(curl -sSfL https://release.anza.xyz/v3.0.4/install)"
           echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
       - run: make rust-validator-test
-  # The doublezero CLI ships as a static musl binary so it loads on any Linux
-  # regardless of the host glibc version. Build it for the musl target and assert
-  # the result is fully static.
+  # Every released CLI ships as a static musl binary so it loads on any Linux
+  # regardless of the host glibc version. Build each package on its own, the way
+  # goreleaser does so feature unification matches the release, and assert the
+  # result is fully static.
   rust-cli-static:
     runs-on: ubuntu-24.04
     steps:
@@ -59,21 +60,29 @@ jobs:
           targets: x86_64-unknown-linux-musl
       - uses: Swatinem/rust-cache@v2
       - name: Install musl toolchain
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
-      - name: Build CLI for musl and assert it is statically linked
+        run: sudo apt-get update && sudo apt-get install -y musl-tools cmake
+      - name: Build the release CLIs for musl and assert they are statically linked
         env:
           CC_x86_64_unknown_linux_musl: musl-gcc
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
         run: |
-          cargo build --release -p doublezero --target x86_64-unknown-linux-musl
-          bin=target/x86_64-unknown-linux-musl/release/doublezero
-          file "$bin"
-          if file "$bin" | grep -qE "statically linked|static-pie linked"; then
+          for entry in \
+            doublezero:doublezero \
+            doublezero-solana-cli:doublezero-solana \
+            doublezero-contributor-rewards:doublezero-contributor-rewards \
+            doublezero-ledger-sentinel:doublezero-sentinel \
+            doublezero-solana-validator-debt:doublezero-solana-validator-debt
+          do
+            package="${entry%%:*}"
+            bin="target/x86_64-unknown-linux-musl/release/${entry##*:}"
+            cargo build --release --package "$package" --target x86_64-unknown-linux-musl
+            file "$bin"
+            if ! file "$bin" | grep -qE "statically linked|static-pie linked"; then
+              echo "::error::$bin is not statically linked"
+              exit 1
+            fi
             echo "OK: $bin is statically linked"
-          else
-            echo "::error::doublezero CLI is not statically linked"
-            exit 1
-          fi
+          done
   # The release bump runs `cargo update --workspace`, which can silently rebind
   # members onto a different locked minor.
   release-bump-dry-run:

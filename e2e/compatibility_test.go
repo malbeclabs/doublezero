@@ -1262,8 +1262,13 @@ func runWriteWorkflows(
 		//   - DZX link: wait activated → delete
 
 		// Start all 4 delete streams: user1 delete, user2 ban, WAN link wait, DZX link wait.
+		// cascadeKnownFail on user_delete: when an older CLI cannot send the required
+		// --access-pass-type flag, every later delete phase depends on that user being
+		// gone (user_wait_removed polls for it, and the access pass cannot close while
+		// the user still holds it). Cascading skips them rather than letting each fail
+		// on its own for a reason that is already recorded here. See malbeclabs/infra#2470.
 		{name: "delete_start", parallel: true, steps: []writeStep{
-			{name: "user_delete", cmd: cli + " user delete --access-pass-type prepaid --pubkey " +
+			{name: "user_delete", cascadeKnownFail: true, cmd: cli + " user delete --access-pass-type prepaid --pubkey " +
 				fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP)},
 			{name: "user_request_ban_2", cmd: cli + " user request-ban --pubkey " +
 				fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s ' | awk '{print $1}')", user2ClientIP), noCascade: true},

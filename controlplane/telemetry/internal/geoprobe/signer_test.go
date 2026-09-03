@@ -439,15 +439,19 @@ func TestNewOffsetSigner_ZeroSenderPubkey(t *testing.T) {
 	require.Contains(t, err.Error(), "sender pubkey must not be zero")
 }
 
-// A fully zeroed offset is what an attacker sends when they cannot sign at all.
-// ed25519.Verify accepts the all-zero (pubkey, signature) pair, so verification
-// has to reject the zero authority pubkey explicitly.
+// An unsigned offset is what an attacker sends when they cannot sign at all,
+// and ed25519.Verify accepts the all-zero (pubkey, signature) pair for a
+// fraction of messages: the zero pubkey decodes to a point of order 4 rather
+// than to nothing, so the equation holds whenever the message hash lands on the
+// right residue — roughly one message in four. Slot 2 is one such message with
+// these field values, which is why the slot is pinned: at slot 1 the pair is
+// rejected by the math and the test would pass without the guard.
 func TestVerifyOffset_ZeroPubkeyAndSignature(t *testing.T) {
 	t.Parallel()
 
 	offset := &LocationOffset{
 		Version:         LocationOffsetVersion,
-		MeasurementSlot: 1,
+		MeasurementSlot: 2,
 		Lat:             1.0,
 		Lng:             2.0,
 		MeasuredRttNs:   1000,

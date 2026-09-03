@@ -50,10 +50,12 @@ func (s *OffsetSigner) SignOffset(offset *LocationOffset) error {
 func VerifyOffset(offset *LocationOffset) error {
 	pubkey := solana.PublicKeyFromBytes(offset.AuthorityPubkey[:])
 
-	// ed25519.Verify accepts the all-zero (pubkey, signature) pair: both the key
-	// and R decode to the identity point, so the verification equation holds
-	// trivially and a completely unsigned datagram would verify. No signer has
-	// the zero pubkey, so reject it before verifying.
+	// ed25519.Verify accepts the all-zero (pubkey, signature) pair for a
+	// fraction of messages: the zero key decodes to a valid point of order 4
+	// rather than being rejected, and with S and R also zero the verification
+	// equation holds whenever the message hash lands on the right residue —
+	// about one message in four, which an attacker reaches by varying any field.
+	// No signer has the zero pubkey, so reject it before verifying.
 	if pubkey.IsZero() {
 		return fmt.Errorf("authority pubkey is zero")
 	}

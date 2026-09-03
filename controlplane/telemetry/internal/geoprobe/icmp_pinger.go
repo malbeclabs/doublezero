@@ -52,6 +52,7 @@ type icmpProbeEntry struct {
 
 type pendingProbe struct {
 	addr   ProbeAddress
+	ip     net.IP
 	txTime time.Time
 }
 
@@ -148,7 +149,7 @@ func (p *ICMPPinger) sendEcho(entry *icmpProbeEntry, seq uint16) (time.Time, err
 func (p *ICMPPinger) readReplies(pending map[uint16]*pendingProbe, results map[ProbeAddress]uint64) {
 	buf := make([]byte, 1500)
 	for len(pending) > 0 {
-		n, rxTime, err := p.conn.recvEcho(buf)
+		n, src, rxTime, err := p.conn.recvEcho(buf)
 		if err != nil {
 			if err == syscall.EAGAIN {
 				// Spurious epoll wakeup; re-enter recvEcho with remaining deadline.
@@ -173,6 +174,13 @@ func (p *ICMPPinger) readReplies(pending map[uint16]*pendingProbe, results map[P
 		seq := uint16(echo.Seq)
 		pp, exists := pending[seq]
 		if !exists {
+			continue
+		}
+		// ID+seq are guessable, so a reply only counts if it came from the host
+		// we probed; otherwise any host could answer for another target's RTT.
+		if !src.Equal(pp.ip) {
+			p.log.Debug("Ignoring ICMP reply from unexpected source",
+				"expected", pp.ip.String(), "actual", src.String(), "seq", seq)
 			continue
 		}
 
@@ -215,7 +223,7 @@ func (p *ICMPPinger) MeasureOne(ctx context.Context, addr ProbeAddress) (uint64,
 
 	buf := make([]byte, 1500)
 	for {
-		n, rxTime, err := p.conn.recvEcho(buf)
+		n, src, rxTime, err := p.conn.recvEcho(buf)
 		if err != nil {
 			if err == syscall.EAGAIN {
 				// Spurious epoll wakeup; re-enter recvEcho with remaining deadline.
@@ -234,6 +242,12 @@ func (p *ICMPPinger) MeasureOne(ctx context.Context, addr ProbeAddress) (uint64,
 			continue
 		}
 		if echo.ID != p.id || uint16(echo.Seq) != seq {
+			continue
+		}
+		// See readReplies: ID+seq alone would let any host answer for this one.
+		if !src.Equal(entry.ip) {
+			p.log.Debug("MeasureOne ignoring ICMP reply from unexpected source",
+				"expected", entry.ip.String(), "actual", src.String(), "seq", seq)
 			continue
 		}
 
@@ -283,7 +297,7 @@ func (p *ICMPPinger) MeasureAll(ctx context.Context) (map[ProbeAddress]uint64, e
 				p.log.Debug("MeasureAll send failed", "host", entry.addr.Host, "error", err)
 				continue
 			}
-			pending[seq] = &pendingProbe{addr: entry.addr, txTime: txTime}
+			pending[seq] = &pendingProbe{addr: entry.addr, ip: entry.ip, txTime: txTime}
 
 			if j < len(batch)-1 {
 				time.Sleep(p.cfg.StaggerDelay)

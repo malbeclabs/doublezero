@@ -17,7 +17,10 @@ import (
 // Implementations are not safe for concurrent use; callers must serialize access.
 type icmpSocket interface {
 	sendEcho(dst net.IP, payload []byte) (time.Time, error)
-	recvEcho(buf []byte) (int, time.Time, error)
+	// recvEcho returns the ICMP payload length, the sender's IPv4 address and
+	// the receive timestamp. Callers must match replies on the source address
+	// as well as ID+seq.
+	recvEcho(buf []byte) (int, net.IP, time.Time, error)
 	setReadDeadline(t time.Time) error
 	close() error
 }
@@ -82,18 +85,18 @@ func (c *icmpConn) sendEcho(dst net.IP, payload []byte) (time.Time, error) {
 	return txTime, nil
 }
 
-func (c *icmpConn) recvEcho(buf []byte) (int, time.Time, error) {
+func (c *icmpConn) recvEcho(buf []byte) (int, net.IP, time.Time, error) {
 	remaining := int(time.Until(c.deadline).Milliseconds())
 	if remaining <= 0 {
-		return 0, time.Time{}, syscall.ETIMEDOUT
+		return 0, nil, time.Time{}, syscall.ETIMEDOUT
 	}
 
 	n, err := unix.EpollWait(c.epfd, c.events, remaining)
 	if err != nil && err != syscall.EINTR {
-		return 0, time.Time{}, fmt.Errorf("epoll_wait: %w", err)
+		return 0, nil, time.Time{}, fmt.Errorf("epoll_wait: %w", err)
 	}
 	if n == 0 {
-		return 0, time.Time{}, syscall.ETIMEDOUT
+		return 0, nil, time.Time{}, syscall.ETIMEDOUT
 	}
 
 	var oob []byte
@@ -101,14 +104,19 @@ func (c *icmpConn) recvEcho(buf []byte) (int, time.Time, error) {
 		oob = c.oob
 	}
 
-	msgN, oobn, _, _, err := unix.Recvmsg(c.fd, buf, oob, 0)
+	msgN, oobn, _, from, err := unix.Recvmsg(c.fd, buf, oob, 0)
 	if err != nil {
 		if err == syscall.EAGAIN || err == syscall.EWOULDBLOCK {
-			return 0, time.Time{}, syscall.EAGAIN
+			return 0, nil, time.Time{}, syscall.EAGAIN
 		}
-		return 0, time.Time{}, err
+		return 0, nil, time.Time{}, err
 	}
 	fallbackTime := time.Now()
+
+	var src net.IP
+	if sa, ok := from.(*unix.SockaddrInet4); ok {
+		src = net.IP(append([]byte(nil), sa.Addr[:]...))
+	}
 
 	// Raw ICMP sockets include the IPv4 header; strip it so callers
 	// see only the ICMP payload (matching icmp.PacketConn.ReadFrom behavior).
@@ -117,11 +125,11 @@ func (c *icmpConn) recvEcho(buf []byte) (int, time.Time, error) {
 	copy(buf, buf[hdrLen:msgN])
 
 	if !c.hasKernelTS {
-		return icmpLen, fallbackTime, nil
+		return icmpLen, src, fallbackTime, nil
 	}
 
 	rxTime := parseKernelTimestamp(c.oob[:oobn], fallbackTime)
-	return icmpLen, rxTime, nil
+	return icmpLen, src, rxTime, nil
 }
 
 func parseKernelTimestamp(oob []byte, fallback time.Time) time.Time {

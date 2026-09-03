@@ -8,6 +8,13 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Geolocation
+  - geoprobe-target drops LocationOffsets whose signature chain does not verify instead of caching them and writing them to `location_offsets`, which the lake explorer publishes unfiltered. Verification itself now rejects the zero authority pubkey, since `ed25519.Verify` accepts the all-zero (pubkey, signature) pair and an unsigned datagram would otherwise verify.
+  - The geoprobe agent enforces RFC-16's replay mitigation: an inbound DZD offset is rejected unless its `MeasurementSlot` is within 15 minutes behind or 5 minutes ahead of the current ledger slot, which covers the 5-minute slot caches on both ends. An equal-RTT offset also no longer replaces the cache's best entry, because replacing it reset its expiry clock and let a replay pin the probe's reference point indefinitely.
+  - The signed TWAMP reflector verifies a probe's signature before touching per-sender pair state. `target_pk` is public onchain, so spoofed probes could previously consume a paying sender's pair budget, repoint its source IP and clear its challenge nonce. Unverified probes still get a reply, now off throwaway state and capped at one per rate-limit window.
+  - A completed target scan that matches nothing propagates instead of being mistaken for a skipped scan, so removing a user's last target or flipping them to Delinquent stops the probing.
+  - ICMP echo replies are matched on source address as well as ID and sequence.
+
 ## [v0.39.0](https://github.com/malbeclabs/doublezero/compare/client/v0.38.0...client/v0.39.0) - 2026-09-04
 
 ### Breaking

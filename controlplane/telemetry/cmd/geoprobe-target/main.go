@@ -335,6 +335,19 @@ func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.U
 		log.Debug("signature verification complete", "authority_pubkey", solana.PublicKeyFromBytes(offset.AuthorityPubkey[:]).String(), "valid", signatureValid)
 	}
 
+	// Until the chain verifies, a LocationOffset is just an attacker-chosen UDP
+	// datagram. Drop it instead of recording it: every row written to
+	// location_offsets is aggregated by the public lake explorer without
+	// filtering on signature_valid, so persisting forgeries would publish them.
+	if !signatureValid {
+		log.Warn("dropping offset with invalid signature chain",
+			"from", addr,
+			"authority_pubkey", solana.PublicKeyFromBytes(offset.AuthorityPubkey[:]).String(),
+			"sender_pubkey", solana.PublicKeyFromBytes(offset.SenderPubkey[:]).String(),
+			"error", verifyError)
+		return
+	}
+
 	if chWriter != nil {
 		rawBytes, err := offset.Marshal()
 		if err != nil {

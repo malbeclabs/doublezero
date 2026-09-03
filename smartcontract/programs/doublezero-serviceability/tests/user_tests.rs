@@ -685,7 +685,7 @@ async fn test_user() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+        DoubleZeroInstruction::DeletePrepaidUser(UserDeleteArgs {
             dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),
@@ -1362,7 +1362,7 @@ async fn test_user_delete_from_banned() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+        DoubleZeroInstruction::DeletePrepaidUser(UserDeleteArgs {
             dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),
@@ -1461,7 +1461,7 @@ async fn test_user_check_access_pass_expired_epoch_stays_activated_and_delete() 
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+        DoubleZeroInstruction::DeletePrepaidUser(UserDeleteArgs {
             dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),

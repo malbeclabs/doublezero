@@ -760,7 +760,7 @@ async fn test_delete_user_atomic_with_deallocation() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+        DoubleZeroInstruction::DeletePrepaidUser(UserDeleteArgs {
             dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),
@@ -1467,7 +1467,7 @@ async fn test_delete_user_atomic_decrements_multicast_subscribers_count() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+        DoubleZeroInstruction::DeletePrepaidUser(UserDeleteArgs {
             dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),
@@ -1672,7 +1672,7 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+        DoubleZeroInstruction::DeletePrepaidUser(UserDeleteArgs {
             dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),
@@ -1968,7 +1968,7 @@ async fn test_delete_user_atomic_decrements_subscribers_count_for_non_publisher(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+        DoubleZeroInstruction::DeletePrepaidUser(UserDeleteArgs {
             dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),

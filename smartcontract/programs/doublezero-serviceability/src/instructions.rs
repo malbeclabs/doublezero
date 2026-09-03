@@ -258,6 +258,23 @@ pub enum DoubleZeroInstruction {
 
     SubscribeFeed(SubscribeFeedArgs),     // variant 117
     UnsubscribeFeed(UnsubscribeFeedArgs), // variant 118
+
+    /// One close instruction per `AccessPassType`. Each refuses a pass of any other
+    /// kind with `InvalidAccessPassType`. See malbeclabs/infra#2470.
+    ClosePrepaidAccessPass(CloseAccessPassArgs), // variant 119
+    CloseSolanaValidatorAccessPass(CloseAccessPassArgs), // variant 120
+    CloseSolanaRPCAccessPass(CloseAccessPassArgs),       // variant 121
+    CloseOthersAccessPass(CloseAccessPassArgs),          // variant 122
+    CloseEdgeSeatAccessPass(CloseAccessPassArgs),        // variant 123
+
+    /// One delete instruction per `AccessPassType`, keyed on the kind of pass the user
+    /// holds. Each refuses a user on a pass of any other kind with
+    /// `InvalidAccessPassType`. See malbeclabs/infra#2470.
+    DeletePrepaidUser(UserDeleteArgs), // variant 124
+    DeleteSolanaValidatorUser(UserDeleteArgs), // variant 125
+    DeleteSolanaRPCUser(UserDeleteArgs),       // variant 126
+    DeleteOthersUser(UserDeleteArgs),          // variant 127
+    DeleteEdgeSeatUser(UserDeleteArgs),        // variant 128
 }
 
 impl DoubleZeroInstruction {
@@ -408,6 +425,18 @@ impl DoubleZeroInstruction {
 
             117 => Ok(Self::SubscribeFeed(SubscribeFeedArgs::try_from(rest).unwrap())),
             118 => Ok(Self::UnsubscribeFeed(UnsubscribeFeedArgs::try_from(rest).unwrap())),
+
+            119 => Ok(Self::ClosePrepaidAccessPass(CloseAccessPassArgs::try_from(rest).unwrap())),
+            120 => Ok(Self::CloseSolanaValidatorAccessPass(CloseAccessPassArgs::try_from(rest).unwrap())),
+            121 => Ok(Self::CloseSolanaRPCAccessPass(CloseAccessPassArgs::try_from(rest).unwrap())),
+            122 => Ok(Self::CloseOthersAccessPass(CloseAccessPassArgs::try_from(rest).unwrap())),
+            123 => Ok(Self::CloseEdgeSeatAccessPass(CloseAccessPassArgs::try_from(rest).unwrap())),
+
+            124 => Ok(Self::DeletePrepaidUser(UserDeleteArgs::try_from(rest).unwrap())),
+            125 => Ok(Self::DeleteSolanaValidatorUser(UserDeleteArgs::try_from(rest).unwrap())),
+            126 => Ok(Self::DeleteSolanaRPCUser(UserDeleteArgs::try_from(rest).unwrap())),
+            127 => Ok(Self::DeleteOthersUser(UserDeleteArgs::try_from(rest).unwrap())),
+            128 => Ok(Self::DeleteEdgeSeatUser(UserDeleteArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -560,6 +589,18 @@ impl DoubleZeroInstruction {
             Self::SetAccessPassFlags(_) => "SetAccessPassFlags".to_string(), // variant 116
             Self::SubscribeFeed(_) => "SubscribeFeed".to_string(), // variant 117
             Self::UnsubscribeFeed(_) => "UnsubscribeFeed".to_string(), // variant 118
+
+            Self::ClosePrepaidAccessPass(_) => "ClosePrepaidAccessPass".to_string(), // variant 119
+            Self::CloseSolanaValidatorAccessPass(_) => "CloseSolanaValidatorAccessPass".to_string(), // variant 120
+            Self::CloseSolanaRPCAccessPass(_) => "CloseSolanaRPCAccessPass".to_string(), // variant 121
+            Self::CloseOthersAccessPass(_) => "CloseOthersAccessPass".to_string(), // variant 122
+            Self::CloseEdgeSeatAccessPass(_) => "CloseEdgeSeatAccessPass".to_string(), // variant 123
+
+            Self::DeletePrepaidUser(_) => "DeletePrepaidUser".to_string(), // variant 124
+            Self::DeleteSolanaValidatorUser(_) => "DeleteSolanaValidatorUser".to_string(), // variant 125
+            Self::DeleteSolanaRPCUser(_) => "DeleteSolanaRPCUser".to_string(), // variant 126
+            Self::DeleteOthersUser(_) => "DeleteOthersUser".to_string(),       // variant 127
+            Self::DeleteEdgeSeatUser(_) => "DeleteEdgeSeatUser".to_string(),   // variant 128
         }
     }
 
@@ -704,6 +745,18 @@ impl DoubleZeroInstruction {
             Self::SetAccessPassFlags(args) => format!("{args:?}"), // variant 116
             Self::SubscribeFeed(args) => format!("{args:?}"), // variant 117
             Self::UnsubscribeFeed(args) => format!("{args:?}"), // variant 118
+
+            Self::ClosePrepaidAccessPass(args) => format!("{args:?}"), // variant 119
+            Self::CloseSolanaValidatorAccessPass(args) => format!("{args:?}"), // variant 120
+            Self::CloseSolanaRPCAccessPass(args) => format!("{args:?}"), // variant 121
+            Self::CloseOthersAccessPass(args) => format!("{args:?}"),  // variant 122
+            Self::CloseEdgeSeatAccessPass(args) => format!("{args:?}"), // variant 123
+
+            Self::DeletePrepaidUser(args) => format!("{args:?}"), // variant 124
+            Self::DeleteSolanaValidatorUser(args) => format!("{args:?}"), // variant 125
+            Self::DeleteSolanaRPCUser(args) => format!("{args:?}"), // variant 126
+            Self::DeleteOthersUser(args) => format!("{args:?}"),  // variant 127
+            Self::DeleteEdgeSeatUser(args) => format!("{args:?}"), // variant 128
         }
     }
 }
@@ -1182,6 +1235,61 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::CloseAccessPass(CloseAccessPassArgs {}),
             "CloseAccessPass",
+        );
+        test_instruction(
+            DoubleZeroInstruction::ClosePrepaidAccessPass(CloseAccessPassArgs {}),
+            "ClosePrepaidAccessPass",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CloseSolanaValidatorAccessPass(CloseAccessPassArgs {}),
+            "CloseSolanaValidatorAccessPass",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CloseSolanaRPCAccessPass(CloseAccessPassArgs {}),
+            "CloseSolanaRPCAccessPass",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CloseOthersAccessPass(CloseAccessPassArgs {}),
+            "CloseOthersAccessPass",
+        );
+        test_instruction(
+            DoubleZeroInstruction::CloseEdgeSeatAccessPass(CloseAccessPassArgs {}),
+            "CloseEdgeSeatAccessPass",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeletePrepaidUser(UserDeleteArgs {
+                dz_prefix_count: 0,
+                multicast_publisher_count: 0,
+            }),
+            "DeletePrepaidUser",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeleteSolanaValidatorUser(UserDeleteArgs {
+                dz_prefix_count: 0,
+                multicast_publisher_count: 0,
+            }),
+            "DeleteSolanaValidatorUser",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeleteSolanaRPCUser(UserDeleteArgs {
+                dz_prefix_count: 0,
+                multicast_publisher_count: 0,
+            }),
+            "DeleteSolanaRPCUser",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeleteOthersUser(UserDeleteArgs {
+                dz_prefix_count: 0,
+                multicast_publisher_count: 0,
+            }),
+            "DeleteOthersUser",
+        );
+        test_instruction(
+            DoubleZeroInstruction::DeleteEdgeSeatUser(UserDeleteArgs {
+                dz_prefix_count: 0,
+                multicast_publisher_count: 0,
+            }),
+            "DeleteEdgeSeatUser",
         );
         test_instruction(
             DoubleZeroInstruction::CheckStatusAccessPass(CheckStatusAccessPassArgs {}),

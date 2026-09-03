@@ -3,7 +3,9 @@ use crate::{
     error::DoubleZeroError,
     serializer::try_acc_close,
     state::{
-        accesspass::AccessPass, accounttype::AccountType, globalstate::GlobalState,
+        accesspass::{AccessPass, AccessPassKind},
+        accounttype::AccountType,
+        globalstate::GlobalState,
         permission::permission_flags,
     },
 };
@@ -30,6 +32,7 @@ pub fn process_close_access_pass(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     _value: &CloseAccessPassArgs,
+    expected: Option<AccessPassKind>,
 ) -> ProgramResult {
     let accounts_iter = &mut accounts.iter();
 
@@ -84,34 +87,44 @@ pub fn process_close_access_pass(
         permission_flags::ACCESS_PASS_ADMIN,
     )?;
 
-    if let Ok(data) = accesspass_account.try_borrow_data() {
-        let account_type: AccountType = data[0].into();
-        if account_type != AccountType::AccessPass {
-            msg!("AccountType is not AccessPass, cannot close");
-            return Err(DoubleZeroError::InvalidAccountType.into());
-        }
-        let accesspass = AccessPass::try_from(accesspass_account)?;
-
-        // Feed authority can only close access passes they own
-        if globalstate.feed_authority_pk == *payer_account.key
-            && accesspass.owner != *payer_account.key
-        {
-            msg!("Feed authority can only close access passes they own");
-            return Err(DoubleZeroError::NotAllowed.into());
-        }
-
-        if accesspass.connection_count != 0 {
-            msg!(
-                "AccessPass has {} active connections, cannot close",
-                accesspass.connection_count
-            );
-            return Err(DoubleZeroError::AccessPassInUse.into());
-        }
-
-        msg!("AccountType is AccessPass and there are no active connections, proceeding to close");
-    } else {
-        msg!("Failed to borrow account data, cannot close");
+    // These checks used to sit inside `if let Ok(data) = accesspass_account.try_borrow_data()`,
+    // with an `else` that logged a warning and fell through to the close. A failed borrow
+    // therefore closed the pass with neither the account-type check nor the connection check
+    // applied. Read the account once here and let a failed read stop the instruction.
+    let account_type: AccountType = accesspass_account.try_borrow_data()?[0].into();
+    if account_type != AccountType::AccessPass {
+        msg!("AccountType is not AccessPass, cannot close");
+        return Err(DoubleZeroError::InvalidAccountType.into());
     }
+    let accesspass = AccessPass::try_from(accesspass_account)?;
+
+    // `None` is the deprecated `CloseAccessPass` (variant 69), which predates the
+    // per-pass-type split and performs no kind check. It is removed, along with this
+    // `Option`, in the follow-up that moves every caller. See malbeclabs/infra#2470.
+    if let Some(expected) = expected {
+        let actual = AccessPassKind::from(&accesspass.accesspass_type);
+        if actual != expected {
+            msg!("this instruction closes a {expected} pass, but the pass is {actual}");
+            return Err(DoubleZeroError::InvalidAccessPassType.into());
+        }
+    }
+
+    // Feed authority can only close access passes they own
+    if globalstate.feed_authority_pk == *payer_account.key && accesspass.owner != *payer_account.key
+    {
+        msg!("Feed authority can only close access passes they own");
+        return Err(DoubleZeroError::NotAllowed.into());
+    }
+
+    if accesspass.connection_count != 0 {
+        msg!(
+            "AccessPass has {} active connections, cannot close",
+            accesspass.connection_count
+        );
+        return Err(DoubleZeroError::AccessPassInUse.into());
+    }
+
+    msg!("AccountType is AccessPass and there are no active connections, proceeding to close");
 
     try_acc_close(accesspass_account, payer_account)?;
 

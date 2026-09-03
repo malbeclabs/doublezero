@@ -105,6 +105,7 @@ use crate::{
             update::process_update_user,
         },
     },
+    state::accesspass::AccessPassKind,
 };
 
 use solana_program::{
@@ -178,7 +179,28 @@ pub fn process_instruction(
             return Err(DoubleZeroError::Deprecated.into());
         }
         DoubleZeroInstruction::DeleteUser(value) => {
-            process_delete_user(program_id, accounts, &value)?
+            process_delete_user(program_id, accounts, &value, None)?
+        }
+        DoubleZeroInstruction::DeletePrepaidUser(value) => {
+            process_delete_user(program_id, accounts, &value, Some(AccessPassKind::Prepaid))?
+        }
+        DoubleZeroInstruction::DeleteSolanaValidatorUser(value) => process_delete_user(
+            program_id,
+            accounts,
+            &value,
+            Some(AccessPassKind::SolanaValidator),
+        )?,
+        DoubleZeroInstruction::DeleteSolanaRPCUser(value) => process_delete_user(
+            program_id,
+            accounts,
+            &value,
+            Some(AccessPassKind::SolanaRPC),
+        )?,
+        DoubleZeroInstruction::DeleteOthersUser(value) => {
+            process_delete_user(program_id, accounts, &value, Some(AccessPassKind::Others))?
+        }
+        DoubleZeroInstruction::DeleteEdgeSeatUser(value) => {
+            process_delete_user(program_id, accounts, &value, Some(AccessPassKind::EdgeSeat))?
         }
         DoubleZeroInstruction::DeleteDevice(value) => {
             process_delete_device(program_id, accounts, &value)?
@@ -306,7 +328,28 @@ pub fn process_instruction(
             process_set_access_pass(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::CloseAccessPass(value) => {
-            process_close_access_pass(program_id, accounts, &value)?
+            process_close_access_pass(program_id, accounts, &value, None)?
+        }
+        DoubleZeroInstruction::ClosePrepaidAccessPass(value) => {
+            process_close_access_pass(program_id, accounts, &value, Some(AccessPassKind::Prepaid))?
+        }
+        DoubleZeroInstruction::CloseSolanaValidatorAccessPass(value) => process_close_access_pass(
+            program_id,
+            accounts,
+            &value,
+            Some(AccessPassKind::SolanaValidator),
+        )?,
+        DoubleZeroInstruction::CloseSolanaRPCAccessPass(value) => process_close_access_pass(
+            program_id,
+            accounts,
+            &value,
+            Some(AccessPassKind::SolanaRPC),
+        )?,
+        DoubleZeroInstruction::CloseOthersAccessPass(value) => {
+            process_close_access_pass(program_id, accounts, &value, Some(AccessPassKind::Others))?
+        }
+        DoubleZeroInstruction::CloseEdgeSeatAccessPass(value) => {
+            process_close_access_pass(program_id, accounts, &value, Some(AccessPassKind::EdgeSeat))?
         }
         DoubleZeroInstruction::CheckStatusAccessPass(value) => {
             process_check_status_access_pass(program_id, accounts, &value)?

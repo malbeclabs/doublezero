@@ -403,7 +403,7 @@ async fn test_accesspass_allow_multiple_ip() {
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+        DoubleZeroInstruction::DeletePrepaidUser(UserDeleteArgs {
             dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),

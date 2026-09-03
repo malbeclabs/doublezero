@@ -5,7 +5,7 @@ use crate::{
     processors::validation::validate_program_account,
     serializer::{try_acc_close, try_acc_write},
     state::{
-        accesspass::{AccessPass, AccessPassStatus},
+        accesspass::{AccessPass, AccessPassKind, AccessPassStatus},
         device::Device,
         globalstate::GlobalState,
         permission::permission_flags,
@@ -52,6 +52,7 @@ pub fn process_delete_user(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     value: &UserDeleteArgs,
+    expected: Option<AccessPassKind>,
 ) -> ProgramResult {
     if value.dz_prefix_count == 0 {
         msg!("dz_prefix_count must be > 0; DeleteUser requires on-chain deallocation");
@@ -151,50 +152,58 @@ pub fn process_delete_user(
         "Invalid AccessPass PDA",
     );
 
-    if !accesspass_account.data_is_empty() {
-        // Read Access Pass
-        let mut accesspass = AccessPass::try_from(accesspass_account)?;
-        if accesspass.user_payer != user.owner {
-            msg!(
-                "Invalid user_payer accesspass.user_payer: {} = user_payer: {} ",
-                accesspass.user_payer,
-                user.owner
-            );
-            return Err(DoubleZeroError::Unauthorized.into());
+    // Read Access Pass
+    let mut accesspass = AccessPass::try_from(accesspass_account)?;
+    // `None` is the deprecated `DeleteUser` (variant 42), which predates the
+    // per-pass-type split and performs no kind check. It is removed, along with this
+    // `Option`, in the follow-up that moves every caller. See malbeclabs/infra#2470.
+    if let Some(expected) = expected {
+        let actual = AccessPassKind::from(&accesspass.accesspass_type);
+        if actual != expected {
+            msg!("this instruction deletes a user on a {expected} pass, but the pass is {actual}");
+            return Err(DoubleZeroError::InvalidAccessPassType.into());
         }
-        // Skip IP validation when the pass is stored at the UNSPECIFIED PDA (0.0.0.0): it is
-        // a dynamic pass valid for any IP by construction. This includes legacy passes which
-        // have client_ip=0.0.0.0.
-        if accesspass.client_ip != Ipv4Addr::UNSPECIFIED
-            && accesspass.client_ip != user.client_ip
-            && !accesspass.allow_multiple_ip()
-        {
-            msg!(
-                "Invalid client_ip accesspass.{{client_ip: {}}} = {{ client_ip: {} }}",
-                accesspass.client_ip,
-                user.client_ip
-            );
-            return Err(DoubleZeroError::Unauthorized.into());
-        }
-
-        accesspass.connection_count = accesspass.connection_count.saturating_sub(1);
-        // Release the per-category seat (EdgeSeat only; no-op otherwise).
-        accesspass.remove_user(user.user_type);
-        // Release every feed-scoped seat this user consumed at connect. The feeds are read from the
-        // User (recorded when the seats were ticked), so each release is bound to exactly that seat
-        // and cannot be misdirected to another metro's feed by a caller-supplied account.
-        user.release_feed_seats(&mut accesspass);
-        accesspass.status = if accesspass.connection_count > 0 {
-            AccessPassStatus::Connected
-        } else {
-            AccessPassStatus::Disconnected
-        };
-        if accesspass.connection_count == 0 && accesspass.allow_multiple_ip() {
-            accesspass.client_ip = Ipv4Addr::UNSPECIFIED; // reset to allow multiple IPs
-        }
-
-        try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;
     }
+    if accesspass.user_payer != user.owner {
+        msg!(
+            "Invalid user_payer accesspass.user_payer: {} = user_payer: {} ",
+            accesspass.user_payer,
+            user.owner
+        );
+        return Err(DoubleZeroError::Unauthorized.into());
+    }
+    // Skip IP validation when the pass is stored at the UNSPECIFIED PDA (0.0.0.0): it is
+    // a dynamic pass valid for any IP by construction. This includes legacy passes which
+    // have client_ip=0.0.0.0.
+    if accesspass.client_ip != Ipv4Addr::UNSPECIFIED
+        && accesspass.client_ip != user.client_ip
+        && !accesspass.allow_multiple_ip()
+    {
+        msg!(
+            "Invalid client_ip accesspass.{{client_ip: {}}} = {{ client_ip: {} }}",
+            accesspass.client_ip,
+            user.client_ip
+        );
+        return Err(DoubleZeroError::Unauthorized.into());
+    }
+
+    accesspass.connection_count = accesspass.connection_count.saturating_sub(1);
+    // Release the per-category seat (EdgeSeat only; no-op otherwise).
+    accesspass.remove_user(user.user_type);
+    // Release every feed-scoped seat this user consumed at connect. The feeds are read from the
+    // User (recorded when the seats were ticked), so each release is bound to exactly that seat
+    // and cannot be misdirected to another metro's feed by a caller-supplied account.
+    user.release_feed_seats(&mut accesspass);
+    accesspass.status = if accesspass.connection_count > 0 {
+        AccessPassStatus::Connected
+    } else {
+        AccessPassStatus::Disconnected
+    };
+    if accesspass.connection_count == 0 && accesspass.allow_multiple_ip() {
+        accesspass.client_ip = Ipv4Addr::UNSPECIFIED; // reset to allow multiple IPs
+    }
+
+    try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;
 
     if !user.publishers.is_empty() || !user.subscribers.is_empty() {
         msg!("{:?}", user);

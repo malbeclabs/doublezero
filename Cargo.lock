@@ -2837,6 +2837,7 @@ dependencies = [
  "rust_decimal",
  "serde",
  "serde_json",
+ "serial_test",
  "slack-notifier",
  "solana-account-decoder",
  "solana-client",

@@ -248,7 +248,7 @@ pub enum DoubleZeroError {
     #[error("IP ownership proof carries an unsupported layout version")]
     IpProofVersionUnsupported, // variant 118
     #[error("This instruction is for a different access pass type")]
-    AccessPassTypeMismatch, // variant 119
+    InvalidAccessPassType, // variant 119
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -373,7 +373,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::IpProofSignatureMismatch => ProgramError::Custom(116),
             DoubleZeroError::IpProofMessageMismatch => ProgramError::Custom(117),
             DoubleZeroError::IpProofVersionUnsupported => ProgramError::Custom(118),
-            DoubleZeroError::AccessPassTypeMismatch => ProgramError::Custom(119),
+            DoubleZeroError::InvalidAccessPassType => ProgramError::Custom(119),
         }
     }
 }
@@ -499,7 +499,7 @@ impl From<u32> for DoubleZeroError {
             116 => DoubleZeroError::IpProofSignatureMismatch,
             117 => DoubleZeroError::IpProofMessageMismatch,
             118 => DoubleZeroError::IpProofVersionUnsupported,
-            119 => DoubleZeroError::AccessPassTypeMismatch,
+            119 => DoubleZeroError::InvalidAccessPassType,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -524,8 +524,8 @@ mod tests {
     use strum::IntoEnumIterator;
 
     #[test]
-    fn test_access_pass_type_mismatch_roundtrip() {
-        let err = DoubleZeroError::AccessPassTypeMismatch;
+    fn test_invalid_access_pass_type_roundtrip() {
+        let err = DoubleZeroError::InvalidAccessPassType;
         assert_eq!(ProgramError::from(err.clone()), ProgramError::Custom(119));
         let pe: ProgramError = ProgramError::Custom(119);
         let err2: DoubleZeroError = pe.into();

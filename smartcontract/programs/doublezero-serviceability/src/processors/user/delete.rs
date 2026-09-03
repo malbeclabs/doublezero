@@ -161,7 +161,7 @@ pub fn process_delete_user(
         let actual = AccessPassKind::from(&accesspass.accesspass_type);
         if actual != expected {
             msg!("this instruction deletes a user on a {expected} pass, but the pass is {actual}");
-            return Err(DoubleZeroError::AccessPassTypeMismatch.into());
+            return Err(DoubleZeroError::InvalidAccessPassType.into());
         }
     }
     if accesspass.user_payer != user.owner {

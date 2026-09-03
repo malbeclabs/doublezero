@@ -1,5 +1,5 @@
 //! Issue #2470: each `Close<Kind>AccessPass` instruction must close a pass of its own kind and
-//! refuse a pass of any other kind with `AccessPassTypeMismatch`.
+//! refuse a pass of any other kind with `InvalidAccessPassType`.
 
 mod test_helpers;
 
@@ -143,7 +143,7 @@ async fn close_refuses_a_pass_of_another_kind() {
         )
         .await
         .expect_err("a close for another kind must fail");
-        assert_custom_error(&err, DoubleZeroError::AccessPassTypeMismatch);
+        assert_custom_error(&err, DoubleZeroError::InvalidAccessPassType);
 
         assert!(
             get_account_data(&mut banks_client, accesspass_pubkey)

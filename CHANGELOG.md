@@ -9,7 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - Serviceability
-  - Ten new instructions remove an access pass or a user for one specific `AccessPassType`: `ClosePrepaidAccessPass`, `CloseSolanaValidatorAccessPass`, `CloseSolanaRPCAccessPass`, `CloseOthersAccessPass`, `CloseEdgeSeatAccessPass`, and `DeletePrepaidUser`, `DeleteSolanaValidatorUser`, `DeleteSolanaRPCUser`, `DeleteOthersUser`, `DeleteEdgeSeatUser`. Each reads the access pass and refuses with `AccessPassTypeMismatch` unless the pass matches the instruction. `CloseAccessPass` and `DeleteUser` keep working unchanged; a follow-up change deprecates them and moves every caller. (#2470)
+  - Ten new instructions remove an access pass or a user for one specific `AccessPassType`: `ClosePrepaidAccessPass`, `CloseSolanaValidatorAccessPass`, `CloseSolanaRPCAccessPass`, `CloseOthersAccessPass`, `CloseEdgeSeatAccessPass`, and `DeletePrepaidUser`, `DeleteSolanaValidatorUser`, `DeleteSolanaRPCUser`, `DeleteOthersUser`, `DeleteEdgeSeatUser`. Each reads the access pass and refuses with `InvalidAccessPassType` unless the pass matches the instruction. `CloseAccessPass` and `DeleteUser` keep working unchanged; a follow-up change deprecates them and moves every caller. (#2470)
 - SDK
   - The TypeScript and Python `GlobalState` deserializers expose `ip_verifier_authority_pk`, the RFC-27 trust root the Go SDK and the Rust state already carried, so those consumers can read which key signs IP ownership proofs. The field is appended, so an account written before the upgrade decodes it as the default pubkey rather than failing. (#4231)
 - CI

@@ -90,11 +90,11 @@ Each body checks the kind right after it reads the `AccessPass`:
 let actual = AccessPassKind::from(&accesspass.accesspass_type);
 if actual != expected {
     msg!("instruction is for {expected} but the pass is {actual}");
-    return Err(DoubleZeroError::AccessPassTypeMismatch.into());
+    return Err(DoubleZeroError::InvalidAccessPassType.into());
 }
 ```
 
-`DoubleZeroError::AccessPassTypeMismatch` is a new variant, number 119. The highest number in
+`DoubleZeroError::InvalidAccessPassType` is a new variant, number 119. The highest number in
 use today is 118.
 
 The kind is a Rust parameter chosen by the dispatch arm, not an instruction argument. Ten
@@ -185,7 +185,7 @@ work already edits.
 | Case | Result |
 | --- | --- |
 | the instruction matches the stored pass | the removal proceeds as it does today |
-| the instruction is for another kind | `AccessPassTypeMismatch`, nothing is written |
+| the instruction is for another kind | `InvalidAccessPassType`, nothing is written |
 | variant 69 or 42 | `Deprecated`, nothing is written |
 | the account data cannot be read | an error, and the pass is not closed |
 

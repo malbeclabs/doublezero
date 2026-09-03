@@ -260,7 +260,7 @@ pub enum DoubleZeroInstruction {
     UnsubscribeFeed(UnsubscribeFeedArgs), // variant 118
 
     /// One close instruction per `AccessPassType`. Each refuses a pass of any other
-    /// kind with `AccessPassTypeMismatch`. See malbeclabs/infra#2470.
+    /// kind with `InvalidAccessPassType`. See malbeclabs/infra#2470.
     ClosePrepaidAccessPass(CloseAccessPassArgs), // variant 119
     CloseSolanaValidatorAccessPass(CloseAccessPassArgs), // variant 120
     CloseSolanaRPCAccessPass(CloseAccessPassArgs),       // variant 121
@@ -269,7 +269,7 @@ pub enum DoubleZeroInstruction {
 
     /// One delete instruction per `AccessPassType`, keyed on the kind of pass the user
     /// holds. Each refuses a user on a pass of any other kind with
-    /// `AccessPassTypeMismatch`. See malbeclabs/infra#2470.
+    /// `InvalidAccessPassType`. See malbeclabs/infra#2470.
     DeletePrepaidUser(UserDeleteArgs), // variant 124
     DeleteSolanaValidatorUser(UserDeleteArgs), // variant 125
     DeleteSolanaRPCUser(UserDeleteArgs),       // variant 126

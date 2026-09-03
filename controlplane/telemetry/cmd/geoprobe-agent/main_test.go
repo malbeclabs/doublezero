@@ -1,11 +1,17 @@
 package main
 
 import (
+	"context"
+	"io"
+	"log/slog"
+	"net"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/controlplane/telemetry/internal/geoprobe"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 func makeTestOffset(senderPubkey [32]byte, rttNs uint64) *geoprobe.LocationOffset {
@@ -351,4 +357,137 @@ func TestOffsetCache_ConcurrentAccess(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+}
+
+func TestOffsetSlotFresh(t *testing.T) {
+	const current = uint64(1_000_000)
+
+	tests := []struct {
+		name            string
+		measurementSlot uint64
+		want            bool
+	}{
+		{"same slot", current, true},
+		{"lagging within window", current - maxOffsetSlotLag/2, true},
+		{"at lag boundary", current - maxOffsetSlotLag, true},
+		{"replay past window", current - maxOffsetSlotLag - 1, false},
+		{"leading within window", current + maxOffsetSlotLead, true},
+		{"leading past window", current + maxOffsetSlotLead + 1, false},
+		{"zero slot", 0, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := offsetSlotFresh(tt.measurementSlot, current); got != tt.want {
+				t.Errorf("offsetSlotFresh(%d, %d) = %v, want %v", tt.measurementSlot, current, got, tt.want)
+			}
+		})
+	}
+}
+
+// A replayed offset carries the RTT it was captured with. Letting an equal-RTT
+// offset replace best also resets best's expiry clock, which is how a replay
+// pins the probe's attested reference point forever.
+func TestOffsetCache_PutEqualRTTDoesNotRefreshBest(t *testing.T) {
+	cache := newOffsetCache(1 * time.Hour)
+	pubkey := [32]byte{1}
+
+	cache.Put(makeTestOffset(pubkey, 1000))
+	firstReceivedAt := cache.entries[pubkey].best.receivedAt
+
+	time.Sleep(2 * time.Millisecond)
+	cache.Put(makeTestOffset(pubkey, 1000)) // byte-identical replay
+
+	if got := cache.entries[pubkey].best.receivedAt; !got.Equal(firstReceivedAt) {
+		t.Errorf("equal-RTT offset refreshed best's clock (%v -> %v); a replay could hold best forever",
+			firstReceivedAt, got)
+	}
+}
+
+// stubSignedReflector satisfies signed.Reflector for listener tests.
+type stubSignedReflector struct{}
+
+func (s *stubSignedReflector) Run(context.Context) error     { return nil }
+func (s *stubSignedReflector) Close() error                  { return nil }
+func (s *stubSignedReflector) Port() uint16                  { return 0 }
+func (s *stubSignedReflector) SetAuthorizedKeys([][32]byte)  {}
+func (s *stubSignedReflector) SetOffsets([][]byte)           {}
+func (s *stubSignedReflector) SetLogger(logger *slog.Logger) {}
+
+func TestRunOffsetListener_RejectsOffsetOutsideSlotWindow(t *testing.T) {
+	const currentSlot = uint64(1_000_000)
+
+	listener, err := geoprobe.NewUDPListener(0)
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
+	defer listener.Close()
+	listenAddr := listener.LocalAddr().(*net.UDPAddr)
+
+	device := solana.NewWallet()
+	authority := solana.NewWallet()
+	signer, err := geoprobe.NewOffsetSigner(authority.PrivateKey, device.PublicKey())
+	if err != nil {
+		t.Fatalf("failed to create signer: %v", err)
+	}
+
+	var devicePK, authorityPK [32]byte
+	copy(devicePK[:], device.PublicKey().Bytes())
+	copy(authorityPK[:], authority.PublicKey().Bytes())
+
+	cache := newOffsetCache(1 * time.Hour)
+	parents := &parentState{authorities: map[[32]byte][32]byte{devicePK: authorityPK}}
+	metrics := geoprobe.NewMetrics("test", device.PublicKey().String(), prometheus.NewRegistry())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		runOffsetListener(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), listener, cache, parents,
+			&stubSignedReflector{}, metrics, func(context.Context) (uint64, error) { return currentSlot, nil })
+	}()
+	defer func() {
+		cancel()
+		<-done
+	}()
+
+	sender, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		t.Fatalf("failed to create sender socket: %v", err)
+	}
+	defer sender.Close()
+
+	sendOffset := func(slot uint64) {
+		t.Helper()
+		offset := makeTestOffset(devicePK, 1000)
+		offset.Version = geoprobe.LocationOffsetVersion
+		offset.MeasurementSlot = slot
+		if err := signer.SignOffset(offset); err != nil {
+			t.Fatalf("failed to sign offset: %v", err)
+		}
+		if err := geoprobe.SendOffset(sender, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: listenAddr.Port}, offset); err != nil {
+			t.Fatalf("failed to send offset: %v", err)
+		}
+	}
+
+	// A signed offset stamped with a slot outside the acceptance window is a
+	// replay: it must never reach the cache.
+	sendOffset(currentSlot - maxOffsetSlotLag - 1)
+	time.Sleep(500 * time.Millisecond)
+	if got := cache.Get(devicePK); got != nil {
+		t.Fatalf("expected replayed offset to be rejected, got %+v", got)
+	}
+
+	// A fresh offset over the same path must still be accepted, proving the
+	// rejection above came from the slot check and not from plumbing.
+	sendOffset(currentSlot)
+	deadline := time.Now().Add(2 * time.Second)
+	for cache.Get(devicePK) == nil {
+		if time.Now().After(deadline) {
+			t.Fatal("expected fresh offset to be cached")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }

@@ -438,3 +438,22 @@ func TestNewOffsetSigner_ZeroSenderPubkey(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "sender pubkey must not be zero")
 }
+
+// A fully zeroed offset is what an attacker sends when they cannot sign at all.
+// ed25519.Verify accepts the all-zero (pubkey, signature) pair, so verification
+// has to reject the zero authority pubkey explicitly.
+func TestVerifyOffset_ZeroPubkeyAndSignature(t *testing.T) {
+	t.Parallel()
+
+	offset := &LocationOffset{
+		Version:         LocationOffsetVersion,
+		MeasurementSlot: 1,
+		Lat:             1.0,
+		Lng:             2.0,
+		MeasuredRttNs:   1000,
+		RttNs:           1000,
+	}
+
+	require.Error(t, VerifyOffset(offset))
+	require.Error(t, VerifyOffsetChain(offset))
+}

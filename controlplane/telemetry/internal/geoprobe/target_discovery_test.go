@@ -111,7 +111,7 @@ func TestTargetDiscovery_HappyPath(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, keys, _, _, err := td.discover(context.Background())
+	_, targets, _, keys, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -137,7 +137,7 @@ func TestTargetDiscovery_StatusFilter(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, keys, _, _, err := td.discover(context.Background())
+	_, targets, _, keys, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -160,7 +160,7 @@ func TestTargetDiscovery_PaymentFilter(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, keys, _, _, err := td.discover(context.Background())
+	_, targets, _, keys, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -186,7 +186,7 @@ func TestTargetDiscovery_CombinedFilter(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, _, _, _, err := td.discover(context.Background())
+	_, targets, _, _, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -209,7 +209,7 @@ func TestTargetDiscovery_ProbePKFilter(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, _, _, _, err := td.discover(context.Background())
+	_, targets, _, _, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -230,7 +230,7 @@ func TestTargetDiscovery_InboundTargets(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, keys, _, _, err := td.discover(context.Background())
+	_, targets, _, keys, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -260,7 +260,7 @@ func TestTargetDiscovery_MixedTargets(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, keys, _, _, err := td.discover(context.Background())
+	_, targets, _, keys, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -333,7 +333,7 @@ func TestTargetDiscovery_DeduplicateInboundKeys(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	_, _, keys, _, _, err := td.discover(context.Background())
+	_, _, _, keys, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -387,7 +387,7 @@ func TestTargetDiscovery_TargetUpdateCountUnchanged_SkipsScan(t *testing.T) {
 	})
 
 	// First call (tick 0): always does full scan (forceFullRefresh).
-	targets, _, _, _, _, err := td.discover(context.Background())
+	_, targets, _, _, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -399,7 +399,7 @@ func TestTargetDiscovery_TargetUpdateCountUnchanged_SkipsScan(t *testing.T) {
 	}
 
 	// Second call: counter unchanged → should skip.
-	targets, _, keys, _, _, err := td.discover(context.Background())
+	_, targets, _, keys, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -432,11 +432,11 @@ func TestTargetDiscovery_TargetUpdateCountChanged_DoesFullScan(t *testing.T) {
 	})
 
 	// First call: full scan.
-	_, _, _, _, _, _ = td.discover(context.Background())
+	_, _, _, _, _, _, _ = td.discover(context.Background())
 
 	// Change counter, second call should do full scan.
 	counter.Store(6)
-	targets, _, _, _, _, err := td.discover(context.Background())
+	_, targets, _, _, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -471,12 +471,12 @@ func TestTargetDiscovery_ForcedFullRefresh_IgnoresCounter(t *testing.T) {
 	// Tick through to the next forced refresh (every 5th tick).
 	// Tick 0: forced (0 % 5 == 0), tick 1-4: skipped (counter unchanged), tick 5: forced.
 	for i := 0; i < targetDiscoveryFullRefreshEvery; i++ {
-		_, _, _, _, _, _ = td.discover(context.Background())
+		_, _, _, _, _, _, _ = td.discover(context.Background())
 	}
 	callsBefore := client.calls
 
 	// Next tick (tick 5): forced full refresh even though counter unchanged.
-	targets, _, _, _, _, err := td.discover(context.Background())
+	_, targets, _, _, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -502,7 +502,7 @@ func TestTargetDiscovery_NilProbeTargetUpdateCount_AlwaysScans(t *testing.T) {
 	td := newTestTargetDiscovery(client)
 
 	for i := 0; i < 3; i++ {
-		_, _, _, _, _, _ = td.discover(context.Background())
+		_, _, _, _, _, _, _ = td.discover(context.Background())
 	}
 	if client.calls != 3 {
 		t.Errorf("expected 3 RPC calls without ProbeTargetUpdateCount, got %d", client.calls)
@@ -534,7 +534,7 @@ func TestTargetDiscovery_RejectsNonPublicOutboundTargets(t *testing.T) {
 				},
 			}
 			td := newTestTargetDiscovery(client)
-			targets, _, _, _, _, err := td.discover(context.Background())
+			_, targets, _, _, _, _, err := td.discover(context.Background())
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -556,7 +556,7 @@ func TestTargetDiscovery_OutboundIcmpTargets(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, icmpTargets, keys, _, _, err := td.discover(context.Background())
+	_, targets, icmpTargets, keys, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -589,7 +589,7 @@ func TestTargetDiscovery_MixedOutboundAndIcmp(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, icmpTargets, keys, _, _, err := td.discover(context.Background())
+	_, targets, icmpTargets, keys, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -627,7 +627,7 @@ func TestTargetDiscovery_OutboundIcmpZeroPortDefaulted(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	_, icmpTargets, _, _, _, err := td.discover(context.Background())
+	_, _, icmpTargets, _, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -650,7 +650,7 @@ func TestTargetDiscovery_OutboundIcmpPrivateIPRejected(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	_, icmpTargets, _, _, _, err := td.discover(context.Background())
+	_, _, icmpTargets, _, _, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -676,7 +676,7 @@ func TestTargetDiscovery_ResultDestination_OutboundOverride(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, _, delivery, _, err := td.discover(context.Background())
+	_, targets, _, _, delivery, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -711,7 +711,7 @@ func TestTargetDiscovery_NoResultDestination_NoDeliveryOverride(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, _, delivery, _, err := td.discover(context.Background())
+	_, targets, _, _, delivery, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -740,7 +740,7 @@ func TestTargetDiscovery_ResultDestination_ICMPOverride(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	_, icmpTargets, _, _, delivery, err := td.discover(context.Background())
+	_, _, icmpTargets, _, _, delivery, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -783,7 +783,7 @@ func TestTargetDiscovery_ResultDestination_MixedUsers(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, _, delivery, _, err := td.discover(context.Background())
+	_, targets, _, _, delivery, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -823,7 +823,7 @@ func TestTargetDiscovery_ResultDestination_DomainName(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, _, delivery, _, err := td.discover(context.Background())
+	_, targets, _, _, delivery, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -908,7 +908,7 @@ func TestTargetDiscovery_InvalidResultDestination_Ignored(t *testing.T) {
 	}
 
 	td := newTestTargetDiscovery(client)
-	targets, _, _, delivery, _, err := td.discover(context.Background())
+	_, targets, _, _, delivery, _, err := td.discover(context.Background())
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -917,5 +917,68 @@ func TestTargetDiscovery_InvalidResultDestination_Ignored(t *testing.T) {
 	}
 	if len(delivery) != 0 {
 		t.Errorf("expected no delivery overrides for invalid result destination, got %d", len(delivery))
+	}
+}
+
+// Dropping a user's last target, or flipping them to Delinquent, produces a
+// completed scan that matches nothing. That result must propagate, or the probe
+// keeps measuring and delivering signed offsets for a user who stopped paying.
+func TestTargetDiscovery_EmptyScanPropagates(t *testing.T) {
+	probePK := testProbePubkey()
+	client := &mockGeolocationUserClient{
+		users: []geolocation.KeyedGeolocationUser{
+			makeUser(geolocation.GeolocationUserStatusActivated, geolocation.GeolocationPaymentStatusPaid, "user1", []geolocation.GeolocationTarget{
+				outboundTarget([4]uint8{44, 0, 0, 1}, 9000, probePK),
+				inboundTarget(solana.NewWallet().PublicKey(), probePK),
+				outboundIcmpTarget([4]uint8{44, 0, 0, 2}, 0, probePK),
+			}),
+		},
+	}
+
+	td := newTestTargetDiscovery(client)
+	targetCh := make(chan TargetUpdate, 1)
+	keyCh := make(chan InboundKeyUpdate, 1)
+	icmpCh := make(chan ICMPTargetUpdate, 1)
+
+	td.Tick(context.Background(), targetCh, keyCh, icmpCh)
+
+	if update := <-targetCh; len(update.Targets) != 1 {
+		t.Fatalf("expected 1 target on first tick, got %d", len(update.Targets))
+	}
+	if update := <-keyCh; len(update.Keys) != 1 {
+		t.Fatalf("expected 1 inbound key on first tick, got %d", len(update.Keys))
+	}
+	if update := <-icmpCh; len(update.Targets) != 1 {
+		t.Fatalf("expected 1 ICMP target on first tick, got %d", len(update.Targets))
+	}
+
+	client.users[0].GeolocationUser.PaymentStatus = geolocation.GeolocationPaymentStatusDelinquent
+	td.Tick(context.Background(), targetCh, keyCh, icmpCh)
+
+	select {
+	case update := <-targetCh:
+		if len(update.Targets) != 0 {
+			t.Errorf("expected empty target update, got %d targets", len(update.Targets))
+		}
+	default:
+		t.Error("expected an empty target update to be sent for a delinquent user")
+	}
+
+	select {
+	case update := <-keyCh:
+		if len(update.Keys) != 0 {
+			t.Errorf("expected empty inbound key update, got %d keys", len(update.Keys))
+		}
+	default:
+		t.Error("expected an empty inbound key update to be sent for a delinquent user")
+	}
+
+	select {
+	case update := <-icmpCh:
+		if len(update.Targets) != 0 {
+			t.Errorf("expected empty ICMP target update, got %d targets", len(update.Targets))
+		}
+	default:
+		t.Error("expected an empty ICMP target update to be sent for a delinquent user")
 	}
 }

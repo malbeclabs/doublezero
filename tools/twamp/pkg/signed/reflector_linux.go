@@ -29,6 +29,10 @@ type senderState struct {
 	pairStart    time.Time
 	pairSourceIP [4]byte
 	nonce        uint64 // challenge nonce issued in Reply 0 of the current pair; 0 outside a pair
+	// lastUnverifiedRx rate-limits replies to probes that fail signature
+	// verification. It is the one field written from unverified input, and
+	// nothing in the pair flow reads it.
+	lastUnverifiedRx time.Time
 }
 
 type LinuxReflector struct {
@@ -224,6 +228,29 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 			raw, _ := r.senderStates.LoadOrStore(probe.SenderPubkey, &senderState{})
 			state := raw.(*senderState)
 
+			// RFC-16 leaves per-probe signature verification to the target, so an
+			// unverified probe still gets a reply — but it must not touch the pair
+			// state a legitimate sender depends on. target_pk is public onchain,
+			// so spoofed probes would otherwise consume the sender's pair budget,
+			// repoint pairSourceIP, and clear its challenge nonce, denying it
+			// inbound geolocation. Reply off a throwaway state instead: the nonce
+			// it carries is never stored, so it authenticates nothing.
+			if !probe.Verify() {
+				if r.verifyInterval > 0 && !state.lastUnverifiedRx.IsZero() &&
+					now.Sub(state.lastUnverifiedRx) < r.verifyInterval {
+					continue
+				}
+				// Cap unverified replies at one per window per pubkey: the reply
+				// is an order of magnitude larger than the probe, so an unlimited
+				// reply path is a reflection amplifier.
+				state.lastUnverifiedRx = now
+				state = &senderState{}
+				if r.logger != nil {
+					r.logger.Warn("replying to probe with invalid signature without touching pair state",
+						"sender_pubkey", fmt.Sprintf("%x", probe.SenderPubkey), "from", from)
+				}
+			}
+
 			// Pair-based rate limiting: allow 2 probes per window, then drop.
 			if interval := r.verifyInterval; interval > 0 {
 				if state.pairCount >= 2 {
@@ -245,8 +272,8 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 			}
 
 			// Pair integrity: both probes must come from the same source IP.
-			// The pubkey allowlist (checked above) provides authentication;
-			// per-probe signature verification is left to the target.
+			// Only verified probes reach this state, so a spoofed source cannot
+			// claim or repoint the pair.
 			fromAddr, ok := from.(*unix.SockaddrInet4)
 			if !ok {
 				continue

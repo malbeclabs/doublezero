@@ -43,6 +43,19 @@ const (
 	discoveryInterval                 = 60 * time.Second
 	defaultDeliveryDNSRefreshInterval = 5 * time.Minute
 	defaultDeliveryDNSTTL             = defaultDeliveryDNSRefreshInterval * 5 / 2
+
+	// dzSlotDuration is the nominal DoubleZero Ledger slot time.
+	dzSlotDuration = 400 * time.Millisecond
+
+	// Acceptance window for an inbound offset's MeasurementSlot, RFC-16's replay
+	// mitigation. A DZD stamps offsets with a slot it caches for
+	// geoprobe.SlotCacheTTL (5m) and this agent compares against its own slot
+	// cache with the same TTL, so a legitimate offset can sit ~5m either side of
+	// our view before any RPC or finalization lag. maxOffsetSlotLag allows 15m of
+	// that skew in the past; maxOffsetSlotLead allows 5m in the future, for when
+	// our own cached slot is the stale one.
+	maxOffsetSlotLag  = uint64(15 * time.Minute / dzSlotDuration)
+	maxOffsetSlotLead = uint64(5 * time.Minute / dzSlotDuration)
 )
 
 var (
@@ -148,8 +161,10 @@ func (c *offsetCache) Put(offset *geoprobe.LocationOffset) {
 		return
 	}
 
-	if offset.RttNs <= sender.best.offset.RttNs {
-		// New offset is better than or equal to best: replace best.
+	if offset.RttNs < sender.best.offset.RttNs {
+		// Strictly better than best: replace it. An equal-RTT offset must not
+		// replace best, because replacing also resets best's receivedAt clock —
+		// a replayed offset would otherwise hold best forever.
 		sender.best = entry
 	} else {
 		// New offset has higher RTT than best, consider it for second-best.
@@ -215,6 +230,15 @@ func (c *offsetCache) Evict() int {
 		}
 	}
 	return evicted
+}
+
+// offsetSlotFresh reports whether an offset's MeasurementSlot falls inside the
+// acceptance window around the current ledger slot.
+func offsetSlotFresh(measurementSlot, currentSlot uint64) bool {
+	if measurementSlot > currentSlot {
+		return measurementSlot-currentSlot <= maxOffsetSlotLead
+	}
+	return currentSlot-measurementSlot <= maxOffsetSlotLag
 }
 
 func marshalBestOffset(cache *offsetCache) [][]byte {
@@ -496,7 +520,7 @@ func main() {
 
 	// Run UDP offset listener.
 	go func() {
-		runOffsetListener(ctx, log, offsetListener, cache, pState, signedReflector, m)
+		runOffsetListener(ctx, log, offsetListener, cache, pState, signedReflector, m, getCurrentSlot)
 	}()
 
 	// Run eviction goroutine.
@@ -658,6 +682,7 @@ func runOffsetListener(
 	parents *parentState,
 	signedReflector signed.Reflector,
 	m *geoprobe.Metrics,
+	getCurrentSlot func(ctx context.Context) (uint64, error),
 ) {
 	log.Info("Starting offset listener", "addr", conn.LocalAddr().String())
 
@@ -717,6 +742,30 @@ func runOffsetListener(
 		}
 
 		log.Debug("signature verification successful", "authority_pubkey", authorityPK)
+
+		// RFC-16 replay mitigation. A signature stays valid forever, and the
+		// only other freshness bound is receipt wall-clock, which a replay
+		// refreshes by definition — so MeasurementSlot has to be checked against
+		// the current ledger slot or a captured offset can be replayed
+		// indefinitely to pin this probe's attested reference point.
+		currentSlot, err := getCurrentSlot(ctx)
+		if err != nil {
+			log.Warn("Rejecting offset, current slot unavailable",
+				"sender_pubkey", senderPK, "addr", addr, "error", err)
+			m.OffsetsRejected.WithLabelValues(geoprobe.RejectSlotUnavailable).Inc()
+			continue
+		}
+		if !offsetSlotFresh(offset.MeasurementSlot, currentSlot) {
+			log.Warn("Rejecting offset with measurement slot outside acceptance window",
+				"sender_pubkey", senderPK,
+				"addr", addr,
+				"measurement_slot", offset.MeasurementSlot,
+				"current_slot", currentSlot,
+				"max_lag_slots", maxOffsetSlotLag,
+				"max_lead_slots", maxOffsetSlotLead)
+			m.OffsetsRejected.WithLabelValues(geoprobe.RejectSlotOutOfWindow).Inc()
+			continue
+		}
 
 		cache.Put(offset)
 		signedReflector.SetOffsets(marshalBestOffset(cache))

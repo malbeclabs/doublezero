@@ -42,7 +42,6 @@ A tag enum in `smartcontract/programs/doublezero-serviceability/src/state/access
 next to `AccessPassType`.
 
 ```rust
-#[repr(u8)]
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum AccessPassKind {
     Prepaid,

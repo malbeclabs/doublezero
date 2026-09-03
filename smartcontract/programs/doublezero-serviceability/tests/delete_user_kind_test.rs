@@ -229,10 +229,18 @@ async fn create_and_activate_user(
 }
 
 /// Rewrite the EdgeSeat pass to carry one feed seat with a user on it, and give the user that
-/// same feed in `feed_pks` — bypassing `SubscribeFeed` so the test only needs a device and a
-/// bare multicast user. This is the only way to put a real seat in front of
-/// `process_delete_user`'s `release_feed_seats` call; a feedless EdgeSeat pass makes that call a
-/// no-op and never exercises the release path a `DeleteEdgeSeatUser` must perform.
+/// same feed in `feed_pks`, bypassing the real provisioning path. That real path is
+/// `SetAccessPassFeeds` (see `set_access_pass_feeds_test.rs`), but it only puts the seat on the
+/// pass — it needs a caller with a permissioned authority (foundation allowlist or
+/// `ACCESS_PASS_ADMIN`) and does not tick `current_users` or touch a user. Recording the feed on
+/// a user, ticked, is done by `CreateSubscribeUser` or `SubscribeFeed`, and both require a real
+/// `MulticastGroup` (its own create instruction, `ResourceExtension` accounts, and onchain
+/// allocation), which this suite does not otherwise set up. Standing that up here to seed one
+/// feed seat would roughly double this file for no gain in what the delete path itself is
+/// tested against, so the seat is seeded directly instead.
+/// This is the only way to put a real seat in front of `process_delete_user`'s
+/// `release_feed_seats` call without that extra machinery; a feedless EdgeSeat pass makes that
+/// call a no-op and never exercises the release path a `DeleteEdgeSeatUser` must perform.
 async fn seed_feed_seat(
     env: &mut TestEnv,
     accesspass_pubkey: Pubkey,

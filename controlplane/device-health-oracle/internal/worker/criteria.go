@@ -41,6 +41,21 @@ func DeviceBurnIn(ctx context.Context, status serviceability.DeviceStatus) (star
 	return start, burnIn.Now, expectedMinutes, true
 }
 
+// LinkBurnIn extracts BurnInTimes from the context and returns the link recovery
+// window — the period over which link health must be continuously clean for a
+// link to recover from Impaired back to ReadyForService. The window is derived
+// from DrainedStart (already resolved from DrainedSlotCount once per tick).
+// Returns ok=false if the context has no BurnInTimes, and expectedMinutes=0
+// when the window has zero length (e.g. a newly created environment).
+func LinkBurnIn(ctx context.Context) (start time.Time, now time.Time, expectedMinutes int64, ok bool) {
+	burnIn, ok := ctx.Value(burnInTimesKey{}).(BurnInTimes)
+	if !ok {
+		return time.Time{}, time.Time{}, 0, false
+	}
+	expectedMinutes = max(int64(burnIn.Now.Sub(burnIn.DrainedStart).Minutes()), 0)
+	return burnIn.DrainedStart, burnIn.Now, expectedMinutes, true
+}
+
 // DeviceCriterion evaluates whether a device meets a specific readiness requirement.
 // Check returns (passed, reason). Reason is a human-readable explanation when passed is false.
 type DeviceCriterion interface {
@@ -111,10 +126,21 @@ func (e *DeviceHealthEvaluator) checkAll(ctx context.Context, device serviceabil
 	return true
 }
 
-// LinkHealthEvaluator evaluates a link's health based on criteria.
-// Links have a single stage: Pending → ReadyForService.
+// LinkHealthEvaluator evaluates a link's health based on criteria, supporting
+// bidirectional transitions between ReadyForService and Impaired:
+//   - Pending/Unknown → ReadyForService when ReadyForServiceCriteria pass.
+//   - ReadyForService → Impaired when any ImpairmentCriteria fail (point-in-time
+//     check on the most recent telemetry bucket — fast demotion).
+//   - Impaired → ReadyForService when RecoveryCriteria pass over the full
+//     recovery window (slow recovery to prevent flapping).
+//
+// The asymmetry — fast demotion via the latest bucket, slow recovery requiring
+// every bucket in the window to be clean — is intentional: it keeps borderline
+// links from flapping while still surfacing real impairment quickly.
 type LinkHealthEvaluator struct {
 	ReadyForServiceCriteria []LinkCriterion
+	ImpairmentCriteria      []LinkCriterion
+	RecoveryCriteria        []LinkCriterion
 	Log                     *slog.Logger
 }
 
@@ -122,12 +148,38 @@ type LinkHealthEvaluator struct {
 func (e *LinkHealthEvaluator) Evaluate(ctx context.Context, link serviceability.Link) serviceability.LinkHealth {
 	current := link.LinkHealth
 
-	if current == serviceability.LinkHealthReadyForService {
+	switch current {
+	case serviceability.LinkHealthReadyForService:
+		// No impairment criteria configured ⇒ no demotion path (preserves
+		// behavior of deployments without ClickHouse wired up).
+		if len(e.ImpairmentCriteria) == 0 {
+			return current
+		}
+		if !e.checkAllLink(ctx, link, e.ImpairmentCriteria) {
+			return serviceability.LinkHealthImpaired
+		}
 		return current
-	}
 
+	case serviceability.LinkHealthImpaired:
+		if len(e.RecoveryCriteria) == 0 {
+			return current
+		}
+		if !e.checkAllLink(ctx, link, e.RecoveryCriteria) {
+			return current
+		}
+		return serviceability.LinkHealthReadyForService
+
+	default:
+		if !e.checkAllLink(ctx, link, e.ReadyForServiceCriteria) {
+			return current
+		}
+		return serviceability.LinkHealthReadyForService
+	}
+}
+
+func (e *LinkHealthEvaluator) checkAllLink(ctx context.Context, link serviceability.Link, criteria []LinkCriterion) bool {
 	linkPubkey := solana.PublicKeyFromBytes(link.PubKey[:]).String()
-	for _, c := range e.ReadyForServiceCriteria {
+	for _, c := range criteria {
 		passed, reason := c.Check(ctx, link)
 		if !passed {
 			e.Log.Info("Link criterion not met",
@@ -135,9 +187,10 @@ func (e *LinkHealthEvaluator) Evaluate(ctx context.Context, link serviceability.
 				"code", link.Code,
 				"criterion", c.Name(),
 				"reason", reason)
-			return current
+			MetricCriterionResults.WithLabelValues(c.Name(), "fail").Inc()
+			return false
 		}
+		MetricCriterionResults.WithLabelValues(c.Name(), "pass").Inc()
 	}
-
-	return serviceability.LinkHealthReadyForService
+	return true
 }

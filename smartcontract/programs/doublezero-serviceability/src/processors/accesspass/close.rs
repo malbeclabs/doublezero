@@ -105,7 +105,7 @@ pub fn process_close_access_pass(
         let actual = AccessPassKind::from(&accesspass.accesspass_type);
         if actual != expected {
             msg!("this instruction closes a {expected} pass, but the pass is {actual}");
-            return Err(DoubleZeroError::AccessPassTypeMismatch.into());
+            return Err(DoubleZeroError::InvalidAccessPassType.into());
         }
     }
 

@@ -272,7 +272,7 @@ pub enum DoubleZeroError {
     #[error("This feed has no conformance verdict outstanding")]
     FeedNotActivatable, // variant 130
     #[error("This instruction is for a different access pass type")]
-    AccessPassTypeMismatch, // variant 131
+    InvalidAccessPassType, // variant 131
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -409,7 +409,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::RetirementNoticeNotElapsed => ProgramError::Custom(128),
             DoubleZeroError::RetiringFeedCannotBeDeleted => ProgramError::Custom(129),
             DoubleZeroError::FeedNotActivatable => ProgramError::Custom(130),
-            DoubleZeroError::AccessPassTypeMismatch => ProgramError::Custom(131),
+            DoubleZeroError::InvalidAccessPassType => ProgramError::Custom(131),
         }
     }
 }
@@ -547,7 +547,7 @@ impl From<u32> for DoubleZeroError {
             128 => DoubleZeroError::RetirementNoticeNotElapsed,
             129 => DoubleZeroError::RetiringFeedCannotBeDeleted,
             130 => DoubleZeroError::FeedNotActivatable,
-            131 => DoubleZeroError::AccessPassTypeMismatch,
+            131 => DoubleZeroError::InvalidAccessPassType,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -572,8 +572,8 @@ mod tests {
     use strum::IntoEnumIterator;
 
     #[test]
-    fn test_access_pass_type_mismatch_roundtrip() {
-        let err = DoubleZeroError::AccessPassTypeMismatch;
+    fn test_invalid_access_pass_type_roundtrip() {
+        let err = DoubleZeroError::InvalidAccessPassType;
         assert_eq!(ProgramError::from(err.clone()), ProgramError::Custom(131));
         let pe: ProgramError = ProgramError::Custom(131);
         let err2: DoubleZeroError = pe.into();

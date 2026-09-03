@@ -202,7 +202,7 @@ mod tests {
     use doublezero_serviceability::{
         pda::{get_accesspass_pda, get_user_old_pda},
         state::{
-            accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+            accesspass::{AccessPass, AccessPassKind, AccessPassStatus, AccessPassType},
             device::{DeviceDesiredStatus, DeviceHealth, DeviceStatus, DeviceType},
             tenant::{Tenant, TenantBillingConfig, TenantPaymentStatus},
         },
@@ -373,7 +373,10 @@ mod tests {
 
         client
             .expect_delete_user()
-            .with(predicate::eq(DeleteUserCommand { pubkey: pda_pubkey }))
+            .with(predicate::eq(DeleteUserCommand {
+                pubkey: pda_pubkey,
+                kind: AccessPassKind::Prepaid,
+            }))
             .returning(move |_| Ok(signature));
 
         // Expected success (table)

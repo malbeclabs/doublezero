@@ -1,4 +1,5 @@
 use crate::{
+    accesspass::types::CliAccessPassType,
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
 };
@@ -13,6 +14,10 @@ pub struct CloseAccessPassCliCommand {
     /// Access pass public key
     #[arg(long)]
     pub pubkey: Pubkey,
+    /// The kind of access pass being closed. Required: the program refuses the call when the
+    /// pass is a different kind, so stating it here is what makes the close targeted.
+    #[arg(long = "type")]
+    pub accesspass_type: CliAccessPassType,
 }
 
 impl CloseAccessPassCliCommand {
@@ -27,6 +32,7 @@ impl CloseAccessPassCliCommand {
 
         let signature = client.close_accesspass(CloseAccessPassCommand {
             pubkey: self.pubkey,
+            kind: self.accesspass_type.into(),
         })?;
         writeln!(out, "Signature: {signature}")?;
 
@@ -37,14 +43,14 @@ impl CloseAccessPassCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        accesspass::close::CloseAccessPassCliCommand,
+        accesspass::{close::CloseAccessPassCliCommand, types::CliAccessPassType},
         doublezerocommand::CliCommand,
         requirements::{CHECK_BALANCE, CHECK_ID_JSON},
         tests::utils::create_test_client,
     };
     use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::commands::accesspass::close::CloseAccessPassCommand;
-    use doublezero_serviceability::pda::get_accesspass_pda;
+    use doublezero_serviceability::{pda::get_accesspass_pda, state::accesspass::AccessPassKind};
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -74,6 +80,7 @@ mod tests {
             .expect_close_accesspass()
             .with(predicate::eq(CloseAccessPassCommand {
                 pubkey: accesspass_pubkey,
+                kind: AccessPassKind::EdgeSeat,
             }))
             .returning(move |_| Ok(signature));
 
@@ -82,6 +89,7 @@ mod tests {
         let res = block_on(
             CloseAccessPassCliCommand {
                 pubkey: accesspass_pubkey,
+                accesspass_type: CliAccessPassType::EdgeSeat,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -90,5 +98,58 @@ mod tests {
         assert_eq!(
             output_str,"Signature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
         );
+    }
+
+    #[test]
+    fn test_cli_access_pass_type_maps_to_kind() {
+        let cases = [
+            (CliAccessPassType::Prepaid, AccessPassKind::Prepaid),
+            (
+                CliAccessPassType::SolanaValidator,
+                AccessPassKind::SolanaValidator,
+            ),
+            (CliAccessPassType::SolanaRPC, AccessPassKind::SolanaRPC),
+            (CliAccessPassType::Others, AccessPassKind::Others),
+            (CliAccessPassType::EdgeSeat, AccessPassKind::EdgeSeat),
+        ];
+        for (cli, want) in cases {
+            assert_eq!(AccessPassKind::from(cli), want, "{cli:?}");
+        }
+    }
+
+    #[test]
+    fn test_cli_access_pass_close_requires_type() {
+        use clap::Parser;
+
+        #[derive(Parser, Debug)]
+        struct TestCli {
+            #[command(subcommand)]
+            command: TestCommand,
+        }
+
+        #[derive(clap::Subcommand, Debug)]
+        enum TestCommand {
+            Close(CloseAccessPassCliCommand),
+        }
+
+        // Omitting --type is a parse error: there is no default, so an operator who
+        // forgets the flag is stopped here rather than the program guessing a kind.
+        let missing_type = TestCli::try_parse_from([
+            "test",
+            "close",
+            "--pubkey",
+            &Pubkey::new_unique().to_string(),
+        ]);
+        assert!(missing_type.is_err(), "{missing_type:?}");
+
+        let with_type = TestCli::try_parse_from([
+            "test",
+            "close",
+            "--pubkey",
+            &Pubkey::new_unique().to_string(),
+            "--type",
+            "prepaid",
+        ]);
+        assert!(with_type.is_ok(), "{with_type:?}");
     }
 }

@@ -115,7 +115,7 @@ func (l *Live) CreateUser(ctx context.Context, idx int) (sweep.CreateResult, err
 
 // DeleteUser closes a user account by PDA.
 func (l *Live) DeleteUser(ctx context.Context, userPDA solana.PublicKey) (sweep.DeleteResult, error) {
-	if _, err := l.cfg.Executor.DeleteUser(ctx, userPDA); err != nil {
+	if _, err := l.cfg.Executor.DeleteUser(ctx, userPDA, serviceability.AccessPassKindPrepaid); err != nil {
 		return sweep.DeleteResult{}, err
 	}
 	now := time.Now()

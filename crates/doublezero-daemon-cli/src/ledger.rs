@@ -19,7 +19,7 @@ use doublezero_sdk::{
     },
     Device, Exchange, Feed, GlobalState, MulticastGroup, Tenant, User,
 };
-use doublezero_serviceability::state::accesspass::AccessPass;
+use doublezero_serviceability::state::accesspass::{AccessPass, AccessPassKind};
 use mockall::automock;
 use solana_sdk::pubkey::Pubkey;
 
@@ -47,8 +47,9 @@ pub trait LedgerClient: Send + Sync {
     /// List all users on the ledger.
     fn list_user(&self) -> eyre::Result<HashMap<Pubkey, User>>;
 
-    /// Delete the user account at `pubkey`.
-    fn delete_user(&self, pubkey: Pubkey) -> eyre::Result<()>;
+    /// Delete the user account at `pubkey`. `kind` names the kind of access pass the user
+    /// holds; the program refuses the call when the stored pass is a different kind.
+    fn delete_user(&self, pubkey: Pubkey, kind: AccessPassKind) -> eyre::Result<()>;
 
     /// Fetch the user account at `pubkey` (used to poll for deletion).
     fn get_user(&self, pubkey: Pubkey) -> eyre::Result<User>;

@@ -99,7 +99,7 @@ mod tests {
         },
         AccountType, User, UserCYOA, UserStatus, UserType,
     };
-    use doublezero_serviceability::pda::get_user_old_pda;
+    use doublezero_serviceability::{pda::get_user_old_pda, state::accesspass::AccessPassKind};
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -152,7 +152,10 @@ mod tests {
 
         client
             .expect_delete_user()
-            .with(predicate::eq(DeleteUserCommand { pubkey: pda_pubkey }))
+            .with(predicate::eq(DeleteUserCommand {
+                pubkey: pda_pubkey,
+                kind: AccessPassKind::Prepaid,
+            }))
             .returning(move |_| Ok(signature));
         client
             .expect_update_user()

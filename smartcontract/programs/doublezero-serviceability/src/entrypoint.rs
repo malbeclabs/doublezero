@@ -169,38 +169,34 @@ pub fn process_instruction(
         | DoubleZeroInstruction::CloseAccountDevice()
         | DoubleZeroInstruction::DeactivateMulticastGroup()
         | DoubleZeroInstruction::RemoveDeviceInterface()
-        | DoubleZeroInstruction::UnlinkDeviceInterface() => {
+        | DoubleZeroInstruction::UnlinkDeviceInterface()
+        | DoubleZeroInstruction::CloseAccessPass() => {
             return Err(DoubleZeroError::Deprecated.into());
         }
         DoubleZeroInstruction::ActivateUser()
         | DoubleZeroInstruction::RejectUser()
         | DoubleZeroInstruction::CloseAccountUser()
-        | DoubleZeroInstruction::BanUser() => {
+        | DoubleZeroInstruction::BanUser()
+        | DoubleZeroInstruction::DeleteUser() => {
             return Err(DoubleZeroError::Deprecated.into());
         }
-        DoubleZeroInstruction::DeleteUser(value) => {
-            process_delete_user(program_id, accounts, &value, None)?
-        }
         DoubleZeroInstruction::DeletePrepaidUser(value) => {
-            process_delete_user(program_id, accounts, &value, Some(AccessPassKind::Prepaid))?
+            process_delete_user(program_id, accounts, &value, AccessPassKind::Prepaid)?
         }
         DoubleZeroInstruction::DeleteSolanaValidatorUser(value) => process_delete_user(
             program_id,
             accounts,
             &value,
-            Some(AccessPassKind::SolanaValidator),
+            AccessPassKind::SolanaValidator,
         )?,
-        DoubleZeroInstruction::DeleteSolanaRPCUser(value) => process_delete_user(
-            program_id,
-            accounts,
-            &value,
-            Some(AccessPassKind::SolanaRPC),
-        )?,
+        DoubleZeroInstruction::DeleteSolanaRPCUser(value) => {
+            process_delete_user(program_id, accounts, &value, AccessPassKind::SolanaRPC)?
+        }
         DoubleZeroInstruction::DeleteOthersUser(value) => {
-            process_delete_user(program_id, accounts, &value, Some(AccessPassKind::Others))?
+            process_delete_user(program_id, accounts, &value, AccessPassKind::Others)?
         }
         DoubleZeroInstruction::DeleteEdgeSeatUser(value) => {
-            process_delete_user(program_id, accounts, &value, Some(AccessPassKind::EdgeSeat))?
+            process_delete_user(program_id, accounts, &value, AccessPassKind::EdgeSeat)?
         }
         DoubleZeroInstruction::DeleteDevice(value) => {
             process_delete_device(program_id, accounts, &value)?
@@ -327,29 +323,23 @@ pub fn process_instruction(
         DoubleZeroInstruction::SetAccessPass(value) => {
             process_set_access_pass(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::CloseAccessPass(value) => {
-            process_close_access_pass(program_id, accounts, &value, None)?
-        }
         DoubleZeroInstruction::ClosePrepaidAccessPass(value) => {
-            process_close_access_pass(program_id, accounts, &value, Some(AccessPassKind::Prepaid))?
+            process_close_access_pass(program_id, accounts, &value, AccessPassKind::Prepaid)?
         }
         DoubleZeroInstruction::CloseSolanaValidatorAccessPass(value) => process_close_access_pass(
             program_id,
             accounts,
             &value,
-            Some(AccessPassKind::SolanaValidator),
+            AccessPassKind::SolanaValidator,
         )?,
-        DoubleZeroInstruction::CloseSolanaRPCAccessPass(value) => process_close_access_pass(
-            program_id,
-            accounts,
-            &value,
-            Some(AccessPassKind::SolanaRPC),
-        )?,
+        DoubleZeroInstruction::CloseSolanaRPCAccessPass(value) => {
+            process_close_access_pass(program_id, accounts, &value, AccessPassKind::SolanaRPC)?
+        }
         DoubleZeroInstruction::CloseOthersAccessPass(value) => {
-            process_close_access_pass(program_id, accounts, &value, Some(AccessPassKind::Others))?
+            process_close_access_pass(program_id, accounts, &value, AccessPassKind::Others)?
         }
         DoubleZeroInstruction::CloseEdgeSeatAccessPass(value) => {
-            process_close_access_pass(program_id, accounts, &value, Some(AccessPassKind::EdgeSeat))?
+            process_close_access_pass(program_id, accounts, &value, AccessPassKind::EdgeSeat)?
         }
         DoubleZeroInstruction::CheckStatusAccessPass(value) => {
             process_check_status_access_pass(program_id, accounts, &value)?

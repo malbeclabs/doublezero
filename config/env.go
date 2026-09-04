@@ -23,7 +23,6 @@ type NetworkConfig struct {
 	RevenueDistributionProgramID  solana.PublicKey
 	InternetLatencyCollectorPK    solana.PublicKey
 	DeviceLocalASN                uint32
-	TwoZOracleURL                 string
 	SolanaRPCURL                  string
 	TelemetryFlowIngestURL        string
 	TelemetryStateIngestURL       string
@@ -68,7 +67,6 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			ShredSubscriptionProgramID:    MainnetShredSubscriptionProgramID,
 			USDCMint:                      MainnetUSDCMint,
 			DeviceLocalASN:                MainnetDeviceLocalASN,
-			TwoZOracleURL:                 MainnetTwoZOracleURL,
 			SolanaRPCURL:                  MainnetSolanaRPC,
 			TelemetryFlowIngestURL:        MainnetTelemetryFlowIngestURL,
 			TelemetryStateIngestURL:       MainnetTelemetryStateIngestURL,
@@ -101,7 +99,6 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			ShredSubscriptionProgramID:    TestnetShredSubscriptionProgramID,
 			USDCMint:                      TestnetUSDCMint,
 			DeviceLocalASN:                TestnetDeviceLocalASN,
-			TwoZOracleURL:                 TestnetTwoZOracleURL,
 			SolanaRPCURL:                  TestnetSolanaRPC,
 			TelemetryFlowIngestURL:        TestnetTelemetryFlowIngestURL,
 			TelemetryStateIngestURL:       TestnetTelemetryStateIngestURL,
@@ -134,7 +131,6 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			ShredSubscriptionProgramID:    DevnetShredSubscriptionProgramID,
 			USDCMint:                      DevnetUSDCMint,
 			DeviceLocalASN:                DevnetDeviceLocalASN,
-			TwoZOracleURL:                 DevnetTwoZOracleURL,
 			SolanaRPCURL:                  TestnetSolanaRPC,
 			TelemetryFlowIngestURL:        DevnetTelemetryFlowIngestURL,
 			TelemetryStateIngestURL:       DevnetTelemetryStateIngestURL,
@@ -167,7 +163,6 @@ func NetworkConfigForEnv(env string) (*NetworkConfig, error) {
 			ShredSubscriptionProgramID:    LocalnetShredSubscriptionProgramID,
 			USDCMint:                      LocalnetUSDCMint,
 			DeviceLocalASN:                LocalnetDeviceLocalASN,
-			TwoZOracleURL:                 LocalnetTwoZOracleURL,
 			SolanaRPCURL:                  LocalnetSolanaRPC,
 			TelemetryFlowIngestURL:        LocalnetTelemetryFlowIngestURL,
 			TelemetryStateIngestURL:       LocalnetTelemetryStateIngestURL,

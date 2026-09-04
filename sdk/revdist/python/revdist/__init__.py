@@ -1,11 +1,9 @@
 from revdist.client import Client
 from revdist.config import (
     LEDGER_RPC_URLS,
-    ORACLE_URLS,
     PROGRAM_ID,
     SOLANA_RPC_URLS,
 )
-from revdist.oracle import OracleClient, SwapRate
 from revdist.rpc import new_rpc_client
 from revdist.discriminator import (
     DISCRIMINATOR_CONTRIBUTOR_REWARDS,
@@ -39,11 +37,8 @@ from revdist.state import (
 __all__ = [
     "Client",
     "LEDGER_RPC_URLS",
-    "ORACLE_URLS",
-    "OracleClient",
     "PROGRAM_ID",
     "SOLANA_RPC_URLS",
-    "SwapRate",
     "ComputedSolanaValidatorDebt",
     "ComputedSolanaValidatorDebts",
     "ContributorRewards",

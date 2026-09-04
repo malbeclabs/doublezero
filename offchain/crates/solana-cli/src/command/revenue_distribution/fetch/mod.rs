@@ -36,7 +36,7 @@ pub enum FetchSubcommand {
     /// the distribution account for the current epoch.
     Distribution(distribution::DistributionCommand),
 
-    /// Show the current SOL/2Z conversion price.
+    /// Show SOL conversion journal balance and fill size.
     SolConversion(sol_conversion::SolConversionCommand),
 
     /// Show validator debts owed to the Revenue Distribution program.

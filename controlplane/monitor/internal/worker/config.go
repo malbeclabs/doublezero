@@ -8,7 +8,6 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
-	twozoracle "github.com/malbeclabs/doublezero/controlplane/monitor/internal/2z-oracle"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 )
@@ -47,8 +46,6 @@ type Config struct {
 	Interval                   time.Duration
 	SlackWebhookURL            string
 	AllowOwnUsers              bool
-	TwoZOracleClient           twozoracle.TwoZOracleClient
-	TwoZOracleInterval         time.Duration
 	InfluxWriter               InfluxWriter
 	Env                        string
 	SolBalanceRPCClient        SolBalanceRPCClient
@@ -75,9 +72,6 @@ func (c *Config) Validate() error {
 	}
 	if c.Interval <= 0 {
 		return errors.New("interval must be greater than 0")
-	}
-	if c.TwoZOracleInterval <= 0 {
-		return errors.New("twoz oracle interval must be greater than 0")
 	}
 	return nil
 }

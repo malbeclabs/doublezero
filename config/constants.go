@@ -7,7 +7,6 @@ const (
 	MainnetTelemetryProgramID            = "tE1exJ5VMyoC9ByZeSmgtNzJCFF74G9JAv338sJiqkC"
 	MainnetInternetLatencyCollectorPK    = "8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH"
 	MainnetDeviceLocalASN                = 209321
-	MainnetTwoZOracleURL                 = "https://sol-2z-oracle-api-v1.mainnet-beta.doublezero.xyz"
 	MainnetSolanaRPC                     = "https://api.mainnet-beta.solana.com"
 	MainnetTelemetryFlowIngestURL        = "http://telemetry-flow-in.mainnet-beta.doublezero.xyz"
 	MainnetTelemetryStateIngestURL       = "https://telemetry-state-in-mainnet-beta.doublezero.xyz"
@@ -24,7 +23,6 @@ const (
 	TestnetTelemetryProgramID         = "3KogTMmVxc5eUHtjZnwm136H5P8tvPwVu4ufbGPvM7p1"
 	TestnetInternetLatencyCollectorPK = "HWGQSTmXWMB85NY2vFLhM1nGpXA8f4VCARRyeGNbqDF1"
 	TestnetDeviceLocalASN             = 65342
-	TestnetTwoZOracleURL              = "https://sol-2z-oracle-api-v1.testnet.doublezero.xyz"
 	TestnetSolanaRPC                  = "https://api.testnet.solana.com"
 	TestnetTelemetryFlowIngestURL     = "http://telemetry-flow-in.testnet.doublezero.xyz"
 	TestnetTelemetryStateIngestURL    = "https://telemetry-state-in-testnet.doublezero.xyz"
@@ -41,7 +39,6 @@ const (
 	DevnetTelemetryProgramID            = "C9xqH76NSm11pBS6maNnY163tWHT8Govww47uyEmSnoG"
 	DevnetInternetLatencyCollectorPK    = "3fXen9LP5JUAkaaDJtyLo1ohPiJ2LdzVqAnmhtGgAmwJ"
 	DevnetDeviceLocalASN                = 21682
-	DevnetTwoZOracleURL                 = ""
 	DevnetTelemetryFlowIngestURL        = "http://telemetry-flow-in.devnet.doublezero.xyz"
 	DevnetTelemetryStateIngestURL       = "https://telemetry-state-in-devnet.doublezero.xyz"
 	DevnetGeolocationProgramID          = "EXUUFfAjjuXnaBtsAMLsJX18ynnNHPwtkmk33bLVVoCm"
@@ -55,7 +52,6 @@ const (
 	LocalnetTelemetryProgramID            = "C9xqH76NSm11pBS6maNnY163tWHT8Govww47uyEmSnoG"
 	LocalnetInternetLatencyCollectorPK    = "3fXen9LP5JUAkaaDJtyLo1ohPiJ2LdzVqAnmhtGgAmwJ"
 	LocalnetDeviceLocalASN                = 21682
-	LocalnetTwoZOracleURL                 = ""
 	LocalnetSolanaRPC                     = "http://localhost:8899"
 	LocalnetTelemetryFlowIngestURL        = "http://localhost:8911"
 	LocalnetTelemetryStateIngestURL       = "http://localhost:8911"

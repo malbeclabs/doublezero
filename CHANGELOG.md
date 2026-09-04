@@ -6,9 +6,19 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- CLI
+  - Remove `revenue-distribution convert-2z` and `harvest-2z` (malbeclabs/infra#2527).
+  - Validator deposit no longer accepts `--convert-2z-limit-price`.
+- SDK
+  - Remove the Go, Python, and TypeScript revenue-distribution clients that fetched `/swap-rate`.
+
 ### Changes
 
-
+- Monitor
+  - Stop polling the SOL/2Z swap oracle (malbeclabs/infra#2527).
+  - `-twoz-oracle-interval` still parses so existing ansible extra args do not fail the process.
+- CLI
+  - `revenue-distribution fetch sol-conversion` no longer requests a swap quote.
 - SDK
   - The TypeScript and Python `GlobalState` deserializers expose `ip_verifier_authority_pk`, the RFC-27 trust root the Go SDK and the Rust state already carried, so those consumers can read which key signs IP ownership proofs. The field is appended, so an account written before the upgrade decodes it as the default pubkey rather than failing. (#4231)
 - CI

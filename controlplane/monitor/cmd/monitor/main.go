@@ -17,7 +17,6 @@ import (
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/malbeclabs/doublezero/config"
-	twozoracle "github.com/malbeclabs/doublezero/controlplane/monitor/internal/2z-oracle"
 	"github.com/malbeclabs/doublezero/controlplane/monitor/internal/worker"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
@@ -27,7 +26,6 @@ import (
 
 const (
 	defaultInterval            = 1 * time.Minute
-	defaultTwoZOracleInterval  = 5 * time.Second
 	defaultSolBalanceInterval  = 30 * time.Second
 	defaultSolBalanceThreshold = 0.1
 )
@@ -44,7 +42,7 @@ var (
 	metricsAddr                = flag.String("metrics-addr", ":8080", "Address to listen on for prometheus metrics")
 	slackWebhookURL            = flag.String("slack-webhook-url", "", "The Slack webhook URL to send alerts")
 	allowOwnUsers              = flag.Bool("allow-own-users", false, "Include DoubleZero's own users instead of filtering them out")
-	twoZOracleInterval         = flag.Duration("twoz-oracle-interval", defaultTwoZOracleInterval, "interval to execute twoz oracle watcher ticks")
+	_                          = flag.Duration("twoz-oracle-interval", 5*time.Second, "ignored; ansible still passes this")
 	solBalanceAccounts         = flag.String("sol-balance-accounts", "", "comma-separated label:pubkey pairs (e.g., debt_accountant:ABC123,rewards_accountant:XYZ789)")
 	solBalanceThreshold        = flag.Float64("sol-balance-threshold", defaultSolBalanceThreshold, "SOL balance threshold for warning logs")
 	solBalanceInterval         = flag.Duration("sol-balance-interval", defaultSolBalanceInterval, "interval to check SOL balances")
@@ -154,12 +152,6 @@ func main() {
 		}
 	}()
 
-	var twoZOracleClient twozoracle.TwoZOracleClient
-	if networkConfig.TwoZOracleURL != "" {
-		// 2ZOracle is not configured in some environments.
-		twoZOracleClient = twozoracle.NewTwoZOracleClient(http.DefaultClient, networkConfig.TwoZOracleURL)
-	}
-
 	// Initialize InfluxDB writer
 	var influxClient influxdb2.Client
 	var influxWriter worker.InfluxWriter
@@ -222,8 +214,6 @@ func main() {
 		Interval:                   *interval,
 		SlackWebhookURL:            *slackWebhookURL,
 		AllowOwnUsers:              *allowOwnUsers,
-		TwoZOracleClient:           twoZOracleClient,
-		TwoZOracleInterval:         *twoZOracleInterval,
 		InfluxWriter:               influxWriter,
 		Env:                        *env,
 		SolBalanceRPCClient:        rpcClient,

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- Remove `revenue-distribution convert-2z` and `harvest-2z` (malbeclabs/doublezero#4275)
+- Validator deposit no longer accepts `--convert-2z-limit-price`
+- `fetch sol-conversion` no longer requests a swap quote
+
 ## [0.5.12](https://github.com/malbeclabs/doublezero-offchain/releases/tag/doublezero-solana/v0.5.12)
 
 - uptick crate to v0.5.12 (#417)

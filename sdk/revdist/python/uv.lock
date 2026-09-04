@@ -99,7 +99,6 @@ source = { editable = "." }
 dependencies = [
     { name = "base58" },
     { name = "borsh-incremental" },
-    { name = "httpx" },
     { name = "httpx2" },
     { name = "solana" },
     { name = "solders" },
@@ -115,7 +114,6 @@ dev = [
 requires-dist = [
     { name = "base58", specifier = ">=2.1" },
     { name = "borsh-incremental", editable = "../../borsh-incremental/python" },
-    { name = "httpx", specifier = ">=0.27" },
     { name = "httpx2", specifier = ">=2.5" },
     { name = "solana", specifier = ">=0.40" },
     { name = "solders", specifier = ">=0.21" },

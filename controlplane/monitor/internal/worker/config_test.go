@@ -9,7 +9,6 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
-	twozoracle "github.com/malbeclabs/doublezero/controlplane/monitor/internal/2z-oracle"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
 	"github.com/stretchr/testify/require"
@@ -40,8 +39,6 @@ func TestMonitor_Worker_Config(t *testing.T) {
 		},
 		Interval:                   50 * time.Millisecond,
 		InternetLatencyCollectorPK: solana.NewWallet().PublicKey(),
-		TwoZOracleClient:           &mockTwoZOracleClient{},
-		TwoZOracleInterval:         50 * time.Millisecond,
 		InfluxWriter: &mockInfluxWriter{
 			ErrorsFunc: func() <-chan error {
 				errCh := make(chan error)
@@ -100,19 +97,6 @@ func TestMonitor_Worker_Config(t *testing.T) {
 		require.Error(t, c.Validate())
 	})
 
-	t.Run("twoz oracle can be nil", func(t *testing.T) {
-		t.Parallel()
-		c := *valid
-		c.TwoZOracleClient = nil
-		require.NoError(t, c.Validate())
-	})
-
-	t.Run("non-positive twoz oracle interval fails", func(t *testing.T) {
-		t.Parallel()
-		c := *valid
-		c.TwoZOracleInterval = 0
-		require.Error(t, c.Validate())
-	})
 }
 
 func newTestLogger(t *testing.T) *slog.Logger {
@@ -154,19 +138,6 @@ func (m *mockTelemetryProgramClient) GetDeviceLatencySamples(ctx context.Context
 
 func (m *mockTelemetryProgramClient) GetInternetLatencySamples(ctx context.Context, d string, o, t, l solana.PublicKey, e uint64) (*telemetry.InternetLatencySamples, error) {
 	return m.GetInternetLatencySamplesFunc(ctx, d, o, t, l, e)
-}
-
-type mockTwoZOracleClient struct {
-	SwapRateFunc func(ctx context.Context) (twozoracle.SwapRateResponse, int, error)
-	HealthFunc   func(ctx context.Context) (twozoracle.HealthResponse, int, error)
-}
-
-func (m *mockTwoZOracleClient) SwapRate(ctx context.Context) (twozoracle.SwapRateResponse, int, error) {
-	return m.SwapRateFunc(ctx)
-}
-
-func (m *mockTwoZOracleClient) Health(ctx context.Context) (twozoracle.HealthResponse, int, error) {
-	return m.HealthFunc(ctx)
 }
 
 type mockInfluxWriter struct {

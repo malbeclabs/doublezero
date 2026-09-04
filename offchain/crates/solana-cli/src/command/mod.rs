@@ -124,38 +124,3 @@ impl DoubleZeroSolanaCommand {
         }
     }
 }
-
-// ── Shared interactive prompt ───────────────────────────────────────────
-
-pub(crate) fn try_prompt_proceed_confirmation(
-    out: &mut impl Write,
-    prompt_message: &str,
-    abort_message: &str,
-) -> Result<()> {
-    loop {
-        writeln!(out, "⚠️  {prompt_message}. Proceed? [y/N]")?;
-        // A buffered writer would otherwise hold the prompt while stdin blocks.
-        out.flush()?;
-
-        let mut input = String::new();
-        std::io::stdin().read_line(&mut input)?;
-
-        let first_char = input
-            .trim()
-            .chars()
-            .next()
-            .map(|c| c.to_lowercase().next().unwrap());
-
-        match first_char {
-            Some('y') => return Ok(()),
-            Some('n') | None => anyhow::bail!("{abort_message}"),
-            _ => {
-                writeln!(
-                    out,
-                    "Invalid input. Please enter 'y' for yes or 'n' for no."
-                )?;
-                continue;
-            }
-        }
-    }
-}

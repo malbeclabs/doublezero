@@ -4,7 +4,6 @@ use anyhow::{Context, Result, ensure};
 use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_solana_client_tools::{
-    instruction::take_instruction,
     payer::{TransactionOutcome, Wallet},
     rpc::{DoubleZeroLedgerEnvironmentOverride, SolanaConnection},
 };
@@ -12,7 +11,6 @@ use doublezero_solana_sdk::{
     NetworkEnvironment,
     revenue_distribution::{
         ID,
-        fetch::SolConversionState,
         instruction::{
             RevenueDistributionInstructionData,
             account::{
@@ -28,10 +26,6 @@ use doublezero_solana_validator_debt::rpc::try_fetch_debt_records_and_distributi
 use solana_compute_budget_interface::ComputeBudgetInstruction;
 use solana_sdk::pubkey::Pubkey;
 
-use crate::command::{
-    revenue_distribution::convert_2z::Convert2zContext, try_prompt_proceed_confirmation,
-};
-
 #[derive(Debug, Args)]
 pub struct ValidatorDepositCommand {
     /// Node (Validator) identity.
@@ -42,9 +36,7 @@ pub struct ValidatorDepositCommand {
     #[arg(long, short = 'i')]
     initialize: bool,
 
-    /// Fund the Solana validator deposit account with SOL. When
-    /// `--convert-2z-limit-price` is specified, the fund amount must match the
-    /// required (fixed fill quantity) amount for the 2Z -> SOL conversion.
+    /// Fund the Solana validator deposit account with SOL.
     #[arg(long, value_name = "SOL")]
     fund: Option<String>,
 
@@ -66,15 +58,6 @@ pub struct ValidatorDepositCommand {
     #[arg(long, value_name = "PUBKEY")]
     excess_balance_beneficiary: Option<Pubkey>,
 
-    /// Fund with 2Z limited by specified conversion rate for 2Z -> SOL.
-    #[arg(long, value_name = "PRICE_LIMIT")]
-    convert_2z_limit_price: Option<String>,
-
-    /// Token account must be owned by the signer. Defaults to signer ATA if not
-    /// specified.
-    #[arg(long, value_name = "PUBKEY")]
-    source_2z_account: Option<Pubkey>,
-
     #[command(flatten)]
     write_opts: crate::command::WriteVerbOptions,
 
@@ -94,8 +77,6 @@ impl ValidatorDepositCommand {
             fund_outstanding_debt: should_fund_outstanding_debt,
             withdraw_excess_balance: should_withdraw_excess_balance,
             excess_balance_beneficiary: excess_balance_beneficiary_key,
-            convert_2z_limit_price: convert_2z_limit_price_str,
-            source_2z_account: source_2z_account_key,
             write_opts,
             debt_accountant: debt_accountant_key,
             dz_env,
@@ -194,55 +175,6 @@ impl ValidatorDepositCommand {
             compute_unit_limit += Wallet::compute_units_for_bump_seed(bump);
         };
 
-        struct Convert2zContextItems {
-            context: Convert2zContext,
-            token_balance_before: u64,
-            required_lamports: u64,
-        }
-
-        let convert_2z_context_items = if let Some(limit_price_str) = convert_2z_limit_price_str {
-            try_prompt_proceed_confirmation(
-                out,
-                &format!(
-                    "By specifying --convert-2z-limit-price, you are funding {:0.9} SOL to your deposit account",
-                    fund_lamports as f64 * 1e-9,
-                ),
-                "Aborting command with --convert-2z-limit-price",
-            )?;
-
-            let sol_conversion_state = SolConversionState::try_fetch(&wallet.connection).await?;
-
-            let mut convert_2z_context = Convert2zContext::try_prepare(
-                &wallet,
-                &sol_conversion_state,
-                Some(limit_price_str),
-                source_2z_account_key,
-                Some(fund_lamports),
-            )
-            .await?;
-            let buy_sol_ix = take_instruction(&mut convert_2z_context.instruction);
-
-            let token_balance_before = convert_2z_context
-                .try_token_balance(&wallet.connection)
-                .await?;
-            writeln!(
-                out,
-                "2Z token balance: {:.8}",
-                token_balance_before as f64 * 1e-8
-            )?;
-
-            instructions.push(buy_sol_ix);
-            compute_unit_limit += Convert2zContext::BUY_SOL_COMPUTE_UNIT_LIMIT;
-
-            Some(Convert2zContextItems {
-                context: convert_2z_context,
-                token_balance_before,
-                required_lamports: sol_conversion_state.fixed_fill_quantity,
-            })
-        } else {
-            None
-        };
-
         if fund_lamports != 0 {
             deposit_balance += fund_lamports;
 
@@ -287,23 +219,6 @@ impl ValidatorDepositCommand {
             }
             writeln!(out, "Node ID: {node_id}")?;
             writeln!(out, "Balance: {:.9} SOL", deposit_balance as f64 * 1e-9)?;
-
-            if let Some(Convert2zContextItems {
-                context: convert_2z_context,
-                token_balance_before,
-                required_lamports,
-            }) = convert_2z_context_items
-            {
-                let token_balance_after = convert_2z_context
-                    .try_token_balance(&wallet.connection)
-                    .await?;
-                writeln!(
-                    out,
-                    "Converted {:.8} 2Z tokens to fund deposit with {:.9} SOL",
-                    (token_balance_before - token_balance_after) as f64 * 1e-8,
-                    (required_lamports as f64 * 1e-9)
-                )?;
-            }
 
             wallet.write_verbose_output(out, &[tx_sig]).await?;
         }

@@ -1390,6 +1390,7 @@ mod tests {
                 name: "Shreds".to_string(),
                 exchange: Pubkey::new_unique(),
                 groups: vec![Pubkey::new_unique()],
+                ..Default::default()
             }),
             "CreateFeed",
         );

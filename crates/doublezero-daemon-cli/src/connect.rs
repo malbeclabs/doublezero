@@ -2682,6 +2682,7 @@ mod tests {
             name: code.to_string(),
             exchange,
             groups: vec![Pubkey::new_unique()],
+            ..Default::default()
         }
     }
 
@@ -3504,6 +3505,7 @@ mod tests {
                 name: code.to_string(),
                 exchange,
                 groups,
+                ..Default::default()
             };
             self.feeds.lock().unwrap().insert(pk, feed);
             pk

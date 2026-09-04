@@ -5,7 +5,10 @@ use crate::{
     seeds::{SEED_FEED, SEED_PREFIX},
     serializer::try_acc_create,
     state::{
-        accounttype::AccountType, feed::Feed, globalstate::GlobalState,
+        accounttype::AccountType,
+        feature_flags::{is_feature_enabled, FeatureFlag},
+        feed::{Feed, FeedStatus},
+        globalstate::GlobalState,
         permission::permission_flags,
     },
 };
@@ -25,6 +28,8 @@ pub const MAX_FEED_NAME_LEN: usize = 64;
 /// Maximum number of multicast groups in a feed. A feed's whole group set joins in one
 /// `SubscribeFeed` transaction, so this is bounded by transaction capacity.
 pub const MAX_FEED_GROUPS: usize = 20;
+/// Maximum `spec_id` length. Holds `<spec>@<version>` for any name `edge-feed-spec` publishes.
+pub const MAX_FEED_SPEC_ID_LEN: usize = 64;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Debug, Clone, Default)]
 pub struct FeedCreateArgs {
@@ -34,6 +39,25 @@ pub struct FeedCreateArgs {
     pub exchange: Pubkey,
     /// Multicast groups joinable in this metro.
     pub groups: Vec<Pubkey>,
+
+    // RFC-28 tail. A client built before RFC-28 sends nothing past `groups` and still creates a
+    // catalog feed, which is what the defaults below describe.
+    /// The builder deploying this feed. Zero creates a catalog feed with no builder, the pre-RFC-28
+    /// behavior. Any other value makes this a staked feed and starts it Pending.
+    #[incremental(default = Pubkey::default())]
+    pub builder: Pubkey,
+    /// The `BuilderStake` PDA on Solana holding this feed's deposit.
+    #[incremental(default = Pubkey::default())]
+    pub stake_ref: Pubkey,
+    /// The `edge-feed-spec` wire format, as `<spec>@<version>`.
+    #[incremental(default = String::new())]
+    pub spec_id: String,
+    /// SHA-256 of the declared service level.
+    #[incremental(default = [0u8; 32])]
+    pub sla_hash: [u8; 32],
+    /// Committed rate in bits per second, `u64::MAX` for the unmetered tier.
+    #[incremental(default = 0)]
+    pub committed_rate_bits_per_sec: u64,
 }
 
 pub fn process_create_feed(
@@ -69,6 +93,7 @@ pub fn process_create_feed(
 
     validate_feed_name(&value.name)?;
     validate_feed_groups(&value.groups)?;
+    validate_feed_stake_terms(value, globalstate.feature_flags)?;
     // Every feed is scoped to a real metro; there is no metro-agnostic feed.
     if value.exchange == Pubkey::default() {
         msg!("Feed exchange must be a real metro, not the default pubkey");
@@ -93,6 +118,18 @@ pub fn process_create_feed(
         name: value.name.clone(),
         exchange: value.exchange,
         groups: value.groups.clone(),
+        builder: value.builder,
+        stake_ref: value.stake_ref,
+        spec_id: value.spec_id.clone(),
+        sla_hash: value.sla_hash,
+        committed_rate_bits_per_sec: value.committed_rate_bits_per_sec,
+        // A staked feed waits on a conformance verdict before it sells seats. A catalog feed has no
+        // builder to attest, so it is sellable on creation, as it was before RFC-28.
+        status: if value.builder == Pubkey::default() {
+            FeedStatus::Active
+        } else {
+            FeedStatus::Pending
+        },
     };
 
     try_acc_create(
@@ -142,5 +179,64 @@ pub(crate) fn validate_feed_groups(groups: &[Pubkey]) -> Result<(), DoubleZeroEr
             return Err(DoubleZeroError::InvalidArgument);
         }
     }
+    Ok(())
+}
+
+/// Validate the RFC-28 stake terms on create. The terms travel together: a staked feed names a
+/// builder, the stake behind it, the spec it conforms to, and the rate it commits to. A feed with
+/// some of those and not the others is a half-declared feed that nothing downstream can measure.
+///
+/// This does not check that the stake covers the rate. That check reads `StakeMirror` and lands
+/// with it.
+pub(crate) fn validate_feed_stake_terms(
+    value: &FeedCreateArgs,
+    feature_flags: u128,
+) -> Result<(), DoubleZeroError> {
+    if value.spec_id.len() > MAX_FEED_SPEC_ID_LEN {
+        msg!(
+            "Feed spec_id too long: {} > {}",
+            value.spec_id.len(),
+            MAX_FEED_SPEC_ID_LEN
+        );
+        return Err(DoubleZeroError::InvalidArgument);
+    }
+
+    if value.builder != Pubkey::default()
+        && !is_feature_enabled(feature_flags, FeatureFlag::AllowStakedFeeds)
+    {
+        msg!("Staked feeds are not enabled on this cluster");
+        return Err(DoubleZeroError::NotAllowed);
+    }
+
+    if value.builder == Pubkey::default() {
+        // Catalog feed. It carries no stake terms at all.
+        if value.stake_ref != Pubkey::default()
+            || !value.spec_id.is_empty()
+            || value.sla_hash != [0u8; 32]
+            || value.committed_rate_bits_per_sec != 0
+        {
+            msg!("Feed stake terms given without a builder");
+            return Err(DoubleZeroError::InvalidArgument);
+        }
+        return Ok(());
+    }
+
+    if value.stake_ref == Pubkey::default() {
+        msg!("Staked feed must name the stake account behind it");
+        return Err(DoubleZeroError::InvalidArgument);
+    }
+    if value.spec_id.is_empty() {
+        msg!("Staked feed must name the edge-feed-spec it conforms to");
+        return Err(DoubleZeroError::InvalidArgument);
+    }
+    if value.sla_hash == [0u8; 32] {
+        msg!("Staked feed must declare a service level");
+        return Err(DoubleZeroError::InvalidArgument);
+    }
+    if value.committed_rate_bits_per_sec == 0 {
+        msg!("Staked feed must commit to a rate");
+        return Err(DoubleZeroError::InvalidArgument);
+    }
+
     Ok(())
 }

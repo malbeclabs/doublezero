@@ -1254,7 +1254,21 @@ export interface Feed {
   name: string;
   exchange: PublicKey;
   groups: PublicKey[];
+  // RFC-28. Absent from feeds written before RFC-28, which decode with these defaulted and
+  // status "active".
+  builder: PublicKey;
+  stakeRef: PublicKey;
+  specId: string;
+  slaHash: Uint8Array;
+  committedRateBitsPerSec: bigint;
+  status: number;
 }
+
+// Feed lifecycle. Matches FeedStatus in the Rust program.
+export const FEED_STATUS_PENDING = 0;
+export const FEED_STATUS_ACTIVE = 1;
+export const FEED_STATUS_HALTED = 2;
+export const FEED_STATUS_RETIRED = 3;
 
 export function deserializeFeed(data: Uint8Array): Feed {
   const r = new DefensiveReader(data);
@@ -1266,6 +1280,18 @@ export function deserializeFeed(data: Uint8Array): Feed {
   // A feed serves one metro: an exchange pubkey followed by a Vec<Pubkey> of joinable groups.
   const exchange = readPubkey(r);
   const groups = readPubkeyVec(r);
+  // RFC-28 tail. DefensiveReader returns zeros past EOF, so a feed written before RFC-28 lands
+  // here with every field defaulted. Read the flag before the tail, not after: the tail reads
+  // themselves leave `remaining` at zero either way.
+  const hasRfc28Tail = r.remaining > 0;
+  const builder = readPubkey(r);
+  const stakeRef = readPubkey(r);
+  const specId = r.readString();
+  const slaHash = r.readBytes(32);
+  const committedRateBitsPerSec = r.readU64();
+  // Not "pending": a feed written before RFC-28 has no status byte, and reading one as pending
+  // would show every live catalog feed as out of service.
+  const status = hasRfc28Tail ? r.readU8() : FEED_STATUS_ACTIVE;
   return {
     accountType,
     owner,
@@ -1274,5 +1300,11 @@ export function deserializeFeed(data: Uint8Array): Feed {
     name,
     exchange,
     groups,
+    builder,
+    stakeRef,
+    specId,
+    slaHash,
+    committedRateBitsPerSec,
+    status,
   };
 }

@@ -120,7 +120,7 @@ solana-loader-v3-interface = { version = "6", features = ["serde"] }
 solana-program = "3.0"
 solana-program-test = "=3.0.12"
 solana-pubsub-client = "3.0"
-solana-rpc-client-api = "3.0"
+solana-rpc-client-api = "4.1"
 solana-sdk = "=3.0"
 solana-sdk-ids = "3.0"
 solana-signature = "3.4"

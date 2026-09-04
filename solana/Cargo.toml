@@ -26,7 +26,7 @@ ctor = "0.4"
 env_logger = "0.11"
 itertools = "0.14"
 log = "0.4"
-ruint = { version = "<=1.16", features = ["bytemuck"] }
+ruint = { version = "<=1.17", features = ["bytemuck"] }
 solana-account-info = ">=2,<=3"
 solana-cpi = ">=2,<=3"
 solana-instruction = ">=2,<=3"

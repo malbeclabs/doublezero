@@ -126,7 +126,7 @@ solana-sdk-ids = "3.0"
 solana-signature = "3.4"
 solana-signer = "3.0"
 solana-system-interface = { version = "3", features = ["bincode"] }
-solana-transaction-status = "3.0"
+solana-transaction-status = "4.1"
 bitflags = "2"
 tabled = { version = "0.20", features = ["std", "derive"] }
 temp-env = "0"

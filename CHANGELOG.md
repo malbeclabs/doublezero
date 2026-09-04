@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+### Changes
+
+## [v0.39.0](https://github.com/malbeclabs/doublezero/compare/client/v0.38.0...client/v0.39.0) - 2026-09-04
+
+### Breaking
+
 - CLI
   - Remove `revenue-distribution convert-2z` and `harvest-2z` (malbeclabs/infra#2527).
   - Validator deposit no longer accepts `--convert-2z-limit-price`.

@@ -42,3 +42,15 @@ jobs:
       component: ${{ matrix.component }}
     secrets:
       DOUBLEZERO_PAT: ${{ secrets.DOUBLEZERO_PAT }}
+
+  module-tag:
+    name: "Tag root Go module with version ${{ github.event.inputs.version }}"
+    needs: approve
+    uses: ./.github/workflows/release.testnet.push.tags.yml
+    permissions:
+      contents: write
+    with:
+      version: ${{ github.event.inputs.version }}
+      module_tag: true
+    secrets:
+      DOUBLEZERO_PAT: ${{ secrets.DOUBLEZERO_PAT }}

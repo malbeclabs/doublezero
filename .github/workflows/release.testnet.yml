@@ -333,9 +333,28 @@ jobs:
     secrets:
       DOUBLEZERO_PAT: ${{ secrets.DOUBLEZERO_PAT }}
 
+  # Bare vX.Y.Z tag for the root Go module, at the same commit and through the
+  # same approval-gated mechanism as the component tags, so
+  # `go get github.com/malbeclabs/doublezero@vX.Y.Z` resolves instead of every
+  # consumer pinning a pseudo-version. skip_existing does not soften a mismatched
+  # root tag (see release.testnet.push.tags.yml).
+  push-module-tag:
+    needs: gate-tags
+    uses: ./.github/workflows/release.testnet.push.tags.yml
+    permissions:
+      contents: write
+    with:
+      version: v${{ inputs.version }}
+      module_tag: true
+      ref: ${{ needs.gate-tags.outputs.tag_sha }}
+      skip_existing: true
+      dry_run: ${{ inputs.dry_run }}
+    secrets:
+      DOUBLEZERO_PAT: ${{ secrets.DOUBLEZERO_PAT }}
+
   verify-cloudsmith:
     runs-on: ubuntu-latest
-    needs: [preflight, gate-tags, push-tags]
+    needs: [preflight, gate-tags, push-tags, push-module-tag]
     timeout-minutes: 75
     steps:
       - name: Install Cloudsmith CLI
@@ -636,7 +655,7 @@ jobs:
   # a release that actually succeeded.
   pipeline-complete:
     runs-on: ubuntu-latest
-    needs: [preflight, open-prs, gate-tags, push-tags, verify-cloudsmith, build-programs, stage-programs, gate-programs, verify-onchain, deploy-core, deploy-clients, qa]
+    needs: [preflight, open-prs, gate-tags, push-tags, push-module-tag, verify-cloudsmith, build-programs, stage-programs, gate-programs, verify-onchain, deploy-core, deploy-clients, qa]
     if: ${{ !cancelled() }}
     steps:
       - name: Assert every stage succeeded
@@ -657,7 +676,7 @@ jobs:
     # succeeded, and a failed announce means Slack delivery is broken — this
     # notifier posts via the same Slack API and would fail the same way.
     # pipeline-complete IS included so a hollow success also alerts.
-    needs: [preflight, open-prs, gate-tags, push-tags, verify-cloudsmith, build-programs, stage-programs, gate-programs, verify-onchain, deploy-core, deploy-clients, qa, pipeline-complete]
+    needs: [preflight, open-prs, gate-tags, push-tags, push-module-tag, verify-cloudsmith, build-programs, stage-programs, gate-programs, verify-onchain, deploy-core, deploy-clients, qa, pipeline-complete]
     if: failure()
     steps:
       # checkout only to resolve the local composite action

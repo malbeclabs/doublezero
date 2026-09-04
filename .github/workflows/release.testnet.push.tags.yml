@@ -8,9 +8,15 @@ on:
         required: true
         type: string
       component:
-        description: 'The component to tag'
-        required: true
+        description: 'The component to tag. Required unless module_tag is true; must be empty when it is.'
+        required: false
         type: string
+        default: ''
+      module_tag:
+        description: 'Tag the root Go module: push a bare vX.Y.Z tag (no component prefix) so `go get github.com/malbeclabs/doublezero@vX.Y.Z` resolves. Mutually exclusive with component.'
+        required: false
+        type: boolean
+        default: false
       ref:
         description: 'Commit to tag. Empty tags the sha the run is pinned to (the manual dispatcher path: main at dispatch).'
         required: false
@@ -38,7 +44,7 @@ on:
 # until it is added here — with its own approval story — in a reviewed change.
 jobs:
   create-and-push-tag:
-    name: Push ${{ inputs.version }} tag for ${{ inputs.component }}
+    name: Push ${{ inputs.version }} tag for ${{ inputs.module_tag && 'root Go module' || inputs.component }}
     runs-on: ubuntu-latest
     steps:
       - name: Require an approval-carrying caller
@@ -63,37 +69,84 @@ jobs:
           # empty ref = the sha this run is pinned to (actions/checkout default)
           ref: ${{ inputs.ref }}
           fetch-tags: true
+          # full history so the module-tag ancestry check below can run merge-base
+          fetch-depth: 0
 
       - name: Validate format and push tag
         run: |
+          set -euo pipefail
           VERSION="${{ inputs.version }}"
           COMPONENT="${{ inputs.component }}"
-          TAG_NAME="$COMPONENT/$VERSION"
+          MODULE_TAG="${{ inputs.module_tag }}"
+          SKIP_EXISTING="${{ inputs.skip_existing }}"
 
           VERSION_REGEX="^v[0-9]+\.[0-9]+\.[0-9]+$"
-
           if ! [[ "$VERSION" =~ $VERSION_REGEX ]]; then
-            echo "Error: Version format '$VERSION' is invalid. It must be in the format 'vX.X.X'."
+            echo "::error::Version format '$VERSION' is invalid. It must be in the format 'vX.X.X'."
             exit 1
           fi
           echo "Version format is valid."
+
+          # Exactly one of module_tag / component. module_tag is an explicit
+          # boolean rather than "empty component means bare tag" so a component
+          # typo can never mint a root module version — which, per the
+          # immutability check below, would be unrecoverable.
+          if [ "$MODULE_TAG" = "true" ]; then
+            if [ -n "$COMPONENT" ]; then
+              echo "::error::module_tag=true takes no component (got '$COMPONENT'). A component would make this a component tag, not the root module tag."
+              exit 1
+            fi
+            TAG_NAME="$VERSION"
+          else
+            if [ -z "$COMPONENT" ]; then
+              echo "::error::component is required unless module_tag=true."
+              exit 1
+            fi
+            TAG_NAME="$COMPONENT/$VERSION"
+          fi
+          echo "Target tag: '$TAG_NAME'."
 
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             echo "Dry run — not pushing tag '$TAG_NAME'."
             exit 0
           fi
 
+          HEAD_SHA=$(git rev-parse HEAD)
+
           if EXISTING=$(git rev-parse -q --verify "refs/tags/$TAG_NAME^{commit}"); then
-            if [ "${{ inputs.skip_existing }}" = "true" ]; then
-              HEAD_SHA=$(git rev-parse HEAD)
-              echo "Tag '$TAG_NAME' already exists at $EXISTING; skipping (skip_existing=true)."
-              if [ "$EXISTING" != "$HEAD_SHA" ]; then
-                echo "::warning::existing tag '$TAG_NAME' points at $EXISTING, but this run would have tagged $HEAD_SHA"
-              fi
+            if [ "$EXISTING" = "$HEAD_SHA" ]; then
+              echo "Tag '$TAG_NAME' already exists at $EXISTING (== HEAD); nothing to do."
               exit 0
             fi
-            echo "Error: Tag '$TAG_NAME' already exists in the repository."
+            # A published module tag is immutable: once any consumer resolves it,
+            # proxy.golang.org caches its tree hash permanently, and moving it
+            # gives every consumer a checksum-mismatch security error on their
+            # next build. skip_existing must never downgrade a *mismatched* root
+            # tag to a warning, even on an orchestrator re-run.
+            if [ "$MODULE_TAG" != "true" ] && [ "$SKIP_EXISTING" = "true" ]; then
+              echo "Tag '$TAG_NAME' already exists at $EXISTING; skipping (skip_existing=true)."
+              echo "::warning::existing tag '$TAG_NAME' points at $EXISTING, but this run would have tagged $HEAD_SHA"
+              exit 0
+            fi
+            echo "::error::Tag '$TAG_NAME' already exists at $EXISTING and this run would move it to $HEAD_SHA. Refusing — a moved tag breaks every consumer's checksum."
             exit 1
+          fi
+
+          # The root module tag must descend from the previous one. A Go
+          # pseudo-version sorts by its base tag, not its commit date, so a bare
+          # tag cut off the previous line would let `go get -u` "upgrade" a
+          # consumer backwards onto a build missing commits it is pinned for.
+          if [ "$MODULE_TAG" = "true" ]; then
+            PREV=$(git tag --list --sort=-version:refname | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | head -n1 || true)
+            if [ -n "$PREV" ]; then
+              if ! git merge-base --is-ancestor "$PREV" "$HEAD_SHA"; then
+                echo "::error::commit $HEAD_SHA for '$TAG_NAME' does not descend from the previous module tag '$PREV' ($(git rev-parse "$PREV^{commit}")). Refusing to cut a non-linear module version."
+                exit 1
+              fi
+              echo "Ancestry ok: HEAD descends from previous module tag '$PREV'."
+            else
+              echo "No previous bare vX.Y.Z tag found; skipping ancestry check."
+            fi
           fi
           echo "Tag '$TAG_NAME' will be created."
 

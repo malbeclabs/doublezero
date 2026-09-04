@@ -1,11 +1,19 @@
 use doublezero_serviceability::{
     error::DoubleZeroError,
     instructions::DoubleZeroInstruction,
-    pda::{get_feed_pda, get_globalstate_pda, get_program_config_pda, get_stake_mirror_pda},
+    pda::{
+        get_accesspass_pda, get_feed_pda, get_globalstate_pda, get_multicastgroup_pda,
+        get_program_config_pda, get_resource_extension_pda, get_stake_mirror_pda,
+    },
     processors::{
         feed::{create::FeedCreateArgs, delete::FeedDeleteArgs, update::FeedUpdateArgs},
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
+        multicastgroup::{
+            allowlist::publisher::add::AddMulticastGroupPubAllowlistArgs,
+            create::MulticastGroupCreateArgs,
+        },
     },
+    resource::ResourceType,
     state::{
         accounttype::AccountType,
         feature_flags::FeatureFlag,
@@ -767,4 +775,130 @@ async fn test_feed_create_omitting_stake_mirror_rejected() {
     .await;
 
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::StakeMirrorMissing));
+}
+
+/// RFC-28 grants a builder publish rights to its own feed's groups. No instruction does that as
+/// part of `CreateFeed`, and none needs to: the groups are created with `owner` set to the builder,
+/// and `AddMulticastGroupPubAllowlist` authorizes on `mgroup.owner == payer`. So the builder grants
+/// its own rights, without the catalog admin who created the feed.
+///
+/// This walks the whole path with two distinct signers to prove the second step does not need the
+/// first one's authority.
+#[tokio::test]
+async fn test_builder_grants_its_own_publish_rights() {
+    let program_id = Pubkey::new_unique();
+    // Funded, but not on the foundation allowlist: it cannot create a feed or a multicast group.
+    let builder = test_payer();
+    let (mirror_pubkey, bump) = get_stake_mirror_pda(&program_id, &builder.pubkey());
+
+    let (mut banks_client, admin, recent_blockhash) = init_test_with_accounts(
+        program_id,
+        &[(
+            mirror_pubkey,
+            stake_mirror(builder.pubkey(), StakeTier::UpTo1Gbps, bump),
+        )],
+    )
+    .await;
+
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+    let (multicastgroup_block_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+    init_globalstate_and_config(&mut banks_client, program_id, &admin, recent_blockhash).await;
+    enable_staked_feeds(&mut banks_client, program_id, globalstate_pubkey, &admin).await;
+
+    // The admin creates the groups, owned by the builder. Group creation needs MULTICAST_ADMIN,
+    // which is why the builder cannot do this part itself.
+    let mut groups = Vec::new();
+    for code in ["mkt-a", "mkt-b"] {
+        let gs = get_account_data(&mut banks_client, globalstate_pubkey)
+            .await
+            .unwrap()
+            .get_global_state()
+            .unwrap();
+        let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, gs.account_index + 1);
+
+        let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+        execute_transaction(
+            &mut banks_client,
+            recent_blockhash,
+            program_id,
+            DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+                code: code.to_string(),
+                max_bandwidth: 1_000_000_000,
+                owner: builder.pubkey(),
+                use_onchain_allocation: true,
+            }),
+            vec![
+                AccountMeta::new(mgroup_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+                AccountMeta::new(multicastgroup_block_pda, false),
+            ],
+            &admin,
+        )
+        .await;
+        groups.push(mgroup_pubkey);
+    }
+
+    // The admin creates the staked feed over those groups.
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "rights", &exchange);
+    let mut args = staked_args("rights", exchange);
+    args.builder = builder.pubkey();
+    args.groups = groups.clone();
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(args),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &admin,
+        &[AccountMeta::new_readonly(mirror_pubkey, false)],
+    )
+    .await;
+
+    // The builder signs from here. The first call creates its access pass; the second adds to it.
+    let client_ip = [100, 0, 0, 28].into();
+    let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &builder.pubkey());
+
+    for mgroup_pubkey in &groups {
+        let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+        execute_transaction(
+            &mut banks_client,
+            recent_blockhash,
+            program_id,
+            DoubleZeroInstruction::AddMulticastGroupPubAllowlist(
+                AddMulticastGroupPubAllowlistArgs {
+                    client_ip,
+                    user_payer: builder.pubkey(),
+                },
+            ),
+            vec![
+                AccountMeta::new(*mgroup_pubkey, false),
+                AccountMeta::new(accesspass_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+                AccountMeta::new(builder.pubkey(), false),
+            ],
+            &builder,
+        )
+        .await;
+    }
+
+    let accesspass = get_account_data(&mut banks_client, accesspass_pubkey)
+        .await
+        .unwrap()
+        .get_accesspass()
+        .unwrap();
+    for mgroup_pubkey in &groups {
+        assert!(
+            accesspass.mgroup_pub_allowlist.contains(mgroup_pubkey),
+            "builder cannot publish to {mgroup_pubkey}"
+        );
+    }
+
+    // The feed still holds the same group set, so what the builder may publish to and what the
+    // feed sells are the same list.
+    let feed = get_feed(&mut banks_client, feed_pubkey).await;
+    assert_eq!(feed.groups, groups);
 }

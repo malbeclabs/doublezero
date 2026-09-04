@@ -740,11 +740,12 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		require.Equal(t, []telemetry.Sample{first, second}, got)
 	})
 
-	t.Run("failed_retries_drop_when_over_capacity", func(t *testing.T) {
+	t.Run("failed_retries_keep_newest_when_over_capacity", func(t *testing.T) {
 		t.Parallel()
 
 		key := newTestPartitionKey()
-		first := telemetry.Sample{Timestamp: time.Now(), RTT: time.Millisecond}
+		older := telemetry.Sample{Timestamp: time.Now(), RTT: time.Millisecond}
+		newer := telemetry.Sample{Timestamp: time.Now().Add(time.Second), RTT: 2 * time.Millisecond}
 
 		prog := &mockTelemetryProgramClient{
 			WriteDeviceLatencySamplesFunc: func(context.Context, sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
@@ -752,9 +753,10 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		// Capacity 1, tmp will be len=1; 0+1 >= 1 => drop (no requeue).
+		// Capacity 1, but two samples fail to submit (seeded via PriorityPrepend since Add
+		// would block past capacity). Only one fits: keep the newer, drop the older.
 		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1)
-		buf.Add(key, first)
+		buf.PriorityPrepend(key, []telemetry.Sample{older, newer})
 
 		s, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:        time.Hour,
@@ -770,22 +772,28 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		s.Tick(context.Background())
 
 		got := buf.CopyAndReset(key)
-		assert.Len(t, got, 0, "failed sample should be dropped when capacity would be met or exceeded")
+		assert.Equal(t, []telemetry.Sample{newer}, got, "should keep the newest sample that fits and drop the older one")
 	})
 
-	t.Run("no_backpressure_when_drop_on_overcapacity", func(t *testing.T) {
+	t.Run("kept_samples_never_exceed_capacity_after_partial_drop", func(t *testing.T) {
 		t.Parallel()
 
 		key := newTestPartitionKey()
+		samples := []telemetry.Sample{
+			{Timestamp: time.Now(), RTT: 1 * time.Millisecond},
+			{Timestamp: time.Now().Add(time.Second), RTT: 2 * time.Millisecond},
+			{Timestamp: time.Now().Add(2 * time.Second), RTT: 3 * time.Millisecond},
+		}
+
 		prog := &mockTelemetryProgramClient{
 			WriteDeviceLatencySamplesFunc: func(context.Context, sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
 				return solana.Signature{}, nil, errors.New("fail")
 			},
 		}
 
-		// Capacity 1; failed batch len=1 triggers drop (no requeue), so Add should not block.
-		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](1)
-		buf.Add(key, newTestSample())
+		// Capacity 2, three samples fail to submit: only the two newest fit.
+		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](2)
+		buf.PriorityPrepend(key, samples)
 
 		s, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:        time.Hour,
@@ -800,15 +808,8 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 
 		s.Tick(context.Background())
 
-		done := make(chan struct{})
-		go func() { buf.Add(key, newTestSample()); close(done) }()
-
-		select {
-		case <-done:
-			// good: producer did not block
-		case <-time.After(200 * time.Millisecond):
-			t.Fatal("producer Add should NOT block when failed batch is dropped on over-capacity")
-		}
+		got := buf.CopyAndReset(key)
+		assert.Equal(t, samples[1:], got, "buffer should hold exactly the newest `capacity` samples, never more")
 	})
 
 	t.Run("passes_agent_version_and_commit_to_write", func(t *testing.T) {
@@ -849,7 +850,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		assert.Equal(t, "aabbccdd", receivedConfig.AgentCommit)
 	})
 
-	t.Run("drops_failed_samples_when_requeue_would_meet_capacity", func(t *testing.T) {
+	t.Run("requeues_failed_samples_when_they_exactly_meet_capacity", func(t *testing.T) {
 		t.Parallel()
 
 		key := newTestPartitionKey()
@@ -862,7 +863,8 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		// Capacity == len(tmp) (2). Since Len(key) is 0 after CopyAndReset, check is 0+2 >= 2 -> drop.
+		// Capacity == len(tmp) (2). Since Len(key) is 0 after CopyAndReset, the two failed
+		// samples exactly fit (0+2 == 2) and should be kept in full, not dropped.
 		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](2)
 		buf.Add(key, first)
 		buf.Add(key, second)
@@ -881,7 +883,7 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		s.Tick(context.Background())
 
 		got := buf.CopyAndReset(key)
-		assert.Len(t, got, 0, "failed samples should be dropped when requeue would meet capacity exactly")
+		assert.Equal(t, []telemetry.Sample{first, second}, got, "failed samples that exactly fill capacity should be fully requeued, not dropped")
 	})
 
 	// Deliberately not parallel: the drop counters are package-level prometheus metrics shared with
@@ -891,6 +893,11 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		log := slog.New(slog.NewTextHandler(&logs, &slog.HandlerOptions{Level: slog.LevelWarn}))
 
 		key := newTestPartitionKey()
+		samples := []telemetry.Sample{
+			{Timestamp: time.Now(), RTT: 1 * time.Millisecond},
+			{Timestamp: time.Now().Add(time.Second), RTT: 2 * time.Millisecond},
+			{Timestamp: time.Now().Add(2 * time.Second), RTT: 3 * time.Millisecond},
+		}
 
 		prog := &mockTelemetryProgramClient{
 			WriteDeviceLatencySamplesFunc: func(context.Context, sdktelemetry.WriteDeviceLatencySamplesInstructionConfig) (solana.Signature, *solanarpc.GetTransactionResult, error) {
@@ -898,10 +905,9 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 			},
 		}
 
-		// Capacity == len(tmp) (2), so the requeue check is 0+2 >= 2 -> drop.
+		// Capacity 2, three samples fail: only the newest two fit, the oldest is dropped.
 		buf := buffer.NewMemoryPartitionedBuffer[telemetry.PartitionKey, telemetry.Sample](2)
-		buf.Add(key, newTestSample())
-		buf.Add(key, newTestSample())
+		buf.PriorityPrepend(key, samples)
 
 		s, err := telemetry.NewSubmitter(log, &telemetry.SubmitterConfig{
 			Interval:        time.Hour,
@@ -920,17 +926,18 @@ func TestAgentTelemetry_Submitter(t *testing.T) {
 		s.Tick(context.Background())
 
 		dropped := testutil.ToFloat64(metrics.SamplesDropped.WithLabelValues(metrics.DropReasonBufferFull)) - droppedBefore
-		assert.Equal(t, float64(2), dropped, "drop counter should increment by the number of discarded samples")
+		assert.Equal(t, float64(1), dropped, "drop counter should increment by the number of discarded samples")
 
 		errs := testutil.ToFloat64(metrics.Errors.WithLabelValues(metrics.ErrorTypeSubmitterBufferFull)) - errorsBefore
-		assert.Equal(t, float64(1), errs, "buffer-full error counter should increment once per dropped batch")
+		assert.Equal(t, float64(1), errs, "buffer-full error counter should increment once per affected batch")
 
 		out := logs.String()
-		assert.Contains(t, out, "Partition buffer at capacity after failed submission, dropping samples")
-		assert.Contains(t, out, "droppedSamples=2")
+		assert.Contains(t, out, "Partition buffer at capacity after failed submission, dropping oldest samples")
+		assert.Contains(t, out, "droppedSamples=1")
+		assert.Contains(t, out, "keptSamples=2")
 		assert.Contains(t, out, "capacity=2")
 
-		assert.Len(t, buf.CopyAndReset(key), 0, "dropped samples should not be requeued")
+		assert.Equal(t, samples[1:], buf.CopyAndReset(key), "only the oldest sample should be dropped; the newest two should be requeued")
 	})
 
 	t.Run("does_not_count_drops_when_samples_are_requeued", func(t *testing.T) {

@@ -305,13 +305,84 @@ impl DZClient {
         }
     }
 
-    /// Returns true for transient network errors that are worth retrying.
-    /// Returns false for permanent errors like AccountNotFound or RPC response errors.
+    /// Returns `true` for transient failures worth another attempt, `false` for a
+    /// permanent one (`AccountNotFound`, a bad request, a deterministic program
+    /// rejection).
+    ///
+    /// Transport errors (`Io` / `Reqwest` / `Middleware`) were already covered.
+    /// The gap this closes — the shape the 2026-07-28 incident and
+    /// `malbeclabs/infra#2100` arrived in for Go, and which Rust survived only
+    /// because those particular 503s happened to surface as `Reqwest` — is a
+    /// transient status carried *inside* a decoded JSON-RPC envelope
+    /// (`RpcResponseError`), which was never retried:
+    ///
+    /// - an HTTP status a provider LB put in the envelope `code` (429/5xx),
+    /// - a "busy, retry later" node code (`-32005`, `-32004`, `-32429`),
+    /// - transient wording with no machine-readable code
+    ///   (`-32603 "Service unavailable, please try again later."`).
+    ///
+    /// Mirrors the Go classifier from #4100 (`tools/solana/pkg/jsonrpc`).
+    /// Onchain/request-level rejections (`-32002` preflight, `-32602`, `-32601`),
+    /// `-32003` (signature-verification failure) and `-32011` (no history) stay
+    /// non-retryable — an identical later request gets the same answer. This
+    /// predicate gates only read RPCs here; no `send_transaction` path is wrapped
+    /// with it, so an accepted-but-unacknowledged send is never resent.
     fn is_retryable_rpc_error(err: &ClientError) -> bool {
-        matches!(
-            err.kind.as_ref(),
-            ClientErrorKind::Io(_) | ClientErrorKind::Reqwest(_) | ClientErrorKind::Middleware(_)
-        )
+        match err.kind.as_ref() {
+            ClientErrorKind::Io(_)
+            | ClientErrorKind::Reqwest(_)
+            | ClientErrorKind::Middleware(_) => true,
+            ClientErrorKind::RpcError(rpc_err) => Self::is_retryable_rpc_response(rpc_err),
+            _ => false,
+        }
+    }
+
+    /// HTTP statuses that mean the endpoint (or a proxy in front of it) is
+    /// shedding load, not that the request is wrong.
+    fn is_retryable_http_status(code: i64) -> bool {
+        matches!(code, 429 | 500 | 502 | 503 | 504)
+    }
+
+    /// JSON-RPC codes for a node that cannot serve this request right now but
+    /// could serve an identical one later: `-32005` NODE_UNHEALTHY, `-32004`
+    /// BLOCK_NOT_AVAILABLE, and the provider-minted `-32429` (HTTP 429 wrapped in
+    /// an envelope). `-32003` (signature verification) and `-32011` (no history)
+    /// are deterministic and deliberately absent.
+    fn is_retryable_rpc_code(code: i64) -> bool {
+        matches!(code, -32005 | -32004 | -32429)
+    }
+
+    /// Transient wording from providers that return no machine-readable code — a
+    /// load balancer shedding load is the same failure whether it labels itself
+    /// 503 or just says so.
+    fn message_is_transient(message: &str) -> bool {
+        let msg = message.to_ascii_lowercase();
+        [
+            "service unavailable",
+            "too many requests",
+            "bad gateway",
+            "gateway timeout",
+            "gateway time-out",
+            "rate limited",
+        ]
+        .iter()
+        .any(|needle| msg.contains(needle))
+    }
+
+    fn is_retryable_rpc_response(err: &solana_rpc_client_api::request::RpcError) -> bool {
+        use solana_rpc_client_api::request::RpcError;
+        match err {
+            RpcError::RpcResponseError { code, message, .. } => {
+                Self::is_retryable_http_status(*code)
+                    || Self::is_retryable_rpc_code(*code)
+                    || Self::message_is_transient(message)
+            }
+            // No code to classify; only retry on explicitly transient wording.
+            RpcError::RpcRequestError(msg) | RpcError::ForUser(msg) => {
+                Self::message_is_transient(msg)
+            }
+            RpcError::ParseError(_) => false,
+        }
     }
 
     pub fn get_balance(&self) -> eyre::Result<u64> {
@@ -774,6 +845,66 @@ mod client_tests {
         // A bare custom (non-transaction) client error has no program result.
         let transport = ClientError::from(ClientErrorKind::Custom("connection reset".into()));
         assert_eq!(DZClient::parse_transaction_error(&transport), None);
+    }
+
+    fn rpc_response_error(code: i64, message: &str) -> ClientError {
+        ClientError::from(ClientErrorKind::RpcError(
+            solana_rpc_client_api::request::RpcError::RpcResponseError {
+                code,
+                message: message.to_string(),
+                data: solana_rpc_client_api::request::RpcResponseErrorData::Empty,
+            },
+        ))
+    }
+
+    /// Transport errors stay retryable.
+    #[test]
+    fn is_retryable_rpc_error_covers_transport() {
+        let io = ClientError::from(ClientErrorKind::Io(std::io::Error::other("reset")));
+        assert!(DZClient::is_retryable_rpc_error(&io));
+    }
+
+    /// A transient status carried inside a decoded JSON-RPC envelope is now
+    /// retried — the shape that reached Go as `*RPCError` on 2026-07-28.
+    #[test]
+    fn is_retryable_rpc_error_covers_envelope_status_and_busy_codes() {
+        // HTTP status a provider LB put in the envelope code.
+        assert!(DZClient::is_retryable_rpc_error(&rpc_response_error(
+            503,
+            "backend unavailable"
+        )));
+        assert!(DZClient::is_retryable_rpc_error(&rpc_response_error(
+            429,
+            "slow down"
+        )));
+        // "busy, retry later" node codes.
+        for code in [-32005, -32004, -32429] {
+            assert!(
+                DZClient::is_retryable_rpc_error(&rpc_response_error(code, "node is behind")),
+                "code {code} should retry"
+            );
+        }
+        // Transient wording with no recognizable code (the Helius `-32603` shape).
+        assert!(DZClient::is_retryable_rpc_error(&rpc_response_error(
+            -32603,
+            "Service unavailable, please try again later."
+        )));
+    }
+
+    /// Deterministic rejections and request-level errors do not retry.
+    #[test]
+    fn is_retryable_rpc_error_excludes_permanent_rpc_errors() {
+        for code in [-32002, -32602, -32601, -32003, -32011] {
+            assert!(
+                !DZClient::is_retryable_rpc_error(&rpc_response_error(code, "rejected")),
+                "code {code} must not retry"
+            );
+        }
+        // A generic -32603 with no transient wording is not retryable either.
+        assert!(!DZClient::is_retryable_rpc_error(&rpc_response_error(
+            -32603,
+            "Internal error"
+        )));
     }
 }
 

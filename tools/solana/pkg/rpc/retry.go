@@ -116,8 +116,11 @@ func newHTTP(requestTimeout time.Duration, maxConns int, onDial func(addr, remot
 	}
 
 	return &http.Client{
-		Timeout:   requestTimeout,
-		Transport: gzhttp.Transport(newHTTPTransport(maxConns, onDial)),
+		Timeout: requestTimeout,
+		// The rate-limit observer wraps the outermost transport so it sees the final
+		// response headers. It is passive: nothing is altered, and an endpoint that
+		// reports no rate-limit headers costs nothing (see ratelimit.go).
+		Transport: &rateLimitObserver{inner: gzhttp.Transport(newHTTPTransport(maxConns, onDial))},
 	}
 }
 

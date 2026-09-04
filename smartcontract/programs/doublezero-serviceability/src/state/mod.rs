@@ -16,6 +16,7 @@ pub mod multicastgroup;
 pub mod permission;
 pub mod programconfig;
 pub mod resource_extension;
+pub mod stake_mirror;
 pub mod tenant;
 pub mod topology;
 pub mod user;

@@ -70,6 +70,10 @@ func (c *SolanaClient) GetTotalSupply(ctx context.Context) (float64, error) {
 	}
 	defer resp.Body.Close()
 
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
 	var rpcResp jsonRPCResponse
 	if err := json.NewDecoder(resp.Body).Decode(&rpcResp); err != nil {
 		return 0, fmt.Errorf("failed to decode response body: %w", err)

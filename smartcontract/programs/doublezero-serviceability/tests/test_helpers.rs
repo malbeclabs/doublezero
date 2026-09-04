@@ -85,6 +85,48 @@ pub async fn init_test() -> (BanksClient, Pubkey, Keypair, solana_program::hash:
     (banks_client, program_id, payer, recent_blockhash)
 }
 
+/// Same as `init_test`, but on a caller-chosen `program_id` and with `accounts` already present
+/// and owned by the program. The caller picks the id because seeded accounts are usually PDAs,
+/// which cannot be derived until it is known.
+///
+/// Some accounts are written by an offchain service rather than by an instruction — `StakeMirror`
+/// is written by the cross-chain relayer. Seeding one directly is how a test exercises the read
+/// path before the writer exists.
+#[allow(dead_code)]
+pub async fn init_test_with_accounts(
+    program_id: Pubkey,
+    accounts: &[(Pubkey, Vec<u8>)],
+) -> (BanksClient, Keypair, solana_program::hash::Hash) {
+    let mut program_test = ProgramTest::new(
+        "doublezero_serviceability",
+        program_id,
+        processor!(process_instruction),
+    );
+    for (pubkey, data) in accounts {
+        program_test.add_account(
+            *pubkey,
+            solana_sdk::account::Account {
+                lamports: solana_sdk::rent::Rent::default().minimum_balance(data.len()),
+                data: data.clone(),
+                owner: program_id,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+    }
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+
+    transfer(
+        &mut banks_client,
+        &payer,
+        &test_payer().pubkey(),
+        100_000_000,
+    )
+    .await;
+
+    (banks_client, payer, recent_blockhash)
+}
+
 #[allow(dead_code)]
 pub async fn get_globalstate(
     banks_client: &mut BanksClient,

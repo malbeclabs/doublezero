@@ -31,6 +31,7 @@ impl CreateFeedCommand {
                 name: self.name.clone(),
                 exchange: self.exchange,
                 groups: self.groups.clone(),
+                ..Default::default()
             },
         );
 
@@ -71,6 +72,7 @@ mod tests {
                 name: "Test Feed".to_string(),
                 exchange,
                 groups: vec![group],
+                ..Default::default()
             },
         );
         client
@@ -120,6 +122,7 @@ mod tests {
                 name: "Test Feed".to_string(),
                 exchange,
                 groups: vec![group],
+                ..Default::default()
             },
         );
         let (permission_pda_pubkey, _) = get_permission_pda(&program_id, &payer);

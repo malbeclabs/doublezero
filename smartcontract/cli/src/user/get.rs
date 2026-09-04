@@ -476,6 +476,7 @@ mod tests {
             name: "QA Payments".to_string(),
             exchange: exchange_key,
             groups: vec![group_pubkey],
+            ..Default::default()
         };
 
         let exchange = Exchange {

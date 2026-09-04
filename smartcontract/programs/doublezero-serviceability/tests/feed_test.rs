@@ -2,8 +2,15 @@ use doublezero_serviceability::{
     error::DoubleZeroError,
     instructions::DoubleZeroInstruction,
     pda::{get_feed_pda, get_globalstate_pda, get_program_config_pda},
-    processors::feed::{create::FeedCreateArgs, delete::FeedDeleteArgs, update::FeedUpdateArgs},
-    state::accounttype::AccountType,
+    processors::{
+        feed::{create::FeedCreateArgs, delete::FeedDeleteArgs, update::FeedUpdateArgs},
+        globalstate::setfeatureflags::SetFeatureFlagsArgs,
+    },
+    state::{
+        accounttype::AccountType,
+        feature_flags::FeatureFlag,
+        feed::{Feed, FeedStatus},
+    },
 };
 use solana_program_test::*;
 use solana_sdk::{
@@ -60,6 +67,30 @@ fn assert_custom_at_ix0(result: &Result<(), TransactionError>, expected: u32) {
     }
 }
 
+/// Plausible RFC-28 stake terms: a builder, the stake behind it, the spec it conforms to, the SLA
+/// it declared, and a 1 Gbps commitment.
+fn staked_args(code: &str, exchange: Pubkey) -> FeedCreateArgs {
+    FeedCreateArgs {
+        code: code.to_string(),
+        name: "Staked".to_string(),
+        exchange,
+        groups: vec![Pubkey::new_unique()],
+        builder: Pubkey::new_unique(),
+        stake_ref: Pubkey::new_unique(),
+        spec_id: "top-of-book@v1.0.0".to_string(),
+        sla_hash: [9u8; 32],
+        committed_rate_bits_per_sec: 1_000_000_000,
+    }
+}
+
+async fn get_feed(banks_client: &mut BanksClient, feed_pubkey: Pubkey) -> Feed {
+    get_account_data(banks_client, feed_pubkey)
+        .await
+        .expect("Unable to get Feed")
+        .get_feed()
+        .unwrap()
+}
+
 /// Initialize global state so the default payer is on the foundation allowlist and thus authorized
 /// for feed catalog instructions.
 async fn init_globalstate(
@@ -109,6 +140,7 @@ async fn test_feed_create_get_update_delete() {
             name: "Shreds".to_string(),
             exchange,
             groups: groups.clone(),
+            ..Default::default()
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),
@@ -197,6 +229,7 @@ async fn test_feed_same_code_different_exchange_allowed() {
                 name: "Shreds".to_string(),
                 exchange,
                 groups: vec![Pubkey::new_unique()],
+                ..Default::default()
             }),
             vec![
                 AccountMeta::new(feed_pubkey, false),
@@ -235,6 +268,7 @@ async fn test_feed_create_duplicate_rejected() {
             name: name.to_string(),
             exchange,
             groups: vec![Pubkey::new_unique()],
+            ..Default::default()
         })
     };
 
@@ -288,6 +322,7 @@ async fn test_feed_create_empty_groups_rejected() {
             name: "Empty".to_string(),
             exchange,
             groups: vec![],
+            ..Default::default()
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),
@@ -318,6 +353,7 @@ async fn test_feed_create_duplicate_group_rejected() {
             name: "Dup group".to_string(),
             exchange,
             groups: vec![group, group],
+            ..Default::default()
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),
@@ -347,6 +383,7 @@ async fn test_feed_create_default_exchange_rejected() {
             name: "No default".to_string(),
             exchange: Pubkey::default(),
             groups: vec![Pubkey::new_unique()],
+            ..Default::default()
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),
@@ -378,6 +415,7 @@ async fn test_feed_create_unauthorized_caller_rejected() {
             name: "Unauthorized".to_string(),
             exchange,
             groups: vec![Pubkey::new_unique()],
+            ..Default::default()
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),
@@ -388,4 +426,194 @@ async fn test_feed_create_unauthorized_caller_rejected() {
     .await;
 
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+}
+
+/// Enable `allow-staked-feeds` so the RFC-28 create path is reachable.
+async fn enable_staked_feeds(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    payer: &solana_sdk::signature::Keypair,
+) {
+    let recent_blockhash = wait_for_new_blockhash(banks_client).await;
+    execute_transaction(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::AllowStakedFeeds.to_mask(),
+        }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        payer,
+    )
+    .await;
+}
+
+/// The RFC-28 fields ship dormant. Until an operator sets `allow-staked-feeds` on the cluster, a
+/// create carrying a builder is refused outright rather than silently dropping the stake terms.
+#[tokio::test]
+async fn test_feed_create_staked_rejected_while_flag_clear() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "dormant", &exchange);
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(staked_args("dormant", exchange)),
+        vec![
+            AccountMeta::new(feed_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+}
+
+/// A pre-RFC-28 create still works with the flag clear, and the feed it makes is Active: a catalog
+/// feed has no builder to attest, so nothing gates it.
+#[tokio::test]
+async fn test_feed_create_catalog_stays_active_with_flag_clear() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "catalog", &exchange);
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
+            code: "catalog".to_string(),
+            name: "Catalog".to_string(),
+            exchange,
+            groups: vec![Pubkey::new_unique()],
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(feed_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let feed = get_feed(&mut banks_client, feed_pubkey).await;
+    assert_eq!(feed.status, FeedStatus::Active);
+    assert_eq!(feed.builder, Pubkey::default());
+}
+
+/// With the flag set, a staked feed records its terms and starts Pending: it does not sell seats
+/// until an attestor clears it.
+#[tokio::test]
+async fn test_feed_create_staked_starts_pending() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+    enable_staked_feeds(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "staked", &exchange);
+    let args = staked_args("staked", exchange);
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(args.clone()),
+        vec![
+            AccountMeta::new(feed_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let feed = get_feed(&mut banks_client, feed_pubkey).await;
+    assert_eq!(feed.status, FeedStatus::Pending);
+    assert_eq!(feed.builder, args.builder);
+    assert_eq!(feed.stake_ref, args.stake_ref);
+    assert_eq!(feed.spec_id, args.spec_id);
+    assert_eq!(feed.sla_hash, args.sla_hash);
+    assert_eq!(
+        feed.committed_rate_bits_per_sec,
+        args.committed_rate_bits_per_sec
+    );
+}
+
+/// The stake terms travel together. A builder without the rest describes a feed nothing downstream
+/// can measure, so create refuses it rather than storing a half-declared feed.
+#[tokio::test]
+async fn test_feed_create_partial_stake_terms_rejected() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+    enable_staked_feeds(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    // One term dropped per case, each on its own feed code so the PDAs do not collide.
+    let mut cases = Vec::new();
+    for code in ["nostake", "nospec", "nosla", "norate"] {
+        let exchange = Pubkey::new_unique();
+        let mut args = staked_args(code, exchange);
+        match code {
+            "nostake" => args.stake_ref = Pubkey::default(),
+            "nospec" => args.spec_id = String::new(),
+            "nosla" => args.sla_hash = [0u8; 32],
+            _ => args.committed_rate_bits_per_sec = 0,
+        }
+        cases.push((get_feed_pda(&program_id, code, &exchange).0, args));
+    }
+
+    for (feed_pubkey, args) in cases {
+        let result = try_execute_and_get_error(
+            &mut banks_client,
+            program_id,
+            DoubleZeroInstruction::CreateFeed(args),
+            vec![
+                AccountMeta::new(feed_pubkey, false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
+            &payer,
+        )
+        .await;
+
+        assert_custom_at_ix0(&result, custom_code(DoubleZeroError::InvalidArgument));
+    }
+}
+
+/// Stake terms without a builder are refused too: they would be recorded against nobody.
+#[tokio::test]
+async fn test_feed_create_stake_terms_without_builder_rejected() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+    enable_staked_feeds(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "orphan", &exchange);
+    let mut args = staked_args("orphan", exchange);
+    args.builder = Pubkey::default();
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(args),
+        vec![
+            AccountMeta::new(feed_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::InvalidArgument));
 }

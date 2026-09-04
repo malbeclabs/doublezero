@@ -14,6 +14,10 @@ pub enum FeatureFlag {
     /// passes alike. When clear, a proof that is supplied is still validated in full; only its
     /// absence is tolerated.
     RequireIpOwnershipProof = 2,
+    /// RFC-28. When set, `CreateFeed` accepts a builder and its stake terms. When clear, the RFC-28
+    /// fields exist on the account but no instruction can set them, so the feature stays dormant on
+    /// a deployed program until the stake mirror and the attestor are in place.
+    AllowStakedFeeds = 3,
 }
 
 impl FeatureFlag {
@@ -22,6 +26,7 @@ impl FeatureFlag {
             FeatureFlag::OnChainAllocationDeprecated,
             FeatureFlag::RequirePermissionAccounts,
             FeatureFlag::RequireIpOwnershipProof,
+            FeatureFlag::AllowStakedFeeds,
         ]
     }
 
@@ -36,6 +41,7 @@ impl fmt::Display for FeatureFlag {
             FeatureFlag::OnChainAllocationDeprecated => write!(f, "onchain-allocation-deprecated"),
             FeatureFlag::RequirePermissionAccounts => write!(f, "require-permission-accounts"),
             FeatureFlag::RequireIpOwnershipProof => write!(f, "require-ip-ownership-proof"),
+            FeatureFlag::AllowStakedFeeds => write!(f, "allow-staked-feeds"),
         }
     }
 }
@@ -52,6 +58,7 @@ impl std::str::FromStr for FeatureFlag {
             }
             "require-permission-accounts" => Ok(FeatureFlag::RequirePermissionAccounts),
             "require-ip-ownership-proof" => Ok(FeatureFlag::RequireIpOwnershipProof),
+            "allow-staked-feeds" => Ok(FeatureFlag::AllowStakedFeeds),
             _ => Err(format!("unknown feature flag: {s}")),
         }
     }

@@ -394,6 +394,7 @@ pub(crate) mod fixtures {
             name: "Feed".to_string(),
             exchange,
             groups,
+            ..Default::default()
         }
     }
 

@@ -1,0 +1,51 @@
+{
+  "name": "FeedLegacy",
+  "account_type": 18,
+  "fields": [
+    {
+      "name": "AccountType",
+      "value": "18",
+      "typ": "u8"
+    },
+    {
+      "name": "Owner",
+      "value": "H9rr9s9FVfpM31rq66v9sPss7LbzT1Sb9B27ooTqz5fm",
+      "typ": "pubkey"
+    },
+    {
+      "name": "BumpSeed",
+      "value": "238",
+      "typ": "u8"
+    },
+    {
+      "name": "Code",
+      "value": "legacy",
+      "typ": "string"
+    },
+    {
+      "name": "Name",
+      "value": "Legacy",
+      "typ": "string"
+    },
+    {
+      "name": "Exchange",
+      "value": "HDmFoMsLPWK4ShyobcBbmKd6NMAm9xYVj3L1JzmqhtL7",
+      "typ": "pubkey"
+    },
+    {
+      "name": "GroupsLen",
+      "value": "1",
+      "typ": "u32"
+    },
+    {
+      "name": "Group0",
+      "value": "HHffSrbRHLomrQ6n77T3fFNKdMjXrueQJudtpC5qRgzT",
+      "typ": "pubkey"
+    },
+    {
+      "name": "Status",
+      "value": "1",
+      "typ": "u8"
+    }
+  ]
+}

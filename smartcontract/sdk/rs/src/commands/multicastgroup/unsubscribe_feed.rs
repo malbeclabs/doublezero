@@ -339,6 +339,7 @@ mod tests {
             name: code.to_string(),
             exchange: Pubkey::new_unique(),
             groups,
+            ..Default::default()
         }
     }
 

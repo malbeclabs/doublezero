@@ -8,6 +8,11 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Serviceability
+  - `Feed` carries the RFC-28 stake terms: `builder`, `stake_ref`, `spec_id`, `sla_hash`, `committed_rate_bits_per_sec` and a lifecycle `status`. Setting them needs the new `allow-staked-feeds` feature flag, which no cluster has, so `CreateFeed` refuses a builder until the stake mirror and the attestor exist; without the flag the instruction behaves as before. The fields are appended rather than versioned, so a feed written before this decodes with them defaulted and `try_acc_write` resizes the account on the next update. `status` is the exception to defaulting: a short account reads `Active`, because reading it as `Pending` would pull every live catalog feed out of service. The rate is bits per second, not basis points, which is what `bps` means elsewhere in DoubleZero.
+- SDK
+  - The TypeScript and Python `Feed` deserializers read the RFC-28 tail and synthesize `Active` for an account that carries no status byte, matching the Rust program. New `feed_legacy` fixture covers that path alongside the updated `feed` fixture.
+
 ## [v0.39.0](https://github.com/malbeclabs/doublezero/compare/client/v0.38.0...client/v0.39.0) - 2026-09-04
 
 ### Breaking

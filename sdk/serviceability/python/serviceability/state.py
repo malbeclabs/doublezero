@@ -1247,6 +1247,13 @@ class TopologyInfo:
 # ---------------------------------------------------------------------------
 
 
+# Feed lifecycle. Matches FeedStatus in the Rust program.
+FEED_STATUS_PENDING = 0
+FEED_STATUS_ACTIVE = 1
+FEED_STATUS_HALTED = 2
+FEED_STATUS_RETIRED = 3
+
+
 @dataclass
 class Feed:
     """Serviceability catalog entry: one SKU scoped to a single metro (exchange), holding the
@@ -1260,6 +1267,14 @@ class Feed:
     name: str = ""
     exchange: Pubkey = Pubkey.default()
     groups: list[Pubkey] = field(default_factory=list)
+    # RFC-28. Absent from feeds written before RFC-28, which decode with these defaulted and
+    # status FEED_STATUS_ACTIVE.
+    builder: Pubkey = Pubkey.default()
+    stake_ref: Pubkey = Pubkey.default()
+    spec_id: str = ""
+    sla_hash: bytes = b"\x00" * 32
+    committed_rate_bits_per_sec: int = 0
+    status: int = 0
     pub_key: Pubkey = Pubkey.default()  # set from account address after deserialization
 
     @classmethod
@@ -1274,4 +1289,16 @@ class Feed:
         # A feed serves one metro: an exchange pubkey followed by a Vec<Pubkey> of joinable groups.
         f.exchange = _read_pubkey(r)
         f.groups = _read_pubkey_vec(r)
+        # RFC-28 tail. DefensiveReader returns zeros past EOF, so a feed written before RFC-28
+        # lands here with every field defaulted. Read the flag before the tail, not after: the
+        # tail reads themselves leave `remaining` at zero either way.
+        has_rfc28_tail = r.remaining > 0
+        f.builder = _read_pubkey(r)
+        f.stake_ref = _read_pubkey(r)
+        f.spec_id = r.read_string()
+        f.sla_hash = r.read_bytes(32)
+        f.committed_rate_bits_per_sec = r.read_u64()
+        # Not pending: a feed written before RFC-28 has no status byte, and reading one as pending
+        # would show every live catalog feed as out of service.
+        f.status = r.read_u8() if has_rfc28_tail else FEED_STATUS_ACTIVE
         return f

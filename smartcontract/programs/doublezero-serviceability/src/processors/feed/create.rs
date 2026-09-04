@@ -1,7 +1,7 @@
 use crate::{
     authorize::authorize,
     error::DoubleZeroError,
-    pda::get_feed_pda,
+    pda::{get_feed_pda, get_stake_mirror_pda},
     seeds::{SEED_FEED, SEED_PREFIX},
     serializer::try_acc_create,
     state::{
@@ -10,6 +10,7 @@ use crate::{
         feed::{Feed, FeedStatus},
         globalstate::GlobalState,
         permission::permission_flags,
+        stake_mirror::StakeMirror,
     },
 };
 use borsh::BorshSerialize;
@@ -72,6 +73,19 @@ pub fn process_create_feed(
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
+    // The tail holds the builder's StakeMirror, the payer's Permission account, both, or neither.
+    // Each is found by matching its PDA rather than by position, so a caller that sends one is not
+    // forced to send the other, and a pre-RFC-28 caller that sends neither still works.
+    let tail: Vec<&AccountInfo> = accounts_iter.collect();
+    let stake_mirror_account = (value.builder != Pubkey::default()).then(|| {
+        let (expected, _) = get_stake_mirror_pda(program_id, &value.builder);
+        tail.iter().copied().find(|a| a.key == &expected)
+    });
+    let mut authorize_iter = tail
+        .iter()
+        .copied()
+        .filter(|a| !matches!(stake_mirror_account, Some(Some(m)) if std::ptr::eq(*a, m)));
+
     assert!(payer_account.is_signer, "Payer must be a signer");
     assert_eq!(
         globalstate_account.owner, program_id,
@@ -85,7 +99,7 @@ pub fn process_create_feed(
     let globalstate = GlobalState::try_from(globalstate_account)?;
     authorize(
         program_id,
-        accounts_iter,
+        &mut authorize_iter,
         payer_account.key,
         &globalstate,
         permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION,
@@ -94,6 +108,17 @@ pub fn process_create_feed(
     validate_feed_name(&value.name)?;
     validate_feed_groups(&value.groups)?;
     validate_feed_stake_terms(value, globalstate.feature_flags)?;
+    if value.builder != Pubkey::default() {
+        let mirror_account = stake_mirror_account
+            .flatten()
+            .ok_or(DoubleZeroError::StakeMirrorMissing)?;
+        verify_stake_covers_rate(
+            program_id,
+            mirror_account,
+            &value.builder,
+            value.committed_rate_bits_per_sec,
+        )?;
+    }
     // Every feed is scoped to a real metro; there is no metro-agnostic feed.
     if value.exchange == Pubkey::default() {
         msg!("Feed exchange must be a real metro, not the default pubkey");
@@ -236,6 +261,46 @@ pub(crate) fn validate_feed_stake_terms(
     if value.committed_rate_bits_per_sec == 0 {
         msg!("Staked feed must commit to a rate");
         return Err(DoubleZeroError::InvalidArgument);
+    }
+
+    Ok(())
+}
+
+/// Check the builder's mirrored stake against the rate this feed commits to.
+///
+/// The mirror is written by a relayer watching `builder-stake` on Solana, so this is a check
+/// against an assertion rather than against the Solana account itself. An unwritten mirror decodes
+/// as tier `None`, which covers no rate, so "no stake yet" and "stake too small" fail the same way
+/// and neither can slip through.
+fn verify_stake_covers_rate(
+    program_id: &Pubkey,
+    mirror_account: &AccountInfo,
+    builder: &Pubkey,
+    committed_rate_bits_per_sec: u64,
+) -> Result<(), DoubleZeroError> {
+    if mirror_account.data_is_empty() || mirror_account.owner != program_id {
+        msg!("No stake mirror written for builder {}", builder);
+        return Err(DoubleZeroError::StakeDoesNotCoverRate);
+    }
+
+    let mirror =
+        StakeMirror::try_from(mirror_account).map_err(|_| DoubleZeroError::InvalidAccountType)?;
+
+    // The PDA seed already binds the account to `builder`. This catches a mirror whose stored
+    // builder disagrees with its own address, which would mean the writer got it wrong.
+    if mirror.builder != *builder {
+        msg!("Stake mirror names a different builder: {}", mirror.builder);
+        return Err(DoubleZeroError::InvalidArgument);
+    }
+
+    if !mirror.tier.covers(committed_rate_bits_per_sec) {
+        msg!(
+            "Tier {} covers up to {} bits/sec, feed commits to {}",
+            mirror.tier,
+            mirror.tier.max_rate_bits_per_sec(),
+            committed_rate_bits_per_sec
+        );
+        return Err(DoubleZeroError::StakeDoesNotCoverRate);
     }
 
     Ok(())

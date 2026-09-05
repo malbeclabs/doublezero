@@ -168,5 +168,5 @@ func TestSolanaClient_GetTotalSupply_HTTPError(t *testing.T) {
 
 	_, err := client.GetTotalSupply(context.Background())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unexpected status code: 429")
+	assert.EqualError(t, err, "unexpected status code: 429")
 }

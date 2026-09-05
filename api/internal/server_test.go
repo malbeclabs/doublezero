@@ -5,6 +5,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strconv"
 	"testing"
 	"time"
@@ -154,4 +155,18 @@ func TestApiServer_TotalSupplyEndpoint(t *testing.T) {
 			runEndpointTest(t, serverOpts, "/api/v1/2z/total-supply", tc.expectedStatusCode, expectedBody)
 		})
 	}
+}
+
+func TestSolanaClient_GetTotalSupply_HTTPError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusTooManyRequests)
+	}))
+	defer server.Close()
+
+	client := NewSolanaClient()
+	client.rpcURL = server.URL
+
+	_, err := client.GetTotalSupply(context.Background())
+	require.Error(t, err)
+	assert.EqualError(t, err, "unexpected status code: 429")
 }

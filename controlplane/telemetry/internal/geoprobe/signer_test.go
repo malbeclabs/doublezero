@@ -458,6 +458,8 @@ func TestVerifyOffset_ZeroPubkeyAndSignature(t *testing.T) {
 		RttNs:           1000,
 	}
 
-	require.Error(t, VerifyOffset(offset))
-	require.Error(t, VerifyOffsetChain(offset))
+	// Assert the specific failure: without it a later change that made some
+	// other check fire first would leave this passing while the guard rotted.
+	require.ErrorContains(t, VerifyOffset(offset), "authority pubkey is zero")
+	require.ErrorContains(t, VerifyOffsetChain(offset), "authority pubkey is zero")
 }

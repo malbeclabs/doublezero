@@ -56,6 +56,15 @@ const (
 	// our own cached slot is the stale one.
 	maxOffsetSlotLag  = uint64(15 * time.Minute / dzSlotDuration)
 	maxOffsetSlotLead = uint64(5 * time.Minute / dzSlotDuration)
+
+	// maxSlotReferenceAge bounds how stale the cached ledger slot may be before
+	// it stops counting as "now" for the replay check. getCurrentSlot falls back
+	// to its cache indefinitely when RPC fails, so without this bound an outage
+	// freezes the acceptance window around an old slot: replays near that slot
+	// stay acceptable for as long as the outage lasts, and genuinely fresh
+	// offsets eventually fall outside maxOffsetSlotLead. Two refresh periods, so
+	// a single missed refresh does not stop ingestion.
+	maxSlotReferenceAge = 2 * geoprobe.SlotCacheTTL
 )
 
 var (
@@ -230,6 +239,15 @@ func (c *offsetCache) Evict() int {
 		}
 	}
 	return evicted
+}
+
+// slotReference returns slot only while the value cached at cachedAt is recent
+// enough to serve as the "now" the replay check measures against.
+func slotReference(slot uint64, cachedAt, now time.Time) (uint64, error) {
+	if age := now.Sub(cachedAt); age > maxSlotReferenceAge {
+		return 0, fmt.Errorf("cached slot is %s old, exceeds %s", age.Round(time.Second), maxSlotReferenceAge)
+	}
+	return slot, nil
 }
 
 // offsetSlotFresh reports whether an offset's MeasurementSlot falls inside the
@@ -494,6 +512,21 @@ func main() {
 		return slot, nil
 	}
 
+	// Offset ingestion needs a slot it can still treat as "now", which the
+	// stale-cache fallback above does not guarantee. Composite offsets keep
+	// using getCurrentSlot: stamping a slightly stale slot is better than the
+	// probe emitting nothing during an RPC blip.
+	getSlotReference := func(ctx context.Context) (uint64, error) {
+		slot, err := getCurrentSlot(ctx)
+		if err != nil {
+			return 0, err
+		}
+		slotMu.RLock()
+		cachedAt := slotCachedAt
+		slotMu.RUnlock()
+		return slotReference(slot, cachedAt, time.Now())
+	}
+
 	// Set up UDP sender for composite offsets.
 	senderConn, err := geoprobe.NewUDPConn()
 	if err != nil {
@@ -520,7 +553,7 @@ func main() {
 
 	// Run UDP offset listener.
 	go func() {
-		runOffsetListener(ctx, log, offsetListener, cache, pState, signedReflector, m, getCurrentSlot)
+		runOffsetListener(ctx, log, offsetListener, cache, pState, signedReflector, m, getSlotReference)
 	}()
 
 	// Run eviction goroutine.

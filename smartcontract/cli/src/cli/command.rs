@@ -253,6 +253,11 @@ impl ServiceabilityCommand {
             },
             Self::AccessPass(cmd) => match cmd.command {
                 AccessPassCommands::Set(args) => args.execute(ctx, client, out).await,
+                AccessPassCommands::Plan(args) => args.execute(ctx, client, out).await,
+                AccessPassCommands::Apply(args) => {
+                    args.execute(ctx, client, out, &mut std::io::stdin().lock())
+                        .await
+                }
                 AccessPassCommands::Close(args) => args.execute(ctx, client, out).await,
                 AccessPassCommands::List(args) => args.execute(ctx, client, out).await,
                 AccessPassCommands::Get(args) => args.execute(ctx, client, out).await,

@@ -1,7 +1,10 @@
+pub mod apply;
 pub mod close;
+pub mod desired;
 pub mod dzf_lock;
 pub mod fund;
 pub mod get;
 pub mod list;
+pub mod plan;
 pub mod set;
 pub mod user_balances;

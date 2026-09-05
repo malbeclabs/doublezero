@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+  - New `access-pass plan` and `access-pass apply`: reconcile access passes against a YAML document describing the intended state — multicast publish/subscribe allowlists and the IBRL (unicast) tenant, keyed by `(client_ip, user_payer)`. `plan` reads and prints the diff, `apply` sends it after a confirmation. The multicast lists are declarative, so a group the document does not name is revoked. `apply --json` emits one object with `changed` first for configuration-management drivers, and requires `--auto-approve` since there is no terminal to confirm on. A converged document is a no-op. Documented in `docs/access-pass-plan-apply.md`.
+    - A declared subscribe that an EdgeSeat feed already grants is reported as satisfied and costs no transaction; publisher is never feed-covered, so a publish gap on the same group is still reported.
+    - Declaring `ibrl: <tenant>` also pins `last_access_epoch` to unlimited, since the tenant and the epoch are one grant and a finite value fails `connect ibrl` at an unpredictable date. The write reads the pass first and re-sends the type, seat caps and `allow_multiple_ip` unchanged, because `access-pass set` overwrites those from its arguments; it targets the stored pass, so a grant on a shared `0.0.0.0` pass is not written to a different account.
+    - Two cases are blocked rather than attempted: an access pass that does not exist (granting against an empty PDA would silently mint a `Prepaid` pass with 1/1 seats and no epoch), and a group leaving both allowlists at once (the detach verbs send the role being kept as desired state, so revoking both entries first strands the roles on the User account).
+
 ## [v0.39.0](https://github.com/malbeclabs/doublezero/compare/client/v0.38.0...client/v0.39.0) - 2026-09-04
 
 ### Breaking

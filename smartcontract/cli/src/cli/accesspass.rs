@@ -1,9 +1,11 @@
 use crate::accesspass::{
+    apply::ApplyAccessPassCliCommand,
     close::CloseAccessPassCliCommand,
     dzf_lock::{DzfLockAccessPassCliCommand, DzfUnlockAccessPassCliCommand},
     fund::FundAccessPassCliCommand,
     get::GetAccessPassCliCommand,
     list::ListAccessPassCliCommand,
+    plan::PlanAccessPassCliCommand,
     set::SetAccessPassCliCommand,
     user_balances::UserBalancesAccessPassCliCommand,
 };
@@ -20,6 +22,12 @@ pub enum AccessPassCommands {
     /// Set access pass
     #[clap()]
     Set(SetAccessPassCliCommand),
+    /// Show what a definition document would change, without writing
+    #[clap()]
+    Plan(PlanAccessPassCliCommand),
+    /// Converge the ledger onto a definition document
+    #[clap()]
+    Apply(ApplyAccessPassCliCommand),
     /// Close access pass
     #[clap()]
     Close(CloseAccessPassCliCommand),

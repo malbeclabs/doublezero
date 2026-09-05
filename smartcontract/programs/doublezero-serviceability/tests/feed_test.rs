@@ -604,21 +604,24 @@ async fn test_feed_create_stake_terms_without_builder_rejected() {
 
 /// A stake mirror as the relayer would write it: `tier` covers up to its own ceiling, and the
 /// builder declared `committed_rate_bits_per_sec` when it deposited.
-fn stake_mirror(builder: Pubkey, tier: StakeTier, bump_seed: u8) -> Vec<u8> {
+fn stake_mirror(stake_ref: Pubkey, builder: Pubkey, tier: StakeTier, bump_seed: u8) -> Vec<u8> {
     borsh::to_vec(&StakeMirror {
         account_type: AccountType::StakeMirror,
         owner: Pubkey::new_unique(),
         bump_seed,
+        stake_ref,
         builder,
         tier,
         committed_rate_bits_per_sec: tier.max_rate_bits_per_sec(),
         source_slot: 1,
         relayer: Pubkey::new_unique(),
+        feed_key: Pubkey::default(),
     })
     .unwrap()
 }
 
-/// Start a cluster with `allow-staked-feeds` set and the builder's stake already mirrored.
+/// Start a cluster with `allow-staked-feeds` set and one stake already mirrored. Returns the
+/// builder and the stake it posted; the mirror PDA is seeded by the stake.
 async fn init_staked(
     tier: StakeTier,
 ) -> (
@@ -627,14 +630,19 @@ async fn init_staked(
     solana_sdk::signature::Keypair,
     Pubkey,
     Pubkey,
+    Pubkey,
 ) {
     let program_id = Pubkey::new_unique();
     let builder = Pubkey::new_unique();
-    let (mirror_pubkey, bump) = get_stake_mirror_pda(&program_id, &builder);
+    let stake_ref = Pubkey::new_unique();
+    let (mirror_pubkey, bump) = get_stake_mirror_pda(&program_id, &stake_ref);
 
     let (mut banks_client, payer, recent_blockhash) = init_test_with_accounts(
         program_id,
-        &[(mirror_pubkey, stake_mirror(builder, tier, bump))],
+        &[(
+            mirror_pubkey,
+            stake_mirror(stake_ref, builder, tier, bump),
+        )],
     )
     .await;
 
@@ -642,7 +650,14 @@ async fn init_staked(
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
     enable_staked_feeds(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
 
-    (banks_client, program_id, payer, globalstate_pubkey, builder)
+    (
+        banks_client,
+        program_id,
+        payer,
+        globalstate_pubkey,
+        builder,
+        stake_ref,
+    )
 }
 
 /// CreateFeed's fixed accounts. The harness appends payer and system_program, and the stake
@@ -657,15 +672,16 @@ fn feed_accounts(feed: Pubkey, globalstate: Pubkey) -> Vec<AccountMeta> {
 /// A stake whose tier covers the rate lets the feed through.
 #[tokio::test]
 async fn test_feed_create_covered_by_stake_tier() {
-    let (mut banks_client, program_id, payer, globalstate_pubkey, builder) =
+    let (mut banks_client, program_id, payer, globalstate_pubkey, builder, stake_ref) =
         init_staked(StakeTier::UpTo5Gbps).await;
 
     let exchange = Pubkey::new_unique();
     let (feed_pubkey, _) = get_feed_pda(&program_id, "covered", &exchange);
-    let (mirror_pubkey, _) = get_stake_mirror_pda(&program_id, &builder);
+    let (mirror_pubkey, _) = get_stake_mirror_pda(&program_id, &stake_ref);
 
     let mut args = staked_args("covered", exchange);
     args.builder = builder;
+    args.stake_ref = stake_ref;
     args.committed_rate_bits_per_sec = 5_000_000_000;
     let expected = args.clone();
 
@@ -677,7 +693,7 @@ async fn test_feed_create_covered_by_stake_tier() {
         DoubleZeroInstruction::CreateFeed(args),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &payer,
-        &[AccountMeta::new_readonly(mirror_pubkey, false)],
+        &[AccountMeta::new(mirror_pubkey, false)],
     )
     .await;
 
@@ -689,21 +705,30 @@ async fn test_feed_create_covered_by_stake_tier() {
     assert_eq!(feed.committed_rate_bits_per_sec, 5_000_000_000);
     // Pending, not Active: the stake is checked at create, but conformance is not.
     assert_eq!(feed.status, FeedStatus::Pending);
+
+    // The stake is now spent on this feed.
+    let mirror = get_account_data(&mut banks_client, mirror_pubkey)
+        .await
+        .expect("Unable to get StakeMirror")
+        .get_stake_mirror()
+        .unwrap();
+    assert_eq!(mirror.feed_key, feed_pubkey);
 }
 
 /// One bit over the tier ceiling is refused. The deposit was sized against the tier, so a rate
 /// above it is a feed the stake does not back.
 #[tokio::test]
 async fn test_feed_create_rate_above_tier_rejected() {
-    let (mut banks_client, program_id, payer, globalstate_pubkey, builder) =
+    let (mut banks_client, program_id, payer, globalstate_pubkey, builder, stake_ref) =
         init_staked(StakeTier::UpTo1Gbps).await;
 
     let exchange = Pubkey::new_unique();
     let (feed_pubkey, _) = get_feed_pda(&program_id, "overtier", &exchange);
-    let (mirror_pubkey, _) = get_stake_mirror_pda(&program_id, &builder);
+    let (mirror_pubkey, _) = get_stake_mirror_pda(&program_id, &stake_ref);
 
     let mut args = staked_args("overtier", exchange);
     args.builder = builder;
+    args.stake_ref = stake_ref;
     args.committed_rate_bits_per_sec = 1_000_000_001;
 
     let result = try_execute_and_get_error(
@@ -712,7 +737,7 @@ async fn test_feed_create_rate_above_tier_rejected() {
         DoubleZeroInstruction::CreateFeed(args),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &payer,
-        &[AccountMeta::new_readonly(mirror_pubkey, false)],
+        &[AccountMeta::new(mirror_pubkey, false)],
     )
     .await;
 
@@ -723,17 +748,18 @@ async fn test_feed_create_rate_above_tier_rejected() {
 /// nothing to check the rate against.
 #[tokio::test]
 async fn test_feed_create_without_stake_mirror_rejected() {
-    let (mut banks_client, program_id, payer, globalstate_pubkey, _) =
+    let (mut banks_client, program_id, payer, globalstate_pubkey, builder, _) =
         init_staked(StakeTier::UpTo5Gbps).await;
 
-    // A builder the relayer has never written a mirror for.
-    let unstaked = Pubkey::new_unique();
+    // A stake the relayer has never written a mirror for.
+    let unmirrored_stake = Pubkey::new_unique();
     let exchange = Pubkey::new_unique();
     let (feed_pubkey, _) = get_feed_pda(&program_id, "nomirror", &exchange);
-    let (mirror_pubkey, _) = get_stake_mirror_pda(&program_id, &unstaked);
+    let (mirror_pubkey, _) = get_stake_mirror_pda(&program_id, &unmirrored_stake);
 
     let mut args = staked_args("nomirror", exchange);
-    args.builder = unstaked;
+    args.builder = builder;
+    args.stake_ref = unmirrored_stake;
 
     // The account is passed but was never created, so it arrives empty.
     let result = try_execute_and_get_error(
@@ -742,17 +768,65 @@ async fn test_feed_create_without_stake_mirror_rejected() {
         DoubleZeroInstruction::CreateFeed(args),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &payer,
-        &[AccountMeta::new_readonly(mirror_pubkey, false)],
+        &[AccountMeta::new(mirror_pubkey, false)],
     )
     .await;
 
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::StakeDoesNotCoverRate));
 }
 
+/// RFC-28 is one feed per stake: "A builder running a second feed posts a second deposit. Each
+/// feed is collateralized on its own, so slashing one never reaches another." The first feed spends
+/// the stake, and a second feed pointed at the same one is refused even though the tier still
+/// covers its rate.
+#[tokio::test]
+async fn test_feed_create_second_feed_on_same_stake_rejected() {
+    let (mut banks_client, program_id, payer, globalstate_pubkey, builder, stake_ref) =
+        init_staked(StakeTier::UpTo5Gbps).await;
+
+    let (mirror_pubkey, _) = get_stake_mirror_pda(&program_id, &stake_ref);
+    let exchange = Pubkey::new_unique();
+
+    let (first_pubkey, _) = get_feed_pda(&program_id, "firstfeed", &exchange);
+    let mut first = staked_args("firstfeed", exchange);
+    first.builder = builder;
+    first.stake_ref = stake_ref;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(first),
+        feed_accounts(first_pubkey, globalstate_pubkey),
+        &payer,
+        &[AccountMeta::new(mirror_pubkey, false)],
+    )
+    .await;
+
+    // A different feed, same stake, a rate the tier still covers.
+    let (second_pubkey, _) = get_feed_pda(&program_id, "secondfeed", &exchange);
+    let mut second = staked_args("secondfeed", exchange);
+    second.builder = builder;
+    second.stake_ref = stake_ref;
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(second),
+        feed_accounts(second_pubkey, globalstate_pubkey),
+        &payer,
+        &[AccountMeta::new(mirror_pubkey, false)],
+    )
+    .await;
+
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::StakeAlreadyBacksFeed));
+}
+
 /// Leaving the mirror account out entirely is refused too, rather than skipping the check.
 #[tokio::test]
 async fn test_feed_create_omitting_stake_mirror_rejected() {
-    let (mut banks_client, program_id, payer, globalstate_pubkey, builder) =
+    let (mut banks_client, program_id, payer, globalstate_pubkey, builder, stake_ref) =
         init_staked(StakeTier::UpTo5Gbps).await;
 
     let exchange = Pubkey::new_unique();
@@ -760,6 +834,7 @@ async fn test_feed_create_omitting_stake_mirror_rejected() {
 
     let mut args = staked_args("omitted", exchange);
     args.builder = builder;
+    args.stake_ref = stake_ref;
 
     let result = try_execute_and_get_error(
         &mut banks_client,
@@ -789,13 +864,14 @@ async fn test_builder_grants_its_own_publish_rights() {
     let program_id = Pubkey::new_unique();
     // Funded, but not on the foundation allowlist: it cannot create a feed or a multicast group.
     let builder = test_payer();
-    let (mirror_pubkey, bump) = get_stake_mirror_pda(&program_id, &builder.pubkey());
+    let stake_ref = Pubkey::new_unique();
+    let (mirror_pubkey, bump) = get_stake_mirror_pda(&program_id, &stake_ref);
 
     let (mut banks_client, admin, recent_blockhash) = init_test_with_accounts(
         program_id,
         &[(
             mirror_pubkey,
-            stake_mirror(builder.pubkey(), StakeTier::UpTo1Gbps, bump),
+            stake_mirror(stake_ref, builder.pubkey(), StakeTier::UpTo1Gbps, bump),
         )],
     )
     .await;
@@ -844,6 +920,7 @@ async fn test_builder_grants_its_own_publish_rights() {
     let (feed_pubkey, _) = get_feed_pda(&program_id, "rights", &exchange);
     let mut args = staked_args("rights", exchange);
     args.builder = builder.pubkey();
+    args.stake_ref = stake_ref;
     args.groups = groups.clone();
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
@@ -854,7 +931,7 @@ async fn test_builder_grants_its_own_publish_rights() {
         DoubleZeroInstruction::CreateFeed(args),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &admin,
-        &[AccountMeta::new_readonly(mirror_pubkey, false)],
+        &[AccountMeta::new(mirror_pubkey, false)],
     )
     .await;
 

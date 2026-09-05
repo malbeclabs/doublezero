@@ -113,10 +113,14 @@ pub fn get_feed_pda(program_id: &Pubkey, code: &str, exchange: &Pubkey) -> (Pubk
     )
 }
 
-/// One stake mirror per builder, so the builder key is the only seed.
-pub fn get_stake_mirror_pda(program_id: &Pubkey, builder: &Pubkey) -> (Pubkey, u8) {
+/// One stake mirror per stake, seeded by the `builder-stake` account it mirrors.
+///
+/// Not seeded by the builder. RFC-28 is one feed per stake ("A builder running a second feed posts
+/// a second deposit"), so a builder key would give one mirror per builder and let two feeds pass
+/// the coverage check against a single deposit.
+pub fn get_stake_mirror_pda(program_id: &Pubkey, stake_ref: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(
-        &[SEED_PREFIX, SEED_STAKE_MIRROR, builder.as_ref()],
+        &[SEED_PREFIX, SEED_STAKE_MIRROR, stake_ref.as_ref()],
         program_id,
     )
 }

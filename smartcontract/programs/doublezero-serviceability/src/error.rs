@@ -251,6 +251,8 @@ pub enum DoubleZeroError {
     StakeMirrorMissing, // variant 119
     #[error("The builder's stake does not cover the rate this feed commits to")]
     StakeDoesNotCoverRate, // variant 120
+    #[error("This stake already backs a feed; RFC-28 is one feed per stake")]
+    StakeAlreadyBacksFeed, // variant 121
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -377,6 +379,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::IpProofVersionUnsupported => ProgramError::Custom(118),
             DoubleZeroError::StakeMirrorMissing => ProgramError::Custom(119),
             DoubleZeroError::StakeDoesNotCoverRate => ProgramError::Custom(120),
+            DoubleZeroError::StakeAlreadyBacksFeed => ProgramError::Custom(121),
         }
     }
 }
@@ -504,6 +507,7 @@ impl From<u32> for DoubleZeroError {
             118 => DoubleZeroError::IpProofVersionUnsupported,
             119 => DoubleZeroError::StakeMirrorMissing,
             120 => DoubleZeroError::StakeDoesNotCoverRate,
+            121 => DoubleZeroError::StakeAlreadyBacksFeed,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -538,7 +542,7 @@ mod tests {
         }
 
         // EnumIter generates Custom(0) by default, so we explicitly test values
-        // outside the known variant range (currently 0-120) to ensure the conversion
+        // outside the known variant range (currently 0-121) to ensure the conversion
         // logic handles arbitrary custom codes correctly.
         for code in [1000u32, 100_000, u32::MAX] {
             let err = DoubleZeroError::Custom(code);

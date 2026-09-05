@@ -59,7 +59,9 @@ impl fmt::Display for StakeTier {
 /// much as the key that signed it, which is recorded in `relayer`. A relayer can lie in both
 /// directions, so who is allowed to sign one is a trust decision, not an implementation detail.
 ///
-/// One mirror per builder. `builder` is the PDA seed, so it is immutable.
+/// One mirror per stake. `stake_ref` is the PDA seed, so it is immutable. RFC-28 collateralizes
+/// each feed on its own deposit, so the mirror is keyed on the stake and not on the builder, and
+/// `feed_key` records the one feed that stake has been spent on.
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct StakeMirror {
@@ -82,7 +84,16 @@ pub struct StakeMirror {
             deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
-    /// The builder that posted the stake, and the PDA seed.
+    /// The `builder-stake` account on Solana this mirrors, and the PDA seed.
+    pub stake_ref: Pubkey, // 32
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
+        )
+    )]
+    /// The builder that posted the stake.
     pub builder: Pubkey, // 32
     /// The tier the deposit bought. This is what a feed's committed rate is checked against.
     pub tier: StakeTier, // 1
@@ -102,21 +113,34 @@ pub struct StakeMirror {
     /// The authority whose signature admitted the current values. A reader that does not trust this
     /// key should not trust the stake.
     pub relayer: Pubkey, // 32
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
+        )
+    )]
+    /// The feed this stake has been spent on, default until a feed claims it. `CreateFeed` sets it
+    /// and refuses a stake that already carries one, which is what makes RFC-28's one feed per
+    /// stake true. A relayer updating the mirror must carry this value forward, not zero it.
+    pub feed_key: Pubkey, // 32
 }
 
 impl fmt::Display for StakeMirror {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, bump_seed: {}, builder: {}, tier: {}, committed_rate_bits_per_sec: {}, source_slot: {}, relayer: {}",
+            "account_type: {}, owner: {}, bump_seed: {}, stake_ref: {}, builder: {}, tier: {}, committed_rate_bits_per_sec: {}, source_slot: {}, relayer: {}, feed_key: {}",
             self.account_type,
             self.owner,
             self.bump_seed,
+            self.stake_ref,
             self.builder,
             self.tier,
             self.committed_rate_bits_per_sec,
             self.source_slot,
-            self.relayer
+            self.relayer,
+            self.feed_key
         )
     }
 }
@@ -129,12 +153,14 @@ impl TryFrom<&[u8]> for StakeMirror {
             account_type: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             owner: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             bump_seed: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            stake_ref: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             builder: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             tier: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             committed_rate_bits_per_sec: BorshDeserialize::deserialize(&mut data)
                 .unwrap_or_default(),
             source_slot: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             relayer: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            feed_key: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::StakeMirror {
@@ -167,6 +193,10 @@ impl Validate for StakeMirror {
             msg!("Invalid account type: {}", self.account_type);
             return Err(DoubleZeroError::InvalidAccountType);
         }
+        if self.stake_ref == Pubkey::default() {
+            msg!("StakeMirror must name the stake it mirrors");
+            return Err(DoubleZeroError::InvalidArgument);
+        }
         if self.builder == Pubkey::default() {
             msg!("StakeMirror must name a builder");
             return Err(DoubleZeroError::InvalidArgument);
@@ -188,11 +218,13 @@ mod tests {
             account_type: AccountType::StakeMirror,
             owner: Pubkey::new_unique(),
             bump_seed: 254,
+            stake_ref: Pubkey::new_unique(),
             builder: Pubkey::new_unique(),
             tier,
             committed_rate_bits_per_sec: 1_000_000_000,
             source_slot: 123_456,
             relayer: Pubkey::new_unique(),
+            feed_key: Pubkey::default(),
         }
     }
 
@@ -212,18 +244,34 @@ mod tests {
         let mut val = mirror(StakeTier::UpTo1Gbps);
         val.account_type = AccountType::Feed;
         let data = borsh::to_vec(&val).unwrap();
-        assert!(StakeMirror::try_from(&data[..]).is_err());
+        assert_eq!(
+            StakeMirror::try_from(&data[..]).unwrap_err(),
+            ProgramError::InvalidAccountData
+        );
     }
 
+    /// Every key on a mirror identifies something a reader has to be able to check: the stake it
+    /// came from, whose stake it is, and who vouched for it. A default in any of the three is an
+    /// unfinished write, not a valid mirror.
     #[test]
-    fn test_stake_mirror_requires_builder_and_relayer() {
-        let mut val = mirror(StakeTier::UpTo1Gbps);
-        val.builder = Pubkey::default();
-        assert!(val.validate().is_err());
+    fn test_stake_mirror_requires_stake_builder_and_relayer() {
+        for zero in [
+            |m: &mut StakeMirror| m.stake_ref = Pubkey::default(),
+            |m: &mut StakeMirror| m.builder = Pubkey::default(),
+            |m: &mut StakeMirror| m.relayer = Pubkey::default(),
+        ] {
+            let mut val = mirror(StakeTier::UpTo1Gbps);
+            zero(&mut val);
+            assert_eq!(val.validate(), Err(DoubleZeroError::InvalidArgument));
+        }
+    }
 
-        let mut val = mirror(StakeTier::UpTo1Gbps);
-        val.relayer = Pubkey::default();
-        assert!(val.validate().is_err());
+    /// A fresh mirror backs no feed. `CreateFeed` reads this to decide whether the stake is spent.
+    #[test]
+    fn test_stake_mirror_starts_unclaimed() {
+        let val = mirror(StakeTier::UpTo1Gbps);
+        val.validate().unwrap();
+        assert_eq!(val.feed_key, Pubkey::default());
     }
 
     /// An account that was never written decodes as tier None, which covers nothing. A missing

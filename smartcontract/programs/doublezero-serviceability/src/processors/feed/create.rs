@@ -1,9 +1,9 @@
 use crate::{
     authorize::authorize,
-    error::DoubleZeroError,
+    error::{DoubleZeroError, Validate},
     pda::{get_feed_pda, get_stake_mirror_pda},
     seeds::{SEED_FEED, SEED_PREFIX},
-    serializer::try_acc_create,
+    serializer::{try_acc_create, try_acc_write},
     state::{
         accounttype::AccountType,
         feature_flags::{is_feature_enabled, FeatureFlag},
@@ -73,18 +73,20 @@ pub fn process_create_feed(
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
-    // The tail holds the builder's StakeMirror, the payer's Permission account, both, or neither.
+    // The tail holds the stake's StakeMirror, the payer's Permission account, both, or neither.
     // Each is found by matching its PDA rather than by position, so a caller that sends one is not
     // forced to send the other, and a pre-RFC-28 caller that sends neither still works.
     let tail: Vec<&AccountInfo> = accounts_iter.collect();
-    let stake_mirror_account = (value.builder != Pubkey::default()).then(|| {
-        let (expected, _) = get_stake_mirror_pda(program_id, &value.builder);
-        tail.iter().copied().find(|a| a.key == &expected)
-    });
+    let stake_mirror_key = (value.builder != Pubkey::default())
+        .then(|| get_stake_mirror_pda(program_id, &value.stake_ref).0);
+    let stake_mirror_account = stake_mirror_key
+        .and_then(|expected| tail.iter().copied().find(|a| a.key == &expected));
+    // Filter by key, not by identity: a caller may pass the mirror twice, and a stray copy left in
+    // the iterator would be read as the Permission account.
     let mut authorize_iter = tail
         .iter()
         .copied()
-        .filter(|a| !matches!(stake_mirror_account, Some(Some(m)) if std::ptr::eq(*a, m)));
+        .filter(|a| Some(*a.key) != stake_mirror_key);
 
     assert!(payer_account.is_signer, "Payer must be a signer");
     assert_eq!(
@@ -108,17 +110,13 @@ pub fn process_create_feed(
     validate_feed_name(&value.name)?;
     validate_feed_groups(&value.groups)?;
     validate_feed_stake_terms(value, globalstate.feature_flags)?;
-    if value.builder != Pubkey::default() {
-        let mirror_account = stake_mirror_account
-            .flatten()
-            .ok_or(DoubleZeroError::StakeMirrorMissing)?;
-        verify_stake_covers_rate(
-            program_id,
-            mirror_account,
-            &value.builder,
-            value.committed_rate_bits_per_sec,
-        )?;
-    }
+    let claimed_mirror = if value.builder == Pubkey::default() {
+        None
+    } else {
+        let mirror_account = stake_mirror_account.ok_or(DoubleZeroError::StakeMirrorMissing)?;
+        let mirror = verify_stake_covers_rate(program_id, mirror_account, value)?;
+        Some((mirror_account, mirror))
+    };
     // Every feed is scoped to a real metro; there is no metro-agnostic feed.
     if value.exchange == Pubkey::default() {
         msg!("Feed exchange must be a real metro, not the default pubkey");
@@ -171,6 +169,13 @@ pub fn process_create_feed(
             &[bump_seed],
         ],
     )?;
+
+    // Spend the stake on this feed. Ordering matters: the feed account is created first, so a
+    // failure anywhere above leaves the stake unclaimed and the builder can retry.
+    if let Some((mirror_account, mut mirror)) = claimed_mirror {
+        mirror.feed_key = *feed_account.key;
+        try_acc_write(&mirror, mirror_account, payer_account, accounts)?;
+    }
 
     msg!("Created feed: {} @ {}", code, value.exchange);
 
@@ -275,33 +280,49 @@ pub(crate) fn validate_feed_stake_terms(
 fn verify_stake_covers_rate(
     program_id: &Pubkey,
     mirror_account: &AccountInfo,
-    builder: &Pubkey,
-    committed_rate_bits_per_sec: u64,
-) -> Result<(), DoubleZeroError> {
+    value: &FeedCreateArgs,
+) -> Result<StakeMirror, DoubleZeroError> {
+    if !mirror_account.is_writable {
+        msg!("Stake mirror must be writable so the feed can claim the stake");
+        return Err(DoubleZeroError::InvalidArgument);
+    }
     if mirror_account.data_is_empty() || mirror_account.owner != program_id {
-        msg!("No stake mirror written for builder {}", builder);
+        msg!("No stake mirror written for stake {}", value.stake_ref);
         return Err(DoubleZeroError::StakeDoesNotCoverRate);
     }
 
     let mirror =
         StakeMirror::try_from(mirror_account).map_err(|_| DoubleZeroError::InvalidAccountType)?;
+    // A mirror that fails its own invariants is a half-written account, not a stake. Check it
+    // before trusting the tier it asserts.
+    mirror.validate()?;
 
-    // The PDA seed already binds the account to `builder`. This catches a mirror whose stored
-    // builder disagrees with its own address, which would mean the writer got it wrong.
-    if mirror.builder != *builder {
+    // The PDA seed already binds the account to `stake_ref`. These catch a mirror whose stored keys
+    // disagree with its own address, which would mean the writer got it wrong.
+    if mirror.stake_ref != value.stake_ref {
+        msg!("Stake mirror names a different stake: {}", mirror.stake_ref);
+        return Err(DoubleZeroError::InvalidArgument);
+    }
+    if mirror.builder != value.builder {
         msg!("Stake mirror names a different builder: {}", mirror.builder);
         return Err(DoubleZeroError::InvalidArgument);
     }
 
-    if !mirror.tier.covers(committed_rate_bits_per_sec) {
+    // RFC-28: one feed per stake, so slashing one feed never reaches another.
+    if mirror.feed_key != Pubkey::default() {
+        msg!("Stake already backs feed {}", mirror.feed_key);
+        return Err(DoubleZeroError::StakeAlreadyBacksFeed);
+    }
+
+    if !mirror.tier.covers(value.committed_rate_bits_per_sec) {
         msg!(
             "Tier {} covers up to {} bits/sec, feed commits to {}",
             mirror.tier,
             mirror.tier.max_rate_bits_per_sec(),
-            committed_rate_bits_per_sec
+            value.committed_rate_bits_per_sec
         );
         return Err(DoubleZeroError::StakeDoesNotCoverRate);
     }
 
-    Ok(())
+    Ok(mirror)
 }

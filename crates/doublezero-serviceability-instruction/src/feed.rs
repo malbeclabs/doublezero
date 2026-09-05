@@ -106,6 +106,7 @@ mod tests {
             name: "Feed".to_string(),
             exchange,
             groups: vec![Pubkey::new_unique()],
+            ..Default::default()
         };
         let ix = create_feed(&pid, &payer, args);
         assert_eq!(ix.data[0], 112);

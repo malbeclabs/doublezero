@@ -491,6 +491,7 @@ mod tests {
             name: "Feed".to_string(),
             exchange: exchange_pk,
             groups: vec![],
+            ..Default::default()
         };
         let feed_for_get = feed.clone();
         client

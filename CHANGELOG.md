@@ -8,6 +8,14 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Serviceability
+  - `Feed` carries the RFC-28 stake terms: `builder`, `stake_ref`, `spec_id`, `sla_hash`, `committed_rate_bits_per_sec` and a lifecycle `status`. Setting them needs the new `allow-staked-feeds` feature flag, which no cluster has, so `CreateFeed` refuses a builder until the stake mirror and the attestor exist; without the flag the instruction behaves as before. The fields are appended rather than versioned, so a feed written before this decodes with them defaulted and `try_acc_write` resizes the account on the next update. `status` is the exception to defaulting: a short account reads `Active`, because reading it as `Pending` would pull every live catalog feed out of service. The rate is bits per second, not basis points, which is what `bps` means elsewhere in DoubleZero.
+  - New `StakeMirror` account (`AccountType` 19), one per builder, holding the stake a relayer saw on Solana: tier, the rate the builder declared, the source slot, and the key that vouched for it. The DZ ledger cannot read a Solana account, so this is an assertion rather than a proof, and `relayer` records whose assertion it is. `StakeTier::None` is the default and covers no rate, so an unwritten mirror and an absent one are the same answer to a reader. Nothing writes one yet; who is allowed to is the open trust-anchor question.
+  - `CreateFeed` refuses a staked feed whose committed rate the builder's stake tier does not cover, reading the tier from the builder's `StakeMirror`. The mirror account is found by matching its PDA rather than by position, so a caller that sends one is not obliged to also send a `Permission` account and a caller that sends neither is unaffected. Two errors rather than one generic argument failure: `StakeMirrorMissing` (119) when the account is left out, `StakeDoesNotCoverRate` (120) when the stake is absent or too small.
+  - Test coverage for the RFC-28 publish-rights path, which needs no new instruction. A feed's multicast groups are created with `owner` set to the builder, and `AddMulticastGroupPubAllowlist` authorizes on `mgroup.owner == payer`, so the builder grants its own publish rights without the catalog admin that created the feed. The test walks it with two distinct signers.
+- SDK
+  - The TypeScript and Python `Feed` deserializers read the RFC-28 tail and synthesize `Active` for an account that carries no status byte, matching the Rust program. New `feed_legacy` fixture covers that path alongside the updated `feed` fixture.
+
 ## [v0.39.0](https://github.com/malbeclabs/doublezero/compare/client/v0.38.0...client/v0.39.0) - 2026-09-04
 
 ### Breaking

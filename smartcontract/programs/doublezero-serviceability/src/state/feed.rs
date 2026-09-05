@@ -6,6 +6,39 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt;
 
+/// Where a feed sits in the RFC-28 deployment lifecycle.
+///
+/// A feed created without a stake is `Active` on creation: the pre-RFC-28 catalog feeds have no
+/// builder to attest and sell seats today. A staked feed starts `Pending` and an attestor verdict
+/// moves it to `Active`.
+#[repr(u8)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Eq, Clone, Copy, Default)]
+#[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum FeedStatus {
+    /// Staked and created, waiting on a conformance verdict. No seats sell.
+    #[default]
+    Pending = 0,
+    /// Publishing and sellable.
+    Active = 1,
+    /// Publication stopped by the builder. Resumable.
+    Halted = 2,
+    /// Terminal. Set after the thirty-day notice elapses.
+    Retired = 3,
+}
+
+impl fmt::Display for FeedStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            FeedStatus::Pending => "pending",
+            FeedStatus::Active => "active",
+            FeedStatus::Halted => "halted",
+            FeedStatus::Retired => "retired",
+        };
+        write!(f, "{s}")
+    }
+}
+
 /// A serviceability catalog entry: one SKU scoped to a single metro (`exchange`), holding the
 /// multicast groups joinable there.
 ///
@@ -30,6 +63,40 @@ pub struct Feed {
     pub name: String,              // 4 + len
     pub exchange: Pubkey,          // 32 (PDA seed, immutable) - the metro this feed serves
     pub groups: Vec<Pubkey>,       // 4 + 32*len - multicast groups joinable in this metro
+
+    // RFC-28 fields. Everything below is absent from feeds created before RFC-28, so every one of
+    // them decodes to a default on a short account and is written back on the next update.
+    /// The builder that deployed this feed and posted its stake, zero for a catalog feed with no
+    /// builder. This is the key the `StakeMirror` is written against.
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
+        )
+    )]
+    pub builder: Pubkey, // 32
+    /// The `BuilderStake` PDA on Solana holding this feed's deposit. A record, not a check: the DZ
+    /// ledger cannot read a Solana account, so the covering check runs against `StakeMirror`.
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
+        )
+    )]
+    pub stake_ref: Pubkey, // 32
+    /// The `edge-feed-spec` wire format this feed conforms to, as `<spec>@<version>`
+    /// (e.g. `top-of-book@v1.0.0`). A string, not an enum: specs are added in `edge-feed-spec`
+    /// without a program upgrade.
+    pub spec_id: String, // 4 + len
+    /// SHA-256 of the service level the builder declared at deployment. The declaration lives
+    /// offchain; slashing measures against it, so the hash pins which text was declared.
+    pub sla_hash: [u8; 32], // 32
+    /// The rate this feed committed to, in bits per second. `u64::MAX` is the unmetered tier.
+    /// Not basis points: `bps` means basis points elsewhere in DoubleZero.
+    pub committed_rate_bits_per_sec: u64, // 8
+    pub status: FeedStatus, // 1
 }
 
 impl Feed {
@@ -48,14 +115,18 @@ impl fmt::Display for Feed {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, bump_seed: {}, code: {}, name: {}, exchange: {}, groups: {}",
+            "account_type: {}, owner: {}, bump_seed: {}, code: {}, name: {}, exchange: {}, groups: {}, builder: {}, spec_id: {}, committed_rate_bits_per_sec: {}, status: {}",
             self.account_type,
             self.owner,
             self.bump_seed,
             self.code,
             self.name,
             self.exchange,
-            self.groups.len()
+            self.groups.len(),
+            self.builder,
+            self.spec_id,
+            self.committed_rate_bits_per_sec,
+            self.status
         )
     }
 }
@@ -72,6 +143,15 @@ impl TryFrom<&[u8]> for Feed {
             name: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             exchange: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             groups: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            builder: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            stake_ref: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            spec_id: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            sla_hash: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            committed_rate_bits_per_sec: BorshDeserialize::deserialize(&mut data)
+                .unwrap_or_default(),
+            // Not `Pending`: a feed account written before RFC-28 has no status byte, and reading
+            // one as Pending would pull every live catalog feed out of service.
+            status: BorshDeserialize::deserialize(&mut data).unwrap_or(FeedStatus::Active),
         };
 
         if out.account_type != AccountType::Feed {
@@ -118,6 +198,7 @@ mod tests {
             name: "Shreds".to_string(),
             exchange,
             groups,
+            ..Default::default()
         }
     }
 
@@ -144,6 +225,47 @@ mod tests {
 
         assert_eq!(feed.groups_for(&fra), &[g1, g2]);
         assert_eq!(feed.groups_for(&Pubkey::new_unique()), &[] as &[Pubkey]);
+    }
+
+    /// A feed account written before RFC-28 has no tail. It must still decode, and it must decode
+    /// as Active: reading it as Pending would pull every live catalog feed out of service.
+    #[test]
+    fn test_pre_rfc28_feed_decodes_active_with_defaults() {
+        let exchange = Pubkey::new_unique();
+        let group = Pubkey::new_unique();
+        let mut pre_rfc28 = Vec::new();
+        AccountType::Feed.serialize(&mut pre_rfc28).unwrap();
+        Pubkey::new_unique().serialize(&mut pre_rfc28).unwrap();
+        1u8.serialize(&mut pre_rfc28).unwrap();
+        "shreds".to_string().serialize(&mut pre_rfc28).unwrap();
+        "Shreds".to_string().serialize(&mut pre_rfc28).unwrap();
+        exchange.serialize(&mut pre_rfc28).unwrap();
+        vec![group].serialize(&mut pre_rfc28).unwrap();
+
+        let feed = Feed::try_from(&pre_rfc28[..]).unwrap();
+        assert_eq!(feed.groups_for(&exchange), &[group]);
+        assert_eq!(feed.status, FeedStatus::Active);
+        assert_eq!(feed.builder, Pubkey::default());
+        assert_eq!(feed.stake_ref, Pubkey::default());
+        assert_eq!(feed.spec_id, "");
+        assert_eq!(feed.sla_hash, [0u8; 32]);
+        assert_eq!(feed.committed_rate_bits_per_sec, 0);
+    }
+
+    /// The RFC-28 tail round-trips, and a staked feed keeps the Pending it was created with.
+    #[test]
+    fn test_staked_feed_roundtrip_keeps_pending() {
+        let mut val = feed_with(Pubkey::new_unique(), vec![Pubkey::new_unique()]);
+        val.builder = Pubkey::new_unique();
+        val.stake_ref = Pubkey::new_unique();
+        val.spec_id = "top-of-book@v1.0.0".to_string();
+        val.sla_hash = [7u8; 32];
+        val.committed_rate_bits_per_sec = 1_000_000_000;
+        val.status = FeedStatus::Pending;
+
+        let data = borsh::to_vec(&val).unwrap();
+        assert_eq!(Feed::try_from(&data[..]).unwrap(), val);
+        assert_eq!(data.len(), borsh::object_length(&val).unwrap());
     }
 
     #[test]

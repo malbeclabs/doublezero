@@ -12,6 +12,8 @@ from serviceability.state import (
     Contributor,
     Device,
     Exchange,
+    FEED_STATUS_ACTIVE,
+    FEED_STATUS_PENDING,
     Feed,
     GlobalConfig,
     GlobalState,
@@ -616,6 +618,12 @@ class TestFixtureFeed:
                 "GroupsLen": len(feed.groups),
                 "Group0": feed.groups[0],
                 "Group1": feed.groups[1],
+                "Builder": feed.builder,
+                "StakeRef": feed.stake_ref,
+                "SpecId": feed.spec_id,
+                "SlaHash": feed.sla_hash.hex(),
+                "CommittedRateBitsPerSec": feed.committed_rate_bits_per_sec,
+                "Status": feed.status,
             },
         )
         assert feed.account_type == 18
@@ -623,6 +631,29 @@ class TestFixtureFeed:
         assert feed.code == "shreds"
         assert feed.name == "Shreds"
         assert len(feed.groups) == 2
+        assert feed.status == FEED_STATUS_PENDING
+
+    def test_legacy_deserialize(self):
+        # A feed written before RFC-28 ends after groups. The stake fields default, and the status
+        # reads Active: reading it as Pending would show every live catalog feed as out of service.
+        data, meta = _load_fixture("feed_legacy")
+        feed = Feed.from_bytes(data)
+        _assert_fields(
+            meta["fields"],
+            {
+                "Code": feed.code,
+                "Exchange": feed.exchange,
+                "GroupsLen": len(feed.groups),
+                "Group0": feed.groups[0],
+                "Status": feed.status,
+            },
+        )
+        assert feed.status == FEED_STATUS_ACTIVE
+        assert feed.builder == Pubkey.default()
+        assert feed.stake_ref == Pubkey.default()
+        assert feed.spec_id == ""
+        assert feed.sla_hash == b"\x00" * 32
+        assert feed.committed_rate_bits_per_sec == 0
 
 
 class TestFixtureAccessPassLegacyCapDefaults:

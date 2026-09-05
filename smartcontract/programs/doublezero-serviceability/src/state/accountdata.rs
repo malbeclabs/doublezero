@@ -5,8 +5,8 @@ use crate::{
         exchange::Exchange, feed::Feed, globalconfig::GlobalConfig, globalstate::GlobalState,
         index::Index, link::Link, location::Location, multicastgroup::MulticastGroup,
         permission::Permission, programconfig::ProgramConfig,
-        resource_extension::ResourceExtensionOwned, tenant::Tenant, topology::TopologyInfo,
-        user::User,
+        resource_extension::ResourceExtensionOwned, stake_mirror::StakeMirror, tenant::Tenant,
+        topology::TopologyInfo, user::User,
     },
 };
 use solana_program::program_error::ProgramError;
@@ -33,6 +33,7 @@ pub enum AccountData {
     Index(Index),
     Topology(TopologyInfo),
     Feed(Feed),
+    StakeMirror(StakeMirror),
 }
 
 impl AccountData {
@@ -56,6 +57,7 @@ impl AccountData {
             AccountData::Index(_) => "Index",
             AccountData::Topology(_) => "Topology",
             AccountData::Feed(_) => "Feed",
+            AccountData::StakeMirror(_) => "StakeMirror",
         }
     }
 
@@ -79,6 +81,7 @@ impl AccountData {
             AccountData::Index(index) => index.to_string(),
             AccountData::Topology(topology) => topology.to_string(),
             AccountData::Feed(feed) => feed.to_string(),
+            AccountData::StakeMirror(m) => m.to_string(),
         }
     }
 
@@ -217,6 +220,14 @@ impl AccountData {
             Err(DoubleZeroError::InvalidAccountType)
         }
     }
+
+    pub fn get_stake_mirror(&self) -> Result<StakeMirror, DoubleZeroError> {
+        if let AccountData::StakeMirror(mirror) = self {
+            Ok(mirror.clone())
+        } else {
+            Err(DoubleZeroError::InvalidAccountType)
+        }
+    }
 }
 
 impl TryFrom<&[u8]> for AccountData {
@@ -263,6 +274,9 @@ impl TryFrom<&[u8]> for AccountData {
                 bytes as &[u8],
             )?)),
             AccountType::Feed => Ok(AccountData::Feed(Feed::try_from(bytes as &[u8])?)),
+            AccountType::StakeMirror => Ok(AccountData::StakeMirror(StakeMirror::try_from(
+                bytes as &[u8],
+            )?)),
         }
     }
 }

@@ -20,6 +20,8 @@ import {
   deserializeAccessPass,
   deserializeTenant,
   deserializeFeed,
+  FEED_STATUS_ACTIVE,
+  FEED_STATUS_PENDING,
 } from "../state.js";
 
 const FIXTURES_DIR = join(
@@ -632,6 +634,12 @@ describe("Feed fixture", () => {
       GroupsLen: feed.groups.length,
       Group0: feed.groups[0],
       Group1: feed.groups[1],
+      Builder: feed.builder,
+      StakeRef: feed.stakeRef,
+      SpecId: feed.specId,
+      SlaHash: Buffer.from(feed.slaHash).toString("hex"),
+      CommittedRateBitsPerSec: feed.committedRateBitsPerSec,
+      Status: feed.status,
     });
 
     expect(feed.accountType).toBe(18);
@@ -639,6 +647,28 @@ describe("Feed fixture", () => {
     expect(feed.code).toBe("shreds");
     expect(feed.name).toBe("Shreds");
     expect(feed.groups).toHaveLength(2);
+    expect(feed.status).toBe(FEED_STATUS_PENDING);
+  });
+
+  // A feed written before RFC-28 ends after groups. The stake fields default, and the status reads
+  // active: reading it as pending would show every live catalog feed as out of service.
+  test("legacy deserialize", () => {
+    const [data, meta] = loadFixture("feed_legacy");
+    const feed = deserializeFeed(data);
+    assertFields(meta.fields, {
+      Code: feed.code,
+      Exchange: feed.exchange,
+      GroupsLen: feed.groups.length,
+      Group0: feed.groups[0],
+      Status: feed.status,
+    });
+
+    expect(feed.status).toBe(FEED_STATUS_ACTIVE);
+    expect(feed.builder.equals(PublicKey.default)).toBe(true);
+    expect(feed.stakeRef.equals(PublicKey.default)).toBe(true);
+    expect(feed.specId).toBe("");
+    expect(feed.slaHash).toEqual(new Uint8Array(32));
+    expect(feed.committedRateBitsPerSec).toBe(0n);
   });
 });
 

@@ -8,8 +8,8 @@ use crate::{
         SEED_DEVICE_TUNNEL_BLOCK, SEED_DZ_PREFIX_BLOCK, SEED_EXCHANGE, SEED_FEED, SEED_GLOBALSTATE,
         SEED_INDEX, SEED_LINK, SEED_LINK_IDS, SEED_LOCATION, SEED_MULTICASTGROUP_BLOCK,
         SEED_MULTICAST_GROUP, SEED_MULTICAST_PUBLISHER_BLOCK, SEED_PERMISSION, SEED_PREFIX,
-        SEED_PROGRAM_CONFIG, SEED_SEGMENT_ROUTING_IDS, SEED_TENANT, SEED_TOPOLOGY, SEED_TUNNEL_IDS,
-        SEED_USER, SEED_USER_TUNNEL_BLOCK, SEED_VRF_IDS,
+        SEED_PROGRAM_CONFIG, SEED_SEGMENT_ROUTING_IDS, SEED_STAKE_MIRROR, SEED_TENANT,
+        SEED_TOPOLOGY, SEED_TUNNEL_IDS, SEED_USER, SEED_USER_TUNNEL_BLOCK, SEED_VRF_IDS,
     },
     state::user::UserType,
 };
@@ -109,6 +109,14 @@ pub fn get_accesspass_pda(
 pub fn get_feed_pda(program_id: &Pubkey, code: &str, exchange: &Pubkey) -> (Pubkey, u8) {
     Pubkey::find_program_address(
         &[SEED_PREFIX, SEED_FEED, code.as_bytes(), exchange.as_ref()],
+        program_id,
+    )
+}
+
+/// One stake mirror per builder, so the builder key is the only seed.
+pub fn get_stake_mirror_pda(program_id: &Pubkey, builder: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[SEED_PREFIX, SEED_STAKE_MIRROR, builder.as_ref()],
         program_id,
     )
 }

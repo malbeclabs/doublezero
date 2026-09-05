@@ -126,6 +126,7 @@ mod tests {
             name: code.to_string(),
             exchange,
             groups: vec![],
+            ..Default::default()
         }
     }
 

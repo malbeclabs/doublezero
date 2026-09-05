@@ -134,9 +134,11 @@ func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- T
 }
 
 // discover performs a single discovery cycle: fetch users, filter, extract targets/keys,
-// merge with CLI values. The first return value reports whether the scan actually ran;
-// it is false when the scan was skipped (target_update_count unchanged), which callers
-// must not confuse with a scan that ran and matched nothing.
+// merge with CLI values. The first return value reports whether the scan actually ran,
+// and is meaningful only when err is nil: it is false when the scan was skipped
+// (target_update_count unchanged), which callers must not confuse with a scan that ran
+// and matched nothing. On error every other return value is unset, so callers check err
+// first.
 // The returned delivery maps map measurement target → result destination for targets
 // whose user has a non-empty ResultDestination, split by target type.
 func (d *TargetDiscovery) discover(ctx context.Context) (bool, []ProbeAddress, []ProbeAddress, [][32]byte, map[ProbeAddress]string, map[ProbeAddress]string, error) {

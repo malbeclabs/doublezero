@@ -19,6 +19,12 @@ import (
 const (
 	defaultReadTimeout = 1 * time.Second
 	stalePairTimeout   = 5 * time.Second
+
+	// minUnverifiedReplyInterval floors the rate limit on replies to probes that
+	// fail signature verification. verifyInterval of 0 disables pair rate
+	// limiting, which is fine for probes we authenticated but would leave the
+	// unverified reply path — an order of magnitude of amplification — uncapped.
+	minUnverifiedReplyInterval = 1 * time.Second
 )
 
 // senderState fields are only accessed from the single-goroutine epoll
@@ -236,13 +242,13 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 			// inbound geolocation. Reply off a throwaway state instead: the nonce
 			// it carries is never stored, so it authenticates nothing.
 			if !probe.Verify() {
-				if r.verifyInterval > 0 && !state.lastUnverifiedRx.IsZero() &&
-					now.Sub(state.lastUnverifiedRx) < r.verifyInterval {
-					continue
-				}
 				// Cap unverified replies at one per window per pubkey: the reply
 				// is an order of magnitude larger than the probe, so an unlimited
 				// reply path is a reflection amplifier.
+				interval := max(r.verifyInterval, minUnverifiedReplyInterval)
+				if !state.lastUnverifiedRx.IsZero() && now.Sub(state.lastUnverifiedRx) < interval {
+					continue
+				}
 				state.lastUnverifiedRx = now
 				state = &senderState{}
 				if r.logger != nil {

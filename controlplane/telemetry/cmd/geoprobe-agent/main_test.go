@@ -491,3 +491,40 @@ func TestRunOffsetListener_RejectsOffsetOutsideSlotWindow(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 	}
 }
+
+// getCurrentSlot serves its cache indefinitely when ledger RPC fails. A frozen
+// slot would freeze the replay window with it, so ingestion refuses a reference
+// that is too old to mean "now".
+func TestSlotReference(t *testing.T) {
+	now := time.Now()
+
+	tests := []struct {
+		name     string
+		cachedAt time.Time
+		wantErr  bool
+	}{
+		{"just fetched", now, false},
+		{"one refresh period old", now.Add(-geoprobe.SlotCacheTTL), false},
+		{"at the age bound", now.Add(-maxSlotReferenceAge), false},
+		{"past the age bound", now.Add(-maxSlotReferenceAge - time.Second), true},
+		{"never fetched", time.Time{}, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			slot, err := slotReference(1_000_000, tt.cachedAt, now)
+			if tt.wantErr {
+				if err == nil {
+					t.Fatalf("expected a stale-reference error, got slot %d", slot)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if slot != 1_000_000 {
+				t.Errorf("expected slot 1000000, got %d", slot)
+			}
+		})
+	}
+}

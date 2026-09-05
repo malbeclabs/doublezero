@@ -33,7 +33,10 @@ type mockSentPacket struct {
 }
 
 type mockReply struct {
-	data   []byte
+	data []byte
+	// src is the reply's source address. When nil the mock answers from the
+	// host the matching echo request was sent to, like a well-behaved target.
+	src    net.IP
 	rxTime time.Time
 }
 
@@ -45,16 +48,47 @@ func (m *mockICMPSocket) sendEcho(dst net.IP, payload []byte) (time.Time, error)
 	return txTime, nil
 }
 
-func (m *mockICMPSocket) recvEcho(buf []byte) (int, time.Time, error) {
+func (m *mockICMPSocket) recvEcho(buf []byte) (int, net.IP, time.Time, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if len(m.replies) == 0 {
-		return 0, time.Time{}, syscall.ETIMEDOUT
+		return 0, nil, time.Time{}, syscall.ETIMEDOUT
 	}
 	reply := m.replies[0]
 	m.replies = m.replies[1:]
 	n := copy(buf, reply.data)
-	return n, reply.rxTime, nil
+	src := reply.src
+	if src == nil {
+		src = m.probedHostLocked(reply.data)
+	}
+	return n, src, reply.rxTime, nil
+}
+
+// probedHostLocked returns the destination of the sent echo request whose seq
+// matches the given reply, so unattributed mock replies come from the host that
+// was actually probed. Caller holds m.mu.
+func (m *mockICMPSocket) probedHostLocked(reply []byte) net.IP {
+	seq, ok := echoSeq(reply)
+	if ok {
+		for _, sent := range m.sent {
+			if sentSeq, ok := echoSeq(sent.payload); ok && sentSeq == seq {
+				return sent.dst
+			}
+		}
+	}
+	return net.IPv4(127, 0, 0, 1)
+}
+
+func echoSeq(pkt []byte) (int, bool) {
+	msg, err := icmp.ParseMessage(icmpProtocol, pkt)
+	if err != nil {
+		return 0, false
+	}
+	echo, ok := msg.Body.(*icmp.Echo)
+	if !ok {
+		return 0, false
+	}
+	return echo.Seq, true
 }
 
 func (m *mockICMPSocket) setReadDeadline(t time.Time) error {
@@ -381,4 +415,46 @@ func TestICMPPinger_Integration_MeasureAll_Localhost(t *testing.T) {
 	rtt := results[addr]
 	assert.Greater(t, rtt, uint64(0))
 	assert.Less(t, rtt, uint64(10*time.Millisecond))
+}
+
+// ID+seq are guessable, so a reply from any other host must not be credited as
+// the target's RTT.
+func TestICMPPinger_MeasureOne_IgnoresMismatchedSource(t *testing.T) {
+	mock := &mockICMPSocket{}
+	p := newMockICMPPinger(mock)
+	defer p.Close()
+	addr := ProbeAddress{Host: "44.0.0.1", Port: 1}
+	require.NoError(t, p.AddProbe(addr))
+
+	mock.mu.Lock()
+	mock.replies = append(mock.replies, mockReply{
+		data:   buildEchoReply(0xBEEF, 1),
+		src:    net.IPv4(44, 0, 0, 9), // matching ID+seq, wrong host
+		rxTime: time.Now(),
+	})
+	mock.mu.Unlock()
+
+	_, ok := p.MeasureOne(context.Background(), addr)
+	assert.False(t, ok, "reply from an unprobed host should not produce an RTT")
+}
+
+func TestICMPPinger_MeasureAll_IgnoresMismatchedSource(t *testing.T) {
+	mock := &mockICMPSocket{}
+	p := newMockICMPPinger(mock)
+	defer p.Close()
+
+	addr := ProbeAddress{Host: "44.0.0.1", Port: 1}
+	require.NoError(t, p.AddProbe(addr))
+
+	mock.mu.Lock()
+	mock.replies = append(mock.replies, mockReply{
+		data:   buildEchoReply(0xBEEF, 1),
+		src:    net.IPv4(44, 0, 0, 9),
+		rxTime: time.Now(),
+	})
+	mock.mu.Unlock()
+
+	results, err := p.MeasureAll(context.Background())
+	require.NoError(t, err)
+	assert.Empty(t, results, "reply from an unprobed host should not produce a result")
 }

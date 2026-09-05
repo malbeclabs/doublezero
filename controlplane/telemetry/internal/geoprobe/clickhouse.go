@@ -152,6 +152,13 @@ func (w *ClickhouseWriter) Record(row OffsetRow) {
 	w.mu.Unlock()
 }
 
+// BufferedRows returns the number of rows waiting to be flushed.
+func (w *ClickhouseWriter) BufferedRows() int {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return len(w.buf)
+}
+
 func (w *ClickhouseWriter) connect(ctx context.Context) error {
 	if err := RunMigrations(w.cfg, w.log); err != nil {
 		return fmt.Errorf("migrations: %w", err)

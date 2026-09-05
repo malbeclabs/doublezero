@@ -184,6 +184,10 @@ func UnmarshalProbePacket(buf []byte) (*ProbePacket, error) {
 }
 
 func (p *ProbePacket) Verify() bool {
+	if isZeroPubkey(p.SenderPubkey) {
+		return false
+	}
+
 	var payload [probePayloadSize]byte
 	binary.BigEndian.PutUint32(payload[0:4], p.Seq)
 	binary.BigEndian.PutUint32(payload[4:8], p.Sec)
@@ -191,6 +195,18 @@ func (p *ProbePacket) Verify() bool {
 	copy(payload[12:44], p.SenderPubkey[:])
 
 	return ed25519.Verify(ed25519.PublicKey(p.SenderPubkey[:]), payload[:], p.Signature[:])
+}
+
+// isZeroPubkey reports whether pk is the all-zero key. Both ProbePacket and
+// ReplyPacket verify with a pubkey taken straight off the wire, and
+// ed25519.Verify accepts the all-zero (pubkey, signature) pair for a fraction
+// of messages: the zero key decodes to a valid point of order 4 rather than
+// being rejected, and with S and R also zero the verification equation holds
+// whenever the message hash lands on the right residue — about one message in
+// four, which an attacker reaches by varying a sequence number or timestamp.
+// No signer has the zero pubkey, so reject it before verifying.
+func isZeroPubkey(pk [32]byte) bool {
+	return pk == [32]byte{}
 }
 
 // marshalPayload writes the signed portion of the reply (everything before the
@@ -327,6 +343,10 @@ func NewReplyPacket(probe *ProbePacket, signer Signer, geoprobePubkey [32]byte, 
 }
 
 func (r *ReplyPacket) Verify() bool {
+	if isZeroPubkey(r.AuthorityPubkey) {
+		return false
+	}
+
 	payloadSize := replyHeaderSize + len(r.Offsets)*LocationOffsetSize
 	payload := make([]byte, payloadSize)
 	if _, err := r.marshalPayload(payload); err != nil {

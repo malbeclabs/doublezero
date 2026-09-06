@@ -5,8 +5,11 @@
 
 use crate::{
     error::DoubleZeroError,
-    processors::multicastgroup::feed::{
-        apply_groups, check_group_accounts, load_context, load_feeds, write_back,
+    processors::{
+        feed::require_feed_admits,
+        multicastgroup::feed::{
+            apply_groups, check_group_accounts, load_context, load_feeds, write_back,
+        },
     },
     state::{permission::permission_flags, user::UserStatus},
 };
@@ -72,6 +75,11 @@ pub fn process_subscribe_feed(
         feed_accounts,
         &[],
     )?;
+
+    // Every feed here is about to take a seat, so each must be publishing.
+    for (feed_key, feed) in &feeds {
+        require_feed_admits(feed_key, feed)?;
+    }
 
     let mut expected: Vec<Pubkey> = Vec::new();
     for (_, feed) in &feeds {

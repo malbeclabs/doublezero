@@ -4,6 +4,14 @@ use solana_pubkey::Pubkey;
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]
 pub enum ProgramConfiguration {
     Flag(ProgramFlagConfiguration),
+
+    /// The 2Z a deposit costs at each rate tier. All three must be non-zero and must not decrease
+    /// as the rate rises.
+    TierParameters {
+        up_to_1gbps_2z_amount: u64,
+        up_to_5gbps_2z_amount: u64,
+        unmetered_2z_amount: u64,
+    },
 }
 
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]

@@ -21,14 +21,14 @@ use spl_token_interface::instruction as token_instruction;
 
 use crate::{
     instruction::{BuilderStakeInstructionData, ProgramConfiguration, ProgramFlagConfiguration},
-    state::{self, BuilderStake, ProgramConfig},
+    state::{self, BuilderStake, ProgramConfig, TierParameters},
     DOUBLEZERO_MINT_KEY, ID,
 };
 
-// A change to either size means every deployed account of that type has to be migrated, so make
-// the change deliberate rather than incidental.
-const _: () = assert!(size_of::<BuilderStake>() == 136);
-const _: () = assert!(size_of::<ProgramConfig>() == 176);
+// A change to this size means every deployed BuilderStake has to be migrated, so make the change
+// deliberate rather than incidental. The program config needs no such check: it is allocated at
+// 10kb, so a new setting grows into slack rather than needing a realloc.
+const _: () = assert!(size_of::<BuilderStake>() == 144);
 
 solana_program_entrypoint::entrypoint!(try_process_instruction);
 
@@ -160,6 +160,37 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
             msg!("is_paused: {}", paused);
             program_config.set_is_paused(paused);
         }
+        ProgramConfiguration::TierParameters {
+            up_to_1gbps_2z_amount,
+            up_to_5gbps_2z_amount,
+            unmetered_2z_amount,
+        } => {
+            let tier_parameters = TierParameters::new(
+                up_to_1gbps_2z_amount,
+                up_to_5gbps_2z_amount,
+                unmetered_2z_amount,
+            );
+
+            // A table with a hole or a cheaper high tier is a mistake that would let a builder
+            // deploy a fast feed against a small deposit, so it never reaches the account.
+            if !tier_parameters.is_well_formed() {
+                msg!(
+                    "Tier amounts must be non-zero and must not decrease: {}, {}, {}",
+                    up_to_1gbps_2z_amount,
+                    up_to_5gbps_2z_amount,
+                    unmetered_2z_amount
+                );
+                return Err(ProgramError::InvalidInstructionData);
+            }
+
+            msg!(
+                "tier_parameters: {}, {}, {}",
+                up_to_1gbps_2z_amount,
+                up_to_5gbps_2z_amount,
+                unmetered_2z_amount
+            );
+            program_config.tier_parameters = tier_parameters;
+        }
     }
 
     Ok(())
@@ -192,6 +223,19 @@ fn try_initialize_builder_stake(
     let program_config =
         ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
     program_config.try_require_unpaused()?;
+
+    // Size the deposit before creating anything. An unset tier table sizes nothing, so a program
+    // that was unpaused before it was configured takes no stake rather than a free one.
+    let required_2z_amount = program_config
+        .tier_parameters
+        .required_2z_amount(committed_rate_bits_per_sec)
+        .ok_or_else(|| {
+            msg!(
+                "No tier amount configured for {} bits/sec",
+                committed_rate_bits_per_sec
+            );
+            ProgramError::InvalidAccountData
+        })?;
 
     // Account 1 funds both new accounts and is the builder the stake belongs to. The
     // create-account workflow requires it to be a writable signer.
@@ -270,14 +314,16 @@ fn try_initialize_builder_stake(
     builder_stake.builder = *builder_info.key;
     builder_stake.stake_index = stake_index;
     builder_stake.committed_rate_bits_per_sec = committed_rate_bits_per_sec;
+    builder_stake.required_2z_amount = required_2z_amount;
     builder_stake.bump_seed = builder_stake_bump;
     builder_stake.token_account_bump_seed = token_account_bump;
 
     msg!(
-        "Builder {} stake {} committed to {} bits/sec",
+        "Builder {} stake {} committed to {} bits/sec, requires {} 2Z",
         builder_info.key,
         stake_index,
-        committed_rate_bits_per_sec
+        committed_rate_bits_per_sec,
+        required_2z_amount
     );
 
     Ok(())
@@ -356,10 +402,16 @@ fn try_post_bond(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
     // otherwise leave the two disagreeing forever.
     builder_stake.bonded_2z_amount = try_token_account_amount(stake_token_account_info)?;
 
+    // Deposits accumulate rather than having to arrive in one transfer, so a stake can be short
+    // of its requirement. Nothing here refuses that: `Withdraw` is what must not drop a stake
+    // below its requirement, and only a funded stake is mirrored to the DZ ledger, so a short one
+    // backs no feed.
     msg!(
-        "Posted {} 2Z, stake now holds {}",
+        "Posted {} 2Z, stake now holds {} of {} required (funded: {})",
         amount,
-        builder_stake.bonded_2z_amount
+        builder_stake.bonded_2z_amount,
+        builder_stake.required_2z_amount,
+        builder_stake.is_funded()
     );
 
     Ok(())

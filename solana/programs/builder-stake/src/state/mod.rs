@@ -1,8 +1,10 @@
 mod builder_stake;
 mod program_config;
+mod tier_parameters;
 
 pub use builder_stake::*;
 pub use program_config::*;
+pub use tier_parameters::*;
 
 //
 

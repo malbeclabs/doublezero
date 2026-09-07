@@ -27,6 +27,14 @@ pub struct BuilderStake {
     /// 2Z held in this stake's token account, in the mint's smallest unit.
     pub bonded_2z_amount: u64,
 
+    /// What this stake has to hold for its committed rate, read from the tier table when the stake
+    /// was created and pinned here.
+    ///
+    /// Pinned rather than looked up on each read so that repricing a tier cannot retroactively
+    /// under-fund a stake that was fully funded when it was posted. RFC-28 fixes the deposit at
+    /// the price prevailing when the tier is set.
+    pub required_2z_amount: u64,
+
     /// The rate the feed backed by this stake may commit to, in bits per second. `u64::MAX` is the
     /// unmetered tier. Bits per second, not basis points: `bps` means basis points elsewhere in
     /// DoubleZero.
@@ -66,6 +74,12 @@ impl BuilderStake {
             ],
             &crate::ID,
         )
+    }
+
+    /// Whether this stake holds what its committed rate requires. A stake that is not funded backs
+    /// no feed: nothing mirrors it to the DZ ledger, so no feed can be created against it.
+    pub fn is_funded(&self) -> bool {
+        self.deposited_2z_amount >= self.required_2z_amount
     }
 
     pub fn checked_address(builder: &Pubkey, stake_index: u64, bump_seed: u8) -> Option<Pubkey> {

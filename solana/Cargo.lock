@@ -1377,6 +1377,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "doublezero-builder-stake"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "borsh",
+ "bytemuck",
+ "ctor",
+ "doublezero-program-tools",
+ "env_logger",
+ "log",
+ "ruint",
+ "solana-account-info",
+ "solana-cpi",
+ "solana-instruction",
+ "solana-loader-v3-interface",
+ "solana-msg",
+ "solana-program-entrypoint",
+ "solana-program-error",
+ "solana-program-pack",
+ "solana-program-test",
+ "solana-pubkey 3.0.0",
+ "solana-sdk",
+ "solana-system-interface",
+ "solana-sysvar",
+ "spl-associated-token-account-interface",
+ "spl-token-interface",
+]
+
+[[package]]
 name = "doublezero-passport"
 version = "0.2.0"
 dependencies = [

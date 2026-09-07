@@ -111,7 +111,11 @@ pub fn enforce_feed_metro_gate(
 /// way to release it.
 pub fn require_feed_admits(feed_key: &Pubkey, feed: &Feed) -> Result<(), DoubleZeroError> {
     if feed.status != FeedStatus::Active {
-        msg!("Feed {} is {}, so it admits no subscribers", feed_key, feed.status);
+        msg!(
+            "Feed {} is {}, so it admits no subscribers",
+            feed_key,
+            feed.status
+        );
         return Err(DoubleZeroError::FeedNotActive);
     }
     Ok(())

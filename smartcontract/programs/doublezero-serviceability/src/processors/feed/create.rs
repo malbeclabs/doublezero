@@ -79,8 +79,8 @@ pub fn process_create_feed(
     let tail: Vec<&AccountInfo> = accounts_iter.collect();
     let stake_mirror_key = (value.builder != Pubkey::default())
         .then(|| get_stake_mirror_pda(program_id, &value.stake_ref).0);
-    let stake_mirror_account = stake_mirror_key
-        .and_then(|expected| tail.iter().copied().find(|a| a.key == &expected));
+    let stake_mirror_account =
+        stake_mirror_key.and_then(|expected| tail.iter().copied().find(|a| a.key == &expected));
     // Filter by key, not by identity: a caller may pass the mirror twice, and a stray copy left in
     // the iterator would be read as the Permission account.
     let mut authorize_iter = tail

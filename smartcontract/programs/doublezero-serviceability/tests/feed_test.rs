@@ -639,10 +639,7 @@ async fn init_staked(
 
     let (mut banks_client, payer, recent_blockhash) = init_test_with_accounts(
         program_id,
-        &[(
-            mirror_pubkey,
-            stake_mirror(stake_ref, builder, tier, bump),
-        )],
+        &[(mirror_pubkey, stake_mirror(stake_ref, builder, tier, bump))],
     )
     .await;
 

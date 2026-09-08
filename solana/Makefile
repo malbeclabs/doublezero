@@ -1,3 +1,4 @@
+BUILDER_STAKE_PATH = programs/builder-stake/Cargo.toml
 PASSPORT_PATH = programs/passport/Cargo.toml
 REVENUE_DISTRIBUTION_PATH = programs/revenue-distribution/Cargo.toml
 
@@ -23,6 +24,7 @@ clean:
 
 .PHONY: build-sbf
 build-sbf:
+	cargo build-sbf --features $(CARGO_FEATURES) --manifest-path $(BUILDER_STAKE_PATH)
 	cargo build-sbf --features $(CARGO_FEATURES) --manifest-path $(PASSPORT_PATH)
 	cargo build-sbf --features $(CARGO_FEATURES) --manifest-path $(REVENUE_DISTRIBUTION_PATH)
 
@@ -50,6 +52,7 @@ build-sbf-mock:
 
 .PHONY: test-sbf
 test-sbf: build-sbf-mock
+	cargo test-sbf --features $(CARGO_FEATURES) --manifest-path $(BUILDER_STAKE_PATH)
 	cargo test-sbf --features $(CARGO_FEATURES) --manifest-path $(PASSPORT_PATH)
 	cargo test-sbf --features $(CARGO_FEATURES) --manifest-path $(REVENUE_DISTRIBUTION_PATH)
 

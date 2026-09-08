@@ -89,6 +89,9 @@ async fn test_nothing_is_withdrawable_during_the_hold() {
 }
 
 /// Once the hold elapses the excess comes out and the requirement stays behind.
+// Needs `SetHoldExpiry`, which a mainnet build refuses. The refusal itself is covered by
+// `test_moving_a_hold_is_refused_outside_a_development_build` on that leg.
+#[cfg(feature = "development")]
 #[tokio::test]
 async fn test_the_excess_comes_out_after_the_hold() {
     let (mut t, builder_key, stake_key, destination) = staked(500).await;
@@ -134,6 +137,9 @@ async fn test_the_excess_comes_out_after_the_hold() {
 
 /// The requirement is a floor even after the hold. This is what stops a builder walking its bond
 /// out from under a live feed.
+// Needs `SetHoldExpiry`, which a mainnet build refuses. The refusal itself is covered by
+// `test_moving_a_hold_is_refused_outside_a_development_build` on that leg.
+#[cfg(feature = "development")]
 #[tokio::test]
 async fn test_the_requirement_cannot_be_withdrawn() {
     let (mut t, builder_key, stake_key, destination) = staked(500).await;
@@ -166,6 +172,9 @@ async fn test_the_requirement_cannot_be_withdrawn() {
 }
 
 /// A stranger cannot withdraw another builder's bond, even to their own token account.
+// Needs `SetHoldExpiry`, which a mainnet build refuses. The refusal itself is covered by
+// `test_moving_a_hold_is_refused_outside_a_development_build` on that leg.
+#[cfg(feature = "development")]
 #[tokio::test]
 async fn test_only_the_builder_can_withdraw() {
     let (mut t, builder_key, _, destination) = staked(500).await;
@@ -195,6 +204,9 @@ async fn test_only_the_builder_can_withdraw() {
 }
 
 /// Only the admin can move a hold, even in a development build.
+// Needs `SetHoldExpiry`, which a mainnet build refuses. The refusal itself is covered by
+// `test_moving_a_hold_is_refused_outside_a_development_build` on that leg.
+#[cfg(feature = "development")]
 #[tokio::test]
 async fn test_only_the_admin_can_move_the_hold() {
     let (mut t, builder_key, stake_key, _) = staked(500).await;
@@ -217,5 +229,38 @@ async fn test_only_the_admin_can_move_the_hold() {
     assert_eq!(
         t.read_builder_stake(&stake_key).await.hold_expires_at,
         before
+    );
+}
+
+/// A mainnet build refuses to move a hold at all.
+///
+/// The other half of the gate, and the half that matters. `SetHoldExpiry` is present in every
+/// build so both decode the same bytes to the same variant; only a development build acts on it.
+/// This runs on the leg where the instruction must say no.
+#[cfg(not(feature = "development"))]
+#[tokio::test]
+async fn test_moving_a_hold_is_refused_outside_a_development_build() {
+    let (mut t, builder_key, stake_key, _) = staked(500).await;
+    let admin = t.upgrade_authority.pubkey();
+    let upgrade_authority = t.upgrade_authority.insecure_clone();
+
+    let before = t.read_builder_stake(&stake_key).await.hold_expires_at;
+
+    let err = t
+        .send(
+            common::set_hold_expiry(&admin, &builder_key, 0, 1),
+            &[&upgrade_authority],
+        )
+        .await
+        .expect_err("a mainnet build must not move a hold");
+    common::assert_instruction_error(
+        err,
+        InstructionError::from(u64::from(ProgramError::InvalidInstructionData)),
+    );
+
+    assert_eq!(
+        t.read_builder_stake(&stake_key).await.hold_expires_at,
+        before,
+        "the hold did not move"
     );
 }

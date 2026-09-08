@@ -29,10 +29,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.97.1
       - uses: Swatinem/rust-cache@v2
-      - name: Install agave solana tools
-        run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/v3.0.4/install)"
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+      - name: Solana toolchain
+        uses: ./.github/actions/solana-toolchain
+        with:
+          version: v3.0.4
       - name: Set up keypairs
         run: |
           echo "${{ secrets.DEVNET_KEYPAIR }}" > id.json

@@ -1,0 +1,87 @@
+name: Solana toolchain
+description: >
+  Install the Agave release named by `version` and put it on PATH.
+
+  Exists because eight workflow steps installed it the same way, one `curl` with
+  no retry, so any transient reset from release.anza.xyz failed a job before it
+  ran anything. Fixing that in eight places would have left the ninth copy to be
+  written wrong.
+
+inputs:
+  version:
+    description: Agave release to install, for example v3.0.12.
+    required: true
+  attempts:
+    description: How many times to try the download before giving up.
+    required: false
+    default: "3"
+
+runs:
+  using: composite
+  steps:
+    - name: Install Agave ${{ inputs.version }}
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        # Every wait here is bounded. A retry only helps a failure that arrives:
+        # a stalled handshake or a hung transfer would otherwise sit until the
+        # job's own timeout and never reach the backoff below.
+        readonly CONNECT_TIMEOUT=15   # seconds to establish the connection
+        readonly FETCH_TIMEOUT=120    # seconds for the whole script download
+        readonly INSTALL_TIMEOUT=600  # seconds for the installer, which downloads on our behalf
+
+        readonly ATTEMPTS="${{ inputs.attempts }}"
+        readonly SOLANA_HOME="$HOME/.local/share/solana"
+        readonly SOLANA_BIN="$SOLANA_HOME/install/active_release/bin"
+
+        # One file reused by every attempt, so a failed attempt leaves nothing behind.
+        installer="$(mktemp)"
+        trap 'rm -f "$installer"' EXIT
+
+        # Every runner here is Ubuntu, so coreutils `timeout` is present. Degrade rather than
+        # fail if that ever stops being true: an unbounded install is worse than no install only
+        # if it hangs, and a missing `timeout` would otherwise fail every job outright.
+        if command -v timeout >/dev/null 2>&1; then
+          run_installer() { timeout "$INSTALL_TIMEOUT" sh "$installer"; }
+        else
+          echo "coreutils timeout not found; the installer will run unbounded" >&2
+          run_installer() { sh "$installer"; }
+        fi
+
+        install_once() {
+          # Fetch and run as two steps rather than `sh -c "$(curl ...)"`. That form
+          # swallows a failed fetch: the substitution is empty, `sh -c ""` exits 0,
+          # and the step passes having installed nothing.
+          curl -sSfL \
+            --connect-timeout "$CONNECT_TIMEOUT" \
+            --max-time "$FETCH_TIMEOUT" \
+            "https://release.anza.xyz/${{ inputs.version }}/install" \
+            -o "$installer" || return 1
+
+          # The installer does its own downloading, which this cannot pass a timeout
+          # into, so bound the whole thing from outside.
+          run_installer || return 1
+
+          # It can fail after the fetch succeeded. Only a runnable binary proves the
+          # install landed.
+          "$SOLANA_BIN/solana" --version || return 1
+        }
+
+        for ((attempt = 1; attempt <= ATTEMPTS; attempt++)); do
+          if install_once; then
+            echo "$SOLANA_BIN" >> "$GITHUB_PATH"
+            exit 0
+          fi
+
+          # Whatever failed leaves partial state, so start the next attempt clean.
+          rm -rf "$SOLANA_HOME"
+
+          if ((attempt < ATTEMPTS)); then
+            echo "Agave install failed, retrying in $((attempt * 5))s" >&2
+            sleep $((attempt * 5))
+          fi
+        done
+
+        echo "Agave ${{ inputs.version }} would not install after $ATTEMPTS attempts" >&2
+        exit 1

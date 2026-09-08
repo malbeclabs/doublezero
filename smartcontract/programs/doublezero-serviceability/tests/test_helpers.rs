@@ -1,6 +1,7 @@
 use borsh::to_vec;
 use doublezero_serviceability::{
     entrypoint::process_instruction,
+    error::DoubleZeroError,
     instructions::*,
     pda::{
         get_contributor_pda, get_exchange_pda, get_globalconfig_pda, get_globalstate_pda,
@@ -20,10 +21,11 @@ use doublezero_serviceability::{
 };
 use solana_program_test::*;
 use solana_sdk::{
-    instruction::{AccountMeta, Instruction},
+    instruction::{AccountMeta, Instruction, InstructionError},
+    program_error::ProgramError,
     pubkey::Pubkey,
     signature::{Keypair, Signer},
-    transaction::Transaction,
+    transaction::{Transaction, TransactionError},
 };
 
 use std::any::type_name;
@@ -1028,4 +1030,54 @@ pub fn custom_error_code(err: &BanksClientError) -> Option<u32> {
         ) => Some(*code),
         _ => None,
     }
+}
+
+#[allow(dead_code)]
+/// The `Custom` code the program returns for `err`, derived from the enum rather than inlined
+/// so a renumbering of the error variants can never silently pass a hard-coded literal.
+pub fn custom_code(err: DoubleZeroError) -> u32 {
+    match ProgramError::from(err) {
+        ProgramError::Custom(code) => code,
+        other => panic!("expected Custom, got {other:?}"),
+    }
+}
+
+#[allow(dead_code)]
+/// Assert `result` failed at instruction index 0 with `Custom(expected)`.
+pub fn assert_custom_at_ix0(result: &Result<(), TransactionError>, expected: u32) {
+    match result {
+        Err(TransactionError::InstructionError(0, InstructionError::Custom(code))) => {
+            assert_eq!(*code, expected, "unexpected custom error code");
+        }
+        other => panic!("expected Custom({expected}) at instruction 0, got {other:?}"),
+    }
+}
+
+#[allow(dead_code)]
+/// NOTE: this intentionally does not return program logs. With the native `processor!` harness the
+/// guest program's `msg!` output is not surfaced to BanksClient, so the structured error code at
+/// instruction index 0 is the reliable signal for which check fired.
+pub async fn try_execute_and_get_error(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    instruction: DoubleZeroInstruction,
+    accounts: Vec<AccountMeta>,
+    payer: &solana_sdk::signature::Keypair,
+    extra_accounts: &[AccountMeta],
+) -> Result<(), TransactionError> {
+    let recent_blockhash = wait_for_new_blockhash(banks_client).await;
+    let mut transaction = create_transaction_with_extra_accounts(
+        program_id,
+        &instruction,
+        &accounts,
+        payer,
+        extra_accounts,
+    );
+    transaction.try_sign(&[payer], recent_blockhash).unwrap();
+
+    banks_client
+        .process_transaction_with_metadata(transaction)
+        .await
+        .expect("banks client failed")
+        .result
 }

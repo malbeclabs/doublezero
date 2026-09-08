@@ -52,6 +52,10 @@ pub mod permission_flags {
     pub const HEALTH_ORACLE: u128 = 1 << 11;
     /// QA operations.
     pub const QA: u128 = 1 << 12;
+    /// Can write `StakeMirror` accounts: the relayer that copies a builder's Solana stake onto
+    /// the DZ ledger. No legacy GlobalState key maps to this, so a holder needs a real Permission
+    /// account even while `RequirePermissionAccounts` is clear.
+    pub const STAKE_ORACLE: u128 = 1 << 18;
 
     /// Bitmask of every defined flag. Use to reject a Permission that grants nothing
     /// *real* — `permissions != 0` alone would accept a value made only of undefined
@@ -74,7 +78,8 @@ pub mod permission_flags {
         | USER_ADMIN
         | ACCESS_PASS_ADMIN
         | HEALTH_ORACLE
-        | QA;
+        | QA
+        | STAKE_ORACLE;
 }
 
 #[repr(u8)]

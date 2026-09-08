@@ -71,6 +71,7 @@ use crate::processors::{
         allocate::ResourceAllocateArgs, closeaccount::ResourceExtensionCloseAccountArgs,
         create::ResourceCreateArgs, deallocate::ResourceDeallocateArgs,
     },
+    stake_mirror::write::StakeMirrorWriteArgs,
     tenant::{
         add_administrator::TenantAddAdministratorArgs, create::TenantCreateArgs,
         delete::TenantDeleteArgs, remove_administrator::TenantRemoveAdministratorArgs,
@@ -258,6 +259,8 @@ pub enum DoubleZeroInstruction {
 
     SubscribeFeed(SubscribeFeedArgs),     // variant 117
     UnsubscribeFeed(UnsubscribeFeedArgs), // variant 118
+
+    WriteStakeMirror(StakeMirrorWriteArgs), // variant 119
 }
 
 impl DoubleZeroInstruction {
@@ -401,6 +404,9 @@ impl DoubleZeroInstruction {
             111 => Ok(Self::Deprecated111()),
 
             112 => Ok(Self::CreateFeed(FeedCreateArgs::try_from(rest).unwrap())),
+            119 => Ok(Self::WriteStakeMirror(
+                StakeMirrorWriteArgs::try_from(rest).unwrap(),
+            )),
             113 => Ok(Self::UpdateFeed(FeedUpdateArgs::try_from(rest).unwrap())),
             114 => Ok(Self::DeleteFeed(FeedDeleteArgs::try_from(rest).unwrap())),
             115 => Ok(Self::SetAccessPassFeeds(SetAccessPassFeedsArgs::try_from(rest).unwrap())),
@@ -554,6 +560,7 @@ impl DoubleZeroInstruction {
             Self::Deprecated111() => "Deprecated111".to_string(), // variant 111
 
             Self::CreateFeed(_) => "CreateFeed".to_string(), // variant 112
+            Self::WriteStakeMirror(_) => "WriteStakeMirror".to_string(), // variant 119
             Self::UpdateFeed(_) => "UpdateFeed".to_string(), // variant 113
             Self::DeleteFeed(_) => "DeleteFeed".to_string(), // variant 114
             Self::SetAccessPassFeeds(_) => "SetAccessPassFeeds".to_string(), // variant 115
@@ -698,6 +705,7 @@ impl DoubleZeroInstruction {
             Self::Deprecated111() => String::new(),            // variant 111
 
             Self::CreateFeed(args) => format!("{args:?}"), // variant 112
+            Self::WriteStakeMirror(args) => format!("{args:?}"), // variant 119
             Self::UpdateFeed(args) => format!("{args:?}"), // variant 113
             Self::DeleteFeed(args) => format!("{args:?}"), // variant 114
             Self::SetAccessPassFeeds(args) => format!("{args:?}"), // variant 115

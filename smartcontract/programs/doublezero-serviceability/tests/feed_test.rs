@@ -8,13 +8,13 @@ use doublezero_serviceability::{
     },
     processors::{
         feed::{create::FeedCreateArgs, delete::FeedDeleteArgs, update::FeedUpdateArgs},
-        permission::create::PermissionCreateArgs,
-        stake_mirror::write::StakeMirrorWriteArgs,
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
         multicastgroup::{
             allowlist::publisher::add::AddMulticastGroupPubAllowlistArgs,
             create::MulticastGroupCreateArgs,
         },
+        permission::create::PermissionCreateArgs,
+        stake_mirror::write::StakeMirrorWriteArgs,
     },
     resource::ResourceType,
     state::{
@@ -26,20 +26,10 @@ use doublezero_serviceability::{
     },
 };
 use solana_program_test::*;
-use solana_sdk::{
-    instruction::AccountMeta,
-    pubkey::Pubkey,
-    signature::Signer,
-};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signer};
 
 mod test_helpers;
 use test_helpers::*;
-
-
-/// Run `instruction` and return the structured `TransactionError` on failure so a negative test
-/// can match the exact `InstructionError::Custom(code)` at instruction index 0.
-///
-
 
 /// Plausible RFC-28 stake terms: a builder, the stake behind it, the spec it conforms to, the SLA
 /// it declared, and a 1 Gbps commitment.

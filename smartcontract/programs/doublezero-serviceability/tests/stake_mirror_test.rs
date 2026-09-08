@@ -157,12 +157,7 @@ async fn test_relayer_writes_and_updates_a_mirror() {
         &mut f.banks_client,
         recent_blockhash,
         f.program_id,
-        DoubleZeroInstruction::WriteStakeMirror(args(
-            stake_ref,
-            builder,
-            StakeTier::Unmetered,
-            11,
-        )),
+        DoubleZeroInstruction::WriteStakeMirror(args(stake_ref, builder, StakeTier::Unmetered, 11)),
         accounts(mirror_pubkey, f.globalstate_pubkey),
         &f.relayer,
         &[AccountMeta::new_readonly(relayer_permission, false)],
@@ -261,7 +256,10 @@ async fn test_a_mirror_cannot_change_builder() {
     .await;
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::InvalidArgument));
 
-    assert_eq!(get_mirror(&mut f.banks_client, mirror_pubkey).await.builder, builder);
+    assert_eq!(
+        get_mirror(&mut f.banks_client, mirror_pubkey).await.builder,
+        builder
+    );
 }
 
 /// A caller without `STAKE_ORACLE` cannot write a mirror, even the foundation payer that granted
@@ -335,5 +333,4 @@ async fn test_writing_is_refused_while_the_flag_is_clear() {
     )
     .await;
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
-
 }

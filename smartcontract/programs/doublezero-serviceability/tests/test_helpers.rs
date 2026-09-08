@@ -1035,6 +1035,7 @@ pub fn custom_error_code(err: &BanksClientError) -> Option<u32> {
 #[allow(dead_code)]
 /// The `Custom` code the program returns for `err`, derived from the enum rather than inlined
 /// so a renumbering of the error variants can never silently pass a hard-coded literal.
+#[allow(dead_code)]
 pub fn custom_code(err: DoubleZeroError) -> u32 {
     match ProgramError::from(err) {
         ProgramError::Custom(code) => code,
@@ -1042,8 +1043,8 @@ pub fn custom_code(err: DoubleZeroError) -> u32 {
     }
 }
 
-#[allow(dead_code)]
 /// Assert `result` failed at instruction index 0 with `Custom(expected)`.
+#[allow(dead_code)]
 pub fn assert_custom_at_ix0(result: &Result<(), TransactionError>, expected: u32) {
     match result {
         Err(TransactionError::InstructionError(0, InstructionError::Custom(code))) => {
@@ -1053,10 +1054,13 @@ pub fn assert_custom_at_ix0(result: &Result<(), TransactionError>, expected: u32
     }
 }
 
-#[allow(dead_code)]
+/// Run `instruction` and return the structured `TransactionError` on failure, so a negative test
+/// can match the exact `InstructionError::Custom(code)` at instruction index 0.
+///
 /// NOTE: this intentionally does not return program logs. With the native `processor!` harness the
 /// guest program's `msg!` output is not surfaced to BanksClient, so the structured error code at
 /// instruction index 0 is the reliable signal for which check fired.
+#[allow(dead_code)]
 pub async fn try_execute_and_get_error(
     banks_client: &mut BanksClient,
     program_id: Pubkey,

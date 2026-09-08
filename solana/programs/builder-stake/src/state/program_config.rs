@@ -21,8 +21,8 @@ pub struct ProgramConfig {
 
     _padding: [u8; 7],
 
-    /// What a deposit costs at each rate tier. Zero until an admin sets it, which is why a fresh
-    /// deployment starts paused: it can size no deposit.
+    /// What a bond costs at each rate tier. Zero until an admin sets it, which is why a fresh
+    /// deployment starts paused: it can size no bond.
     pub tier_parameters: TierParameters,
 
     _storage_gap: StorageGap<3>,

@@ -174,7 +174,7 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
             );
 
             // A table with a hole or a cheaper high tier is a mistake that would let a builder
-            // deploy a fast feed against a small deposit, so it never reaches the account.
+            // deploy a fast feed against a small bond, so it never reaches the account.
             if !tier_parameters.is_well_formed() {
                 msg!(
                     "Tier amounts must be non-zero and must not decrease: {}, {}, {}",
@@ -226,7 +226,7 @@ fn try_initialize_builder_stake(
         ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
     program_config.try_require_unpaused()?;
 
-    // Size the deposit before creating anything. An unset tier table sizes nothing, so a program
+    // Size the bond before creating anything. An unset tier table sizes nothing, so a program
     // that was unpaused before it was configured takes no stake rather than a free one.
     let required_2z_amount = program_config
         .tier_parameters
@@ -423,7 +423,7 @@ fn try_post_bond(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
     // otherwise leave the two disagreeing forever.
     builder_stake.bonded_2z_amount = try_token_account_amount(stake_token_account_info)?;
 
-    // Deposits accumulate rather than having to arrive in one transfer, so a stake can be short
+    // Bonds accumulate rather than having to arrive in one transfer, so a stake can be short
     // of its requirement. Nothing here refuses that: `Withdraw` is what must not drop a stake
     // below its requirement, and only a funded stake is mirrored to the DZ ledger, so a short one
     // backs no feed.

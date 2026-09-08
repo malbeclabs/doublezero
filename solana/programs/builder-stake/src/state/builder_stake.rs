@@ -80,7 +80,7 @@ impl BuilderStake {
     /// Whether this stake holds what its committed rate requires. A stake that is not funded backs
     /// no feed: nothing mirrors it to the DZ ledger, so no feed can be created against it.
     pub fn is_funded(&self) -> bool {
-        self.deposited_2z_amount >= self.required_2z_amount
+        self.bonded_2z_amount >= self.required_2z_amount
     }
 
     pub fn checked_address(builder: &Pubkey, stake_index: u64, bump_seed: u8) -> Option<Pubkey> {

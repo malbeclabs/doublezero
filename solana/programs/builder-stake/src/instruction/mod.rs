@@ -5,7 +5,7 @@ use solana_pubkey::Pubkey;
 pub enum ProgramConfiguration {
     Flag(ProgramFlagConfiguration),
 
-    /// The 2Z a deposit costs at each rate tier. All three must be non-zero and must not decrease
+    /// The 2Z a bond costs at each rate tier. All three must be non-zero and must not decrease
     /// as the rate rises.
     TierParameters {
         up_to_1gbps_2z_amount: u64,

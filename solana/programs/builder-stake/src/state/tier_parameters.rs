@@ -1,8 +1,8 @@
 use bytemuck::{Pod, Zeroable};
 
-/// What a deposit costs at each RFC-28 rate tier, in the 2Z mint's smallest unit.
+/// What a bond costs at each RFC-28 rate tier, in the 2Z mint's smallest unit.
 ///
-/// RFC-28 quotes the tiers in dollars (about $100k, $200k and $500k) but fixes the deposit "in 2Z,
+/// RFC-28 quotes the tiers in dollars (about $100k, $200k and $500k) but fixes the bond "in 2Z,
 /// at the price prevailing when the tier is set". So these are 2Z amounts an admin sets, not a
 /// price feed this program reads.
 ///
@@ -37,7 +37,7 @@ impl TierParameters {
         }
     }
 
-    /// The deposit a feed committing to `rate_bits_per_sec` must post.
+    /// The bond a feed committing to `rate_bits_per_sec` must post.
     ///
     /// `None` when this table has no amount for that tier. That is an unset table, not a free
     /// tier: a zero requirement would let a builder deploy a feed against nothing.

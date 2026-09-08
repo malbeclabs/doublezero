@@ -44,7 +44,7 @@ async fn test_committed_rate_picks_the_tier_amount() {
     }
 }
 
-/// A stake is funded once it holds its requirement, and deposits accumulate to get there.
+/// A stake is funded once it holds its requirement, and bonds accumulate to get there.
 #[tokio::test]
 async fn test_stake_is_funded_once_it_holds_the_requirement() {
     let mut t = common::start_test().await;
@@ -65,7 +65,7 @@ async fn test_stake_is_funded_once_it_holds_the_requirement() {
     // Short of the requirement. Allowed: a builder may fund in more than one transfer, and a stake
     // that is short backs no feed.
     t.send(
-        common::deposit(
+        common::post_bond(
             &builder_key,
             0,
             &source_token_account,
@@ -79,28 +79,28 @@ async fn test_stake_is_funded_once_it_holds_the_requirement() {
 
     // The last unit tips it over.
     t.send(
-        common::deposit(&builder_key, 0, &source_token_account, 1),
+        common::post_bond(&builder_key, 0, &source_token_account, 1),
         &[&builder],
     )
     .await
     .unwrap();
     let stake = t.read_builder_stake(&stake_key).await;
     assert!(stake.is_funded());
-    assert_eq!(stake.deposited_2z_amount, common::TIER_1GBPS);
+    assert_eq!(stake.bonded_2z_amount, common::TIER_1GBPS);
 
     // Over-funding is allowed. RFC-28 lets a builder withdraw the excess after the hold.
     t.send(
-        common::deposit(&builder_key, 0, &source_token_account, common::TIER_1GBPS),
+        common::post_bond(&builder_key, 0, &source_token_account, common::TIER_1GBPS),
         &[&builder],
     )
     .await
     .unwrap();
     let stake = t.read_builder_stake(&stake_key).await;
     assert!(stake.is_funded());
-    assert_eq!(stake.deposited_2z_amount, common::TIER_1GBPS * 2);
+    assert_eq!(stake.bonded_2z_amount, common::TIER_1GBPS * 2);
 }
 
-/// An unpaused program with no tier table sizes no deposit, so it takes no stake. Without this a
+/// An unpaused program with no tier table sizes no bond, so it takes no stake. Without this a
 /// misordered rollout would hand out stakes with a zero requirement.
 #[tokio::test]
 async fn test_unset_tier_table_takes_no_stake() {
@@ -120,7 +120,7 @@ async fn test_unset_tier_table_takes_no_stake() {
             &[&builder],
         )
         .await
-        .expect_err("no tier table means no deposit can be sized");
+        .expect_err("no tier table means no bond can be sized");
     common::assert_instruction_error(
         err,
         InstructionError::from(u64::from(ProgramError::InvalidAccountData)),
@@ -212,7 +212,7 @@ async fn test_an_unfunded_stake_pays_the_current_price() {
 
     // The old price no longer funds it.
     t.send(
-        common::deposit(&builder_key, 0, &source_token_account, common::TIER_1GBPS),
+        common::post_bond(&builder_key, 0, &source_token_account, common::TIER_1GBPS),
         &[&builder],
     )
     .await
@@ -223,7 +223,7 @@ async fn test_an_unfunded_stake_pays_the_current_price() {
 
     // The new price does.
     t.send(
-        common::deposit(
+        common::post_bond(
             &builder_key,
             0,
             &source_token_account,
@@ -236,7 +236,7 @@ async fn test_an_unfunded_stake_pays_the_current_price() {
     assert!(t.read_builder_stake(&stake_key).await.is_funded());
 }
 
-/// Repricing a tier does not move what an already funded stake owes. RFC-28 fixes the deposit at the
+/// Repricing a tier does not move what an already funded stake owes. RFC-28 fixes the bond at the
 /// price prevailing when the tier is set, so a funded stake stays funded.
 #[tokio::test]
 async fn test_repricing_a_tier_leaves_existing_stakes_alone() {
@@ -253,7 +253,7 @@ async fn test_repricing_a_tier_leaves_existing_stakes_alone() {
     .await
     .unwrap();
     t.send(
-        common::deposit(&builder_key, 0, &t.builder_2z_key, common::TIER_1GBPS),
+        common::post_bond(&builder_key, 0, &t.builder_2z_key, common::TIER_1GBPS),
         &[&builder],
     )
     .await

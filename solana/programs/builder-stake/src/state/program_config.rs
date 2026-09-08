@@ -7,6 +7,8 @@ use solana_msg::msg;
 use solana_program_error::{ProgramError, ProgramResult};
 use solana_pubkey::Pubkey;
 
+use super::TierParameters;
+
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]
 #[repr(C, align(8))]
 pub struct ProgramConfig {
@@ -19,7 +21,11 @@ pub struct ProgramConfig {
 
     _padding: [u8; 7],
 
-    _storage_gap: StorageGap<4>,
+    /// What a bond costs at each rate tier. Zero until an admin sets it, which is why a fresh
+    /// deployment starts paused: it can size no bond.
+    pub tier_parameters: TierParameters,
+
+    _storage_gap: StorageGap<3>,
 }
 
 impl PrecomputedDiscriminator for ProgramConfig {

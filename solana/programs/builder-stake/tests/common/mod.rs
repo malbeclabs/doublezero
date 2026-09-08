@@ -29,6 +29,11 @@ use spl_token_interface::state::{
 /// Enough 2Z to cover any tier in the tests without thinking about it.
 pub const TEST_2Z_SUPPLY: u64 = 1_000_000_000_000_000;
 
+/// Small, ordered stand-ins for RFC-28's $100k/$200k/$500k, so a test can assert on exact numbers.
+pub const TIER_1GBPS: u64 = 100_000;
+pub const TIER_5GBPS: u64 = 200_000;
+pub const TIER_UNMETERED: u64 = 500_000;
+
 pub struct TestSetup {
     pub context: ProgramTestContext,
     /// The program's upgrade authority, which is what `SetAdmin` checks.
@@ -160,17 +165,32 @@ impl TestSetup {
             .map_err(Into::into)
     }
 
-    /// Initialize, set the admin, and unpause. The state every test that touches a stake needs.
+    /// Initialize, set the admin, set the tier table, and unpause. The state every test that
+    /// touches a stake needs.
     pub async fn initialize_and_unpause(&mut self) {
+        self.initialize_and_set_admin().await;
+
+        let admin = self.upgrade_authority.pubkey();
+        let upgrade_authority = self.upgrade_authority.insecure_clone();
+        self.send(
+            set_tier_parameters(&admin, TIER_1GBPS, TIER_5GBPS, TIER_UNMETERED),
+            &[&upgrade_authority],
+        )
+        .await
+        .unwrap();
+        self.send(set_paused(&admin, false), &[&upgrade_authority])
+            .await
+            .unwrap();
+    }
+
+    /// Initialize and set the admin, leaving the tier table unset and the program paused.
+    pub async fn initialize_and_set_admin(&mut self) {
         let payer = self.context.payer.pubkey();
         self.send(initialize_program(&payer), &[]).await.unwrap();
 
         let admin = self.upgrade_authority.pubkey();
         let upgrade_authority = self.upgrade_authority.insecure_clone();
         self.send(set_admin(&admin), &[&upgrade_authority])
-            .await
-            .unwrap();
-        self.send(set_paused(&admin, false), &[&upgrade_authority])
             .await
             .unwrap();
     }
@@ -263,6 +283,30 @@ pub fn set_paused(admin: &Pubkey, paused: bool) -> Instruction {
         ],
         data: encode(&BuilderStakeInstructionData::ConfigureProgram(
             ProgramConfiguration::Flag(ProgramFlagConfiguration::IsPaused(paused)),
+        )),
+    }
+}
+
+pub fn set_tier_parameters(
+    admin: &Pubkey,
+    up_to_1gbps_2z_amount: u64,
+    up_to_5gbps_2z_amount: u64,
+    unmetered_2z_amount: u64,
+) -> Instruction {
+    use doublezero_builder_stake::instruction::ProgramConfiguration;
+
+    Instruction {
+        program_id: ID,
+        accounts: vec![
+            AccountMeta::new_readonly(*admin, true),
+            AccountMeta::new(ProgramConfig::find_address().0, false),
+        ],
+        data: encode(&BuilderStakeInstructionData::ConfigureProgram(
+            ProgramConfiguration::TierParameters {
+                up_to_1gbps_2z_amount,
+                up_to_5gbps_2z_amount,
+                unmetered_2z_amount,
+            },
         )),
     }
 }

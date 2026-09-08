@@ -21,13 +21,15 @@ use spl_token_interface::instruction as token_instruction;
 
 use crate::{
     instruction::{BuilderStakeInstructionData, ProgramConfiguration, ProgramFlagConfiguration},
-    state::{self, BuilderStake, ProgramConfig},
+    state::{self, BuilderStake, ProgramConfig, TierParameters},
     DOUBLEZERO_MINT_KEY, ID,
 };
 
 // A change to either size means every deployed account of that type has to be migrated, so make
-// the change deliberate rather than incidental.
-const _: () = assert!(size_of::<BuilderStake>() == 136);
+// the change deliberate rather than incidental. The program config is allocated at 10kb and so
+// never needs a realloc, but its check is what catches a new setting that overruns the storage gap
+// instead of coming out of it.
+const _: () = assert!(size_of::<BuilderStake>() == 144);
 const _: () = assert!(size_of::<ProgramConfig>() == 176);
 
 solana_program_entrypoint::entrypoint!(try_process_instruction);
@@ -160,6 +162,37 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
             msg!("is_paused: {}", paused);
             program_config.set_is_paused(paused);
         }
+        ProgramConfiguration::TierParameters {
+            up_to_1gbps_2z_amount,
+            up_to_5gbps_2z_amount,
+            unmetered_2z_amount,
+        } => {
+            let tier_parameters = TierParameters::new(
+                up_to_1gbps_2z_amount,
+                up_to_5gbps_2z_amount,
+                unmetered_2z_amount,
+            );
+
+            // A table with a hole or a cheaper high tier is a mistake that would let a builder
+            // deploy a fast feed against a small bond, so it never reaches the account.
+            if !tier_parameters.is_well_formed() {
+                msg!(
+                    "Tier amounts must be non-zero and must not decrease: {}, {}, {}",
+                    up_to_1gbps_2z_amount,
+                    up_to_5gbps_2z_amount,
+                    unmetered_2z_amount
+                );
+                return Err(ProgramError::InvalidInstructionData);
+            }
+
+            msg!(
+                "tier_parameters: {}, {}, {}",
+                up_to_1gbps_2z_amount,
+                up_to_5gbps_2z_amount,
+                unmetered_2z_amount
+            );
+            program_config.tier_parameters = tier_parameters;
+        }
     }
 
     Ok(())
@@ -192,6 +225,19 @@ fn try_initialize_builder_stake(
     let program_config =
         ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
     program_config.try_require_unpaused()?;
+
+    // Size the bond before creating anything. An unset tier table sizes nothing, so a program
+    // that was unpaused before it was configured takes no stake rather than a free one.
+    let required_2z_amount = program_config
+        .tier_parameters
+        .required_2z_amount(committed_rate_bits_per_sec)
+        .ok_or_else(|| {
+            msg!(
+                "No tier amount configured for {} bits/sec",
+                committed_rate_bits_per_sec
+            );
+            ProgramError::InvalidAccountData
+        })?;
 
     // Account 1 funds both new accounts and is the builder the stake belongs to. The
     // create-account workflow requires it to be a writable signer.
@@ -270,14 +316,16 @@ fn try_initialize_builder_stake(
     builder_stake.builder = *builder_info.key;
     builder_stake.stake_index = stake_index;
     builder_stake.committed_rate_bits_per_sec = committed_rate_bits_per_sec;
+    builder_stake.required_2z_amount = required_2z_amount;
     builder_stake.bump_seed = builder_stake_bump;
     builder_stake.token_account_bump_seed = token_account_bump;
 
     msg!(
-        "Builder {} stake {} committed to {} bits/sec",
+        "Builder {} stake {} committed to {} bits/sec, requires {} 2Z",
         builder_info.key,
         stake_index,
-        committed_rate_bits_per_sec
+        committed_rate_bits_per_sec,
+        required_2z_amount
     );
 
     Ok(())
@@ -323,6 +371,25 @@ fn try_post_bond(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
         return Err(ProgramError::IncorrectAuthority);
     }
 
+    // A stake that is still short is held to the current tier table, not the one that was live
+    // when it was created. Creating a stake is permissionless and costs only rent, so pinning the
+    // requirement at creation would let a builder bank today's price in bulk and fund years later
+    // at a price a repricing was meant to replace. Once a stake is funded the requirement stops
+    // moving, so a builder who paid in full cannot be made short by a later change.
+    if !builder_stake.is_funded() {
+        let committed_rate_bits_per_sec = builder_stake.committed_rate_bits_per_sec;
+        builder_stake.required_2z_amount = program_config
+            .tier_parameters
+            .required_2z_amount(committed_rate_bits_per_sec)
+            .ok_or_else(|| {
+                msg!(
+                    "No tier amount configured for {} bits/sec",
+                    committed_rate_bits_per_sec
+                );
+                ProgramError::InvalidAccountData
+            })?;
+    }
+
     // Account 3 must be this stake's 2Z token account. Checked against the cached bump so a
     // caller cannot redirect the bond to another account.
     let (_, stake_token_account_info, _) = try_next_2z_token_pda_info(
@@ -356,10 +423,17 @@ fn try_post_bond(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
     // otherwise leave the two disagreeing forever.
     builder_stake.bonded_2z_amount = try_token_account_amount(stake_token_account_info)?;
 
+    // Bonds accumulate rather than having to arrive in one transfer, so a stake can be short
+    // of its requirement. Nothing here refuses that: `Withdraw` is what must not drop a stake
+    // below its requirement, and only a funded stake is mirrored to the DZ ledger, so a short one
+    // backs no feed.
+
     msg!(
-        "Posted {} 2Z, stake now holds {}",
+        "Posted {} 2Z, stake now holds {} of {} required (funded: {})",
         amount,
-        builder_stake.bonded_2z_amount
+        builder_stake.bonded_2z_amount,
+        builder_stake.required_2z_amount,
+        builder_stake.is_funded()
     );
 
     Ok(())

@@ -27,6 +27,15 @@ pub struct BuilderStake {
     /// 2Z held in this stake's token account, in the mint's smallest unit.
     pub bonded_2z_amount: u64,
 
+    /// What this stake has to hold for its committed rate.
+    ///
+    /// Follows the tier table while the stake is short, and stops moving once the stake is funded.
+    /// Both halves matter. Freezing it at creation would let a builder pre-create stakes for the
+    /// cost of rent and fund them after a repricing at the old price. Never freezing it would let
+    /// a repricing make a builder short after it had already paid in full, which RFC-28's "fixed
+    /// at the price prevailing when the tier is set" rules out.
+    pub required_2z_amount: u64,
+
     /// The rate the feed backed by this stake may commit to, in bits per second. `u64::MAX` is the
     /// unmetered tier. Bits per second, not basis points: `bps` means basis points elsewhere in
     /// DoubleZero.
@@ -66,6 +75,12 @@ impl BuilderStake {
             ],
             &crate::ID,
         )
+    }
+
+    /// Whether this stake holds what its committed rate requires. A stake that is not funded backs
+    /// no feed: nothing mirrors it to the DZ ledger, so no feed can be created against it.
+    pub fn is_funded(&self) -> bool {
+        self.bonded_2z_amount >= self.required_2z_amount
     }
 
     pub fn checked_address(builder: &Pubkey, stake_index: u64, bump_seed: u8) -> Option<Pubkey> {

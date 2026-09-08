@@ -2,18 +2,20 @@ use bytemuck::{Pod, Zeroable};
 use doublezero_program_tools::{types::StorageGap, Discriminator, PrecomputedDiscriminator};
 use solana_pubkey::Pubkey;
 
-/// A builder's 2Z security deposit against one feed.
+/// A builder's 2Z bond against one feed.
 ///
-/// RFC-28 collateralizes each feed on its own deposit: "A builder running a second feed posts a
-/// second deposit. Each feed is collateralized on its own, so slashing one never reaches another."
+/// A bond, not a deposit: it is returnable after the hold and forfeitable by slashing.
+///
+/// RFC-28 collateralizes each feed on its own bond: "A builder running a second feed posts a
+/// second bond. Each feed is collateralized on its own, so slashing one never reaches another."
 /// So the address carries `stake_index` as well as the builder, and a builder holds as many of
 /// these as it runs feeds.
 ///
 /// The tokens live in a separate token account owned by this PDA, not here.
-/// [`deposited_2z_amount`] mirrors that balance so a reader needs one account rather than two;
+/// [`bonded_2z_amount`] mirrors that balance so a reader needs one account rather than two;
 /// the token account remains the authority on what is actually held.
 ///
-/// [`deposited_2z_amount`]: Self::deposited_2z_amount
+/// [`bonded_2z_amount`]: Self::bonded_2z_amount
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]
 #[repr(C, align(8))]
 pub struct BuilderStake {
@@ -23,15 +25,15 @@ pub struct BuilderStake {
     pub stake_index: u64,
 
     /// 2Z held in this stake's token account, in the mint's smallest unit.
-    pub deposited_2z_amount: u64,
+    pub bonded_2z_amount: u64,
 
     /// The rate the feed backed by this stake may commit to, in bits per second. `u64::MAX` is the
     /// unmetered tier. Bits per second, not basis points: `bps` means basis points elsewhere in
     /// DoubleZero.
     pub committed_rate_bits_per_sec: u64,
 
-    /// Unix seconds when the six-month minimum hold elapses, measured from the first deposit.
-    /// Zero until the first deposit sets it.
+    /// Unix seconds when the six-month minimum hold elapses, measured from the first bond posted.
+    /// Zero until the first one sets it.
     pub hold_expires_at: i64,
 
     /// Signs token transfers out of this stake's token account.

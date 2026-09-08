@@ -28,7 +28,7 @@ pub enum BuilderStakeInstructionData {
     ///
     /// `stake_index` distinguishes a builder's stakes from each other and is part of the address,
     /// so creating the same index twice fails. `committed_rate_bits_per_sec` is the rate the feed
-    /// backed by this stake may commit to, and it is what sizes the deposit.
+    /// backed by this stake may commit to, and it is what sizes the bond.
     InitializeBuilderStake {
         stake_index: u64,
         committed_rate_bits_per_sec: u64,
@@ -36,5 +36,5 @@ pub enum BuilderStakeInstructionData {
 
     /// Move 2Z from the builder's token account into the stake's. Signed by the builder, which
     /// signs the transfer as the source account's authority.
-    Deposit { amount: u64 },
+    PostBond { amount: u64 },
 }

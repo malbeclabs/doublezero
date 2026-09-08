@@ -12,7 +12,7 @@ use solana_pubkey::Pubkey;
 pub struct ProgramConfig {
     pub flags: Flags,
 
-    /// Set by the program's upgrade authority. Configures the program; cannot move deposits.
+    /// Set by the program's upgrade authority. Configures the program; cannot move bonds.
     pub admin_key: Pubkey,
 
     pub bump_seed: u8,
@@ -44,7 +44,7 @@ impl ProgramConfig {
     }
 
     /// Reject an instruction while the program is paused. A new deployment starts paused, so an
-    /// unconfigured program takes no deposits.
+    /// unconfigured program takes no bonds.
     pub fn try_require_unpaused(&self) -> ProgramResult {
         if self.is_paused() {
             msg!("Program is paused");

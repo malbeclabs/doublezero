@@ -1,7 +1,7 @@
-//! Custody for the 2Z security deposit a builder posts before deploying a feed, per
+//! Custody for the 2Z bond a builder posts before deploying a feed, per
 //! [RFC-28](https://github.com/malbeclabs/edge-builder/blob/main/rfcs/rfc28-builder-deployed-edge.md).
 //!
-//! This program holds user deposits and will hold burn authority over them once slashing exists.
+//! This program holds user bonds and will hold burn authority over them once slashing exists.
 //! That blast radius is why it is a separate deployable from `revenue-distribution` rather than a
 //! set of instructions inside it: a change here should not require redeploying the program that
 //! moves validator revenue.

@@ -8,7 +8,7 @@ use solana_sdk::signature::Signer;
 
 const ONE_GBPS: u64 = 1_000_000_000;
 
-/// A new deployment has no admin and no tier table, so it must not take deposits until an operator
+/// A new deployment has no admin and no tier table, so it must not take bonds until an operator
 /// configures it.
 #[tokio::test]
 async fn test_initialize_program_starts_paused() {
@@ -50,9 +50,9 @@ async fn test_admin_is_set_by_the_upgrade_authority() {
     assert_eq!(t.read_program_config().await.admin_key, admin);
 }
 
-/// A builder deposits 2Z against a committed rate and the stake records what it holds.
+/// A builder posts a 2Z bond against a committed rate and the stake records what it holds.
 #[tokio::test]
-async fn test_deposit_moves_2z_into_the_stake() {
+async fn test_post_bond_moves_2z_into_the_stake() {
     let mut t = common::start_test().await;
     t.initialize_and_unpause().await;
 
@@ -74,13 +74,13 @@ async fn test_deposit_moves_2z_into_the_stake() {
     assert_eq!(stake.builder, builder_key);
     assert_eq!(stake.stake_index, 0);
     assert_eq!(stake.committed_rate_bits_per_sec, ONE_GBPS);
-    assert_eq!(stake.deposited_2z_amount, 0);
+    assert_eq!(stake.bonded_2z_amount, 0);
     assert_eq!(stake.bump_seed, stake_bump);
     assert_eq!(stake.token_account_bump_seed, vault_bump);
 
     let amount = 100_000;
     t.send(
-        common::deposit(&builder_key, 0, &source, amount),
+        common::post_bond(&builder_key, 0, &source, amount),
         &[&builder],
     )
     .await
@@ -88,19 +88,19 @@ async fn test_deposit_moves_2z_into_the_stake() {
 
     assert_eq!(t.token_amount(&vault_key).await, amount);
     assert_eq!(
-        t.read_builder_stake(&stake_key).await.deposited_2z_amount,
+        t.read_builder_stake(&stake_key).await.bonded_2z_amount,
         amount
     );
 
-    // A second deposit tops the same stake up rather than starting over.
+    // A second bond tops the same stake up rather than starting over.
     t.send(
-        common::deposit(&builder_key, 0, &source, amount),
+        common::post_bond(&builder_key, 0, &source, amount),
         &[&builder],
     )
     .await
     .unwrap();
     assert_eq!(
-        t.read_builder_stake(&stake_key).await.deposited_2z_amount,
+        t.read_builder_stake(&stake_key).await.bonded_2z_amount,
         amount * 2
     );
 
@@ -111,7 +111,7 @@ async fn test_deposit_moves_2z_into_the_stake() {
     );
 }
 
-/// RFC-28 collateralizes each feed on its own deposit, so a builder holds one stake per feed and
+/// RFC-28 collateralizes each feed on its own bond, so a builder holds one stake per feed and
 /// the stakes are distinct accounts with distinct vaults.
 #[tokio::test]
 async fn test_a_builder_holds_one_stake_per_feed() {
@@ -138,16 +138,16 @@ async fn test_a_builder_holds_one_stake_per_feed() {
         state::find_2z_token_pda_address(&second).0
     );
 
-    // Depositing into one leaves the other alone, which is what "slashing one never reaches
+    // Bonding to one leaves the other alone, which is what "slashing one never reaches
     // another" needs.
     t.send(
-        common::deposit(&builder_key, 0, &t.builder_2z_key, 500),
+        common::post_bond(&builder_key, 0, &t.builder_2z_key, 500),
         &[&builder],
     )
     .await
     .unwrap();
-    assert_eq!(t.read_builder_stake(&first).await.deposited_2z_amount, 500);
-    assert_eq!(t.read_builder_stake(&second).await.deposited_2z_amount, 0);
+    assert_eq!(t.read_builder_stake(&first).await.bonded_2z_amount, 500);
+    assert_eq!(t.read_builder_stake(&second).await.bonded_2z_amount, 0);
 
     // The same index twice is the same address, so it cannot be created again.
     t.send(
@@ -158,7 +158,7 @@ async fn test_a_builder_holds_one_stake_per_feed() {
     .expect_err("reusing a stake index should fail");
 }
 
-/// A paused program takes no deposits. This is the switch that keeps a deployed but unconfigured
+/// A paused program takes no bonds. This is the switch that keeps a deployed but unconfigured
 /// program from holding money it has no tier table to size.
 #[tokio::test]
 async fn test_paused_program_takes_no_stake() {
@@ -192,10 +192,10 @@ async fn test_zero_committed_rate_rejected() {
     .expect_err("a zero committed rate should be refused");
 }
 
-/// A builder cannot deposit into somebody else's stake, even though the token transfer itself
+/// A builder cannot bond to somebody else's stake, even though the token transfer itself
 /// would be signed correctly.
 #[tokio::test]
-async fn test_deposit_into_another_builders_stake_rejected() {
+async fn test_post_bond_into_another_builders_stake_rejected() {
     let mut t = common::start_test().await;
     t.initialize_and_unpause().await;
 
@@ -213,11 +213,11 @@ async fn test_deposit_into_another_builders_stake_rejected() {
     let account = common::token_account(&payer.pubkey(), 1_000);
     t.context.set_account(&stranger_2z, &account.into());
 
-    let mut ix = common::deposit(&builder.pubkey(), 0, &stranger_2z, 500);
+    let mut ix = common::post_bond(&builder.pubkey(), 0, &stranger_2z, 500);
     // Re-point the signer at the payer while leaving the stake as the builder's.
     ix.accounts[1] = solana_sdk::instruction::AccountMeta::new_readonly(payer.pubkey(), true);
 
     t.send(ix, &[])
         .await
-        .expect_err("depositing into another builder's stake should fail");
+        .expect_err("bonding to another builder's stake should fail");
 }

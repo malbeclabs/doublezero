@@ -281,7 +281,7 @@ pub fn initialize_builder_stake(
     }
 }
 
-pub fn deposit(builder: &Pubkey, stake_index: u64, source: &Pubkey, amount: u64) -> Instruction {
+pub fn post_bond(builder: &Pubkey, stake_index: u64, source: &Pubkey, amount: u64) -> Instruction {
     let stake_key = BuilderStake::find_address(builder, stake_index).0;
 
     Instruction {
@@ -294,6 +294,6 @@ pub fn deposit(builder: &Pubkey, stake_index: u64, source: &Pubkey, amount: u64)
             AccountMeta::new(*source, false),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
         ],
-        data: encode(&BuilderStakeInstructionData::Deposit { amount }),
+        data: encode(&BuilderStakeInstructionData::PostBond { amount }),
     }
 }

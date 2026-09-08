@@ -56,7 +56,7 @@ fn try_process_instruction(
             stake_index,
             committed_rate_bits_per_sec,
         } => try_initialize_builder_stake(accounts, stake_index, committed_rate_bits_per_sec),
-        BuilderStakeInstructionData::Deposit { amount } => try_deposit(accounts, amount),
+        BuilderStakeInstructionData::PostBond { amount } => try_post_bond(accounts, amount),
     }
 }
 
@@ -108,7 +108,7 @@ fn try_initialize_program(accounts: &[AccountInfo]) -> ProgramResult {
         zero_copy::try_initialize::<ProgramConfig>(new_program_config_info)?;
     program_config.bump_seed = program_config_bump;
 
-    // A fresh deployment has no admin and no tier table, so it must not take deposits yet.
+    // A fresh deployment has no admin and no tier table, so it must not take bonds yet.
     msg!("Pause program");
     program_config.set_is_paused(true);
 
@@ -283,11 +283,11 @@ fn try_initialize_builder_stake(
     Ok(())
 }
 
-fn try_deposit(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
-    msg!("Deposit");
+fn try_post_bond(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
+    msg!("Post bond");
 
     if amount == 0 {
-        msg!("Deposit amount must be greater than zero");
+        msg!("Bond amount must be greater than zero");
         return Err(ProgramError::InvalidInstructionData);
     }
 
@@ -324,7 +324,7 @@ fn try_deposit(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
     }
 
     // Account 3 must be this stake's 2Z token account. Checked against the cached bump so a
-    // caller cannot redirect the deposit to another account.
+    // caller cannot redirect the bond to another account.
     let (_, stake_token_account_info, _) = try_next_2z_token_pda_info(
         &mut accounts_iter,
         builder_stake.info.key,
@@ -354,12 +354,12 @@ fn try_deposit(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
     // Read the balance back rather than adding to the stored figure. The token account is the
     // authority on what is held, and a transfer sent to it outside this instruction would
     // otherwise leave the two disagreeing forever.
-    builder_stake.deposited_2z_amount = try_token_account_amount(stake_token_account_info)?;
+    builder_stake.bonded_2z_amount = try_token_account_amount(stake_token_account_info)?;
 
     msg!(
-        "Deposited {} 2Z, stake now holds {}",
+        "Posted {} 2Z, stake now holds {}",
         amount,
-        builder_stake.deposited_2z_amount
+        builder_stake.bonded_2z_amount
     );
 
     Ok(())

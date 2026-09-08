@@ -4,7 +4,10 @@ pub mod update;
 
 use crate::{
     error::DoubleZeroError,
-    state::{accesspass::AccessPass, feed::Feed},
+    state::{
+        accesspass::AccessPass,
+        feed::{Feed, FeedStatus},
+    },
 };
 use solana_program::{
     account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
@@ -91,6 +94,29 @@ pub fn enforce_feed_metro_gate(
     )?;
     // feed_account is guaranteed Some here (check returns Err otherwise).
     let feed_account = feed_account.ok_or(DoubleZeroError::FeedAccountRequired)?;
+    require_feed_admits(feed_account.key, &Feed::try_from(feed_account)?)?;
     accesspass.try_add_feed_user(feed_account.key)?;
     Ok(*feed_account.key)
+}
+
+/// Reject a feed that is not publishing, before a seat is spent on it.
+///
+/// This is the whole enforcement of feed lifecycle on the subscriber side. A feed that is pending
+/// conformance, halted by its builder, or retired stops admitting subscribers the moment its
+/// status changes, so retirement and slashing need no sweep over the access passes that already
+/// carry a seat for it.
+///
+/// Call this where a seat is spent, never from the shared coverage check: `unsubscribe_feed` runs
+/// through that too, and gating there would leave a user holding a seat on a retired feed with no
+/// way to release it.
+pub fn require_feed_admits(feed_key: &Pubkey, feed: &Feed) -> Result<(), DoubleZeroError> {
+    if feed.status != FeedStatus::Active {
+        msg!(
+            "Feed {} is {}, so it admits no subscribers",
+            feed_key,
+            feed.status
+        );
+        return Err(DoubleZeroError::FeedNotActive);
+    }
+    Ok(())
 }

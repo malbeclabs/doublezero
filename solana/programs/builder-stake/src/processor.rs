@@ -375,6 +375,12 @@ fn try_post_bond(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
         return Err(ProgramError::IncorrectAuthority);
     }
 
+    // The account's own address is the only thing binding it to this builder and index. Nothing
+    // else here proves it: `ZeroCopyMutAccount` checks the owner and the discriminator, not the
+    // address. `InitializeBuilderStake` can only create one at its PDA, so a stray account should
+    // not exist, but a local check beats a reader having to prove that.
+    try_require_stake_address(&builder_stake)?;
+
     // A stake that is still short is held to the current tier table, not the one that was live
     // when it was created. Creating a stake is permissionless and costs only rent, so pinning the
     // requirement at creation would let a builder bank today's price in bulk and fund years later
@@ -494,9 +500,19 @@ fn try_withdraw(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
         return Err(ProgramError::IncorrectAuthority);
     }
 
+    // The account's own address is the only thing binding it to this builder and index. Nothing
+    // else here proves it: `ZeroCopyMutAccount` checks the owner and the discriminator, not the
+    // address. `InitializeBuilderStake` can only create one at its PDA, so a stray account should
+    // not exist, but a local check beats a reader having to prove that.
+    try_require_stake_address(&builder_stake)?;
+
     let now = Clock::get()?.unix_timestamp;
     let withdrawable = builder_stake.withdrawable_2z_amount(now);
 
+    if !builder_stake.hold_started() {
+        msg!("No bond has been posted, so no hold has started");
+        return Err(ProgramError::InvalidAccountData);
+    }
     if now < builder_stake.hold_expires_at {
         msg!(
             "Hold runs to {}, now {}; nothing is withdrawable yet",
@@ -603,6 +619,7 @@ fn try_set_hold_expiry(accounts: &[AccountInfo], hold_expires_at: i64) -> Progra
 
     let mut builder_stake =
         ZeroCopyMutAccount::<BuilderStake>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+    try_require_stake_address(&builder_stake)?;
     builder_stake.hold_expires_at = hold_expires_at;
 
     msg!("Hold now runs to {}", hold_expires_at);
@@ -613,6 +630,31 @@ fn try_set_hold_expiry(accounts: &[AccountInfo], hold_expires_at: i64) -> Progra
 //
 // Helpers.
 //
+
+/// Reject a `BuilderStake` that is not at the address its own fields derive.
+#[inline(always)]
+fn try_require_stake_address(
+    builder_stake: &ZeroCopyMutAccount<BuilderStake>,
+) -> Result<(), ProgramError> {
+    let expected = BuilderStake::checked_address(
+        &builder_stake.builder,
+        builder_stake.stake_index,
+        builder_stake.bump_seed,
+    )
+    .ok_or(ProgramError::InvalidSeeds)?;
+
+    if builder_stake.info.key != &expected {
+        msg!(
+            "Stake account {} is not the PDA for builder {} index {}",
+            builder_stake.info.key,
+            builder_stake.builder,
+            builder_stake.stake_index
+        );
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    Ok(())
+}
 
 #[inline(always)]
 fn try_next_2z_token_pda_info<'a, 'b>(

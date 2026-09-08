@@ -97,11 +97,17 @@ impl BuilderStake {
     /// Saturating, because a stake short of its requirement has nothing spare rather than a
     /// negative amount to return.
     pub fn withdrawable_2z_amount(&self, now: i64) -> u64 {
-        if now < self.hold_expires_at {
+        if !self.hold_started() || now < self.hold_expires_at {
             return 0;
         }
         self.bonded_2z_amount
             .saturating_sub(self.required_2z_amount)
+    }
+
+    /// Whether a bond has ever been posted. `PostBond` sets the expiry on the first one, so a
+    /// zero here is an unbonded stake rather than a hold that ended long ago.
+    pub fn hold_started(&self) -> bool {
+        self.hold_expires_at != 0
     }
 
     pub fn checked_address(builder: &Pubkey, stake_index: u64, bump_seed: u8) -> Option<Pubkey> {

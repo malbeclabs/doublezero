@@ -6,6 +6,7 @@ use doublezero_builder_stake::state::BuilderStake;
 use solana_program_test::tokio;
 use solana_sdk::{
     instruction::InstructionError, program_error::ProgramError, pubkey::Pubkey, signature::Signer,
+    transaction::TransactionError,
 };
 
 const ONE_GBPS: u64 = 1_000_000_000;
@@ -75,17 +76,56 @@ async fn test_nothing_is_withdrawable_during_the_hold() {
     assert_eq!(stake.bonded_2z_amount, common::TIER_1GBPS + 500);
     assert_eq!(stake.withdrawable_2z_amount(0), 0);
 
-    let err = t
-        .send(
-            common::withdraw(&builder_key, 0, &destination, 1),
-            &[&builder],
-        )
-        .await
-        .expect_err("the hold has not elapsed");
-    common::assert_instruction_error(
+    let (err, logs) = common::simulate_error(
+        &mut t,
+        common::withdraw(&builder_key, 0, &destination, 1),
+        &[&builder],
+    )
+    .await;
+    assert_eq!(
         err,
-        InstructionError::from(u64::from(ProgramError::InvalidAccountData)),
+        TransactionError::InstructionError(
+            0,
+            InstructionError::from(u64::from(ProgramError::InvalidAccountData))
+        )
     );
+    // A paused program returns the same error, so the log is what says the hold is why.
+    common::assert_logged(&logs, "nothing is withdrawable yet");
+}
+
+/// A stake that has never been bonded has no hold, and zero is not "the hold ended in 1970".
+#[tokio::test]
+async fn test_a_stake_with_no_bond_cannot_withdraw() {
+    let mut t = common::start_test().await;
+    t.initialize_and_unpause().await;
+
+    let builder = t.builder.insecure_clone();
+    let builder_key = builder.pubkey();
+    t.send(
+        common::initialize_builder_stake(&builder_key, 0, ONE_GBPS),
+        &[&builder],
+    )
+    .await
+    .unwrap();
+
+    let stake_key = BuilderStake::find_address(&builder_key, 0).0;
+    let stake = t.read_builder_stake(&stake_key).await;
+    assert_eq!(stake.hold_expires_at, 0);
+    assert!(!stake.hold_started());
+    assert_eq!(
+        stake.withdrawable_2z_amount(i64::MAX),
+        0,
+        "an unbonded stake is not unlocked"
+    );
+
+    let destination = t.builder_2z_key;
+    let (_, logs) = common::simulate_error(
+        &mut t,
+        common::withdraw(&builder_key, 0, &destination, 1),
+        &[&builder],
+    )
+    .await;
+    common::assert_logged(&logs, "no hold has started");
 }
 
 /// Once the hold elapses the excess comes out and the requirement stays behind.

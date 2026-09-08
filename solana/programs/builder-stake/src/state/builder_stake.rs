@@ -27,12 +27,13 @@ pub struct BuilderStake {
     /// 2Z held in this stake's token account, in the mint's smallest unit.
     pub bonded_2z_amount: u64,
 
-    /// What this stake has to hold for its committed rate, read from the tier table when the stake
-    /// was created and pinned here.
+    /// What this stake has to hold for its committed rate.
     ///
-    /// Pinned rather than looked up on each read so that repricing a tier cannot retroactively
-    /// under-fund a stake that was fully funded when it was posted. RFC-28 fixes the deposit at
-    /// the price prevailing when the tier is set.
+    /// Follows the tier table while the stake is short, and stops moving once the stake is funded.
+    /// Both halves matter. Freezing it at creation would let a builder pre-create stakes for the
+    /// cost of rent and fund them after a repricing at the old price. Never freezing it would let
+    /// a repricing make a builder short after it had already paid in full, which RFC-28's "fixed
+    /// at the price prevailing when the tier is set" rules out.
     pub required_2z_amount: u64,
 
     /// The rate the feed backed by this stake may commit to, in bits per second. `u64::MAX` is the

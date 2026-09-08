@@ -4,7 +4,7 @@ mod common;
 
 use doublezero_builder_stake::state::BuilderStake;
 use solana_program_test::tokio;
-use solana_sdk::signature::Signer;
+use solana_sdk::{instruction::InstructionError, program_error::ProgramError, signature::Signer};
 
 const ONE_GBPS: u64 = 1_000_000_000;
 const FIVE_GBPS: u64 = 5_000_000_000;
@@ -52,7 +52,7 @@ async fn test_stake_is_funded_once_it_holds_the_requirement() {
 
     let builder = t.builder.insecure_clone();
     let builder_key = builder.pubkey();
-    let source = t.builder_2z_key;
+    let source_token_account = t.builder_2z_key;
 
     t.send(
         common::initialize_builder_stake(&builder_key, 0, ONE_GBPS),
@@ -65,7 +65,12 @@ async fn test_stake_is_funded_once_it_holds_the_requirement() {
     // Short of the requirement. Allowed: a builder may fund in more than one transfer, and a stake
     // that is short backs no feed.
     t.send(
-        common::deposit(&builder_key, 0, &source, common::TIER_1GBPS - 1),
+        common::deposit(
+            &builder_key,
+            0,
+            &source_token_account,
+            common::TIER_1GBPS - 1,
+        ),
         &[&builder],
     )
     .await
@@ -73,16 +78,19 @@ async fn test_stake_is_funded_once_it_holds_the_requirement() {
     assert!(!t.read_builder_stake(&stake_key).await.is_funded());
 
     // The last unit tips it over.
-    t.send(common::deposit(&builder_key, 0, &source, 1), &[&builder])
-        .await
-        .unwrap();
+    t.send(
+        common::deposit(&builder_key, 0, &source_token_account, 1),
+        &[&builder],
+    )
+    .await
+    .unwrap();
     let stake = t.read_builder_stake(&stake_key).await;
     assert!(stake.is_funded());
     assert_eq!(stake.deposited_2z_amount, common::TIER_1GBPS);
 
     // Over-funding is allowed. RFC-28 lets a builder withdraw the excess after the hold.
     t.send(
-        common::deposit(&builder_key, 0, &source, common::TIER_1GBPS),
+        common::deposit(&builder_key, 0, &source_token_account, common::TIER_1GBPS),
         &[&builder],
     )
     .await
@@ -106,12 +114,17 @@ async fn test_unset_tier_table_takes_no_stake() {
         .unwrap();
 
     let builder = t.builder.insecure_clone();
-    t.send(
-        common::initialize_builder_stake(&builder.pubkey(), 0, ONE_GBPS),
-        &[&builder],
-    )
-    .await
-    .expect_err("no tier table means no deposit can be sized");
+    let err = t
+        .send(
+            common::initialize_builder_stake(&builder.pubkey(), 0, ONE_GBPS),
+            &[&builder],
+        )
+        .await
+        .expect_err("no tier table means no deposit can be sized");
+    common::assert_instruction_error(
+        err,
+        InstructionError::from(u64::from(ProgramError::InvalidAccountData)),
+    );
 }
 
 /// A table with a hole, or one where more rate costs less, never reaches the account. A cheaper
@@ -129,12 +142,17 @@ async fn test_malformed_tier_table_rejected() {
         (300_000, 200_000, 500_000), // 5 Gbps cheaper than 1 Gbps
         (100_000, 600_000, 500_000), // unmetered cheaper than 5 Gbps
     ] {
-        t.send(
-            common::set_tier_parameters(&admin, a, b, c),
-            &[&upgrade_authority],
-        )
-        .await
-        .unwrap_err();
+        let err = t
+            .send(
+                common::set_tier_parameters(&admin, a, b, c),
+                &[&upgrade_authority],
+            )
+            .await
+            .unwrap_err();
+        common::assert_instruction_error(
+            err,
+            InstructionError::from(u64::from(ProgramError::InvalidInstructionData)),
+        );
     }
 
     // A well-formed table lands.
@@ -150,7 +168,75 @@ async fn test_malformed_tier_table_rejected() {
     assert_eq!(tiers.unmetered_2z_amount, 500_000);
 }
 
-/// Repricing a tier does not move what an existing stake owes. RFC-28 fixes the deposit at the
+/// A stake that is still short pays the current price, not the price when it was created.
+///
+/// Creating a stake is permissionless and costs only rent, so pinning the requirement at creation
+/// would let a builder open stakes in bulk today and fund them years later at a price a repricing
+/// was meant to replace.
+#[tokio::test]
+async fn test_an_unfunded_stake_pays_the_current_price() {
+    let mut t = common::start_test().await;
+    t.initialize_and_unpause().await;
+
+    let builder = t.builder.insecure_clone();
+    let builder_key = builder.pubkey();
+    let source_token_account = t.builder_2z_key;
+
+    // Opened at today's price and left empty.
+    t.send(
+        common::initialize_builder_stake(&builder_key, 0, ONE_GBPS),
+        &[&builder],
+    )
+    .await
+    .unwrap();
+    let stake_key = BuilderStake::find_address(&builder_key, 0).0;
+    assert_eq!(
+        t.read_builder_stake(&stake_key).await.required_2z_amount,
+        common::TIER_1GBPS
+    );
+
+    // The admin raises the price tenfold.
+    let admin = t.upgrade_authority.pubkey();
+    let upgrade_authority = t.upgrade_authority.insecure_clone();
+    t.send(
+        common::set_tier_parameters(
+            &admin,
+            common::TIER_1GBPS * 10,
+            common::TIER_5GBPS * 10,
+            common::TIER_UNMETERED * 10,
+        ),
+        &[&upgrade_authority],
+    )
+    .await
+    .unwrap();
+
+    // The old price no longer funds it.
+    t.send(
+        common::deposit(&builder_key, 0, &source_token_account, common::TIER_1GBPS),
+        &[&builder],
+    )
+    .await
+    .unwrap();
+    let stake = t.read_builder_stake(&stake_key).await;
+    assert_eq!(stake.required_2z_amount, common::TIER_1GBPS * 10);
+    assert!(!stake.is_funded());
+
+    // The new price does.
+    t.send(
+        common::deposit(
+            &builder_key,
+            0,
+            &source_token_account,
+            common::TIER_1GBPS * 9,
+        ),
+        &[&builder],
+    )
+    .await
+    .unwrap();
+    assert!(t.read_builder_stake(&stake_key).await.is_funded());
+}
+
+/// Repricing a tier does not move what an already funded stake owes. RFC-28 fixes the deposit at the
 /// price prevailing when the tier is set, so a funded stake stays funded.
 #[tokio::test]
 async fn test_repricing_a_tier_leaves_existing_stakes_alone() {

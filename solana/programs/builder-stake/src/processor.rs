@@ -25,10 +25,12 @@ use crate::{
     DOUBLEZERO_MINT_KEY, ID,
 };
 
-// A change to this size means every deployed BuilderStake has to be migrated, so make the change
-// deliberate rather than incidental. The program config needs no such check: it is allocated at
-// 10kb, so a new setting grows into slack rather than needing a realloc.
+// A change to either size means every deployed account of that type has to be migrated, so make
+// the change deliberate rather than incidental. The program config is allocated at 10kb and so
+// never needs a realloc, but its check is what catches a new setting that overruns the storage gap
+// instead of coming out of it.
 const _: () = assert!(size_of::<BuilderStake>() == 144);
+const _: () = assert!(size_of::<ProgramConfig>() == 176);
 
 solana_program_entrypoint::entrypoint!(try_process_instruction);
 
@@ -369,6 +371,25 @@ fn try_post_bond(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
         return Err(ProgramError::IncorrectAuthority);
     }
 
+    // A stake that is still short is held to the current tier table, not the one that was live
+    // when it was created. Creating a stake is permissionless and costs only rent, so pinning the
+    // requirement at creation would let a builder bank today's price in bulk and fund years later
+    // at a price a repricing was meant to replace. Once a stake is funded the requirement stops
+    // moving, so a builder who paid in full cannot be made short by a later change.
+    if !builder_stake.is_funded() {
+        let committed_rate_bits_per_sec = builder_stake.committed_rate_bits_per_sec;
+        builder_stake.required_2z_amount = program_config
+            .tier_parameters
+            .required_2z_amount(committed_rate_bits_per_sec)
+            .ok_or_else(|| {
+                msg!(
+                    "No tier amount configured for {} bits/sec",
+                    committed_rate_bits_per_sec
+                );
+                ProgramError::InvalidAccountData
+            })?;
+    }
+
     // Account 3 must be this stake's 2Z token account. Checked against the cached bump so a
     // caller cannot redirect the bond to another account.
     let (_, stake_token_account_info, _) = try_next_2z_token_pda_info(
@@ -406,6 +427,7 @@ fn try_post_bond(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
     // of its requirement. Nothing here refuses that: `Withdraw` is what must not drop a stake
     // below its requirement, and only a funded stake is mirrored to the DZ ledger, so a short one
     // backs no feed.
+
     msg!(
         "Posted {} 2Z, stake now holds {} of {} required (funded: {})",
         amount,

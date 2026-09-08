@@ -1032,7 +1032,6 @@ pub fn custom_error_code(err: &BanksClientError) -> Option<u32> {
     }
 }
 
-#[allow(dead_code)]
 /// The `Custom` code the program returns for `err`, derived from the enum rather than inlined
 /// so a renumbering of the error variants can never silently pass a hard-coded literal.
 #[allow(dead_code)]

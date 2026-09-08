@@ -357,3 +357,40 @@ pub fn post_bond(
         data: encode(&BuilderStakeInstructionData::PostBond { amount }),
     }
 }
+
+pub fn withdraw(
+    builder: &Pubkey,
+    stake_index: u64,
+    destination_token_account: &Pubkey,
+    amount: u64,
+) -> Instruction {
+    let stake_key = BuilderStake::find_address(builder, stake_index).0;
+
+    Instruction {
+        program_id: ID,
+        accounts: vec![
+            AccountMeta::new_readonly(ProgramConfig::find_address().0, false),
+            AccountMeta::new_readonly(*builder, true),
+            AccountMeta::new(stake_key, false),
+            AccountMeta::new(state::find_2z_token_pda_address(&stake_key).0, false),
+            AccountMeta::new(*destination_token_account, false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
+        ],
+        data: encode(&BuilderStakeInstructionData::Withdraw { amount }),
+    }
+}
+
+/// Move a stake's hold expiry. Development builds only; the test binary is one.
+pub fn set_hold_expiry(admin: &Pubkey, builder: &Pubkey, stake_index: u64, at: i64) -> Instruction {
+    Instruction {
+        program_id: ID,
+        accounts: vec![
+            AccountMeta::new_readonly(ProgramConfig::find_address().0, false),
+            AccountMeta::new_readonly(*admin, true),
+            AccountMeta::new(BuilderStake::find_address(builder, stake_index).0, false),
+        ],
+        data: encode(&BuilderStakeInstructionData::SetHoldExpiry {
+            hold_expires_at: at,
+        }),
+    }
+}

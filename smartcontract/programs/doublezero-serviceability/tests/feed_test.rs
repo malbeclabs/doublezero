@@ -820,6 +820,54 @@ async fn test_feed_create_second_feed_on_same_stake_rejected() {
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::StakeAlreadyBacksFeed));
 }
 
+/// A staked feed cannot be deleted. Its stake mirror records this feed to enforce one feed per
+/// stake, so closing the feed would leave the builder's deposit backing nothing and still refusing
+/// to back anything else. Retirement is the path out, and it lands with the lifecycle work.
+#[tokio::test]
+async fn test_staked_feed_cannot_be_deleted() {
+    let (mut banks_client, program_id, payer, globalstate_pubkey, builder, stake_ref) =
+        init_staked(StakeTier::UpTo5Gbps).await;
+
+    let (mirror_pubkey, _) = get_stake_mirror_pda(&program_id, &stake_ref);
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "nodelete", &exchange);
+
+    let mut args = staked_args("nodelete", exchange);
+    args.builder = builder;
+    args.stake_ref = stake_ref;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(args),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &payer,
+        &[AccountMeta::new(mirror_pubkey, false)],
+    )
+    .await;
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::DeleteFeed(FeedDeleteArgs {}),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &payer,
+        &[],
+    )
+    .await;
+
+    assert_custom_at_ix0(
+        &result,
+        custom_code(DoubleZeroError::StakedFeedCannotBeDeleted),
+    );
+
+    // Still there, and still holding the stake.
+    let feed = get_feed(&mut banks_client, feed_pubkey).await;
+    assert_eq!(feed.builder, builder);
+}
+
 /// Leaving the mirror account out entirely is refused too, rather than skipping the check.
 #[tokio::test]
 async fn test_feed_create_omitting_stake_mirror_rejected() {

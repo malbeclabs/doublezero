@@ -376,10 +376,10 @@ jobs:
       # Keep the agave version and --tools-version in sync with
       # release.devnet.smartcontract.daily.yml (platform-tools >= v1.54 is
       # required since the solana 3.0 tree pulls edition2024 crates).
-      - name: Install agave solana tools
-        run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/v3.0.4/install)"
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+      - name: Solana toolchain
+        uses: ./.github/actions/solana-toolchain
+        with:
+          version: v3.0.4
       - name: Build programs for testnet
         run: |
           set -euo pipefail

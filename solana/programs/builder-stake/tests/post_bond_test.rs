@@ -4,7 +4,7 @@ mod common;
 
 use doublezero_builder_stake::state::{self, BuilderStake, ProgramConfig};
 use solana_program_test::tokio;
-use solana_sdk::signature::Signer;
+use solana_sdk::{instruction::InstructionError, program_error::ProgramError, signature::Signer};
 
 const ONE_GBPS: u64 = 1_000_000_000;
 
@@ -40,9 +40,13 @@ async fn test_admin_is_set_by_the_upgrade_authority() {
 
     // A stranger cannot claim it.
     let stranger = t.builder.insecure_clone();
-    t.send(common::set_admin(&stranger.pubkey()), &[&stranger])
+    let err = t
+        .send(common::set_admin(&stranger.pubkey()), &[&stranger])
         .await
         .expect_err("a non-upgrade-authority signer should not set the admin");
+    // The upgrade-authority check reads the program data account, so a wrong signer fails there
+    // rather than at an authority comparison.
+    common::assert_instruction_error(err, InstructionError::InvalidAccountData);
 
     t.send(common::set_admin(&admin), &[&upgrade_authority])
         .await
@@ -150,12 +154,15 @@ async fn test_a_builder_holds_one_stake_per_feed() {
     assert_eq!(t.read_builder_stake(&second).await.bonded_2z_amount, 0);
 
     // The same index twice is the same address, so it cannot be created again.
-    t.send(
-        common::initialize_builder_stake(&builder_key, 0, ONE_GBPS),
-        &[&builder],
-    )
-    .await
-    .expect_err("reusing a stake index should fail");
+    let err = t
+        .send(
+            common::initialize_builder_stake(&builder_key, 0, ONE_GBPS),
+            &[&builder],
+        )
+        .await
+        .expect_err("reusing a stake index should fail");
+    // The system program refuses to allocate an account that already exists.
+    common::assert_instruction_error(err, InstructionError::Custom(0));
 }
 
 /// A paused program takes no bonds. This is the switch that keeps a deployed but unconfigured
@@ -169,12 +176,17 @@ async fn test_paused_program_takes_no_stake() {
         .unwrap();
 
     let builder = t.builder.insecure_clone();
-    t.send(
-        common::initialize_builder_stake(&builder.pubkey(), 0, ONE_GBPS),
-        &[&builder],
-    )
-    .await
-    .expect_err("a paused program should refuse a new stake");
+    let err = t
+        .send(
+            common::initialize_builder_stake(&builder.pubkey(), 0, ONE_GBPS),
+            &[&builder],
+        )
+        .await
+        .expect_err("a paused program should refuse a new stake");
+    common::assert_instruction_error(
+        err,
+        InstructionError::from(u64::from(ProgramError::InvalidAccountData)),
+    );
 }
 
 /// A stake backing no rate backs nothing.
@@ -184,12 +196,17 @@ async fn test_zero_committed_rate_rejected() {
     t.initialize_and_unpause().await;
 
     let builder = t.builder.insecure_clone();
-    t.send(
-        common::initialize_builder_stake(&builder.pubkey(), 0, 0),
-        &[&builder],
-    )
-    .await
-    .expect_err("a zero committed rate should be refused");
+    let err = t
+        .send(
+            common::initialize_builder_stake(&builder.pubkey(), 0, 0),
+            &[&builder],
+        )
+        .await
+        .expect_err("a zero committed rate should be refused");
+    common::assert_instruction_error(
+        err,
+        InstructionError::from(u64::from(ProgramError::InvalidInstructionData)),
+    );
 }
 
 /// A builder cannot bond to somebody else's stake, even though the token transfer itself
@@ -217,7 +234,12 @@ async fn test_post_bond_into_another_builders_stake_rejected() {
     // Re-point the signer at the payer while leaving the stake as the builder's.
     ix.accounts[1] = solana_sdk::instruction::AccountMeta::new_readonly(payer.pubkey(), true);
 
-    t.send(ix, &[])
+    let err = t
+        .send(ix, &[])
         .await
         .expect_err("bonding to another builder's stake should fail");
+    common::assert_instruction_error(
+        err,
+        InstructionError::from(u64::from(ProgramError::IncorrectAuthority)),
+    );
 }

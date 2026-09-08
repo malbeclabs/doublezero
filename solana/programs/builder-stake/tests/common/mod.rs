@@ -14,11 +14,11 @@ use solana_loader_v3_interface::{get_program_data_address, state::UpgradeableLoa
 use solana_program_test::{ProgramTest, ProgramTestContext};
 use solana_sdk::{
     account::Account,
-    instruction::{AccountMeta, Instruction},
+    instruction::{AccountMeta, Instruction, InstructionError},
     program_pack::Pack,
     pubkey::Pubkey,
     signature::{Keypair, Signer},
-    transaction::Transaction,
+    transaction::{Transaction, TransactionError},
     transport::TransportError,
 };
 use solana_system_interface::program as system_program;
@@ -105,6 +105,17 @@ pub async fn start_test() -> TestSetup {
     }
 }
 
+/// Assert a transaction failed with exactly `expected` at instruction 0. Without this a test that
+/// expects one rejection passes on any other, and a later change can move the real reject.
+pub fn assert_instruction_error(err: TransportError, expected: InstructionError) {
+    match err {
+        TransportError::TransactionError(TransactionError::InstructionError(0, actual)) => {
+            assert_eq!(actual, expected)
+        }
+        other => panic!("expected InstructionError(0, {expected:?}), got {other:?}"),
+    }
+}
+
 pub fn token_account(owner: &Pubkey, amount: u64) -> Account {
     let mut data = vec![0; TokenAccount::LEN];
     TokenAccount {
@@ -125,17 +136,17 @@ pub fn token_account(owner: &Pubkey, amount: u64) -> Account {
 }
 
 impl TestSetup {
+    /// Send one instruction, always on a blockhash no earlier send used.
+    ///
+    /// Two identical instructions in a row would otherwise build byte-identical transactions,
+    /// which share a signature, and the runtime drops the second as already processed. The test
+    /// then sees the first one's effect and reads it as the second having done nothing.
     pub async fn send(
         &mut self,
         ix: Instruction,
         signers: &[&Keypair],
     ) -> Result<(), TransportError> {
-        let blockhash = self
-            .context
-            .banks_client
-            .get_latest_blockhash()
-            .await
-            .unwrap();
+        let blockhash = self.context.get_new_latest_blockhash().await.unwrap();
         let payer = self.context.payer.insecure_clone();
 
         let mut all: Vec<&Keypair> = vec![&payer];

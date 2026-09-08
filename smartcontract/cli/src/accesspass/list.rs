@@ -976,6 +976,7 @@ mod tests {
             name: "QA Payments".to_string(),
             exchange: Pubkey::new_unique(),
             groups: vec![feed_group_pubkey],
+            ..Default::default()
         };
 
         let accesspass = AccessPass {

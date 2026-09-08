@@ -50,6 +50,7 @@ mod tests {
             name: "feed1_name".to_string(),
             exchange: Pubkey::new_unique(),
             groups: vec![Pubkey::new_unique()],
+            ..Default::default()
         };
 
         let feed2_pubkey = Pubkey::new_unique();
@@ -61,6 +62,7 @@ mod tests {
             name: "feed2_name".to_string(),
             exchange: Pubkey::new_unique(),
             groups: vec![Pubkey::new_unique()],
+            ..Default::default()
         };
 
         client

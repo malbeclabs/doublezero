@@ -311,6 +311,7 @@ mod tests {
             name: code.to_string(),
             exchange,
             groups,
+            ..Default::default()
         }
     }
 

@@ -130,6 +130,7 @@ mod tests {
             name: "QA Payments".to_string(),
             exchange: exchange_pk,
             groups: vec![mgroup_pk, unknown_mgroup_pk],
+            ..Default::default()
         };
         client.expect_list_feed().returning(move |_| {
             let mut feeds = HashMap::new();
@@ -214,6 +215,7 @@ mod tests {
             name: code.to_string(),
             exchange,
             groups: vec![],
+            ..Default::default()
         };
 
         client.expect_list_feed().returning(move |_| {

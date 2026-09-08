@@ -1337,6 +1337,7 @@ const (
 	PermissionFlagUserAdmin        uint64 = 1 << 9
 	PermissionFlagAccessPassAdmin  uint64 = 1 << 10
 	PermissionFlagHealthOracle     uint64 = 1 << 11
+	PermissionFlagStakeOracle      uint64 = 1 << 18
 	PermissionFlagQA               uint64 = 1 << 12
 	PermissionFlagGlobalstateAdmin uint64 = 1 << 13
 	PermissionFlagContributorAdmin uint64 = 1 << 14

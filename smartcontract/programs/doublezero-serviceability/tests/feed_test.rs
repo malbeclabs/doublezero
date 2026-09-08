@@ -982,10 +982,61 @@ async fn test_builder_grants_its_own_publish_rights() {
 /// from the caller.
 #[tokio::test]
 async fn test_a_mirror_update_keeps_the_claiming_feed() {
-    let (mut banks_client, program_id, payer, globalstate_pubkey, builder, stake_ref) =
-        init_staked(StakeTier::UpTo1Gbps).await;
+    // Deliberately not `init_staked`, which plants the mirror by writing account bytes. Every hop
+    // here goes through a real instruction, so the create path is exercised too rather than
+    // assumed.
+    let program_id = Pubkey::new_unique();
+    let builder = Pubkey::new_unique();
+    let stake_ref = Pubkey::new_unique();
+
+    let (mut banks_client, payer, recent_blockhash) =
+        init_test_with_accounts(program_id, &[]).await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+    enable_staked_feeds(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    // The foundation payer grants itself STAKE_ORACLE and writes the first mirror, which is what
+    // the relayer will do.
+    let (permission_pubkey, _) = get_permission_pda(&program_id, &payer.pubkey());
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: payer.pubkey(),
+            permissions: permission_flags::STAKE_ORACLE,
+        }),
+        vec![
+            AccountMeta::new(permission_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
 
     let (mirror_pubkey, _) = get_stake_mirror_pda(&program_id, &stake_ref);
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::WriteStakeMirror(StakeMirrorWriteArgs {
+            stake_ref,
+            builder,
+            tier: StakeTier::UpTo1Gbps,
+            committed_rate_bits_per_sec: 1_000_000_000,
+            source_slot: 1,
+        }),
+        vec![
+            AccountMeta::new(mirror_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+        &[AccountMeta::new_readonly(permission_pubkey, false)],
+    )
+    .await;
+
     let exchange = Pubkey::new_unique();
     let (feed_pubkey, _) = get_feed_pda(&program_id, "claimed", &exchange);
 
@@ -1012,26 +1063,7 @@ async fn test_a_mirror_update_keeps_the_claiming_feed() {
         .unwrap();
     assert_eq!(claimed.feed_key, feed_pubkey, "the feed spent the stake");
 
-    // The foundation payer grants itself STAKE_ORACLE and re-mirrors at a newer slot, exactly as
-    // the relayer would after seeing the stake change on Solana.
-    let (permission_pubkey, _) = get_permission_pda(&program_id, &payer.pubkey());
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
-            user_payer: payer.pubkey(),
-            permissions: permission_flags::STAKE_ORACLE,
-        }),
-        vec![
-            AccountMeta::new(permission_pubkey, false),
-            AccountMeta::new_readonly(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
+    // The relayer re-mirrors at a newer slot, as it would after seeing the stake change on Solana.
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     execute_transaction_with_extra_accounts(
         &mut banks_client,

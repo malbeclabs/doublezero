@@ -404,9 +404,6 @@ impl DoubleZeroInstruction {
             111 => Ok(Self::Deprecated111()),
 
             112 => Ok(Self::CreateFeed(FeedCreateArgs::try_from(rest).unwrap())),
-            119 => Ok(Self::WriteStakeMirror(
-                StakeMirrorWriteArgs::try_from(rest).unwrap(),
-            )),
             113 => Ok(Self::UpdateFeed(FeedUpdateArgs::try_from(rest).unwrap())),
             114 => Ok(Self::DeleteFeed(FeedDeleteArgs::try_from(rest).unwrap())),
             115 => Ok(Self::SetAccessPassFeeds(SetAccessPassFeedsArgs::try_from(rest).unwrap())),
@@ -414,6 +411,9 @@ impl DoubleZeroInstruction {
 
             117 => Ok(Self::SubscribeFeed(SubscribeFeedArgs::try_from(rest).unwrap())),
             118 => Ok(Self::UnsubscribeFeed(UnsubscribeFeedArgs::try_from(rest).unwrap())),
+            119 => Ok(Self::WriteStakeMirror(
+                StakeMirrorWriteArgs::try_from(rest).unwrap(),
+            )),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }

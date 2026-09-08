@@ -28,7 +28,8 @@ pub enum BuilderStakeInstructionData {
     ///
     /// `stake_index` distinguishes a builder's stakes from each other and is part of the address,
     /// so creating the same index twice fails. `committed_rate_bits_per_sec` is the rate the feed
-    /// backed by this stake may commit to, and it is what sizes the bond.
+    /// backed by this stake may commit to. It is recorded here and nothing acts on it yet:
+    /// `PostBond` takes any positive amount. Sizing the bond against the rate is B2.
     InitializeBuilderStake {
         stake_index: u64,
         committed_rate_bits_per_sec: u64,

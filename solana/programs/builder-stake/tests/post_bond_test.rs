@@ -58,7 +58,7 @@ async fn test_post_bond_moves_2z_into_the_stake() {
 
     let builder = t.builder.insecure_clone();
     let builder_key = builder.pubkey();
-    let source = t.builder_2z_key;
+    let source_token_account = t.builder_2z_key;
 
     t.send(
         common::initialize_builder_stake(&builder_key, 0, ONE_GBPS),
@@ -80,7 +80,7 @@ async fn test_post_bond_moves_2z_into_the_stake() {
 
     let amount = 100_000;
     t.send(
-        common::post_bond(&builder_key, 0, &source, amount),
+        common::post_bond(&builder_key, 0, &source_token_account, amount),
         &[&builder],
     )
     .await
@@ -94,7 +94,7 @@ async fn test_post_bond_moves_2z_into_the_stake() {
 
     // A second bond tops the same stake up rather than starting over.
     t.send(
-        common::post_bond(&builder_key, 0, &source, amount),
+        common::post_bond(&builder_key, 0, &source_token_account, amount),
         &[&builder],
     )
     .await
@@ -106,7 +106,7 @@ async fn test_post_bond_moves_2z_into_the_stake() {
 
     // The 2Z left the builder's own account.
     assert_eq!(
-        t.token_amount(&source).await,
+        t.token_amount(&source_token_account).await,
         common::TEST_2Z_SUPPLY - amount * 2
     );
 }

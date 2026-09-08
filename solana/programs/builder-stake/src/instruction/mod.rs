@@ -35,6 +35,6 @@ pub enum BuilderStakeInstructionData {
     },
 
     /// Move 2Z from the builder's token account into the stake's. Signed by the builder, which
-    /// signs the transfer as the source account's authority.
+    /// signs the transfer as the source token account's authority.
     PostBond { amount: u64 },
 }

@@ -281,7 +281,12 @@ pub fn initialize_builder_stake(
     }
 }
 
-pub fn post_bond(builder: &Pubkey, stake_index: u64, source: &Pubkey, amount: u64) -> Instruction {
+pub fn post_bond(
+    builder: &Pubkey,
+    stake_index: u64,
+    source_token_account: &Pubkey,
+    amount: u64,
+) -> Instruction {
     let stake_key = BuilderStake::find_address(builder, stake_index).0;
 
     Instruction {
@@ -291,7 +296,7 @@ pub fn post_bond(builder: &Pubkey, stake_index: u64, source: &Pubkey, amount: u6
             AccountMeta::new_readonly(*builder, true),
             AccountMeta::new(stake_key, false),
             AccountMeta::new(state::find_2z_token_pda_address(&stake_key).0, false),
-            AccountMeta::new(*source, false),
+            AccountMeta::new(*source_token_account, false),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
         ],
         data: encode(&BuilderStakeInstructionData::PostBond { amount }),

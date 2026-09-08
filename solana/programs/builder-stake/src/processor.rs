@@ -304,7 +304,7 @@ fn try_post_bond(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
         ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
     program_config.try_require_unpaused()?;
 
-    // Account 1 signs the token transfer out of the source account, so the source account's
+    // Account 1 signs the token transfer out of the source token account, so that account's
     // authority is what actually gates this instruction.
     let (account_index, builder_info) =
         try_next_enumerated_account(&mut accounts_iter, Default::default())?;
@@ -331,7 +331,7 @@ fn try_post_bond(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
         Some(builder_stake.token_account_bump_seed),
     )?;
 
-    // Account 4 must be the source of the tokens. The token program checks its mint and owner
+    // Account 4 must be the source token account. The token program checks its mint and owner
     // when it processes the transfer, so we do not repeat that here.
     let (_, source_token_account_info) =
         try_next_enumerated_account(&mut accounts_iter, Default::default())?;

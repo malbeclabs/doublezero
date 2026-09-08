@@ -33,7 +33,10 @@ pub struct BuilderStake {
     pub committed_rate_bits_per_sec: u64,
 
     /// Unix seconds when the six-month minimum hold elapses, measured from the first bond posted.
-    /// Zero until the first one sets it.
+    ///
+    /// Always zero for now: nothing writes it. The hold and `Withdraw` are B3. The field is here
+    /// already because this account is a fixed-size Pod struct, so adding one after deploy means
+    /// migrating every account rather than editing a struct.
     pub hold_expires_at: i64,
 
     /// Signs token transfers out of this stake's token account.

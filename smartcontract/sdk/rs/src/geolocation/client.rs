@@ -7,7 +7,7 @@ use crate::{
 };
 use doublezero_geolocation::instructions::GeolocationInstruction;
 use eyre::{eyre, OptionExt};
-use log::debug;
+use log::{debug, error};
 use mockall::automock;
 use solana_client::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
@@ -214,11 +214,9 @@ impl GeolocationClient for GeoClient {
 
         let result = self.client.simulate_transaction(&transaction)?;
         if result.value.err.is_some() {
-            eprintln!("Program Logs:");
-            if let Some(logs) = result.value.logs {
-                for log in logs {
-                    eprintln!("{log}");
-                }
+            match result.value.logs.as_deref() {
+                Some([]) | None => error!("Simulation failed and returned no program logs"),
+                Some(logs) => error!("Program logs:\n{}", logs.join("\n")),
             }
         }
 

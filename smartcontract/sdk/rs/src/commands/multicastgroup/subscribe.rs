@@ -347,8 +347,9 @@ mod tests {
         let accesspass = doublezero_serviceability::state::accesspass::AccessPass {
             account_type: AccountType::AccessPass,
             bump_seed: 0,
-            accesspass_type:
-                doublezero_serviceability::state::accesspass::AccessPassType::EdgeSeat(vec![]),
+            accesspass_type: doublezero_serviceability::state::accesspass::AccessPassType::EdgeSeat(
+                vec![],
+            ),
             client_ip: Ipv4Addr::UNSPECIFIED,
             user_payer: payer,
             last_access_epoch: 0,

@@ -1,12 +1,77 @@
 use doublezero_serviceability::{
     pda::{get_permission_pda, get_stake_mirror_pda},
     processors::stake_mirror::write::StakeMirrorWriteArgs,
-    state::stake_mirror::StakeTier,
+    state::{
+        permission::{permission_flags, Permission, PermissionStatus},
+        stake_mirror::StakeTier,
+    },
 };
 use doublezero_serviceability_instruction::stake_mirror::write_stake_mirror;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use solana_sdk::{
+    account::Account, instruction::AccountMeta, pubkey::Pubkey, signature::Signature,
+};
+use std::fmt;
 
 use crate::DoubleZeroClient;
+
+/// Why a caller's `Permission` account cannot exercise `STAKE_ORACLE`.
+///
+/// Separated from the command so every reason can be tested against an account directly rather
+/// than through a mocked client, and so a caller reading a failure is told which way it is short
+/// rather than just that it is.
+#[derive(Debug, PartialEq)]
+pub enum StakeOraclePreflight {
+    /// No account at the PDA, or one the program does not own. Either way the payer holds nothing.
+    NoPermissionAccount,
+    /// An account exists at the address but is not a `Permission`.
+    NotAPermission,
+    /// A `Permission` that is suspended, or was never activated.
+    NotActivated(PermissionStatus),
+    /// An activated `Permission` that does not carry the flag.
+    MissingStakeOracle,
+}
+
+impl fmt::Display for StakeOraclePreflight {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::NoPermissionAccount => write!(f, "has no Permission account"),
+            Self::NotAPermission => {
+                write!(
+                    f,
+                    "has an account at its Permission address that is not one"
+                )
+            }
+            Self::NotActivated(status) => write!(f, "has a Permission that is {status}"),
+            Self::MissingStakeOracle => write!(f, "has a Permission without STAKE_ORACLE"),
+        }
+    }
+}
+
+/// Whether `account` lets its owner exercise `STAKE_ORACLE`.
+///
+/// Checks what `authorize` checks. Ownership alone is not enough: `authorize` also rejects a
+/// `Permission` that is suspended or lacks the flag, so a preflight that stopped at ownership
+/// would still send transactions that cannot succeed.
+pub fn check_stake_oracle(
+    account: Option<&Account>,
+    program_id: &Pubkey,
+) -> Result<(), StakeOraclePreflight> {
+    let account = account
+        .filter(|a| &a.owner == program_id)
+        .ok_or(StakeOraclePreflight::NoPermissionAccount)?;
+
+    let permission = Permission::try_from(&account.data[..])
+        .map_err(|_| StakeOraclePreflight::NotAPermission)?;
+
+    if permission.status != PermissionStatus::Activated {
+        return Err(StakeOraclePreflight::NotActivated(permission.status));
+    }
+    if permission.permissions & permission_flags::STAKE_ORACLE == 0 {
+        return Err(StakeOraclePreflight::MissingStakeOracle);
+    }
+
+    Ok(())
+}
 
 /// Copy a builder's Solana stake onto the DZ ledger. The relayer's write.
 #[derive(Debug, PartialEq, Clone)]
@@ -39,25 +104,27 @@ impl WriteStakeMirrorCommand {
             },
         );
 
-        // Not `append_payer_permission_account`, which appends the account only when it already
-        // exists. That is right for an instruction with a legacy `GlobalState` fallback, and wrong
-        // here: no legacy key satisfies `STAKE_ORACLE`, so a missing Permission account is always
-        // fatal. Saying so costs one RPC round trip and saves reading `NotAllowed` out of a failed
-        // simulation.
+        // Not `append_payer_permission_account`, which appends the account when it exists and says
+        // nothing when it does not. That is right for an instruction a legacy `GlobalState` key can
+        // also authorize, where the account is an upgrade rather than a requirement. No legacy key
+        // satisfies `STAKE_ORACLE`, so anything short of a usable Permission account is a
+        // transaction that cannot succeed on any cluster, and saying which way it is short costs
+        // the same round trip that helper was already spending.
         let (permission_pubkey, _) = get_permission_pda(&program_id, &payer);
-        client
+        let account = client
             .get_multiple_accounts(vec![permission_pubkey])?
             .into_iter()
-            .flatten()
             .next()
-            .filter(|account| account.owner == program_id)
-            .ok_or_else(|| {
-                eyre::eyre!(
-                    "{payer} has no Permission account at {permission_pubkey}. \
-                     WriteStakeMirror needs STAKE_ORACLE, and no GlobalState key grants it, \
-                     so a Permission account is the only way to hold it."
-                )
-            })?;
+            .flatten();
+
+        check_stake_oracle(account.as_ref(), &program_id).map_err(|problem| {
+            eyre::eyre!(
+                "{payer} {problem} at {permission_pubkey}. WriteStakeMirror needs STAKE_ORACLE, \
+                 and no GlobalState key grants it, so a Permission account is the only way to \
+                 hold it."
+            )
+        })?;
+
         ix.accounts
             .push(AccountMeta::new_readonly(permission_pubkey, false));
 
@@ -67,9 +134,9 @@ impl WriteStakeMirrorCommand {
 
 #[cfg(test)]
 mod tests {
-    use doublezero_serviceability::pda::get_permission_pda;
+    use doublezero_serviceability::state::accounttype::AccountType;
     use mockall::predicate;
-    use solana_sdk::{account::Account, signature::Signature};
+    use solana_sdk::signature::Signature;
 
     use super::*;
     use crate::tests::utils::create_test_client;
@@ -84,17 +151,112 @@ mod tests {
         }
     }
 
-    fn permission_account(owner: Pubkey) -> Account {
+    /// A real `Permission`, serialized the way the program writes one.
+    fn permission_account(
+        program_id: Pubkey,
+        status: PermissionStatus,
+        permissions: u128,
+    ) -> Account {
+        let permission = Permission {
+            account_type: AccountType::Permission,
+            owner: Pubkey::new_unique(),
+            bump_seed: 255,
+            status,
+            user_payer: Pubkey::new_unique(),
+            permissions,
+        };
         Account {
             lamports: 1,
-            data: vec![],
-            owner,
+            data: borsh::to_vec(&permission).unwrap(),
+            owner: program_id,
             executable: false,
             rent_epoch: 0,
         }
     }
 
-    /// The happy path appends the caller's Permission account and returns the mirror address.
+    fn usable(program_id: Pubkey) -> Account {
+        permission_account(
+            program_id,
+            PermissionStatus::Activated,
+            permission_flags::STAKE_ORACLE,
+        )
+    }
+
+    //
+    // The preflight, against accounts directly. No mocks, so every reason is covered.
+    //
+
+    #[test]
+    fn test_an_activated_permission_with_the_flag_passes() {
+        let program_id = Pubkey::new_unique();
+        assert_eq!(
+            check_stake_oracle(Some(&usable(program_id)), &program_id),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn test_no_account_or_a_foreign_owner_holds_nothing() {
+        let program_id = Pubkey::new_unique();
+        assert_eq!(
+            check_stake_oracle(None, &program_id),
+            Err(StakeOraclePreflight::NoPermissionAccount)
+        );
+        assert_eq!(
+            check_stake_oracle(Some(&usable(Pubkey::new_unique())), &program_id),
+            Err(StakeOraclePreflight::NoPermissionAccount)
+        );
+    }
+
+    #[test]
+    fn test_an_account_that_is_not_a_permission_is_refused() {
+        let program_id = Pubkey::new_unique();
+        let junk = Account {
+            lamports: 1,
+            data: vec![],
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        };
+        assert_eq!(
+            check_stake_oracle(Some(&junk), &program_id),
+            Err(StakeOraclePreflight::NotAPermission)
+        );
+    }
+
+    /// A suspended Permission is what revoking the relayer's key looks like, and `authorize`
+    /// rejects it, so the preflight has to as well.
+    #[test]
+    fn test_a_suspended_or_unactivated_permission_is_refused() {
+        let program_id = Pubkey::new_unique();
+        for status in [PermissionStatus::Suspended, PermissionStatus::None] {
+            let account = permission_account(program_id, status, permission_flags::STAKE_ORACLE);
+            assert_eq!(
+                check_stake_oracle(Some(&account), &program_id),
+                Err(StakeOraclePreflight::NotActivated(status))
+            );
+        }
+    }
+
+    /// Holding some other role is not holding this one.
+    #[test]
+    fn test_a_permission_without_the_flag_is_refused() {
+        let program_id = Pubkey::new_unique();
+        let account = permission_account(
+            program_id,
+            PermissionStatus::Activated,
+            permission_flags::FOUNDATION | permission_flags::HEALTH_ORACLE,
+        );
+        assert_eq!(
+            check_stake_oracle(Some(&account), &program_id),
+            Err(StakeOraclePreflight::MissingStakeOracle)
+        );
+    }
+
+    //
+    // The command, proving the preflight is wired in and the account is appended.
+    //
+
     #[test]
     fn test_write_stake_mirror_appends_the_permission_account() {
         let mut client = create_test_client();
@@ -106,7 +268,7 @@ mod tests {
         client
             .expect_get_multiple_accounts()
             .with(predicate::eq(vec![permission_pubkey]))
-            .returning(move |_| Ok(vec![Some(permission_account(program_id))]));
+            .returning(move |_| Ok(vec![Some(usable(program_id))]));
         client
             .expect_send_transaction()
             .withf(move |ix| {
@@ -122,41 +284,30 @@ mod tests {
         assert_eq!(mirror, get_stake_mirror_pda(&program_id, &stake_ref).0);
     }
 
-    /// No Permission account means the caller cannot hold `STAKE_ORACLE`, and no `GlobalState` key
-    /// grants it, so the command says so rather than sending a transaction that must fail.
+    /// A caller the program would reject never gets a transaction sent on its behalf.
     #[test]
-    fn test_a_caller_without_a_permission_account_is_refused_locally() {
+    fn test_an_unusable_permission_sends_nothing() {
         let mut client = create_test_client();
-        let (permission_pubkey, _) =
-            get_permission_pda(&client.get_program_id(), &client.get_payer());
+        let program_id = client.get_program_id();
+        let (permission_pubkey, _) = get_permission_pda(&program_id, &client.get_payer());
 
         client
             .expect_get_multiple_accounts()
             .with(predicate::eq(vec![permission_pubkey]))
-            .returning(|_| Ok(vec![None]));
+            .returning(move |_| {
+                Ok(vec![Some(permission_account(
+                    program_id,
+                    PermissionStatus::Suspended,
+                    permission_flags::STAKE_ORACLE,
+                ))])
+            });
         client.expect_send_transaction().never();
 
-        let err = command(Pubkey::new_unique(), Pubkey::new_unique())
+        // The assertion that matters is mockall's: `send_transaction` was set to `.never()`, so
+        // this failing before reaching it is the whole point. The report itself is not inspected,
+        // because which reason fired is covered exhaustively against accounts above.
+        let _ = command(Pubkey::new_unique(), Pubkey::new_unique())
             .execute(&client)
-            .expect_err("no Permission account, so no STAKE_ORACLE");
-        assert!(err.to_string().contains("STAKE_ORACLE"), "{err}");
-    }
-
-    /// An account at the right address owned by someone else is not a Permission account.
-    #[test]
-    fn test_a_foreign_owned_account_is_not_a_permission() {
-        let mut client = create_test_client();
-        let (permission_pubkey, _) =
-            get_permission_pda(&client.get_program_id(), &client.get_payer());
-
-        client
-            .expect_get_multiple_accounts()
-            .with(predicate::eq(vec![permission_pubkey]))
-            .returning(|_| Ok(vec![Some(permission_account(Pubkey::new_unique()))]));
-        client.expect_send_transaction().never();
-
-        assert!(command(Pubkey::new_unique(), Pubkey::new_unique())
-            .execute(&client)
-            .is_err());
+            .expect_err("a suspended Permission cannot write");
     }
 }

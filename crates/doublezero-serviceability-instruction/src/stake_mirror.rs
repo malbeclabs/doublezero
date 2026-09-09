@@ -21,7 +21,14 @@ use solana_program::{
 
 use crate::common;
 
-/// `WriteStakeMirror` (variant 119). Accounts: `[stake_mirror, globalstate]`.
+/// `WriteStakeMirror` (variant 119).
+///
+/// Returns `[stake_mirror, globalstate, payer, system_program]`. The caller appends its own
+/// `Permission` account after those, which for this instruction is required rather than optional:
+/// nothing else authorizes `STAKE_ORACLE`.
+///
+/// `globalstate` is read-only. The processor reads `feature_flags` and hands it to `authorize`,
+/// and writes nothing, so marking it writable would take a lock it does not need.
 ///
 /// The mirror PDA derives from `args.stake_ref`, the `builder-stake` account being mirrored, not
 /// from the builder: RFC-28 collateralizes each feed on its own bond, and a builder-keyed address
@@ -38,7 +45,7 @@ pub fn write_stake_mirror(
         DoubleZeroInstruction::WriteStakeMirror(args),
         vec![
             AccountMeta::new(stake_mirror, false),
-            AccountMeta::new(globalstate, false),
+            AccountMeta::new_readonly(globalstate, false),
         ],
         payer,
     )
@@ -60,8 +67,8 @@ mod tests {
         }
     }
 
-    /// The mirror account comes first and derives from the stake, and the payer and system program
-    /// follow, which is the shape every other permission-gated builder produces.
+    /// The mirror account comes first and derives from the stake, the payer and system program
+    /// follow, and `globalstate` is read-only because the processor never writes it.
     #[test]
     fn test_write_stake_mirror_accounts() {
         let program_id = Pubkey::new_unique();
@@ -77,6 +84,10 @@ mod tests {
         );
         assert!(ix.accounts[0].is_writable);
         assert_eq!(ix.accounts[1].pubkey, get_globalstate_pda(&program_id).0);
+        assert!(
+            !ix.accounts[1].is_writable,
+            "the processor only reads globalstate"
+        );
         assert_eq!(ix.accounts[2].pubkey, payer);
         assert!(ix.accounts[2].is_signer);
         assert_eq!(ix.accounts[3].pubkey, solana_system_interface::program::ID);

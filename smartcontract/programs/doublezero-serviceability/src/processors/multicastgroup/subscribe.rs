@@ -334,8 +334,8 @@ pub fn process_update_multicastgroup_roles(
         check_mgroup_allowlists(
             &accesspass,
             group_account.key,
-            value.publisher,
-            value.subscriber,
+            value.publisher && !user.publishers.contains(group_account.key),
+            value.subscriber && !user.subscribers.contains(group_account.key),
         )?;
         let result = update_user_multicastgroup_roles(
             group_account,

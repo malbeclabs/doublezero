@@ -1,4 +1,4 @@
-use std::{io::Write, net::Ipv4Addr};
+use std::{collections::HashSet, io::Write, net::Ipv4Addr};
 
 use anyhow::Result;
 use borsh::BorshDeserialize;
@@ -142,6 +142,7 @@ impl PaymentsCommand {
         }
 
         let escrow_keys: Vec<Pubkey> = escrow_accounts.iter().map(|(key, _)| *key).collect();
+        let escrow_key_set: HashSet<String> = escrow_keys.iter().map(ToString::to_string).collect();
 
         // Fetch transaction history for each escrow.
         let mut events: Vec<PaymentEvent> = Vec::new();
@@ -196,7 +197,7 @@ impl PaymentsCommand {
                     let touches_escrow = instruction
                         .accounts
                         .iter()
-                        .any(|account| escrow_keys.iter().any(|key| key.to_string() == *account));
+                        .any(|account| escrow_key_set.contains(account));
                     if !touches_escrow {
                         continue;
                     }
@@ -204,9 +205,12 @@ impl PaymentsCommand {
                         continue;
                     };
                     if let Some(amount) = parse_legacy_fund_payment_escrow_usdc(&data) {
+                        let Ok(amount_micro) = i64::try_from(amount) else {
+                            continue;
+                        };
                         events.push(PaymentEvent {
                             event_type: EventType::Funded,
-                            amount_micro: amount as i64,
+                            amount_micro,
                             block_time: tx_response.block_time,
                         });
                         continue;

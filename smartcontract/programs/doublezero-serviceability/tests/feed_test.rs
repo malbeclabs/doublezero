@@ -3,7 +3,8 @@ use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{
         get_accesspass_pda, get_feed_pda, get_globalstate_pda, get_multicastgroup_pda,
-        get_program_config_pda, get_resource_extension_pda, get_stake_mirror_pda,
+        get_permission_pda, get_program_config_pda, get_resource_extension_pda,
+        get_stake_mirror_pda,
     },
     processors::{
         feed::{create::FeedCreateArgs, delete::FeedDeleteArgs, update::FeedUpdateArgs},
@@ -12,76 +13,23 @@ use doublezero_serviceability::{
             allowlist::publisher::add::AddMulticastGroupPubAllowlistArgs,
             create::MulticastGroupCreateArgs,
         },
+        permission::create::PermissionCreateArgs,
+        stake_mirror::write::StakeMirrorWriteArgs,
     },
     resource::ResourceType,
     state::{
         accounttype::AccountType,
         feature_flags::FeatureFlag,
         feed::{Feed, FeedStatus},
+        permission::permission_flags,
         stake_mirror::{StakeMirror, StakeTier},
     },
 };
 use solana_program_test::*;
-use solana_sdk::{
-    instruction::{AccountMeta, InstructionError},
-    program_error::ProgramError,
-    pubkey::Pubkey,
-    signature::Signer,
-    transaction::TransactionError,
-};
+use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signer};
 
 mod test_helpers;
 use test_helpers::*;
-
-/// The `Custom` code the program returns for `err`, derived from the enum rather than inlined
-/// so a renumbering of the error variants can never silently pass a hard-coded literal.
-fn custom_code(err: DoubleZeroError) -> u32 {
-    match ProgramError::from(err) {
-        ProgramError::Custom(code) => code,
-        other => panic!("expected Custom, got {other:?}"),
-    }
-}
-
-/// Run `instruction` and return the structured `TransactionError` on failure so a negative test
-/// can match the exact `InstructionError::Custom(code)` at instruction index 0.
-///
-/// NOTE: this intentionally does not return program logs. With the native `processor!` harness the
-/// guest program's `msg!` output is not surfaced to BanksClient, so the structured error code at
-/// instruction index 0 is the reliable signal for which check fired.
-async fn try_execute_and_get_error(
-    banks_client: &mut BanksClient,
-    program_id: Pubkey,
-    instruction: DoubleZeroInstruction,
-    accounts: Vec<AccountMeta>,
-    payer: &solana_sdk::signature::Keypair,
-    extra_accounts: &[AccountMeta],
-) -> Result<(), TransactionError> {
-    let recent_blockhash = wait_for_new_blockhash(banks_client).await;
-    let mut transaction = create_transaction_with_extra_accounts(
-        program_id,
-        &instruction,
-        &accounts,
-        payer,
-        extra_accounts,
-    );
-    transaction.try_sign(&[payer], recent_blockhash).unwrap();
-
-    banks_client
-        .process_transaction_with_metadata(transaction)
-        .await
-        .expect("banks client failed")
-        .result
-}
-
-/// Assert `result` failed at instruction index 0 with `Custom(expected)`.
-fn assert_custom_at_ix0(result: &Result<(), TransactionError>, expected: u32) {
-    match result {
-        Err(TransactionError::InstructionError(0, InstructionError::Custom(code))) => {
-            assert_eq!(*code, expected, "unexpected custom error code");
-        }
-        other => panic!("expected Custom({expected}) at instruction 0, got {other:?}"),
-    }
-}
 
 /// Plausible RFC-28 stake terms: a builder, the stake behind it, the spec it conforms to, the SLA
 /// it declared, and a 1 Gbps commitment.
@@ -1023,4 +971,128 @@ async fn test_builder_grants_its_own_publish_rights() {
     // feed sells are the same list.
     let feed = get_feed(&mut banks_client, feed_pubkey).await;
     assert_eq!(feed.groups, groups);
+}
+
+/// A relayer updating a mirror must not wipe the feed that claimed the stake.
+///
+/// The cross-instruction invariant between A3 and A6, and the one a relayer could break by
+/// accident. `CreateFeed` writes `feed_key` to spend the stake, which is what makes RFC-28's one
+/// feed per stake true. A relayer rebuilding the mirror from Solana alone would zero it and the
+/// bond would back two feeds, so `WriteStakeMirror` carries the value forward and never takes it
+/// from the caller.
+#[tokio::test]
+async fn test_a_mirror_update_keeps_the_claiming_feed() {
+    // Deliberately not `init_staked`, which plants the mirror by writing account bytes. Every hop
+    // here goes through a real instruction, so the create path is exercised too rather than
+    // assumed.
+    let program_id = Pubkey::new_unique();
+    let builder = Pubkey::new_unique();
+    let stake_ref = Pubkey::new_unique();
+
+    let (mut banks_client, payer, recent_blockhash) =
+        init_test_with_accounts(program_id, &[]).await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+    enable_staked_feeds(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    // The foundation payer grants itself STAKE_ORACLE and writes the first mirror, which is what
+    // the relayer will do.
+    let (permission_pubkey, _) = get_permission_pda(&program_id, &payer.pubkey());
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: payer.pubkey(),
+            permissions: permission_flags::STAKE_ORACLE,
+        }),
+        vec![
+            AccountMeta::new(permission_pubkey, false),
+            AccountMeta::new_readonly(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let (mirror_pubkey, _) = get_stake_mirror_pda(&program_id, &stake_ref);
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::WriteStakeMirror(StakeMirrorWriteArgs {
+            stake_ref,
+            builder,
+            tier: StakeTier::UpTo1Gbps,
+            committed_rate_bits_per_sec: 1_000_000_000,
+            source_slot: 1,
+        }),
+        vec![
+            AccountMeta::new(mirror_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+        &[AccountMeta::new_readonly(permission_pubkey, false)],
+    )
+    .await;
+
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "claimed", &exchange);
+
+    let mut args = staked_args("claimed", exchange);
+    args.builder = builder;
+    args.stake_ref = stake_ref;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(args),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &payer,
+        &[AccountMeta::new(mirror_pubkey, false)],
+    )
+    .await;
+
+    let claimed = get_account_data(&mut banks_client, mirror_pubkey)
+        .await
+        .unwrap()
+        .get_stake_mirror()
+        .unwrap();
+    assert_eq!(claimed.feed_key, feed_pubkey, "the feed spent the stake");
+
+    // The relayer re-mirrors at a newer slot, as it would after seeing the stake change on Solana.
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::WriteStakeMirror(StakeMirrorWriteArgs {
+            stake_ref,
+            builder,
+            tier: StakeTier::Unmetered,
+            committed_rate_bits_per_sec: 1_000_000_000,
+            source_slot: claimed.source_slot + 1,
+        }),
+        vec![
+            AccountMeta::new(mirror_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+        &[AccountMeta::new_readonly(permission_pubkey, false)],
+    )
+    .await;
+
+    let after = get_account_data(&mut banks_client, mirror_pubkey)
+        .await
+        .unwrap()
+        .get_stake_mirror()
+        .unwrap();
+    assert_eq!(after.tier, StakeTier::Unmetered, "the update landed");
+    assert_eq!(
+        after.feed_key, feed_pubkey,
+        "the stake is still spent on its feed"
+    );
 }

@@ -290,6 +290,15 @@ fn check_legacy_any(payer: &Pubkey, globalstate: &GlobalState, any_of: u128) -> 
 /// detect coverage gaps before strict mode is enabled. A flag omitted here is a silent
 /// lockout hazard, so this MUST list every flag any processor hands to [`authorize`].
 /// When a new instruction is migrated to [`authorize`], add its flag here.
+/// The gated flags that no `GlobalState` key can satisfy, so a holder needs a Permission
+/// account even while `FeatureFlag::RequirePermissionAccounts` is clear.
+///
+/// These are the opposite of a lockout hazard: nothing is relying on a legacy key for them, so
+/// enabling strict mode cannot take anything away. They are listed because the audit's own test
+/// asserts every other gated flag resolves to a legacy key, and a flag that deliberately resolves
+/// to none would otherwise read as a gap in the enumeration rather than a decision.
+pub const PERMISSION_ONLY_FLAGS: &[u128] = &[permission_flags::STAKE_ORACLE];
+
 pub const AUTHORIZE_GATED_FLAGS: &[u128] = &[
     permission_flags::PERMISSION_ADMIN,
     permission_flags::ACCESS_PASS_ADMIN,
@@ -305,6 +314,7 @@ pub const AUTHORIZE_GATED_FLAGS: &[u128] = &[
     permission_flags::INDEX_ADMIN,
     permission_flags::ACTIVATOR,
     permission_flags::HEALTH_ORACLE,
+    permission_flags::STAKE_ORACLE,
 ];
 
 /// Enumerates the legacy `GlobalState` keys that authorize `any_of_flags` today, each
@@ -572,8 +582,16 @@ mod tests {
 
         // Every authorize-gated flag must resolve to at least one legacy key with this
         // fully-populated GlobalState — otherwise the audit could never surface a gap
-        // for it.
+        // for it. The exceptions are the flags no legacy key can satisfy at all, which
+        // are safe by construction rather than gaps.
         for &flag in AUTHORIZE_GATED_FLAGS {
+            if PERMISSION_ONLY_FLAGS.contains(&flag) {
+                assert!(
+                    legacy_keys_for_flags(&gs, flag).is_empty(),
+                    "permission-only flag {flag:#x} unexpectedly has a legacy key"
+                );
+                continue;
+            }
             assert!(
                 !legacy_keys_for_flags(&gs, flag).is_empty(),
                 "no legacy keys enumerated for gated flag {flag:#x}"

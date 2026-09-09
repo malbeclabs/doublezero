@@ -227,6 +227,7 @@ async fn create_feed(f: &mut Fixture, code: &str, exchange: Pubkey, groups: Vec<
             name: code.to_string(),
             exchange,
             groups,
+            ..Default::default()
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),

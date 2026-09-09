@@ -1,6 +1,7 @@
 use borsh::to_vec;
 use doublezero_serviceability::{
     entrypoint::process_instruction,
+    error::DoubleZeroError,
     instructions::*,
     pda::{
         get_contributor_pda, get_exchange_pda, get_globalconfig_pda, get_globalstate_pda,
@@ -20,10 +21,11 @@ use doublezero_serviceability::{
 };
 use solana_program_test::*;
 use solana_sdk::{
-    instruction::{AccountMeta, Instruction},
+    instruction::{AccountMeta, Instruction, InstructionError},
+    program_error::ProgramError,
     pubkey::Pubkey,
     signature::{Keypair, Signer},
-    transaction::Transaction,
+    transaction::{Transaction, TransactionError},
 };
 
 use std::any::type_name;
@@ -83,6 +85,48 @@ pub async fn init_test() -> (BanksClient, Pubkey, Keypair, solana_program::hash:
     .await;
 
     (banks_client, program_id, payer, recent_blockhash)
+}
+
+/// Same as `init_test`, but on a caller-chosen `program_id` and with `accounts` already present
+/// and owned by the program. The caller picks the id because seeded accounts are usually PDAs,
+/// which cannot be derived until it is known.
+///
+/// Some accounts are written by an offchain service rather than by an instruction — `StakeMirror`
+/// is written by the cross-chain relayer. Seeding one directly is how a test exercises the read
+/// path before the writer exists.
+#[allow(dead_code)]
+pub async fn init_test_with_accounts(
+    program_id: Pubkey,
+    accounts: &[(Pubkey, Vec<u8>)],
+) -> (BanksClient, Keypair, solana_program::hash::Hash) {
+    let mut program_test = ProgramTest::new(
+        "doublezero_serviceability",
+        program_id,
+        processor!(process_instruction),
+    );
+    for (pubkey, data) in accounts {
+        program_test.add_account(
+            *pubkey,
+            solana_sdk::account::Account {
+                lamports: solana_sdk::rent::Rent::default().minimum_balance(data.len()),
+                data: data.clone(),
+                owner: program_id,
+                executable: false,
+                rent_epoch: 0,
+            },
+        );
+    }
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
+
+    transfer(
+        &mut banks_client,
+        &payer,
+        &test_payer().pubkey(),
+        100_000_000,
+    )
+    .await;
+
+    (banks_client, payer, recent_blockhash)
 }
 
 #[allow(dead_code)]
@@ -986,4 +1030,57 @@ pub fn custom_error_code(err: &BanksClientError) -> Option<u32> {
         ) => Some(*code),
         _ => None,
     }
+}
+
+/// The `Custom` code the program returns for `err`, derived from the enum rather than inlined
+/// so a renumbering of the error variants can never silently pass a hard-coded literal.
+#[allow(dead_code)]
+pub fn custom_code(err: DoubleZeroError) -> u32 {
+    match ProgramError::from(err) {
+        ProgramError::Custom(code) => code,
+        other => panic!("expected Custom, got {other:?}"),
+    }
+}
+
+/// Assert `result` failed at instruction index 0 with `Custom(expected)`.
+#[allow(dead_code)]
+pub fn assert_custom_at_ix0(result: &Result<(), TransactionError>, expected: u32) {
+    match result {
+        Err(TransactionError::InstructionError(0, InstructionError::Custom(code))) => {
+            assert_eq!(*code, expected, "unexpected custom error code");
+        }
+        other => panic!("expected Custom({expected}) at instruction 0, got {other:?}"),
+    }
+}
+
+/// Run `instruction` and return the structured `TransactionError` on failure, so a negative test
+/// can match the exact `InstructionError::Custom(code)` at instruction index 0.
+///
+/// NOTE: this intentionally does not return program logs. With the native `processor!` harness the
+/// guest program's `msg!` output is not surfaced to BanksClient, so the structured error code at
+/// instruction index 0 is the reliable signal for which check fired.
+#[allow(dead_code)]
+pub async fn try_execute_and_get_error(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    instruction: DoubleZeroInstruction,
+    accounts: Vec<AccountMeta>,
+    payer: &solana_sdk::signature::Keypair,
+    extra_accounts: &[AccountMeta],
+) -> Result<(), TransactionError> {
+    let recent_blockhash = wait_for_new_blockhash(banks_client).await;
+    let mut transaction = create_transaction_with_extra_accounts(
+        program_id,
+        &instruction,
+        &accounts,
+        payer,
+        extra_accounts,
+    );
+    transaction.try_sign(&[payer], recent_blockhash).unwrap();
+
+    banks_client
+        .process_transaction_with_metadata(transaction)
+        .await
+        .expect("banks client failed")
+        .result
 }

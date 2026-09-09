@@ -13,6 +13,7 @@ pub mod migrate;
 pub mod multicastgroup;
 pub mod permission;
 pub mod resource;
+pub mod stake_mirror;
 pub mod tenant;
 pub mod topology;
 pub mod user;

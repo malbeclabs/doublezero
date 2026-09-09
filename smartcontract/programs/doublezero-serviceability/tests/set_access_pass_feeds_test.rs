@@ -137,6 +137,7 @@ async fn create_feed(
             name: code.to_string(),
             exchange,
             groups: vec![Pubkey::new_unique()],
+            ..Default::default()
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),
@@ -598,6 +599,7 @@ async fn test_cannot_set_max_users_below_current_users() {
         name: "Live".to_string(),
         exchange: feed_exchange,
         groups: vec![Pubkey::new_unique()],
+        ..Default::default()
     };
     program_test.add_account(
         feed_pubkey,

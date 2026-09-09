@@ -457,6 +457,7 @@ mod tests {
             name: "QA Payments".to_string(),
             exchange: exchange_key,
             groups: vec![group_key],
+            ..Default::default()
         };
 
         let mgroup = MulticastGroup {
@@ -744,6 +745,7 @@ mod tests {
                 name: "Lashay 1".to_string(),
                 exchange: *exchange,
                 groups: vec![],
+                ..Default::default()
             })
             .collect();
 
@@ -848,6 +850,7 @@ mod tests {
             name: "QA Payments".to_string(),
             exchange: exchange_key,
             groups: vec![],
+            ..Default::default()
         };
 
         client

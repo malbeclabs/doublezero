@@ -11,10 +11,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.97.1
       - uses: Swatinem/rust-cache@v2
-      - name: Install agave solana tools
-        run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/v3.0.4/install)"
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+      - name: Solana toolchain
+        uses: ./.github/actions/solana-toolchain
+        with:
+          version: v3.0.4
       - run: make rust-build
   rust-lint:
     runs-on: ubuntu-24.04-16c-64gb
@@ -31,10 +31,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.97.1
       - uses: Swatinem/rust-cache@v2
-      - name: Install agave solana tools
-        run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/v3.0.4/install)"
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+      - name: Solana toolchain
+        uses: ./.github/actions/solana-toolchain
+        with:
+          version: v3.0.4
       - run: make rust-test
   rust-validator-test:
     runs-on: ubuntu-24.04-16c-64gb
@@ -42,10 +42,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.97.1
       - uses: Swatinem/rust-cache@v2
-      - name: Install agave solana tools
-        run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/v3.0.4/install)"
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+      - name: Solana toolchain
+        uses: ./.github/actions/solana-toolchain
+        with:
+          version: v3.0.4
       - run: make rust-validator-test
   # Every released CLI ships as a static musl binary so it loads on any Linux
   # regardless of the host glibc version. Build each package on its own, the way

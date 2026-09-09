@@ -12,7 +12,7 @@ use doublezero_serviceability::{
     pda::{
         get_accesspass_pda, get_contributor_pda, get_device_pda, get_exchange_pda, get_feed_pda,
         get_globalconfig_pda, get_globalstate_pda, get_location_pda, get_multicastgroup_pda,
-        get_resource_extension_pda, get_user_pda,
+        get_resource_extension_pda, get_stake_mirror_pda, get_user_pda,
     },
     processors::{
         accesspass::{
@@ -23,6 +23,7 @@ use doublezero_serviceability::{
         device::{create::DeviceCreateArgs, update::DeviceUpdateArgs},
         exchange::create::ExchangeCreateArgs,
         feed::create::FeedCreateArgs,
+        globalstate::setfeatureflags::SetFeatureFlagsArgs,
         location::create::LocationCreateArgs,
         multicastgroup::create::MulticastGroupCreateArgs,
         user::create_subscribe::UserCreateSubscribeArgs,
@@ -30,7 +31,10 @@ use doublezero_serviceability::{
     resource::ResourceType,
     state::{
         accesspass::{AccessPassType, FeedSeat},
+        accounttype::AccountType,
         device::DeviceType,
+        feature_flags::FeatureFlag,
+        stake_mirror::{StakeMirror, StakeTier},
         user::{UserCYOA, UserStatus, UserType},
     },
 };
@@ -61,6 +65,9 @@ struct FeedFixture {
     accesspass_pubkey: Pubkey,
     mgroup_pubkey: Pubkey,
     user_ip: Ipv4Addr,
+    /// A stake the fixture pre-mirrors, so a test can create a staked (Pending) feed.
+    stake_ref: Pubkey,
+    builder: Pubkey,
     user_tunnel_block: Pubkey,
     multicast_publisher_block: Pubkey,
     tunnel_ids: Pubkey,
@@ -77,6 +84,37 @@ async fn setup_feed_fixture(client_ip: [u8; 4]) -> FeedFixture {
         processor!(process_instruction),
     );
     program_test.set_compute_max_units(1_000_000);
+
+    // Pre-mirror one stake so a test can create a staked feed, which lands Pending. No instruction
+    // writes a StakeMirror yet, and nothing else reaches a non-Active status until halt and retire
+    // exist.
+    let builder = Pubkey::new_unique();
+    let stake_ref = Pubkey::new_unique();
+    let (mirror_pubkey, mirror_bump) = get_stake_mirror_pda(&program_id, &stake_ref);
+    let mirror = borsh::to_vec(&StakeMirror {
+        account_type: AccountType::StakeMirror,
+        owner: Pubkey::new_unique(),
+        bump_seed: mirror_bump,
+        stake_ref,
+        builder,
+        tier: StakeTier::Unmetered,
+        committed_rate_bits_per_sec: 1_000_000_000,
+        source_slot: 1,
+        relayer: Pubkey::new_unique(),
+        feed_key: Pubkey::default(),
+    })
+    .unwrap();
+    program_test.add_account(
+        mirror_pubkey,
+        solana_sdk::account::Account {
+            lamports: 1_000_000_000,
+            data: mirror,
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        },
+    );
+
     let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
 
     let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
@@ -261,6 +299,8 @@ async fn setup_feed_fixture(client_ip: [u8; 4]) -> FeedFixture {
         accesspass_pubkey,
         mgroup_pubkey,
         user_ip,
+        stake_ref,
+        builder,
         user_tunnel_block,
         multicast_publisher_block,
         tunnel_ids,
@@ -286,12 +326,63 @@ async fn create_feed(
             name: code.to_string(),
             exchange,
             groups,
+            ..Default::default()
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),
             AccountMeta::new(f.globalstate_pubkey, false),
         ],
         &f.payer,
+    )
+    .await;
+    feed_pubkey
+}
+
+/// Create a staked RFC-28 feed against the fixture's pre-mirrored stake. It lands `Pending`,
+/// waiting on a conformance verdict, which is the status the subscribe gate must refuse.
+async fn create_staked_feed(
+    f: &mut FeedFixture,
+    code: &str,
+    exchange: Pubkey,
+    groups: Vec<Pubkey>,
+) -> Pubkey {
+    let recent_blockhash = f.banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut f.banks_client,
+        recent_blockhash,
+        f.program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::AllowStakedFeeds.to_mask(),
+        }),
+        vec![AccountMeta::new(f.globalstate_pubkey, false)],
+        &f.payer,
+    )
+    .await;
+
+    let (feed_pubkey, _) = get_feed_pda(&f.program_id, code, &exchange);
+    let (mirror_pubkey, _) = get_stake_mirror_pda(&f.program_id, &f.stake_ref);
+    let recent_blockhash = f.banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction_with_extra_accounts(
+        &mut f.banks_client,
+        recent_blockhash,
+        f.program_id,
+        DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
+            code: code.to_string(),
+            name: code.to_string(),
+            exchange,
+            groups,
+            builder: f.builder,
+            stake_ref: f.stake_ref,
+            spec_id: "top-of-book@v1.0.0".to_string(),
+            sla_hash: [9u8; 32],
+            committed_rate_bits_per_sec: 1_000_000_000,
+        }),
+        vec![
+            AccountMeta::new(feed_pubkey, false),
+            AccountMeta::new(f.globalstate_pubkey, false),
+        ],
+        &f.payer,
+        &[AccountMeta::new(mirror_pubkey, false)],
     )
     .await;
     feed_pubkey
@@ -715,4 +806,42 @@ async fn test_batch_extra_group_not_in_feed_rejected_and_seat_not_ticked() {
         0,
         "seat tick must roll back with the failed batch"
     );
+}
+
+/// A feed that is not publishing admits no new subscriber, even with a paid seat provisioned and
+/// the right metro. This is what makes retire, halt, and slashing take effect on the subscriber
+/// side without walking every access pass: the status is checked where the seat is spent.
+#[tokio::test]
+async fn test_non_active_feed_admits_no_subscriber() {
+    let mut f = setup_feed_fixture([100, 0, 0, 26]).await;
+    let (exchange, mgroup) = (f.exchange_pubkey, f.mgroup_pubkey);
+    let feed = create_staked_feed(&mut f, "pending", exchange, vec![mgroup]).await;
+
+    // The oracle sold a seat on it. Pre-selling a Pending feed is legitimate; connecting is not.
+    set_pass_feeds(
+        &mut f,
+        vec![FeedSeat {
+            feed_key: feed,
+            max_users: 2,
+            max_future_users: 2,
+            current_users: 0,
+            anniversary_day: 15,
+            window_end: TEST_WINDOW_END,
+            terminates_at: TEST_TERMINATES_AT,
+        }],
+    )
+    .await;
+
+    let err = try_subscribe_with_feed(&mut f, feed)
+        .await
+        .expect_err("a Pending feed should admit no subscriber");
+    assert_custom_error(&err, 123); // FeedNotActive
+
+    // The seat was not spent, so the subscriber keeps what they paid for.
+    let pass = get_account_data(&mut f.banks_client, f.accesspass_pubkey)
+        .await
+        .unwrap()
+        .get_accesspass()
+        .unwrap();
+    assert_eq!(pass.feed_seats()[0].current_users, 0);
 }

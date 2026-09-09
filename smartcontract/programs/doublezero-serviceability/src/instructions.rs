@@ -71,6 +71,7 @@ use crate::processors::{
         allocate::ResourceAllocateArgs, closeaccount::ResourceExtensionCloseAccountArgs,
         create::ResourceCreateArgs, deallocate::ResourceDeallocateArgs,
     },
+    stake_mirror::write::StakeMirrorWriteArgs,
     tenant::{
         add_administrator::TenantAddAdministratorArgs, create::TenantCreateArgs,
         delete::TenantDeleteArgs, remove_administrator::TenantRemoveAdministratorArgs,
@@ -258,6 +259,8 @@ pub enum DoubleZeroInstruction {
 
     SubscribeFeed(SubscribeFeedArgs),     // variant 117
     UnsubscribeFeed(UnsubscribeFeedArgs), // variant 118
+
+    WriteStakeMirror(StakeMirrorWriteArgs), // variant 119
 }
 
 impl DoubleZeroInstruction {
@@ -408,6 +411,9 @@ impl DoubleZeroInstruction {
 
             117 => Ok(Self::SubscribeFeed(SubscribeFeedArgs::try_from(rest).unwrap())),
             118 => Ok(Self::UnsubscribeFeed(UnsubscribeFeedArgs::try_from(rest).unwrap())),
+            119 => Ok(Self::WriteStakeMirror(
+                StakeMirrorWriteArgs::try_from(rest).unwrap(),
+            )),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -554,6 +560,7 @@ impl DoubleZeroInstruction {
             Self::Deprecated111() => "Deprecated111".to_string(), // variant 111
 
             Self::CreateFeed(_) => "CreateFeed".to_string(), // variant 112
+            Self::WriteStakeMirror(_) => "WriteStakeMirror".to_string(), // variant 119
             Self::UpdateFeed(_) => "UpdateFeed".to_string(), // variant 113
             Self::DeleteFeed(_) => "DeleteFeed".to_string(), // variant 114
             Self::SetAccessPassFeeds(_) => "SetAccessPassFeeds".to_string(), // variant 115
@@ -698,6 +705,7 @@ impl DoubleZeroInstruction {
             Self::Deprecated111() => String::new(),            // variant 111
 
             Self::CreateFeed(args) => format!("{args:?}"), // variant 112
+            Self::WriteStakeMirror(args) => format!("{args:?}"), // variant 119
             Self::UpdateFeed(args) => format!("{args:?}"), // variant 113
             Self::DeleteFeed(args) => format!("{args:?}"), // variant 114
             Self::SetAccessPassFeeds(args) => format!("{args:?}"), // variant 115
@@ -1390,6 +1398,7 @@ mod tests {
                 name: "Shreds".to_string(),
                 exchange: Pubkey::new_unique(),
                 groups: vec![Pubkey::new_unique()],
+                ..Default::default()
             }),
             "CreateFeed",
         );

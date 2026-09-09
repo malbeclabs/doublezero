@@ -93,7 +93,7 @@ pub struct StakeMirror {
             deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
-    /// The builder that posted the stake.
+    /// The builder that posted the bond.
     pub builder: Pubkey, // 32
     /// The tier the bond bought. This is what a feed's committed rate is checked against.
     pub tier: StakeTier, // 1

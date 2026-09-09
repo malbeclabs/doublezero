@@ -1,12 +1,17 @@
 pub mod create;
 pub mod delete;
+pub mod halt;
+pub mod resume;
 pub mod update;
 
 use crate::{
+    authorize::authorize,
     error::DoubleZeroError,
     state::{
         accesspass::AccessPass,
         feed::{Feed, FeedStatus},
+        globalstate::GlobalState,
+        permission::permission_flags,
     },
 };
 use solana_program::{
@@ -119,4 +124,36 @@ pub fn require_feed_admits(feed_key: &Pubkey, feed: &Feed) -> Result<(), DoubleZ
         return Err(DoubleZeroError::FeedNotActive);
     }
     Ok(())
+}
+
+/// Whether `payer` may change this feed's lifecycle.
+///
+/// Two ways in, for different reasons. The feed's own builder, because RFC-28 makes halt the
+/// builder's lever and a builder that cannot halt its own feed cannot rotate its upstream source.
+/// A `FEED_AUTHORITY` or `FOUNDATION` key, because a feed whose builder has gone quiet must still
+/// be stoppable, and every other feed instruction already authorizes that way.
+///
+/// A catalog feed has no builder, so only the second way applies to it. The default pubkey is not
+/// a signer anyone can produce, but the check is explicit rather than relying on that.
+pub fn require_feed_writer<'a, 'b: 'a, I>(
+    program_id: &Pubkey,
+    accounts_iter: &mut I,
+    payer: &Pubkey,
+    globalstate: &GlobalState,
+    feed: &Feed,
+) -> ProgramResult
+where
+    I: Iterator<Item = &'a AccountInfo<'b>>,
+{
+    if feed.builder != Pubkey::default() && &feed.builder == payer {
+        return Ok(());
+    }
+
+    authorize(
+        program_id,
+        accounts_iter,
+        payer,
+        globalstate,
+        permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION,
+    )
 }

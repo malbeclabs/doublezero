@@ -29,7 +29,10 @@ use crate::common;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{get_feed_pda, get_globalstate_pda},
-    processors::feed::{create::FeedCreateArgs, delete::FeedDeleteArgs, update::FeedUpdateArgs},
+    processors::feed::{
+        create::FeedCreateArgs, delete::FeedDeleteArgs, halt::FeedHaltArgs, resume::FeedResumeArgs,
+        update::FeedUpdateArgs,
+    },
 };
 use solana_program::{
     instruction::{AccountMeta, Instruction},
@@ -83,6 +86,41 @@ pub fn delete_feed(
     common::build_with_permission(
         program_id,
         DoubleZeroInstruction::DeleteFeed(args),
+        vec![
+            AccountMeta::new(*feed, false),
+            AccountMeta::new(globalstate, false),
+        ],
+        payer,
+    )
+}
+
+/// `HaltFeed` (variant 120). Accounts: `[feed, globalstate]`.
+///
+/// Stops a feed publishing, reversibly. Unlike the other feed instructions, the feed's own
+/// `builder` may sign this one, so a builder can rotate its upstream source without an operator.
+/// A `FEED_AUTHORITY` or `FOUNDATION` key can sign it too, which is why this stays on the
+/// permission-appending path.
+pub fn halt_feed(program_id: &Pubkey, payer: &Pubkey, feed: &Pubkey) -> Instruction {
+    let (globalstate, _) = get_globalstate_pda(program_id);
+    common::build_with_permission(
+        program_id,
+        DoubleZeroInstruction::HaltFeed(FeedHaltArgs {}),
+        vec![
+            AccountMeta::new(*feed, false),
+            AccountMeta::new(globalstate, false),
+        ],
+        payer,
+    )
+}
+
+/// `ResumeFeed` (variant 121). Accounts: `[feed, globalstate]`.
+///
+/// Puts a halted feed back to publishing. Signed by the same keys `halt_feed` accepts.
+pub fn resume_feed(program_id: &Pubkey, payer: &Pubkey, feed: &Pubkey) -> Instruction {
+    let (globalstate, _) = get_globalstate_pda(program_id);
+    common::build_with_permission(
+        program_id,
+        DoubleZeroInstruction::ResumeFeed(FeedResumeArgs {}),
         vec![
             AccountMeta::new(*feed, false),
             AccountMeta::new(globalstate, false),

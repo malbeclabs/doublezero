@@ -1,4 +1,4 @@
-use std::{io::Write, net::Ipv4Addr};
+use std::{collections::HashSet, io::Write, net::Ipv4Addr};
 
 use anyhow::Result;
 use borsh::BorshDeserialize;
@@ -16,7 +16,9 @@ use solana_client::{
 };
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{account::Account, pubkey::Pubkey, signature::Signature};
-use solana_transaction_status_client_types::UiTransactionEncoding;
+use solana_transaction_status_client_types::{
+    EncodedTransaction, UiInstruction, UiMessage, UiParsedInstruction, UiTransactionEncoding,
+};
 use tabled::{Table, Tabled, settings::Style};
 
 /*
@@ -140,6 +142,7 @@ impl PaymentsCommand {
         }
 
         let escrow_keys: Vec<Pubkey> = escrow_accounts.iter().map(|(key, _)| *key).collect();
+        let escrow_key_set: HashSet<String> = escrow_keys.iter().map(ToString::to_string).collect();
 
         // Fetch transaction history for each escrow.
         let mut events: Vec<PaymentEvent> = Vec::new();
@@ -164,55 +167,56 @@ impl PaymentsCommand {
                 let signature: Signature = sig_info.signature.parse()?;
 
                 let tx_config = RpcTransactionConfig {
-                    encoding: Some(UiTransactionEncoding::Base64),
+                    encoding: Some(UiTransactionEncoding::JsonParsed),
                     commitment: Some(CommitmentConfig::confirmed()),
-                    max_supported_transaction_version: Some(0),
+                    max_supported_transaction_version: Some(1),
                 };
 
                 let tx_response = connection
                     .get_transaction_with_config(&signature, tx_config)
                     .await?;
 
-                let versioned_tx = match tx_response.transaction.transaction.decode() {
-                    Some(tx) => tx,
-                    None => continue,
+                let EncodedTransaction::Json(ui_transaction) = &tx_response.transaction.transaction
+                else {
+                    continue;
+                };
+                let UiMessage::Parsed(message) = &ui_transaction.message else {
+                    continue;
                 };
 
-                let message = versioned_tx.message;
-                let account_keys = message.static_account_keys();
-
-                for ix in message.instructions() {
-                    let program_id = account_keys
-                        .get(ix.program_id_index as usize)
-                        .copied()
-                        .unwrap_or_default();
-
-                    if program_id != *shred_subscription::ID {
+                let program_id = shred_subscription::ID.to_string();
+                for instruction in &message.instructions {
+                    let UiInstruction::Parsed(UiParsedInstruction::PartiallyDecoded(instruction)) =
+                        instruction
+                    else {
+                        continue;
+                    };
+                    if instruction.program_id != program_id {
                         continue;
                     }
-
-                    // Check that this instruction touches our escrow account.
-                    let touches_escrow = ix.accounts.iter().any(|&idx| {
-                        account_keys
-                            .get(idx as usize)
-                            .map(|k| escrow_keys.contains(k))
-                            .unwrap_or(false)
-                    });
-
+                    let touches_escrow = instruction
+                        .accounts
+                        .iter()
+                        .any(|account| escrow_key_set.contains(account));
                     if !touches_escrow {
                         continue;
                     }
-
-                    if let Some(amount) = parse_legacy_fund_payment_escrow_usdc(&ix.data) {
+                    let Ok(data) = bs58::decode(&instruction.data).into_vec() else {
+                        continue;
+                    };
+                    if let Some(amount) = parse_legacy_fund_payment_escrow_usdc(&data) {
+                        let Ok(amount_micro) = i64::try_from(amount) else {
+                            continue;
+                        };
                         events.push(PaymentEvent {
                             event_type: EventType::Funded,
-                            amount_micro: amount as i64,
+                            amount_micro,
                             block_time: tx_response.block_time,
                         });
                         continue;
                     }
 
-                    match ShredSubscriptionInstructionData::try_from_slice(&ix.data) {
+                    match ShredSubscriptionInstructionData::try_from_slice(&data) {
                         // TODO: ClosePaymentEscrow (withdrawal) — the actual
                         // refunded amount is in the tx log message "Withdrew {}
                         // USDC from payment escrow to refund account". Parse that

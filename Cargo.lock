@@ -3327,6 +3327,7 @@ dependencies = [
  "async-trait",
  "base64 0.22.1",
  "borsh",
+ "bs58",
  "bytemuck",
  "chrono",
  "clap",

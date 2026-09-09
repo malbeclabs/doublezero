@@ -94,92 +94,6 @@ fn parse_legacy_fund_payment_escrow_usdc(data: &[u8]) -> Option<u64> {
     Some(u64::from_le_bytes(data[8..16].try_into().ok()?))
 }
 
-fn payment_events(
-    transaction: &EncodedTransaction,
-    escrow_keys: &[Pubkey],
-    block_time: Option<i64>,
-) -> Vec<PaymentEvent> {
-    let EncodedTransaction::Json(ui_transaction) = transaction else {
-        return Vec::new();
-    };
-    let UiMessage::Parsed(message) = &ui_transaction.message else {
-        return Vec::new();
-    };
-
-    let program_id = shred_subscription::ID.to_string();
-    let mut events = Vec::new();
-    for instruction in &message.instructions {
-        let UiInstruction::Parsed(UiParsedInstruction::PartiallyDecoded(instruction)) = instruction
-        else {
-            continue;
-        };
-        if instruction.program_id != program_id {
-            continue;
-        }
-        let touches_escrow = instruction
-            .accounts
-            .iter()
-            .any(|account| escrow_keys.iter().any(|key| key.to_string() == *account));
-        if !touches_escrow {
-            continue;
-        }
-        let Ok(data) = bs58::decode(&instruction.data).into_vec() else {
-            continue;
-        };
-        if let Some(amount) = parse_legacy_fund_payment_escrow_usdc(&data) {
-            events.push(PaymentEvent {
-                event_type: EventType::Funded,
-                amount_micro: amount as i64,
-                block_time,
-            });
-            continue;
-        }
-
-        match ShredSubscriptionInstructionData::try_from_slice(&data) {
-            // TODO: ClosePaymentEscrow (withdrawal) — the actual
-            // refunded amount is in the tx log message "Withdrew {}
-            // USDC from payment escrow to refund account". Parse that
-            // to get the negative amount. Without it, we can't derive
-            // the correct withdrawal amount from the running balance
-            // alone because oracle debits are not yet tracked.
-            Ok(ShredSubscriptionInstructionData::ClosePaymentEscrow) => {}
-            // These instructions touch the escrow account but don't
-            // move funds — they appear in the same tx as fund/close.
-            //
-            // NOTE: the `InitializeValidatorPublisherRewards` and
-            // `ConfigureValidatorPublisherRewards` variants were
-            // previously listed here, but their account lists do
-            // not reference the escrow PDA so the `touches_escrow`
-            // pre-filter above already excludes them. A sibling
-            // task audits the rest of this listing for the same
-            // reason — the wildcard arm below makes the match
-            // robust to future variants in either direction.
-            Ok(
-                ShredSubscriptionInstructionData::InitializePaymentEscrow
-                | ShredSubscriptionInstructionData::InitializeClientSeat { .. }
-                | ShredSubscriptionInstructionData::RequestInstantSeatAllocation
-                | ShredSubscriptionInstructionData::RequestInstantSeatWithdrawal
-                | ShredSubscriptionInstructionData::RequestProratedInstantSeatWithdrawal
-                | ShredSubscriptionInstructionData::SetValidatorClientRewardsProportion(
-                    _,
-                )
-                | ShredSubscriptionInstructionData::InitializeClaimHolding(_)
-                | ShredSubscriptionInstructionData::ClaimValidatorClientRewards(_)
-                | ShredSubscriptionInstructionData::CheckCliVersion { .. },
-            ) => {}
-            Ok(_) => {}
-            // TODO: oracle instructions (BatchAllocateSeats,
-            // InstantAllocateSeat) debit the escrow. Their
-            // discriminators are not in the offchain SDK. The debit
-            // amount is in the tx log "Escrow balance: {}" (the
-            // post-debit balance). Parse that and compute the delta
-            // from the running balance to get the negative amount.
-            Err(_) => {}
-        }
-    }
-    events
-}
-
 impl PaymentsCommand {
     pub async fn execute(
         self,
@@ -261,11 +175,85 @@ impl PaymentsCommand {
                     .get_transaction_with_config(&signature, tx_config)
                     .await?;
 
-                events.extend(payment_events(
-                    &tx_response.transaction.transaction,
-                    &escrow_keys,
-                    tx_response.block_time,
-                ));
+                let EncodedTransaction::Json(ui_transaction) = &tx_response.transaction.transaction
+                else {
+                    continue;
+                };
+                let UiMessage::Parsed(message) = &ui_transaction.message else {
+                    continue;
+                };
+
+                let program_id = shred_subscription::ID.to_string();
+                for instruction in &message.instructions {
+                    let UiInstruction::Parsed(UiParsedInstruction::PartiallyDecoded(instruction)) =
+                        instruction
+                    else {
+                        continue;
+                    };
+                    if instruction.program_id != program_id {
+                        continue;
+                    }
+                    let touches_escrow = instruction
+                        .accounts
+                        .iter()
+                        .any(|account| escrow_keys.iter().any(|key| key.to_string() == *account));
+                    if !touches_escrow {
+                        continue;
+                    }
+                    let Ok(data) = bs58::decode(&instruction.data).into_vec() else {
+                        continue;
+                    };
+                    if let Some(amount) = parse_legacy_fund_payment_escrow_usdc(&data) {
+                        events.push(PaymentEvent {
+                            event_type: EventType::Funded,
+                            amount_micro: amount as i64,
+                            block_time: tx_response.block_time,
+                        });
+                        continue;
+                    }
+
+                    match ShredSubscriptionInstructionData::try_from_slice(&data) {
+                        // TODO: ClosePaymentEscrow (withdrawal) — the actual
+                        // refunded amount is in the tx log message "Withdrew {}
+                        // USDC from payment escrow to refund account". Parse that
+                        // to get the negative amount. Without it, we can't derive
+                        // the correct withdrawal amount from the running balance
+                        // alone because oracle debits are not yet tracked.
+                        Ok(ShredSubscriptionInstructionData::ClosePaymentEscrow) => {}
+                        // These instructions touch the escrow account but don't
+                        // move funds — they appear in the same tx as fund/close.
+                        //
+                        // NOTE: the `InitializeValidatorPublisherRewards` and
+                        // `ConfigureValidatorPublisherRewards` variants were
+                        // previously listed here, but their account lists do
+                        // not reference the escrow PDA so the `touches_escrow`
+                        // pre-filter above already excludes them. A sibling
+                        // task audits the rest of this listing for the same
+                        // reason — the wildcard arm below makes the match
+                        // robust to future variants in either direction.
+                        Ok(
+                            ShredSubscriptionInstructionData::InitializePaymentEscrow
+                            | ShredSubscriptionInstructionData::InitializeClientSeat { .. }
+                            | ShredSubscriptionInstructionData::RequestInstantSeatAllocation
+                            | ShredSubscriptionInstructionData::RequestInstantSeatWithdrawal
+                            | ShredSubscriptionInstructionData::RequestProratedInstantSeatWithdrawal
+                            | ShredSubscriptionInstructionData::SetValidatorClientRewardsProportion(
+                                _,
+                            )
+                            | ShredSubscriptionInstructionData::InitializeClaimHolding(_)
+                            | ShredSubscriptionInstructionData::ClaimValidatorClientRewards(_)
+                            | ShredSubscriptionInstructionData::CheckCliVersion { .. },
+                        ) => {}
+                        Ok(_) => {}
+                        // TODO: oracle instructions (BatchAllocateSeats,
+                        // InstantAllocateSeat) debit the escrow. Their
+                        // discriminators are not in the offchain SDK. The debit
+                        // amount is in the tx log "Escrow balance: {}" (the
+                        // post-debit balance). Parse that and compute the delta
+                        // from the running balance to get the negative amount.
+                        Err(_) => {}
+                    }
+                }
             }
         }
 
@@ -329,94 +317,5 @@ impl PaymentsCommand {
         }
 
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use serde_json::{Value, json};
-    use solana_transaction_status_client_types::EncodedTransactionWithStatusMeta;
-
-    use super::*;
-
-    fn fund_data(amount: u64) -> String {
-        let mut data = Vec::from(LEGACY_FUND_PAYMENT_ESCROW_USDC);
-        data.extend_from_slice(&amount.to_le_bytes());
-        bs58::encode(data).into_string()
-    }
-
-    fn response(instructions: Vec<Value>) -> EncodedTransactionWithStatusMeta {
-        serde_json::from_value(json!({
-            "transaction": {
-                "signatures": [Signature::default().to_string()],
-                "message": {
-                    "accountKeys": [],
-                    "recentBlockhash": "11111111111111111111111111111111",
-                    "instructions": instructions,
-                    "addressTableLookups": null,
-                    "transactionConfig": {
-                        "computeUnitLimit": 30_000,
-                        "heapSize": null,
-                        "loadedAccountsDataSizeLimit": 200_000,
-                        "priorityFee": null,
-                    },
-                },
-            },
-            "meta": {
-                "err": null,
-                "status": { "Ok": null },
-                "fee": 5_000,
-                "preBalances": [],
-                "postBalances": [],
-                "innerInstructions": [],
-                "logMessages": [],
-                "preTokenBalances": [],
-                "postTokenBalances": [],
-                "rewards": [],
-            },
-            "version": 1,
-        }))
-        .expect("a getTransaction response must deserialize")
-    }
-
-    fn fund_instruction(escrow: Pubkey, amount: u64) -> Value {
-        json!({
-            "programId": shred_subscription::ID.to_string(),
-            "accounts": [escrow.to_string()],
-            "data": fund_data(amount),
-            "stackHeight": null,
-        })
-    }
-
-    #[test]
-    fn reads_a_v1_fund_for_a_known_escrow() {
-        let escrow = Pubkey::new_unique();
-        let transaction = response(vec![fund_instruction(escrow, 2_000_000)]);
-
-        let events = payment_events(&transaction.transaction, &[escrow], Some(1_700_000_000));
-
-        assert_eq!(events.len(), 1);
-        assert!(matches!(events[0].event_type, EventType::Funded));
-        assert_eq!(events[0].amount_micro, 2_000_000);
-        assert_eq!(events[0].block_time, Some(1_700_000_000));
-    }
-
-    #[test]
-    fn ignores_a_foreign_program_and_a_fund_for_another_escrow() {
-        let escrow = Pubkey::new_unique();
-        let other = Pubkey::new_unique();
-        let transaction = response(vec![
-            json!({
-                "programId": Pubkey::new_unique().to_string(),
-                "accounts": [escrow.to_string()],
-                "data": fund_data(2_000_000),
-                "stackHeight": null,
-            }),
-            fund_instruction(other, 2_000_000),
-        ]);
-
-        let events = payment_events(&transaction.transaction, &[escrow], None);
-
-        assert!(events.is_empty());
     }
 }

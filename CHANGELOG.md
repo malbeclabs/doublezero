@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+  - `doublezero-solana shreds payments` asks the Solana node for version 1 and reads the JsonParsed instruction list, so a v1 fund no longer fails the listing with error -32015.
 - CI
   - The Agave toolchain install retries, and a failed one now fails the job. Eight workflow steps across five workflows ran `sh -c "$(curl -sSfL .../install)"` once with no retry, so a transient reset from `release.anza.xyz` killed a job before it ran anything. That form also swallowed a failed fetch: the command substitution comes back empty, `sh -c ""` exits 0, and the step passed having installed nothing. The eight are now one composite action at `.github/actions/solana-toolchain` that fetches and runs as separate steps, checks `solana --version` actually runs, clears partial state between attempts, bounds every wait so a stalled handshake or hung transfer reaches the backoff instead of sitting until the job times out, and backs off. Each caller keeps the version it used before; `solana.yml` and `offchain.local-validator.yml` are on v3.0.12 and the other three on v3.0.4, which is drift worth settling separately.
 - Serviceability

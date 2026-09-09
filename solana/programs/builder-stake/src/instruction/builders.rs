@@ -30,15 +30,21 @@ pub fn initialize_program(payer: &Pubkey) -> Instruction {
     }
 }
 
-pub fn set_admin(admin: &Pubkey) -> Instruction {
+/// Set the program admin.
+///
+/// Two keys, because the processor reads two: `upgrade_authority` signs and is checked against the
+/// program data account, and `admin_key` is the value written to the config. They are the same key
+/// in these tests and need not be in production, so a single parameter would make the ordinary
+/// case inexpressible.
+pub fn set_admin(upgrade_authority: &Pubkey, admin_key: &Pubkey) -> Instruction {
     Instruction {
         program_id: ID,
         accounts: vec![
             AccountMeta::new_readonly(get_program_data_address(&ID).0, false),
-            AccountMeta::new_readonly(*admin, true),
+            AccountMeta::new_readonly(*upgrade_authority, true),
             AccountMeta::new(ProgramConfig::find_address().0, false),
         ],
-        data: encode(&BuilderStakeInstructionData::SetAdmin(*admin)),
+        data: encode(&BuilderStakeInstructionData::SetAdmin(*admin_key)),
     }
 }
 

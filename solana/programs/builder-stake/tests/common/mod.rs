@@ -230,9 +230,12 @@ impl TestSetup {
 
         let admin = self.upgrade_authority.pubkey();
         let upgrade_authority = self.upgrade_authority.insecure_clone();
-        self.send(set_admin(&admin), &[&upgrade_authority])
-            .await
-            .unwrap();
+        self.send(
+            set_admin(&upgrade_authority.pubkey(), &admin),
+            &[&upgrade_authority],
+        )
+        .await
+        .unwrap();
     }
 
     pub async fn read_builder_stake(&mut self, key: &Pubkey) -> BuilderStake {

@@ -16,7 +16,7 @@ use solana_msg::msg;
 use solana_program_error::{ProgramError, ProgramResult};
 use solana_program_pack::Pack;
 use solana_pubkey::Pubkey;
-use solana_sysvar::{rent::Rent, Sysvar};
+use solana_sysvar::{clock::Clock, rent::Rent, Sysvar};
 use spl_token_interface::instruction as token_instruction;
 
 use crate::{
@@ -59,6 +59,10 @@ fn try_process_instruction(
             committed_rate_bits_per_sec,
         } => try_initialize_builder_stake(accounts, stake_index, committed_rate_bits_per_sec),
         BuilderStakeInstructionData::PostBond { amount } => try_post_bond(accounts, amount),
+        BuilderStakeInstructionData::Withdraw { amount } => try_withdraw(accounts, amount),
+        BuilderStakeInstructionData::SetHoldExpiry { hold_expires_at } => {
+            try_set_hold_expiry(accounts, hold_expires_at)
+        }
     }
 }
 
@@ -371,6 +375,12 @@ fn try_post_bond(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
         return Err(ProgramError::IncorrectAuthority);
     }
 
+    // The account's own address is the only thing binding it to this builder and index. Nothing
+    // else here proves it: `ZeroCopyMutAccount` checks the owner and the discriminator, not the
+    // address. `InitializeBuilderStake` can only create one at its PDA, so a stray account should
+    // not exist, but a local check beats a reader having to prove that.
+    try_require_stake_address(&builder_stake)?;
+
     // A stake that is still short is held to the current tier table, not the one that was live
     // when it was created. Creating a stake is permissionless and costs only rent, so pinning the
     // requirement at creation would let a builder bank today's price in bulk and fund years later
@@ -388,6 +398,16 @@ fn try_post_bond(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
                 );
                 ProgramError::InvalidAccountData
             })?;
+    }
+
+    // The first bond starts the hold. Later ones do not restart it: a repricing can force a
+    // top-up, and that must not push the builder's withdrawal date out.
+    if builder_stake.hold_expires_at == 0 {
+        builder_stake.hold_expires_at = Clock::get()?
+            .unix_timestamp
+            .checked_add(BuilderStake::HOLD_SECONDS)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        msg!("Hold runs to {}", builder_stake.hold_expires_at);
     }
 
     // Account 3 must be this stake's 2Z token account. Checked against the cached bump so a
@@ -439,9 +459,202 @@ fn try_post_bond(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
     Ok(())
 }
 
+/// Return 2Z the stake holds above its requirement.
+///
+/// The stake PDA owns its token account, so this program signs the transfer out. That is why the
+/// two guards here are the only thing standing between a builder and its whole bond: nothing else
+/// can move these tokens, and nothing else checks them.
+fn try_withdraw(accounts: &[AccountInfo], amount: u64) -> ProgramResult {
+    msg!("Withdraw");
+
+    if amount == 0 {
+        msg!("Withdraw amount must be greater than zero");
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
+    // We expect the following accounts for this instruction:
+    // - 0: Program config.
+    // - 1: Builder.
+    // - 2: Builder stake.
+    // - 3: Builder stake 2Z token account.
+    // - 4: Destination 2Z token account.
+    // - 5: SPL Token program.
+    let mut accounts_iter = accounts.iter().enumerate();
+
+    let program_config =
+        ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+    program_config.try_require_unpaused()?;
+
+    let (account_index, builder_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+    if !builder_info.is_signer {
+        msg!("Builder must be a signer (account {})", account_index);
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+
+    let mut builder_stake =
+        ZeroCopyMutAccount::<BuilderStake>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    if &builder_stake.builder != builder_info.key {
+        msg!("Stake belongs to builder {}", builder_stake.builder);
+        return Err(ProgramError::IncorrectAuthority);
+    }
+
+    // The account's own address is the only thing binding it to this builder and index. Nothing
+    // else here proves it: `ZeroCopyMutAccount` checks the owner and the discriminator, not the
+    // address. `InitializeBuilderStake` can only create one at its PDA, so a stray account should
+    // not exist, but a local check beats a reader having to prove that.
+    try_require_stake_address(&builder_stake)?;
+
+    let now = Clock::get()?.unix_timestamp;
+    let withdrawable = builder_stake.withdrawable_2z_amount(now);
+
+    if !builder_stake.hold_started() {
+        msg!("No bond has been posted, so no hold has started");
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if now < builder_stake.hold_expires_at {
+        msg!(
+            "Hold runs to {}, now {}; nothing is withdrawable yet",
+            builder_stake.hold_expires_at,
+            now
+        );
+        return Err(ProgramError::InvalidAccountData);
+    }
+    if amount > withdrawable {
+        msg!(
+            "Withdrawable is {} ({} held, {} required); asked for {}",
+            withdrawable,
+            builder_stake.bonded_2z_amount,
+            builder_stake.required_2z_amount,
+            amount
+        );
+        return Err(ProgramError::InsufficientFunds);
+    }
+
+    let (_, stake_token_account_info, _) = try_next_2z_token_pda_info(
+        &mut accounts_iter,
+        builder_stake.info.key,
+        Some(builder_stake.token_account_bump_seed),
+    )?;
+
+    // Account 4 is where the tokens go. The token program checks its mint when it processes the
+    // transfer. We deliberately do not require it to belong to the builder: the builder signs this
+    // instruction, so it is already choosing where its own returned bond lands.
+    let (_, destination_token_account_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
+    try_next_token_program_info(&mut accounts_iter)?;
+
+    let stake_key = *builder_stake.info.key;
+    let builder = builder_stake.builder;
+    let stake_index = builder_stake.stake_index;
+    let bump_seed = builder_stake.bump_seed;
+
+    let token_transfer_ix = token_instruction::transfer(
+        &spl_token_interface::ID,
+        stake_token_account_info.key,
+        destination_token_account_info.key,
+        &stake_key,
+        &[], // signer_pubkeys
+        amount,
+    )
+    .unwrap();
+
+    invoke_signed_unchecked(
+        &token_transfer_ix,
+        accounts,
+        &[&[
+            BuilderStake::SEED_PREFIX,
+            builder.as_ref(),
+            &stake_index.to_le_bytes(),
+            &[bump_seed],
+        ]],
+    )?;
+
+    // Read the balance back rather than subtracting, for the same reason `PostBond` does: the
+    // token account is the authority on what is held.
+    builder_stake.bonded_2z_amount = try_token_account_amount(stake_token_account_info)?;
+
+    msg!(
+        "Withdrew {} 2Z, stake now holds {} of {} required",
+        amount,
+        builder_stake.bonded_2z_amount,
+        builder_stake.required_2z_amount
+    );
+
+    Ok(())
+}
+
+/// Move a stake's hold expiry so a devnet demo can show a withdrawal without waiting six months.
+///
+/// Compiled to a refusal outside a `development` build. The gate is a `cfg!` in the body rather
+/// than a `#[cfg]` on the instruction, so both builds decode the same bytes to the same variant
+/// and only one of them will act on it. An instruction that exists and refuses is a clearer
+/// failure than two binaries that disagree about what a byte string means.
+fn try_set_hold_expiry(accounts: &[AccountInfo], hold_expires_at: i64) -> ProgramResult {
+    msg!("Set hold expiry");
+
+    if !cfg!(feature = "development") {
+        msg!("SetHoldExpiry is a development-build instruction");
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
+    // We expect the following accounts for this instruction:
+    // - 0: Program config.
+    // - 1: Admin.
+    // - 2: Builder stake.
+    let mut accounts_iter = accounts.iter().enumerate();
+
+    let program_config =
+        ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    let (account_index, admin_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+    if !admin_info.is_signer {
+        msg!("Admin must be a signer (account {})", account_index);
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    program_config.try_require_admin(admin_info.key)?;
+
+    let mut builder_stake =
+        ZeroCopyMutAccount::<BuilderStake>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+    try_require_stake_address(&builder_stake)?;
+    builder_stake.hold_expires_at = hold_expires_at;
+
+    msg!("Hold now runs to {}", hold_expires_at);
+
+    Ok(())
+}
+
 //
 // Helpers.
 //
+
+/// Reject a `BuilderStake` that is not at the address its own fields derive.
+#[inline(always)]
+fn try_require_stake_address(
+    builder_stake: &ZeroCopyMutAccount<BuilderStake>,
+) -> Result<(), ProgramError> {
+    let expected = BuilderStake::checked_address(
+        &builder_stake.builder,
+        builder_stake.stake_index,
+        builder_stake.bump_seed,
+    )
+    .ok_or(ProgramError::InvalidSeeds)?;
+
+    if builder_stake.info.key != &expected {
+        msg!(
+            "Stake account {} is not the PDA for builder {} index {}",
+            builder_stake.info.key,
+            builder_stake.builder,
+            builder_stake.stake_index
+        );
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    Ok(())
+}
 
 #[inline(always)]
 fn try_next_2z_token_pda_info<'a, 'b>(

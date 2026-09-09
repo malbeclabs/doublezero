@@ -110,6 +110,47 @@ pub async fn start_test() -> TestSetup {
     }
 }
 
+/// Simulate one instruction and return the error together with the program's logs.
+///
+/// Several rejections share a `ProgramError`: a paused program and a hold that has not elapsed
+/// both return `InvalidAccountData`. The error alone cannot tell a test which check fired, so the
+/// log line is what pins it, the way the revenue-distribution tests do.
+pub async fn simulate_error(
+    t: &mut TestSetup,
+    ix: Instruction,
+    signers: &[&Keypair],
+) -> (TransactionError, Vec<String>) {
+    let blockhash = t.context.get_new_latest_blockhash().await.unwrap();
+    let payer = t.context.payer.insecure_clone();
+
+    let mut all: Vec<&Keypair> = vec![&payer];
+    all.extend_from_slice(signers);
+
+    let tx = Transaction::new_signed_with_payer(&[ix], Some(&payer.pubkey()), &all, blockhash);
+    let simulated = t
+        .context
+        .banks_client
+        .simulate_transaction(tx)
+        .await
+        .unwrap();
+
+    (
+        simulated.result.unwrap().unwrap_err(),
+        simulated.simulation_details.unwrap().logs,
+    )
+}
+
+/// Assert the program logged `expected` somewhere in `logs`.
+///
+/// By content rather than by index: the index moves whenever a `msg!` is added earlier in the
+/// instruction, and what the test cares about is which check fired.
+pub fn assert_logged(logs: &[String], expected: &str) {
+    assert!(
+        logs.iter().any(|l| l.contains(expected)),
+        "expected a log containing {expected:?}, got {logs:#?}"
+    );
+}
+
 /// Assert a transaction failed with exactly `expected` at instruction 0. Without this a test that
 /// expects one rejection passes on any other, and a later change can move the real reject.
 pub fn assert_instruction_error(err: TransportError, expected: InstructionError) {
@@ -355,5 +396,42 @@ pub fn post_bond(
             AccountMeta::new_readonly(spl_token_interface::ID, false),
         ],
         data: encode(&BuilderStakeInstructionData::PostBond { amount }),
+    }
+}
+
+pub fn withdraw(
+    builder: &Pubkey,
+    stake_index: u64,
+    destination_token_account: &Pubkey,
+    amount: u64,
+) -> Instruction {
+    let stake_key = BuilderStake::find_address(builder, stake_index).0;
+
+    Instruction {
+        program_id: ID,
+        accounts: vec![
+            AccountMeta::new_readonly(ProgramConfig::find_address().0, false),
+            AccountMeta::new_readonly(*builder, true),
+            AccountMeta::new(stake_key, false),
+            AccountMeta::new(state::find_2z_token_pda_address(&stake_key).0, false),
+            AccountMeta::new(*destination_token_account, false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
+        ],
+        data: encode(&BuilderStakeInstructionData::Withdraw { amount }),
+    }
+}
+
+/// Move a stake's hold expiry. Development builds only; the test binary is one.
+pub fn set_hold_expiry(admin: &Pubkey, builder: &Pubkey, stake_index: u64, at: i64) -> Instruction {
+    Instruction {
+        program_id: ID,
+        accounts: vec![
+            AccountMeta::new_readonly(ProgramConfig::find_address().0, false),
+            AccountMeta::new_readonly(*admin, true),
+            AccountMeta::new(BuilderStake::find_address(builder, stake_index).0, false),
+        ],
+        data: encode(&BuilderStakeInstructionData::SetHoldExpiry {
+            hold_expires_at: at,
+        }),
     }
 }

@@ -66,6 +66,14 @@ impl PrecomputedDiscriminator for BuilderStake {
 impl BuilderStake {
     pub const SEED_PREFIX: &'static [u8] = b"builder_stake";
 
+    /// RFC-28's six-month minimum hold, as 180 days.
+    ///
+    /// Days rather than calendar months: a month has no fixed length, and the alternative is
+    /// calendar arithmetic onchain to move a boundary by at most three days. `AccessPass` does
+    /// carry an anniversary day for its billing windows, but that is a recurring cycle a
+    /// subscriber sees every month. This fires once.
+    pub const HOLD_SECONDS: i64 = 180 * 24 * 60 * 60;
+
     pub fn find_address(builder: &Pubkey, stake_index: u64) -> (Pubkey, u8) {
         Pubkey::find_program_address(
             &[
@@ -81,6 +89,25 @@ impl BuilderStake {
     /// no feed: nothing mirrors it to the DZ ledger, so no feed can be created against it.
     pub fn is_funded(&self) -> bool {
         self.bonded_2z_amount >= self.required_2z_amount
+    }
+
+    /// What the builder may take back right now: everything above the requirement, and nothing at
+    /// all until the hold elapses.
+    ///
+    /// Saturating, because a stake short of its requirement has nothing spare rather than a
+    /// negative amount to return.
+    pub fn withdrawable_2z_amount(&self, now: i64) -> u64 {
+        if !self.hold_started() || now < self.hold_expires_at {
+            return 0;
+        }
+        self.bonded_2z_amount
+            .saturating_sub(self.required_2z_amount)
+    }
+
+    /// Whether a bond has ever been posted. `PostBond` sets the expiry on the first one, so a
+    /// zero here is an unbonded stake rather than a hold that ended long ago.
+    pub fn hold_started(&self) -> bool {
+        self.hold_expires_at != 0
     }
 
     pub fn checked_address(builder: &Pubkey, stake_index: u64, bump_seed: u8) -> Option<Pubkey> {

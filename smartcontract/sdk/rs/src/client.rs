@@ -265,15 +265,18 @@ impl DZClient {
             .and_then(|meta| match meta.log_messages {
                 OptionSerializer::Some(logs) => Some(logs),
                 _ => None,
-            })
-            .unwrap_or_default();
+            });
 
         // The signature is worth carrying: `skip_preflight` means a failing transaction still
         // lands, so a reader can look this one up rather than take our word for what it said.
-        if program_logs.is_empty() {
-            error!("Transaction {signature} failed and its program logs could not be fetched");
-        } else {
-            error!("Program logs for {signature}:\n{}", program_logs.join("\n"));
+        //
+        // Three cases, not two. The fetch above discards its own error, so "nothing came back"
+        // and "the program said nothing" are the same value once the option is flattened, and
+        // they send a reader after different problems.
+        match program_logs.as_deref() {
+            None => error!("Transaction {signature} failed and its program logs could not be read"),
+            Some([]) => error!("Transaction {signature} failed and returned no program logs"),
+            Some(logs) => error!("Program logs for {signature}:\n{}", logs.join("\n")),
         }
 
         // `Custom` numbers are defined by whichever program raised them. An RFC-27 transaction

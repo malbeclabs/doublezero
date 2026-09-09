@@ -66,8 +66,8 @@ pub struct Feed {
 
     // RFC-28 fields. Everything below is absent from feeds created before RFC-28, so every one of
     // them decodes to a default on a short account and is written back on the next update.
-    /// The builder that deployed this feed and posted its stake, zero for a catalog feed with no
-    /// builder. The `StakeMirror` is keyed on `stake_ref`, not on this, so that one deposit backs
+    /// The builder that deployed this feed and posted its bond, zero for a catalog feed with no
+    /// builder. The `StakeMirror` is keyed on `stake_ref`, not on this, so that one bond backs
     /// one feed.
     #[cfg_attr(
         feature = "serde",
@@ -77,7 +77,7 @@ pub struct Feed {
         )
     )]
     pub builder: Pubkey, // 32
-    /// The `BuilderStake` PDA on Solana holding this feed's deposit. A record, not a check: the DZ
+    /// The `BuilderStake` PDA on Solana holding this feed's bond. A record, not a check: the DZ
     /// ledger cannot read a Solana account, so the covering check runs against `StakeMirror`.
     #[cfg_attr(
         feature = "serde",

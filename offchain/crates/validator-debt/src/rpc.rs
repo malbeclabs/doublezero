@@ -68,7 +68,7 @@ impl TryFrom<SolanaValidatorDebtConnectionOptions> for SolanaDebtCalculator {
             transaction_details: Some(TransactionDetails::Signatures),
             rewards: Some(true),
             commitment: None,
-            max_supported_transaction_version: Some(0),
+            max_supported_transaction_version: Some(1),
         };
 
         let vote_accounts_config = RpcGetVoteAccountsConfig {

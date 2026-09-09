@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `shreds payments`: ask the Solana node for version 1 and read JsonParsed instruction lists, so a v1 fund no longer fails the listing with error -32015
 - Remove `revenue-distribution convert-2z` and `harvest-2z` (malbeclabs/doublezero#4275)
 - Validator deposit no longer accepts `--convert-2z-limit-price`
 - `fetch sol-conversion` no longer requests a swap quote

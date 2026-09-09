@@ -53,7 +53,7 @@ pub fn process_delete_feed(
 
     // A staked feed is not a catalog entry an admin can drop. Its stake mirror records this feed
     // in `feed_key` to enforce RFC-28's one feed per stake, and closing the feed here would leave
-    // that pointing at an account that no longer exists: the builder's deposit would back nothing
+    // that pointing at an account that no longer exists: the builder's bond would back nothing
     // and still refuse to back anything else. Retirement is the path out, and it releases the
     // stake with it. Both land in the feed lifecycle work (D2).
     if feed.builder != Pubkey::default() {

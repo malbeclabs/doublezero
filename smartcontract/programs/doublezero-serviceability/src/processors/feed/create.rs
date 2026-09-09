@@ -47,7 +47,7 @@ pub struct FeedCreateArgs {
     /// behavior. Any other value makes this a staked feed and starts it Pending.
     #[incremental(default = Pubkey::default())]
     pub builder: Pubkey,
-    /// The `BuilderStake` PDA on Solana holding this feed's deposit.
+    /// The `BuilderStake` PDA on Solana holding this feed's bond.
     #[incremental(default = Pubkey::default())]
     pub stake_ref: Pubkey,
     /// The `edge-feed-spec` wire format, as `<spec>@<version>`.

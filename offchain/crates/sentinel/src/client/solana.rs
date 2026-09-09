@@ -412,15 +412,13 @@ fn access_request_pdas(
         if instruction.program_id != passport {
             continue;
         }
-        let Ok(data) = bs58::decode(&instruction.data).into_vec() else {
-            continue;
-        };
+        let data = bs58::decode(&instruction.data)
+            .into_vec()
+            .map_err(|_| Error::InstructionInvalid(signature))?;
         let Some(bytes) = data.get(..8) else {
-            continue;
+            return Err(Error::InstructionInvalid(signature));
         };
-        let Ok(bytes) = <[u8; 8]>::try_from(bytes) else {
-            continue;
-        };
+        let bytes: [u8; 8] = bytes.try_into().unwrap();
         if Discriminator::new(bytes) != PassportInstructionData::REQUEST_ACCESS {
             continue;
         }
@@ -478,10 +476,7 @@ mod test {
         })
     }
 
-    fn parsed_transaction(
-        instructions: Vec<serde_json::Value>,
-        version: u8,
-    ) -> EncodedTransaction {
+    fn parsed_transaction(instructions: Vec<serde_json::Value>, version: u8) -> EncodedTransaction {
         let encoded: EncodedTransactionWithStatusMeta = serde_json::from_value(json!({
             "transaction": {
                 "signatures": [Signature::default().to_string()],
@@ -522,6 +517,42 @@ mod test {
             access_request_pdas(&transaction, Signature::default()).unwrap(),
             vec![request_pda]
         );
+    }
+
+    #[test]
+    fn rejects_a_passport_instruction_with_unreadable_data() {
+        let transaction = parsed_transaction(
+            vec![json!({
+                "programId": passport_id().to_string(),
+                "accounts": [],
+                "data": "!!!",
+                "stackHeight": null,
+            })],
+            1,
+        );
+
+        assert!(matches!(
+            access_request_pdas(&transaction, Signature::default()),
+            Err(Error::InstructionInvalid(_))
+        ));
+    }
+
+    #[test]
+    fn rejects_a_passport_instruction_shorter_than_a_discriminator() {
+        let transaction = parsed_transaction(
+            vec![json!({
+                "programId": passport_id().to_string(),
+                "accounts": [],
+                "data": bs58::encode([1, 2, 3]).into_string(),
+                "stackHeight": null,
+            })],
+            1,
+        );
+
+        assert!(matches!(
+            access_request_pdas(&transaction, Signature::default()),
+            Err(Error::InstructionInvalid(_))
+        ));
     }
 
     #[test]

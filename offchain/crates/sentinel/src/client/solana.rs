@@ -1,12 +1,11 @@
 use std::{
     net::{Ipv4Addr, SocketAddr},
+    str::FromStr,
     sync::Arc,
     time::Duration,
 };
 
 use async_trait::async_trait;
-use base64::{Engine, engine::general_purpose::STANDARD as BASE64_STD};
-use bincode;
 use doublezero_passport::{
     id as passport_id,
     instruction::{
@@ -31,15 +30,13 @@ use solana_client::{
 use solana_commitment_config::{CommitmentConfig, CommitmentLevel};
 use solana_compute_budget_interface::ComputeBudgetInstruction;
 use solana_sdk::{
-    message::compiled_instruction::CompiledInstruction,
     program_pack::Pack,
     pubkey::Pubkey,
     signature::{Keypair, Signature},
     signer::Signer,
-    transaction::VersionedTransaction,
 };
 use solana_transaction_status_client_types::{
-    EncodedTransaction, TransactionBinaryEncoding, UiTransactionEncoding,
+    EncodedTransaction, UiInstruction, UiMessage, UiParsedInstruction, UiTransactionEncoding,
 };
 use url::Url;
 
@@ -218,61 +215,28 @@ impl SolRpcClient {
         &self,
         signature: Signature,
     ) -> Result<Vec<AccessId>> {
-        // Get the transaction to find the AccessRequest account pubkey
         let txn = self
             .client
             .get_transaction_with_config(
                 &signature,
                 RpcTransactionConfig {
-                    encoding: Some(UiTransactionEncoding::Base64),
+                    encoding: Some(UiTransactionEncoding::JsonParsed),
                     commitment: Some(CommitmentConfig {
                         commitment: CommitmentLevel::Confirmed,
                     }),
-                    max_supported_transaction_version: Some(0),
+                    max_supported_transaction_version: Some(1),
                 },
             )
             .await?;
 
         let mut access_ids = Vec::new();
-
-        if let EncodedTransaction::Binary(data, TransactionBinaryEncoding::Base64) =
-            txn.transaction.transaction
-        {
-            let data = BASE64_STD.decode(data)?;
-            let tx = bincode::deserialize::<VersionedTransaction>(&data)?;
-
-            let static_account_keys = tx.message.static_account_keys();
-            let instructions = tx.message.instructions();
-
-            for compiled_ix in instructions
-                .iter()
-                .filter(|ix| is_request_access_instruction(ix, static_account_keys))
-            {
-                // Get the AccessRequest account
-                let accounts = compiled_ix
-                    .accounts
-                    .iter()
-                    .map(|&idx| static_account_keys.get(idx as usize))
-                    .collect::<Option<Vec<_>>>()
-                    .ok_or(Error::MissingAccountKeys(signature))?;
-
-                let request_pda = accounts
-                    .get(ACCESS_REQUEST_ACCOUNT_INDEX)
-                    .copied()
-                    .ok_or(Error::InstructionInvalid(signature))?;
-
-                // Fetch the AccessRequest account data
-                let account = self.client.get_account(request_pda).await?;
-
-                // Deserialize the AccessRequest and extract the AccessMode
-                let access_id =
-                    deserialize_access_request_from_account(request_pda, &account.data)?;
-
-                access_ids.push(access_id);
-            }
-        } else {
-            return Err(Error::TransactionEncoding(signature));
-        };
+        for request_pda in access_request_pdas(&txn.transaction.transaction, signature)? {
+            let account = self.client.get_account(&request_pda).await?;
+            access_ids.push(deserialize_access_request_from_account(
+                &request_pda,
+                &account.data,
+            )?);
+        }
 
         Ok(access_ids)
     }
@@ -427,10 +391,50 @@ fn deserialize_access_request_from_account(
     })
 }
 
-fn is_request_access_instruction(ix: &CompiledInstruction, static_account_keys: &[Pubkey]) -> bool {
-    ix.program_id(static_account_keys) == &passport_id()
-        && Discriminator::new(ix.data[..8].try_into().unwrap())
-            == PassportInstructionData::REQUEST_ACCESS
+fn access_request_pdas(
+    transaction: &EncodedTransaction,
+    signature: Signature,
+) -> Result<Vec<Pubkey>> {
+    let EncodedTransaction::Json(ui_transaction) = transaction else {
+        return Err(Error::TransactionEncoding(signature));
+    };
+    let UiMessage::Parsed(message) = &ui_transaction.message else {
+        return Err(Error::TransactionEncoding(signature));
+    };
+
+    let passport = passport_id().to_string();
+    let mut pdas = Vec::new();
+    for instruction in &message.instructions {
+        let UiInstruction::Parsed(UiParsedInstruction::PartiallyDecoded(instruction)) = instruction
+        else {
+            continue;
+        };
+        if instruction.program_id != passport {
+            continue;
+        }
+        let Ok(data) = bs58::decode(&instruction.data).into_vec() else {
+            continue;
+        };
+        let Some(bytes) = data.get(..8) else {
+            continue;
+        };
+        let Ok(bytes) = <[u8; 8]>::try_from(bytes) else {
+            continue;
+        };
+        if Discriminator::new(bytes) != PassportInstructionData::REQUEST_ACCESS {
+            continue;
+        }
+
+        let request_pda = instruction
+            .accounts
+            .get(ACCESS_REQUEST_ACCOUNT_INDEX)
+            .ok_or(Error::InstructionInvalid(signature))?;
+        let request_pda =
+            Pubkey::from_str(request_pda).map_err(|_| Error::InstructionInvalid(signature))?;
+        pdas.push(request_pda);
+    }
+
+    Ok(pdas)
 }
 
 struct PreviousEpochSlots(u64);
@@ -453,7 +457,98 @@ impl Iterator for PreviousEpochSlots {
 
 #[cfg(test)]
 mod test {
+    use borsh::BorshSerialize;
+    use serde_json::json;
+    use solana_transaction_status_client_types::EncodedTransactionWithStatusMeta;
+
     use super::*;
+
+    fn encoded_ix_data(discriminator: Discriminator<8>) -> String {
+        let mut data = Vec::new();
+        discriminator.serialize(&mut data).unwrap();
+        bs58::encode(data).into_string()
+    }
+
+    fn request_access_instruction(accounts: Vec<String>) -> serde_json::Value {
+        json!({
+            "programId": passport_id().to_string(),
+            "accounts": accounts,
+            "data": encoded_ix_data(PassportInstructionData::REQUEST_ACCESS),
+            "stackHeight": null,
+        })
+    }
+
+    fn parsed_transaction(
+        instructions: Vec<serde_json::Value>,
+        version: u8,
+    ) -> EncodedTransaction {
+        let encoded: EncodedTransactionWithStatusMeta = serde_json::from_value(json!({
+            "transaction": {
+                "signatures": [Signature::default().to_string()],
+                "message": {
+                    "accountKeys": [],
+                    "recentBlockhash": "11111111111111111111111111111111",
+                    "instructions": instructions,
+                    "addressTableLookups": null,
+                    "transactionConfig": {
+                        "computeUnitLimit": 30_000,
+                        "heapSize": null,
+                        "loadedAccountsDataSizeLimit": 200_000,
+                        "priorityFee": null,
+                    },
+                },
+            },
+            "meta": null,
+            "version": version,
+        }))
+        .expect("a getTransaction JsonParsed response must deserialize");
+        encoded.transaction
+    }
+
+    #[test]
+    fn reads_a_request_access_pda_from_a_v1_json_parsed_transaction() {
+        let request_pda = Pubkey::new_unique();
+        let transaction = parsed_transaction(
+            vec![request_access_instruction(vec![
+                Pubkey::new_unique().to_string(),
+                Pubkey::new_unique().to_string(),
+                request_pda.to_string(),
+                Pubkey::new_unique().to_string(),
+            ])],
+            1,
+        );
+
+        assert_eq!(
+            access_request_pdas(&transaction, Signature::default()).unwrap(),
+            vec![request_pda]
+        );
+    }
+
+    #[test]
+    fn ignores_instructions_that_are_not_request_access() {
+        let transaction = parsed_transaction(
+            vec![
+                json!({
+                    "programId": Pubkey::new_unique().to_string(),
+                    "accounts": [],
+                    "data": bs58::encode([1, 2, 3]).into_string(),
+                    "stackHeight": null,
+                }),
+                json!({
+                    "programId": passport_id().to_string(),
+                    "accounts": [],
+                    "data": encoded_ix_data(PassportInstructionData::GRANT_ACCESS),
+                    "stackHeight": null,
+                }),
+            ],
+            1,
+        );
+
+        assert_eq!(
+            access_request_pdas(&transaction, Signature::default()).unwrap(),
+            Vec::<Pubkey>::new()
+        );
+    }
 
     #[test]
     fn test_reverse_iter() {

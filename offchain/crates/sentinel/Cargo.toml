@@ -11,12 +11,8 @@ repository.workspace = true
 [dependencies]
 anyhow.workspace = true
 async-trait.workspace = true
-base64.workspace = true
-# bincode 1, not the workspace entry: this repo's own crates are on bincode 2,
-# whose API (bincode::serde::encode_to_vec) is a different one. Unifying is a
-# code change, not a manifest change.
-bincode = "1"
 borsh.workspace = true
+bs58.workspace = true
 clap.workspace = true
 config.workspace = true
 doublezero-passport.workspace = true

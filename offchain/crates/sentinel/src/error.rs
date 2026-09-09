@@ -24,10 +24,6 @@ pub type Result<T = ()> = std::result::Result<T, Error>;
 
 #[derive(Debug, Error, strum::IntoStaticStr)]
 pub enum Error {
-    #[error("base64 decode error: {0}")]
-    Base64Decode(#[from] base64::DecodeError),
-    #[error("bincode deserialization error: {0}")]
-    BincodeDeser(#[from] bincode::Error),
     #[error("borsh deserialization error: {0}")]
     BorshIo(#[from] borsh::io::Error),
     #[error("deserialization error: {0}")]

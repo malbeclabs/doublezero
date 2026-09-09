@@ -408,9 +408,11 @@ describe("User fixture", () => {
       expect(expected).toBeDefined();
       expect(u.feedPks[i].toBase58()).toBe(expected!);
     }
-    expect(u.accessPassPubKey.toBase58()).toBe(
-      meta.fields.find((f) => f.name === "AccessPassPk")?.value,
-    );
+    const expectedAccessPass = meta.fields.find(
+      (f) => f.name === "AccessPassPk",
+    )?.value;
+    expect(expectedAccessPass).toBeDefined();
+    expect(u.accessPassPubKey.toBase58()).toBe(expectedAccessPass!);
   });
 
   test("backward compat: old layout yields zero for new fields", () => {

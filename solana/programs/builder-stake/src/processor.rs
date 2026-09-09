@@ -34,7 +34,10 @@ const _: () = assert!(size_of::<ProgramConfig>() == 176);
 
 solana_program_entrypoint::entrypoint!(try_process_instruction);
 
-fn try_process_instruction(
+/// The program's entrypoint, reachable natively so a test outside this crate can load the program
+/// with `processor!` instead of a compiled `.so`. `doublezero-serviceability` exposes its own for
+/// the same reason.
+pub fn try_process_instruction(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
     data: &[u8],

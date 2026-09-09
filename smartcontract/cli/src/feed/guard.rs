@@ -482,6 +482,7 @@ pub(crate) mod fixtures {
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
             feed_pks: vec![],
+            accesspass_pk: Pubkey::new_unique(),
         }
     }
 

@@ -866,6 +866,7 @@ export interface User {
    * the former scalar feedPk slot, which was never written with a real feed on any cluster.
    */
   feedPks: PublicKey[];
+  accessPassPubKey: PublicKey;
 }
 
 export function deserializeUser(data: Uint8Array): User {
@@ -899,6 +900,7 @@ export function deserializeUser(data: Uint8Array): User {
     // read as an empty vec with the leftover zero bytes ignored as trailing data. readPubkeyVec
     // returns [] on EOF, so accounts predating the slot default to empty too.
     feedPks: readPubkeyVec(r),
+    accessPassPubKey: readPubkey(r),
   };
 }
 

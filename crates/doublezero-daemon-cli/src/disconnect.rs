@@ -46,6 +46,9 @@ pub struct Disconnect {
     /// traffic may still route over DoubleZero briefly after this returns.
     #[arg(long, default_value_t = false)]
     pub no_wait: bool,
+    /// Access pass for a legacy user that matches multiple passes
+    #[arg(long)]
+    pub access_pass: Option<Pubkey>,
     #[arg(value_enum)]
     pub dz_mode: Option<DzMode>,
 }
@@ -167,7 +170,7 @@ impl Disconnect {
 
             spinner.inc(1);
             writeln!(out, "⚡  Removing account: {pubkey}")?;
-            match ledger.delete_user(*pubkey) {
+            match ledger.delete_user(*pubkey, self.access_pass) {
                 Ok(_) => {
                     writeln!(out, "    Account deletion submitted")?;
                 }
@@ -289,6 +292,7 @@ mod tests {
             client_ip: None,
             verbose: false,
             no_wait: false,
+            access_pass: None,
             dz_mode: None,
         }
     }
@@ -486,6 +490,7 @@ mod tests {
         let mut ledger = MockLedgerClient::new();
         let payer = Pubkey::new_unique();
         let feed_authority = Pubkey::new_unique();
+        let accesspass_pk = Pubkey::new_unique();
         let ip = Ipv4Addr::new(10, 0, 0, 1);
 
         let user_pk = Pubkey::new_unique();
@@ -501,14 +506,21 @@ mod tests {
         // delete_user SHOULD be called for self-owned user.
         ledger
             .expect_delete_user()
+            .with(
+                mockall::predicate::eq(user_pk),
+                mockall::predicate::eq(Some(accesspass_pk)),
+            )
             .once()
-            .returning(|_| Err(eyre::eyre!("simulated not found")));
+            .returning(|_, _| Err(eyre::eyre!("simulated not found")));
         // get_user for poll_for_user_closed — return "not found" immediately.
         ledger
             .expect_get_user()
             .returning(|_| Err(eyre::eyre!("User not found")));
 
-        let cmd = test_cmd();
+        let cmd = Disconnect {
+            access_pass: Some(accesspass_pk),
+            ..test_cmd()
+        };
         let spinner = hidden_spinner();
         let mut out = Vec::new();
         let result = cmd.delete_users(&ledger, ip, feed_authority, &spinner, &mut out);
@@ -577,7 +589,7 @@ mod tests {
         ledger
             .expect_delete_user()
             .once()
-            .returning(|_| Err(eyre::eyre!("simulated not found")));
+            .returning(|_, _| Err(eyre::eyre!("simulated not found")));
         ledger
             .expect_get_user()
             .returning(|_| Err(eyre::eyre!("User not found")));
@@ -634,7 +646,7 @@ mod tests {
             ledger
                 .expect_list_user()
                 .returning(move || Ok(users.clone()));
-            ledger.expect_delete_user().once().returning(|_| Ok(()));
+            ledger.expect_delete_user().once().returning(|_, _| Ok(()));
             ledger
                 .expect_get_user()
                 .returning(|_| Err(eyre::eyre!("User not found")));

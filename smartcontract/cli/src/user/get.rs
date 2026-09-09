@@ -373,7 +373,7 @@ mod tests {
 
         client
             .expect_delete_user()
-            .with(predicate::eq(DeleteUserCommand { pubkey: pda_pubkey }))
+            .with(predicate::eq(DeleteUserCommand::new(pda_pubkey)))
             .returning(move |_| Ok(signature));
 
         // Expected success (table)
@@ -452,6 +452,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            accesspass_pk: Pubkey::new_unique(),
         };
 
         let mgroup = MulticastGroup {

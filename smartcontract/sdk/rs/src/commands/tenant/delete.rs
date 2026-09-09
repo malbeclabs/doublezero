@@ -32,7 +32,7 @@ impl DeleteTenantCommand {
                 .collect();
 
             for user_pk in &tenant_users {
-                DeleteUserCommand { pubkey: *user_pk }.execute(client)?;
+                DeleteUserCommand::new(*user_pk).execute(client)?;
             }
 
             // 2. Clean up access passes before waiting for reference_count to reach 0

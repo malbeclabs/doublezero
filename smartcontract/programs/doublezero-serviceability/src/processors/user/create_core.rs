@@ -459,6 +459,7 @@ pub fn create_user_core(
         bgp_rtt_ns: 0,
         // Feeds are joined post-creation via SubscribeFeed, or by CreateSubscribeUser's gate.
         feed_pks: vec![],
+        accesspass_pk: *core.accesspass_account.key,
     };
 
     Ok(Some(CreateUserCoreResult {

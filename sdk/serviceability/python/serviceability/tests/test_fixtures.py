@@ -371,29 +371,32 @@ class TestFixtureUser:
         assert len(u.feed_pks) == feed_pks_len
         for i in range(feed_pks_len):
             assert u.feed_pks[i] == Pubkey.from_string(fields[f"FeedPks{i}"])
+        assert u.access_pass_pub_key == Pubkey.from_string(fields["AccessPassPk"])
 
     def test_backward_compat_old_layout(self):
         # Deserializing an account binary that predates the BGP fields must
         # return zero values for those fields rather than failing.
         data, _ = _load_fixture("user")
         # Remove feed_pks (4 + 2*32 = 68) + bgp_rtt_ns (8) + last_bgp_reported_at (8)
-        # + last_bgp_up_at (8) + bgp_status (1) = 93 bytes.
-        truncated = data[:-93]
+        # + last_bgp_up_at (8) + bgp_status (1) + accesspass_pk (32) = 125 bytes.
+        truncated = data[:-125]
         u = User.from_bytes(truncated)
         assert u.bgp_status == BGPStatus.UNKNOWN
         assert u.last_bgp_up_at == 0
         assert u.last_bgp_reported_at == 0
         assert u.bgp_rtt_ns == 0
         assert u.feed_pks == []
+        assert u.access_pass_pub_key == Pubkey.default()
 
     def test_old_layout_zero_feed_slot_reads_as_empty_vec(self):
         # An account written by the previous layout carries a 32-zero-byte scalar
         # feed_pk slot where feed_pks now lives (never written with a real feed on
         # any cluster). It must read as an empty list, trailing zeros ignored.
         data, _ = _load_fixture("user")
-        old = data[:-68] + bytes(32)  # replace feed_pks (4 + 2*32) with the old slot
+        old = data[:-100] + bytes(32)
         u = User.from_bytes(old)
         assert u.feed_pks == []
+        assert u.access_pass_pub_key == Pubkey.default()
 
 
 class TestFixtureMulticastGroup:

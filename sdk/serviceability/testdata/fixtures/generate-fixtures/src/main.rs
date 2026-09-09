@@ -1128,6 +1128,7 @@ fn generate_user(dir: &Path) {
     let validator_pubkey = pubkey_from_byte(0x65);
     let feed_pk_a = pubkey_from_byte(0x67);
     let feed_pk_b = pubkey_from_byte(0x68);
+    let accesspass_pk = pubkey_from_byte(0x69);
 
     let val = User {
         account_type: AccountType::User,
@@ -1153,6 +1154,7 @@ fn generate_user(dir: &Path) {
         last_bgp_reported_at: 1_700_000_100,
         bgp_rtt_ns: 5_500_000,
         feed_pks: vec![feed_pk_a, feed_pk_b],
+        accesspass_pk,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -1188,6 +1190,7 @@ fn generate_user(dir: &Path) {
             FieldValue { name: "FeedPksLen".into(), value: "2".into(), typ: "u32".into() },
             FieldValue { name: "FeedPks0".into(), value: pubkey_bs58(&feed_pk_a), typ: "pubkey".into() },
             FieldValue { name: "FeedPks1".into(), value: pubkey_bs58(&feed_pk_b), typ: "pubkey".into() },
+            FieldValue { name: "AccessPassPk".into(), value: pubkey_bs58(&accesspass_pk), typ: "pubkey".into() },
         ],
     };
 

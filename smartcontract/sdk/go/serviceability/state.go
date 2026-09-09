@@ -988,8 +988,9 @@ type User struct {
 	BgpRttNs uint64
 	// FeedPks are the EdgeSeat Feeds whose per-feed seats this user consumed at connect (multicast
 	// only); empty for non-EdgeSeat/unicast users. A user may hold seats on multiple feeds.
-	FeedPks [][32]byte
-	PubKey  [32]byte
+	FeedPks         [][32]byte
+	AccessPassPubKey [32]byte
+	PubKey           [32]byte
 }
 
 func (u User) MarshalJSON() ([]byte, error) {
@@ -1027,6 +1028,7 @@ func (u User) MarshalJSON() ([]byte, error) {
 		UserType        string   `json:"UserType"`
 		PubKey          string   `json:"PubKey"`
 		FeedPks         []string `json:"FeedPks"`
+		AccessPassPubKey string   `json:"AccessPassPubKey"`
 	}{
 		UserAlias:       UserAlias(u),
 		Owner:           base58.Encode(u.Owner[:]),
@@ -1044,6 +1046,7 @@ func (u User) MarshalJSON() ([]byte, error) {
 		UserType:        u.UserType.String(),
 		PubKey:          base58.Encode(u.PubKey[:]),
 		FeedPks:         feedPks,
+		AccessPassPubKey: base58.Encode(u.AccessPassPubKey[:]),
 	}
 
 	return json.Marshal(jsonUser)

@@ -71,7 +71,7 @@ impl DeleteTenantCliCommand {
 
                 for user_pk in &tenant_users {
                     spinner.set_message(format!("Deleting user {user_pk}"));
-                    client.delete_user(DeleteUserCommand { pubkey: *user_pk })?;
+                    client.delete_user(DeleteUserCommand::new(*user_pk))?;
                     spinner.inc(1);
                 }
 

@@ -186,7 +186,7 @@ mod tests {
         let payer = client.get_payer();
         let client_ip = Ipv4Addr::new(192, 168, 1, 10);
 
-        let user = User {
+        let mut user = User {
             account_type: AccountType::User,
             owner: client.get_payer(),
             bump_seed: 0,
@@ -217,6 +217,7 @@ mod tests {
             &Ipv4Addr::UNSPECIFIED,
             &client.get_payer(),
         );
+        user.accesspass_pk = accesspass_pubkey;
         let accesspass = AccessPass {
             account_type: AccountType::AccessPass,
             bump_seed: 0,

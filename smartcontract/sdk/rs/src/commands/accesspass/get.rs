@@ -340,9 +340,21 @@ mod tests {
 
         let error = resolve_user_accesspass(&client, user_pk, &user, None).unwrap_err();
         let message = error.to_string();
-        assert!(message.contains(&exact_pk.to_string()));
-        assert!(message.contains(&dynamic_pk.to_string()));
-        assert!(message.contains("--access-pass <ADDRESS>"));
+        let lines = message.lines().collect::<Vec<_>>();
+        assert_eq!(lines.len(), 4);
+        assert_eq!(
+            lines[0],
+            format!("Legacy user {user_pk} matches multiple access passes:")
+        );
+        assert_eq!(
+            lines[1],
+            format!("  {exact_pk}: Prepaid, client IP {client_ip}, 0 connections")
+        );
+        assert_eq!(
+            lines[2],
+            format!("  {dynamic_pk}: Prepaid, client IP 0.0.0.0, 0 connections")
+        );
+        assert_eq!(lines[3], "Retry with --access-pass <ADDRESS>.");
     }
 
     // The caller resolves a legacy conflict by selecting either matching pass explicitly.

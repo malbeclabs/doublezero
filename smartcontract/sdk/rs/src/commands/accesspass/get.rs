@@ -61,7 +61,7 @@ pub fn resolve_user_accesspass(
             Ok(AccountData::AccessPass(accesspass)) => Ok((user.accesspass_pk, accesspass)),
             Ok(_) => eyre::bail!(
                 "Recorded access pass {} for user {user_pk} has the wrong account type",
-                user.accesspass_pk
+                user.accesspass_pk,
             ),
             Err(err) => Err(err).wrap_err_with(|| {
                 format!(
@@ -310,6 +310,8 @@ mod tests {
         assert_eq!(resolved, (accesspass_pk, expected_accesspass));
     }
 
+    // Legacy users record no pass. When both possible passes exist, deletion must ask the caller
+    // to select one.
     #[test]
     fn test_resolve_user_accesspass_lists_legacy_conflict() {
         let mut client = create_test_client();
@@ -343,6 +345,7 @@ mod tests {
         assert!(message.contains("--access-pass <ADDRESS>"));
     }
 
+    // The caller resolves a legacy conflict by selecting either matching pass explicitly.
     #[test]
     fn test_resolve_user_accesspass_selects_legacy_candidate() {
         let mut client = create_test_client();

@@ -988,7 +988,7 @@ type User struct {
 	BgpRttNs uint64
 	// FeedPks are the EdgeSeat Feeds whose per-feed seats this user consumed at connect (multicast
 	// only); empty for non-EdgeSeat/unicast users. A user may hold seats on multiple feeds.
-	FeedPks         [][32]byte
+	FeedPks          [][32]byte
 	AccessPassPubKey [32]byte
 	PubKey           [32]byte
 }

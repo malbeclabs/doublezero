@@ -294,7 +294,15 @@ pub struct User {
         )
     )]
     pub feed_pks: Vec<Pubkey>, // 4 + 32 * len
-    pub accesspass_pk: Pubkey,     // 32
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            default,
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
+        )
+    )]
+    pub accesspass_pk: Pubkey, // 32
 }
 
 impl Default for User {

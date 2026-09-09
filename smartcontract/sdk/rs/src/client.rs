@@ -11,7 +11,7 @@ use doublezero_serviceability::{
 };
 use doublezero_serviceability_instruction::compute_budget_prelude;
 use eyre::{bail, eyre, OptionExt};
-use log::debug;
+use log::{debug, error};
 use solana_account_decoder::UiAccountEncoding;
 use solana_client::{
     pubsub_client::PubsubClient,
@@ -268,9 +268,12 @@ impl DZClient {
             })
             .unwrap_or_default();
 
-        eprintln!("Program Logs:");
-        for log in &program_logs {
-            eprintln!("{log}");
+        // The signature is worth carrying: `skip_preflight` means a failing transaction still
+        // lands, so a reader can look this one up rather than take our word for what it said.
+        if program_logs.is_empty() {
+            error!("Transaction {signature} failed and its program logs could not be fetched");
+        } else {
+            error!("Program logs for {signature}:\n{}", program_logs.join("\n"));
         }
 
         // `Custom` numbers are defined by whichever program raised them. An RFC-27 transaction
@@ -422,13 +425,13 @@ impl DZClient {
                     }
                 }
                 Err(e) => {
-                    eprintln!("Error: {e}");
+                    error!("could not read accounts: {e}");
                 }
             }
 
             _ = self
                 .subscribe(&mut action, stop_signal.clone())
-                .inspect_err(|e| eprintln!("Error: {e}"));
+                .inspect_err(|e| error!("subscription ended: {e}"));
         }
 
         Ok(())

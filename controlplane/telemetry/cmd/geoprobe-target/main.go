@@ -36,9 +36,9 @@ const (
 
 	// RFC-16's replay bound, derived from the offset stream instead of a ledger
 	// clock: geoprobe-target holds no RPC connection by design, so the only
-	// unforgeable time reference it has is the highest MeasurementSlot a sender
-	// has proven with a valid signature. A replay cannot push that floor
-	// forward.
+	// time reference it has is the highest MeasurementSlot a signing key has
+	// proven. A replay can repeat that floor but cannot push it forward without
+	// the corresponding private key.
 	//
 	// maxSlotRegression is how far below the floor an offer may sit and still be
 	// accepted. A probe re-reads the slot from a load-balanced RPC pool, so a
@@ -47,13 +47,20 @@ const (
 	maxSlotRegression = uint64(2 * time.Minute / dzSlotDuration)
 
 	// maxFloorStall is how long the floor may stand still before repeats stop
-	// counting as live. A healthy sender stamps from a 5m slot cache, so the
-	// floor advances every ~5m and the steady-state replay window is ~7m. The
-	// stall bound only governs the degraded case where the sending probe rides
-	// out its own RPC outage on a frozen cached slot: 30m keeps ingesting its
-	// genuine measurements, because a dropped measurement is lost permanently
-	// rather than deferred.
-	maxFloorStall = 30 * time.Minute
+	// counting as live. A healthy sender stamps from geoprobe.SlotCacheTTL, so
+	// the floor advances every ~5m and the steady-state replay window is ~7m.
+	// The stall bound only governs the degraded case where the sending probe
+	// rides out its own RPC outage on a frozen cached slot: six refresh periods
+	// keeps ingesting its genuine measurements, because a dropped measurement
+	// is lost permanently rather than deferred.
+	maxFloorStall = 6 * geoprobe.SlotCacheTTL
+
+	// floorEntryTTL is how long a silent sender's floor is remembered. Only
+	// total silence expires it — any offer, accepted or rejected, keeps it
+	// alive — so this bounds the map, not the replay window. Kept off
+	// -max-offset-age, which tunes the display cache and would otherwise let a
+	// cache setting shorten a security bound.
+	floorEntryTTL = 2 * maxFloorStall
 )
 
 // Machine-readable rejection reasons, logged as the "reason" field so an
@@ -114,6 +121,7 @@ func main() {
 		"max_offset_age", *maxOffsetAge,
 		"max_slot_regression", maxSlotRegression,
 		"max_floor_stall", maxFloorStall,
+		"floor_entry_ttl", floorEntryTTL,
 	)
 
 	// Keyed by SenderPubkey (geoprobe identity). Each geoprobe is an independent
@@ -140,7 +148,7 @@ func main() {
 	if *rateLimit > 0 {
 		go limiter.cleanup(ctx)
 	}
-	floor := newSlotFloor(*maxOffsetAge)
+	floor := newSlotFloor(floorEntryTTL)
 	go sweepCaches(ctx, caches, floor)
 
 	go runTWAMPReflector(ctx, log, *twampPort, errCh)
@@ -261,8 +269,15 @@ type floorEntry struct {
 }
 
 // slotFloor bounds offset replay without a ledger clock. MeasurementSlot is
-// inside the signed payload, so the highest slot a sender has proven is a lower
-// bound on real time that an attacker can replay but cannot advance.
+// inside the signed payload, so the highest slot a key has proven is a lower
+// bound on real time that a replay can repeat but cannot advance.
+//
+// Floors are keyed by AuthorityPubkey, the key VerifyOffsetChain actually
+// checks the signature against — not by SenderPubkey, which is signed but
+// unauthenticated. Anyone can mint a keypair and stamp a real geoprobe's
+// SenderPubkey, so a SenderPubkey-keyed floor would let one datagram carrying
+// a huge slot lock that geoprobe out of the table permanently. In production a
+// probe signs its own offsets, so the two keys move together for real senders.
 type slotFloor struct {
 	mu      sync.Mutex
 	entries map[[32]byte]*floorEntry
@@ -278,24 +293,29 @@ func newSlotFloor(ttl time.Duration) *slotFloor {
 	}
 }
 
-// accept reports whether a signature-verified offer may be ingested, advancing
-// the sender's floor when it does. On rejection it returns a reason token plus
-// the floor state, for the log line. Callers must verify the signature chain
-// first: an unverified slot must never move the floor.
+// accept reports whether an offer may be ingested, advancing the signing key's
+// floor when it does. On rejection it returns a reason token plus the floor
+// state, for the log line.
 //
-// A never-seen sender seeds the floor from its own first offer, so one stale
-// capture is accepted per sender per process restart; the live stream raises
-// the floor past it within minutes.
-func (f *slotFloor) accept(sender [32]byte, slot uint64) (ok bool, reason string, floorSlot uint64, floorAge time.Duration) {
+// Callers verify the signature chain first, so in the deployed configuration
+// only a proven slot moves a floor. With -verify-signatures=false nothing is
+// checked and the floor is fed unverified slots along with everything else.
+//
+// A never-seen key seeds its floor from its own first offer, so one stale
+// capture is accepted per key per process restart; the live stream raises the
+// floor past it within minutes. A rejected offer still refreshes lastSeen, so a
+// sustained replay cannot outlive the entry and reseed from itself.
+func (f *slotFloor) accept(authority [32]byte, slot uint64) (ok bool, reason string, floorSlot uint64, floorAge time.Duration) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 
 	now := f.nowFunc()
-	entry, exists := f.entries[sender]
+	entry, exists := f.entries[authority]
 	if !exists {
-		f.entries[sender] = &floorEntry{slot: slot, advancedAt: now, lastSeen: now}
+		f.entries[authority] = &floorEntry{slot: slot, advancedAt: now, lastSeen: now}
 		return true, "", slot, 0
 	}
+	entry.lastSeen = now
 
 	age := now.Sub(entry.advancedAt)
 	switch {
@@ -311,11 +331,10 @@ func (f *slotFloor) accept(sender [32]byte, slot uint64) (ok bool, reason string
 		return false, rejectFloorStalled, entry.slot, age
 	}
 
-	entry.lastSeen = now
 	return true, "", entry.slot, age
 }
 
-// sweep drops senders unseen for ttl, bounding the map the same way the offset
+// sweep drops keys silent for ttl, bounding the map the same way the offset
 // caches are bounded.
 func (f *slotFloor) sweep() {
 	f.mu.Lock()
@@ -445,7 +464,7 @@ func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.U
 	// location_offsets table, so it may only be true when a check actually ran.
 	// With -verify-signatures=false nothing is checked: record false and say
 	// why, rather than asserting a verification that did not happen.
-	signatureValid := verifySignatures
+	signatureValid := false
 	signatureError := ""
 
 	if verifySignatures {
@@ -462,6 +481,7 @@ func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.U
 				"error", err)
 			return
 		}
+		signatureValid = true
 		log.Debug("signature verification complete", "authority_pubkey", solana.PublicKeyFromBytes(offset.AuthorityPubkey[:]).String(), "valid", true)
 	} else {
 		signatureError = signatureUnverifiedMarker
@@ -469,10 +489,11 @@ func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.U
 
 	// A valid signature never expires, so a captured offset stays verifiable
 	// forever. The slot floor is what stops it being replayed into the table.
-	if ok, reason, floorSlot, floorAge := floor.accept(offset.SenderPubkey, offset.MeasurementSlot); !ok {
+	if ok, reason, floorSlot, floorAge := floor.accept(offset.AuthorityPubkey, offset.MeasurementSlot); !ok {
 		log.Warn("dropping offset outside slot floor",
 			"reason", reason,
 			"from", addr,
+			"authority_pubkey", solana.PublicKeyFromBytes(offset.AuthorityPubkey[:]).String(),
 			"sender_pubkey", solana.PublicKeyFromBytes(offset.SenderPubkey[:]).String(),
 			"offset_slot", offset.MeasurementSlot,
 			"floor_slot", floorSlot,

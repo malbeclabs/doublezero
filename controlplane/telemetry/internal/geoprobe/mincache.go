@@ -119,9 +119,9 @@ func (c *MinCache[T]) Update(value T) UpdateInfo {
 	}
 	if rttNs < c.best.rttNs {
 		// New record low: reset best's clock, clear backup. An equal-RTT value
-		// must not replace best, because replacing also resets best's
-		// receivedAt clock — a replayed measurement would otherwise hold best
-		// forever.
+		// must not replace best, because replacing also restarts best's
+		// receivedAt clock — a repeated measurement would otherwise keep
+		// pushing best's expiry out.
 		c.best = entry
 		c.backup = nil
 		info.Result = UpdateBest

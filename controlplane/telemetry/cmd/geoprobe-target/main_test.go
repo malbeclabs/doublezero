@@ -47,9 +47,14 @@ func TestHandleOffset_DropsUnsignedOffset(t *testing.T) {
 	copy(spoofed.AuthorityPubkey[:], impersonator.PublicKey().Bytes())
 	copy(spoofed.SenderPubkey[:], impersonator.PublicKey().Bytes())
 	spoofed.Signature[0] = 0xff
+	// Stamped far in the future: if the slot floor were consulted before the
+	// signature, a forgery could raise the impersonated key's floor and lock
+	// the real holder out.
+	spoofed.MeasurementSlot = 1 << 40
 
+	floor := newSlotFloor(floorEntryTTL)
 	for _, forged := range []*geoprobe.LocationOffset{unsigned, spoofed} {
-		handleOffset(log, forged, addr, true, writer, caches, newSlotFloor(time.Hour))
+		handleOffset(log, forged, addr, true, writer, caches, floor)
 
 		if got := len(writer.PendingRows()); got != 0 {
 			t.Errorf("expected forged offset to be dropped, got %d buffered clickhouse rows", got)
@@ -57,6 +62,12 @@ func TestHandleOffset_DropsUnsignedOffset(t *testing.T) {
 		if _, ok := caches.Get(forged.SenderPubkey).Best(); ok {
 			t.Error("expected forged offset to be dropped, but it entered the cache")
 		}
+	}
+
+	genuine := signedOffsetAt(t, mustSigner(t, impersonator.PrivateKey, impersonator.PublicKey()), 1_000_000, 1_000_000)
+	handleOffset(log, genuine, addr, true, writer, caches, floor)
+	if got := len(writer.PendingRows()); got != 1 {
+		t.Errorf("a forged offset moved the impersonated key's floor: got %d rows for the genuine offset", got)
 	}
 }
 
@@ -105,13 +116,18 @@ func signedOffsetAt(t *testing.T, signer *geoprobe.OffsetSigner, slot, rttNs uin
 	return offset
 }
 
-func newTestSigner(t *testing.T) *geoprobe.OffsetSigner {
+func mustSigner(t *testing.T, key solana.PrivateKey, sender solana.PublicKey) *geoprobe.OffsetSigner {
 	t.Helper()
-	signer, err := geoprobe.NewOffsetSigner(solana.NewWallet().PrivateKey, solana.NewWallet().PublicKey())
+	signer, err := geoprobe.NewOffsetSigner(key, sender)
 	if err != nil {
 		t.Fatalf("failed to create signer: %v", err)
 	}
 	return signer
+}
+
+func newTestSigner(t *testing.T) *geoprobe.OffsetSigner {
+	t.Helper()
+	return mustSigner(t, solana.NewWallet().PrivateKey, solana.NewWallet().PublicKey())
 }
 
 // A signature stays valid forever, so an offset captured off the wire replays
@@ -206,15 +222,74 @@ func TestSlotFloor_RejectsStalledFloor(t *testing.T) {
 	}
 }
 
-func TestSlotFloor_IsPerSender(t *testing.T) {
-	floor := newSlotFloor(time.Hour)
+func TestSlotFloor_IsPerKey(t *testing.T) {
+	floor := newSlotFloor(floorEntryTTL)
 	fast := [32]byte{1}
 	slow := [32]byte{2}
 
 	floor.accept(fast, 5_000_000)
 
 	if ok, reason, _, _ := floor.accept(slow, 1_000); !ok {
-		t.Fatalf("a second sender was judged against the first sender's floor: %s", reason)
+		t.Fatalf("a second key was judged against the first key's floor: %s", reason)
+	}
+}
+
+// A rejected offer still refreshes the entry: otherwise a sustained replay
+// outlives its own floor, the sweep drops the entry, and the next replay
+// reseeds from itself — handing the attacker a fresh acceptance window every
+// TTL instead of one per process restart.
+func TestSlotFloor_RejectionKeepsFloorAlive(t *testing.T) {
+	floor := newSlotFloor(floorEntryTTL)
+	now := time.Now()
+	floor.nowFunc = func() time.Time { return now }
+	key := [32]byte{1}
+
+	floor.accept(key, 1_000_000)
+	now = now.Add(maxFloorStall + time.Minute)
+
+	// Keep replaying the frozen slot for well past floorEntryTTL, sweeping as
+	// the daemon does.
+	for elapsed := time.Duration(0); elapsed < 2*floorEntryTTL; elapsed += 5 * time.Minute {
+		if ok, _, _, _ := floor.accept(key, 1_000_000); ok {
+			t.Fatalf("replay accepted again %s after the floor stalled", elapsed)
+		}
+		floor.sweep()
+		now = now.Add(5 * time.Minute)
+	}
+
+	// Positive control: a key that goes genuinely silent is eventually
+	// forgotten, so the map stays bounded.
+	silent := [32]byte{2}
+	floor.accept(silent, 1_000_000)
+	now = now.Add(floorEntryTTL + time.Minute)
+	floor.sweep()
+	if _, ok := floor.entries[silent]; ok {
+		t.Error("expected a silent key's floor to be swept")
+	}
+}
+
+// SenderPubkey is signed but unauthenticated — anyone can mint a keypair and
+// stamp a real geoprobe's SenderPubkey. Keying floors on it would let one
+// datagram carrying a huge slot lock that geoprobe out of location_offsets.
+func TestHandleOffset_ForgedSenderCannotPoisonAnotherFloor(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	caches := newTestCaches()
+	writer := geoprobe.NewClickhouseWriter(geoprobe.ClickhouseConfig{Addr: "unused"}, log)
+	addr := &net.UDPAddr{IP: net.IPv4(203, 0, 113, 7), Port: 41234}
+	floor := newSlotFloor(floorEntryTTL)
+
+	victim := solana.NewWallet().PublicKey()
+	victimSigner := mustSigner(t, solana.NewWallet().PrivateKey, victim)
+	// An attacker's own keypair, claiming the victim geoprobe as sender.
+	attackerSigner := mustSigner(t, solana.NewWallet().PrivateKey, victim)
+
+	handleOffset(log, signedOffsetAt(t, attackerSigner, 1<<40, 1_000_000), addr, true, writer, caches, floor)
+
+	genuine := signedOffsetAt(t, victimSigner, 1_000_000, 5_000_000)
+	before := len(writer.PendingRows())
+	handleOffset(log, genuine, addr, true, writer, caches, floor)
+	if len(writer.PendingRows()) != before+1 {
+		t.Error("a forged sender claim locked the real geoprobe out of location_offsets")
 	}
 }
 

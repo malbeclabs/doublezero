@@ -98,6 +98,19 @@ pub struct Feed {
     /// Not basis points: `bps` means basis points elsewhere in DoubleZero.
     pub committed_rate_bits_per_sec: u64, // 8
     pub status: FeedStatus, // 1
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
+        )
+    )]
+    /// Who halted this feed, zero when it is not halted.
+    ///
+    /// A halt by an operator is not the builder's to lift. Without this the builder resumes the
+    /// moment an operator halts, and with `Retired` unreachable and `DeleteFeed` refusing a staked
+    /// feed, nothing else stops one.
+    pub halted_by: Pubkey, // 32
 }
 
 impl Feed {
@@ -153,6 +166,9 @@ impl TryFrom<&[u8]> for Feed {
             // Not `Pending`: a feed account written before RFC-28 has no status byte, and reading
             // one as Pending would pull every live catalog feed out of service.
             status: BorshDeserialize::deserialize(&mut data).unwrap_or(FeedStatus::Active),
+            // Zero on a feed written before this field existed, which reads as "not halted by
+            // anyone" and is right: such a feed cannot have been halted at all.
+            halted_by: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Feed {

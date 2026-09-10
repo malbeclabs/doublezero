@@ -6,12 +6,13 @@ pub mod update;
 
 use crate::{
     authorize::authorize,
-    error::DoubleZeroError,
+    error::{DoubleZeroError, Validate},
     state::{
         accesspass::AccessPass,
         feed::{Feed, FeedStatus},
         globalstate::GlobalState,
         permission::permission_flags,
+        stake_mirror::StakeMirror,
     },
 };
 use solana_program::{
@@ -156,4 +157,49 @@ where
         globalstate,
         permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION,
     )
+}
+
+/// Whether the stake behind `feed` still covers the rate it publishes at.
+///
+/// Not the same question `CreateFeed` asks. Creation claims an unspent stake, so it requires
+/// `feed_key` to be empty; here the feed already holds the claim, so the mirror must name this
+/// feed and no other. What both check is the tier, because a mirror can be corrected downward
+/// while a feed sits halted.
+pub fn require_stake_still_covers(
+    program_id: &Pubkey,
+    mirror_account: &AccountInfo,
+    feed_key: &Pubkey,
+    feed: &Feed,
+) -> Result<(), DoubleZeroError> {
+    if mirror_account.data_is_empty() || mirror_account.owner != program_id {
+        msg!("No stake mirror written for stake {}", feed.stake_ref);
+        return Err(DoubleZeroError::StakeMirrorMissing);
+    }
+
+    let mirror =
+        StakeMirror::try_from(mirror_account).map_err(|_| DoubleZeroError::InvalidAccountType)?;
+    mirror.validate()?;
+
+    if mirror.stake_ref != feed.stake_ref || mirror.builder != feed.builder {
+        msg!("Stake mirror names a different stake or builder");
+        return Err(DoubleZeroError::InvalidArgument);
+    }
+    // The claim has to point back at this feed. A mirror claimed by another feed is not this
+    // feed's cover, whatever its tier says.
+    if &mirror.feed_key != feed_key {
+        msg!("Stake mirror is claimed by feed {}", mirror.feed_key);
+        return Err(DoubleZeroError::InvalidArgument);
+    }
+
+    if !mirror.tier.covers(feed.committed_rate_bits_per_sec) {
+        msg!(
+            "Tier {} covers up to {} bits/sec, feed commits to {}",
+            mirror.tier,
+            mirror.tier.max_rate_bits_per_sec(),
+            feed.committed_rate_bits_per_sec
+        );
+        return Err(DoubleZeroError::StakeDoesNotCoverRate);
+    }
+
+    Ok(())
 }

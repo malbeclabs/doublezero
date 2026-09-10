@@ -153,6 +153,7 @@ pub fn process_create_feed(
         } else {
             FeedStatus::Pending
         },
+        halted_by: Pubkey::default(),
     };
 
     try_acc_create(

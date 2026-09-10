@@ -189,6 +189,16 @@ mod tests {
         let delete = delete_feed(&pid, &payer, &feed, FeedDeleteArgs {});
         assert_eq!(delete.data[0], 114);
         assert_eq!(delete.accounts, expected);
+
+        // The lifecycle verbs take the same accounts. `unpack` matches the leading byte by hand
+        // with a catch-all, so a wrong tag here reaches the program as `InvalidInstructionData`
+        // rather than as a compile error.
+        let halt = halt_feed(&pid, &payer, &feed);
+        assert_eq!(halt.data[0], 120);
+        assert_eq!(halt.accounts, expected);
+        let resume = resume_feed(&pid, &payer, &feed);
+        assert_eq!(resume.data[0], 121);
+        assert_eq!(resume.accounts, expected);
     }
 
     /// Tripwire for the module-doc note: `FEED_AUTHORITY` is currently absent from

@@ -67,6 +67,8 @@ pub fn process_halt_feed(
     }
 
     feed.status = FeedStatus::Halted;
+    // Recorded so resume can tell an operator's halt from the builder's own.
+    feed.halted_by = *payer_account.key;
     try_acc_write(&feed, feed_account, payer_account, accounts)?;
 
     msg!("Halted feed: {}", feed_account.key);

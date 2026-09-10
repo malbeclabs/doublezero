@@ -318,3 +318,216 @@ async fn test_the_builder_is_authorized_on_its_own_feed() {
     .await;
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
 }
+
+/// A halted staked feed, seeded at genesis, with the mirror that covers it.
+///
+/// Written rather than driven, because a staked feed cannot reach `Halted` through real
+/// instructions yet: it is created `Pending`, and `Pending` to `Active` is G1. The alternative is
+/// to leave the rule below untested until G1 lands, which is how the hole this guards against
+/// would ship.
+fn halted_feed(
+    program_id: Pubkey,
+    code: &str,
+    exchange: Pubkey,
+    builder: Pubkey,
+    halted_by: Pubkey,
+    stake_ref: Pubkey,
+) -> (Pubkey, Vec<u8>, Pubkey, Vec<u8>) {
+    let (feed_key, bump) = get_feed_pda(&program_id, code, &exchange);
+    let feed = Feed {
+        account_type: AccountType::Feed,
+        owner: Pubkey::new_unique(),
+        bump_seed: bump,
+        code: code.to_string(),
+        name: "Halted".to_string(),
+        exchange,
+        groups: vec![Pubkey::new_unique()],
+        builder,
+        stake_ref,
+        spec_id: "top-of-book@v1.0.0".to_string(),
+        sla_hash: [9u8; 32],
+        committed_rate_bits_per_sec: ONE_GBPS,
+        status: FeedStatus::Halted,
+        halted_by,
+    };
+
+    let (mirror_key, mirror_bump) = get_stake_mirror_pda(&program_id, &stake_ref);
+    let mirror = StakeMirror {
+        account_type: AccountType::StakeMirror,
+        owner: Pubkey::new_unique(),
+        bump_seed: mirror_bump,
+        stake_ref,
+        builder,
+        tier: StakeTier::UpTo1Gbps,
+        committed_rate_bits_per_sec: ONE_GBPS,
+        source_slot: 1,
+        relayer: Pubkey::new_unique(),
+        // The feed already holds the claim; this is not a creation.
+        feed_key,
+    };
+
+    (
+        feed_key,
+        borsh::to_vec(&feed).unwrap(),
+        mirror_key,
+        borsh::to_vec(&mirror).unwrap(),
+    )
+}
+
+/// Bring up a cluster holding one halted staked feed and its mirror.
+async fn cluster_with_halted_feed(
+    code: &str,
+    builder: Pubkey,
+    halted_by: Pubkey,
+) -> (BanksClient, Pubkey, Keypair, Pubkey, Pubkey, Pubkey) {
+    let program_id = Pubkey::new_unique();
+    let (feed_key, feed_data, mirror_key, mirror_data) = halted_feed(
+        program_id,
+        code,
+        Pubkey::new_unique(),
+        builder,
+        halted_by,
+        Pubkey::new_unique(),
+    );
+
+    let (mut banks_client, payer, recent_blockhash) = init_test_with_accounts(
+        program_id,
+        &[(feed_key, feed_data), (mirror_key, mirror_data)],
+    )
+    .await;
+    init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+    let (globalstate, _) = get_globalstate_pda(&program_id);
+
+    (
+        banks_client,
+        program_id,
+        payer,
+        globalstate,
+        feed_key,
+        mirror_key,
+    )
+}
+
+/// An operator's halt is not the builder's to lift.
+///
+/// Without this, an operator's halt buys nothing: the builder resumes the moment it lands.
+/// `Retired` is unreachable until D2 and `DeleteFeed` refuses a staked feed, so the halt is the
+/// only lever an operator has, and a builder that can undo it leaves no lever at all.
+#[tokio::test]
+async fn test_a_builder_cannot_lift_an_operator_halt() {
+    let builder = test_payer();
+    let operator = Pubkey::new_unique();
+    let (mut banks_client, program_id, _payer, globalstate, feed, mirror) =
+        cluster_with_halted_feed("seized", builder.pubkey(), operator).await;
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::ResumeFeed(FeedResumeArgs {}),
+        feed_accounts(feed, globalstate),
+        &builder,
+        &[AccountMeta::new_readonly(mirror, false)],
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+
+    assert_eq!(
+        feed_status(&mut banks_client, feed).await,
+        FeedStatus::Halted,
+        "the halt stands"
+    );
+}
+
+/// A builder's own halt is the builder's to lift, which is the source rotation RFC-28 asks for.
+#[tokio::test]
+async fn test_a_builder_lifts_its_own_halt() {
+    let builder = test_payer();
+    let (mut banks_client, program_id, _payer, globalstate, feed, mirror) =
+        cluster_with_halted_feed("rotate", builder.pubkey(), builder.pubkey()).await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ResumeFeed(FeedResumeArgs {}),
+        feed_accounts(feed, globalstate),
+        &builder,
+        &[AccountMeta::new_readonly(mirror, false)],
+    )
+    .await;
+
+    assert_eq!(
+        feed_status(&mut banks_client, feed).await,
+        FeedStatus::Active
+    );
+}
+
+/// Resume re-proves the cover. A stake corrected downward while the feed sat halted must not let
+/// it publish again at a rate the stake no longer backs.
+#[tokio::test]
+async fn test_a_feed_cannot_resume_beyond_its_stake() {
+    let builder = test_payer();
+    let program_id = Pubkey::new_unique();
+    let stake_ref = Pubkey::new_unique();
+    let (feed_key, feed_data, mirror_key, _) = halted_feed(
+        program_id,
+        "shrunk",
+        Pubkey::new_unique(),
+        builder.pubkey(),
+        builder.pubkey(),
+        stake_ref,
+    );
+
+    // The same mirror, corrected down to a tier that no longer covers the feed's rate.
+    let (_, mirror_bump) = get_stake_mirror_pda(&program_id, &stake_ref);
+    let shrunk = borsh::to_vec(&StakeMirror {
+        account_type: AccountType::StakeMirror,
+        owner: Pubkey::new_unique(),
+        bump_seed: mirror_bump,
+        stake_ref,
+        builder: builder.pubkey(),
+        tier: StakeTier::None,
+        committed_rate_bits_per_sec: 0,
+        source_slot: 2,
+        relayer: Pubkey::new_unique(),
+        feed_key,
+    })
+    .unwrap();
+
+    let (mut banks_client, payer, recent_blockhash) =
+        init_test_with_accounts(program_id, &[(feed_key, feed_data), (mirror_key, shrunk)]).await;
+    init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+    let (globalstate, _) = get_globalstate_pda(&program_id);
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::ResumeFeed(FeedResumeArgs {}),
+        feed_accounts(feed_key, globalstate),
+        &builder,
+        &[AccountMeta::new_readonly(mirror_key, false)],
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::StakeDoesNotCoverRate));
+}
+
+/// A staked feed cannot resume without its mirror. Omitting the account must not read as "no
+/// stake to check".
+#[tokio::test]
+async fn test_a_staked_feed_cannot_resume_without_its_mirror() {
+    let builder = test_payer();
+    let (mut banks_client, program_id, _payer, globalstate, feed, _mirror) =
+        cluster_with_halted_feed("nomirror", builder.pubkey(), builder.pubkey()).await;
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::ResumeFeed(FeedResumeArgs {}),
+        feed_accounts(feed, globalstate),
+        &builder,
+        &[],
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::StakeMirrorMissing));
+}

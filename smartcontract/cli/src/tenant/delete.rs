@@ -6,6 +6,7 @@ use doublezero_sdk::commands::{
     tenant::{delete::DeleteTenantCommand, get::GetTenantCommand},
     user::{delete::DeleteUserCommand, list::ListUserCommand},
 };
+use eyre::WrapErr;
 use indicatif::{ProgressBar, ProgressStyle};
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, time::Duration};
@@ -49,10 +50,9 @@ impl DeleteTenantCliCommand {
         if self.allow_delete_users {
             // 1. List all users belonging to this tenant and delete them
             let users = client.list_user(ListUserCommand)?;
-            let tenant_users: Vec<Pubkey> = users
+            let tenant_users: Vec<_> = users
                 .into_iter()
                 .filter(|(_, user)| user.tenant_pk == tenant_pubkey)
-                .map(|(pk, _)| pk)
                 .collect();
 
             if !tenant_users.is_empty() {
@@ -69,9 +69,18 @@ impl DeleteTenantCliCommand {
                 spinner.enable_steady_tick(Duration::from_millis(100));
                 spinner.println(format!("Deleting {} user(s)...", tenant_users.len()));
 
-                for user_pk in &tenant_users {
+                for (user_pk, user) in &tenant_users {
                     spinner.set_message(format!("Deleting user {user_pk}"));
-                    client.delete_user(DeleteUserCommand::new(*user_pk))?;
+                    let result = client.delete_user(DeleteUserCommand::new(*user_pk));
+                    if user.accesspass_pk == Pubkey::default() {
+                        result.wrap_err_with(|| {
+                            format!(
+                                "Delete legacy user {user_pk} individually, then retry tenant deletion"
+                            )
+                        })?;
+                    } else {
+                        result?;
+                    }
                     spinner.inc(1);
                 }
 

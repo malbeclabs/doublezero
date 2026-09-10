@@ -72,23 +72,7 @@ pub fn resolve_user_accesspass(
         };
     }
 
-    let program_id = client.get_program_id();
-    let (exact_pk, _) = get_accesspass_pda(&program_id, &user.client_ip, &user.owner);
-    let (dynamic_pk, _) = get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &user.owner);
-    let candidate_pks = if exact_pk == dynamic_pk {
-        vec![exact_pk]
-    } else {
-        vec![exact_pk, dynamic_pk]
-    };
-    let candidates: Vec<_> = candidate_pks
-        .into_iter()
-        .filter_map(|pk| match client.get(pk) {
-            Ok(AccountData::AccessPass(accesspass)) if accesspass.user_payer == user.owner => {
-                Some((pk, accesspass))
-            }
-            _ => None,
-        })
-        .collect();
+    let candidates = legacy_user_accesspass_candidates(client, user);
 
     if let Some(selected_pk) = selected_accesspass_pk {
         return candidates
@@ -103,23 +87,63 @@ pub fn resolve_user_accesspass(
         [] => eyre::bail!("No access pass matches legacy user {user_pk}"),
         [candidate] => Ok(candidate.clone()),
         _ => {
-            let choices = candidates
-                .iter()
-                .map(|(pk, accesspass)| {
-                    format!(
-                        "  {pk}: {:?}, client IP {}, {} connections",
-                        accesspass.accesspass_type,
-                        accesspass.client_ip,
-                        accesspass.connection_count
-                    )
-                })
-                .collect::<Vec<_>>()
-                .join("\n");
+            let choices = format_accesspass_choices(&candidates);
             eyre::bail!(
                 "Legacy user {user_pk} matches multiple access passes:\n{choices}\nRetry with --access-pass <ADDRESS>."
             )
         }
     }
+}
+
+pub(crate) fn legacy_user_accesspass_selection_error(
+    client: &dyn DoubleZeroClient,
+    user_pk: Pubkey,
+    user: &User,
+) -> eyre::Report {
+    let candidates = legacy_user_accesspass_candidates(client, user);
+    if candidates.is_empty() {
+        return eyre::eyre!("No access pass matches legacy user {user_pk}");
+    }
+    let choices = format_accesspass_choices(&candidates);
+    eyre::eyre!(
+        "Legacy user {user_pk} requires an access pass selection:\n{choices}\nRetry with --access-pass <ADDRESS>."
+    )
+}
+
+fn legacy_user_accesspass_candidates(
+    client: &dyn DoubleZeroClient,
+    user: &User,
+) -> Vec<(Pubkey, AccessPass)> {
+    let program_id = client.get_program_id();
+    let (exact_pk, _) = get_accesspass_pda(&program_id, &user.client_ip, &user.owner);
+    let (dynamic_pk, _) = get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &user.owner);
+    let candidate_pks = if exact_pk == dynamic_pk {
+        vec![exact_pk]
+    } else {
+        vec![exact_pk, dynamic_pk]
+    };
+    candidate_pks
+        .into_iter()
+        .filter_map(|pk| match client.get(pk) {
+            Ok(AccountData::AccessPass(accesspass)) if accesspass.user_payer == user.owner => {
+                Some((pk, accesspass))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+fn format_accesspass_choices(candidates: &[(Pubkey, AccessPass)]) -> String {
+    candidates
+        .iter()
+        .map(|(pk, accesspass)| {
+            format!(
+                "  {pk}: {:?}, client IP {}, {} connections",
+                accesspass.accesspass_type, accesspass.client_ip, accesspass.connection_count
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[cfg(test)]

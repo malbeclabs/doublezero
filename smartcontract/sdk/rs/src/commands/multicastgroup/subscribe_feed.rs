@@ -1,6 +1,7 @@
 use crate::{
     commands::{
-        accesspass::get::GetAccessPassCommand, device::get::GetDeviceCommand,
+        accesspass::get::{legacy_user_accesspass_selection_error, resolve_user_accesspass},
+        device::get::GetDeviceCommand,
         user::get::GetUserCommand,
     },
     DoubleZeroClient,
@@ -30,6 +31,7 @@ pub(crate) const MAX_FEED_TX_ACCOUNTS: usize = 25;
 pub struct SubscribeFeedCommand {
     pub user_pk: Pubkey,
     pub feed_pks: Vec<Pubkey>,
+    pub accesspass_pk: Option<Pubkey>,
 }
 
 impl SubscribeFeedCommand {
@@ -54,14 +56,15 @@ impl SubscribeFeedCommand {
             eyre::bail!("user {} is {}, not Activated", self.user_pk, user.status);
         }
 
-        // The user's own IP, not a caller-supplied one: the pass lookup must match the pass the
-        // user was created against.
-        let (accesspass_pubkey, accesspass) = GetAccessPassCommand {
-            client_ip: user.client_ip,
-            user_payer: user.owner,
+        if user.accesspass_pk == Pubkey::default() && self.accesspass_pk.is_none() {
+            return Err(legacy_user_accesspass_selection_error(
+                client,
+                self.user_pk,
+                &user,
+            ));
         }
-        .execute(client)?
-        .ok_or_else(|| eyre::eyre!("AccessPass not found"))?;
+        let (accesspass_pubkey, accesspass) =
+            resolve_user_accesspass(client, self.user_pk, &user, self.accesspass_pk)?;
         if !matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_)) {
             eyre::bail!(
                 "the access pass is {}; only an EdgeSeat pass carries feeds",
@@ -235,6 +238,7 @@ mod tests {
             status: UserStatus::Activated,
             subscribers,
             feed_pks: held_feeds,
+            accesspass_pk: get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer).0,
             ..Default::default()
         };
         client
@@ -349,6 +353,7 @@ mod tests {
         SubscribeFeedCommand {
             user_pk: f.user_pk,
             feed_pks: vec![feed_pk],
+            accesspass_pk: None,
         }
         .execute(&client)
         .unwrap();
@@ -394,6 +399,7 @@ mod tests {
         SubscribeFeedCommand {
             user_pk: f.user_pk,
             feed_pks: vec![feed1_pk, feed2_pk],
+            accesspass_pk: None,
         }
         .execute(&client)
         .unwrap();
@@ -438,6 +444,7 @@ mod tests {
         SubscribeFeedCommand {
             user_pk: f.user_pk,
             feed_pks: vec![feed_pk],
+            accesspass_pk: None,
         }
         .execute(&client)
         .unwrap();
@@ -497,6 +504,7 @@ mod tests {
         SubscribeFeedCommand {
             user_pk: f.user_pk,
             feed_pks: vec![feed1_pk, feed2_pk],
+            accesspass_pk: None,
         }
         .execute(&client)
         .unwrap();
@@ -554,6 +562,7 @@ mod tests {
         let err = SubscribeFeedCommand {
             user_pk: f.user_pk,
             feed_pks: vec![feed1_pk, feed2_pk],
+            accesspass_pk: None,
         }
         .execute(&client)
         .unwrap_err();
@@ -594,6 +603,7 @@ mod tests {
         let err = SubscribeFeedCommand {
             user_pk: f.user_pk,
             feed_pks: vec![feed1_pk, feed2_pk],
+            accesspass_pk: None,
         }
         .execute(&client)
         .unwrap_err();
@@ -625,6 +635,7 @@ mod tests {
         let err = SubscribeFeedCommand {
             user_pk: f.user_pk,
             feed_pks: vec![feed_pk],
+            accesspass_pk: None,
         }
         .execute(&client)
         .unwrap_err();
@@ -632,6 +643,74 @@ mod tests {
             err.to_string(),
             format!(
                 "user holds {MAX_USER_FEEDS} feeds and this join adds 1; a user may hold at most {MAX_USER_FEEDS}"
+            )
+        );
+    }
+
+    #[test]
+    fn test_commands_subscribe_feed_legacy_user_requires_accesspass() {
+        let mut client = create_test_client();
+        let user_pk = Pubkey::new_unique();
+        let payer = client.get_payer();
+        let client_ip = Ipv4Addr::new(100, 0, 0, 1);
+        let user = User {
+            account_type: AccountType::User,
+            owner: payer,
+            user_type: UserType::Multicast,
+            status: UserStatus::Activated,
+            client_ip,
+            accesspass_pk: Pubkey::default(),
+            ..Default::default()
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(user_pk))
+            .return_once(move |_| Ok(AccountData::User(user)));
+
+        let program_id = client.get_program_id();
+        let (exact_pk, _) = get_accesspass_pda(&program_id, &client_ip, &payer);
+        let (dynamic_pk, _) = get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
+        client
+            .expect_get()
+            .with(predicate::eq(exact_pk))
+            .return_once(|_| Err(eyre::eyre!("account not found")));
+        client
+            .expect_get()
+            .with(predicate::eq(dynamic_pk))
+            .return_once(move |_| {
+                Ok(AccountData::AccessPass(AccessPass {
+                    account_type: AccountType::AccessPass,
+                    owner: payer,
+                    bump_seed: 0,
+                    accesspass_type: AccessPassType::EdgeSeat(vec![]),
+                    client_ip: Ipv4Addr::UNSPECIFIED,
+                    user_payer: payer,
+                    last_access_epoch: u64::MAX,
+                    connection_count: 0,
+                    status: AccessPassStatus::Requested,
+                    mgroup_pub_allowlist: vec![],
+                    mgroup_sub_allowlist: vec![],
+                    flags: 0,
+                    tenant_allowlist: vec![],
+                    unicast_user_count: 0,
+                    max_unicast_users: 1,
+                    multicast_user_count: 0,
+                    max_multicast_users: 1,
+                }))
+            });
+
+        let err = SubscribeFeedCommand {
+            user_pk,
+            feed_pks: vec![Pubkey::new_unique()],
+            accesspass_pk: None,
+        }
+        .execute(&client)
+        .unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "Legacy user {user_pk} requires an access pass selection:\n  {dynamic_pk}: EdgeSeat([]), client IP 0.0.0.0, 0 connections\nRetry with --access-pass <ADDRESS>."
             )
         );
     }

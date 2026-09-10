@@ -12,6 +12,7 @@ use doublezero_serviceability::{
     processors::tenant::delete::TenantDeleteArgs, state::accountdata::AccountData,
 };
 use doublezero_serviceability_instruction::tenant::delete_tenant;
+use eyre::WrapErr;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
@@ -25,14 +26,22 @@ impl DeleteTenantCommand {
         if self.allow_delete_users {
             // 1. List all users belonging to this tenant and delete them
             let users = ListUserCommand.execute(client)?;
-            let tenant_users: Vec<Pubkey> = users
+            let tenant_users: Vec<_> = users
                 .into_iter()
                 .filter(|(_, user)| user.tenant_pk == self.tenant_pubkey)
-                .map(|(pk, _)| pk)
                 .collect();
 
-            for user_pk in &tenant_users {
-                DeleteUserCommand::new(*user_pk).execute(client)?;
+            for (user_pk, user) in &tenant_users {
+                let result = DeleteUserCommand::new(*user_pk).execute(client);
+                if user.accesspass_pk == Pubkey::default() {
+                    result.wrap_err_with(|| {
+                        format!(
+                            "Delete legacy user {user_pk} individually, then retry tenant deletion"
+                        )
+                    })?;
+                } else {
+                    result?;
+                }
             }
 
             // 2. Clean up access passes before waiting for reference_count to reach 0

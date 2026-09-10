@@ -14,7 +14,7 @@ pub struct DeleteUserCliCommand {
     /// User Pubkey to delete
     #[arg(long, value_parser = validate_pubkey)]
     pub pubkey: String,
-    /// Access pass for a legacy user that matches multiple passes
+    /// Access pass for a legacy user
     #[arg(long, value_parser = validate_pubkey)]
     pub access_pass: Option<String>,
 }

@@ -29,6 +29,7 @@ DoubleZero is a protocol for building and operating high-performance, permission
 - **telemetry-agent** runs on DZDs (Arista devices). It measures geoprobes via TWAMP and sends them location offsets. DZDs are the roots of trust with known coordinates.
 - **geoprobe-agent** runs on geoprobe servers (Ubuntu bare metal or VPS), NOT on DZDs. It receives TWAMP probes from DZDs, caches their location offsets, and measures outbound targets. It currently requires no special privileges (all UDP, unprivileged ports).
 - These are two separate binaries with opposite roles. Never conflate them: DZDs measure geoprobes; geoprobes measure targets.
+- **geoprobe-target holds no ledger connection, and this is an invariant, not just the current state.** RFC-16 makes it example target software: the signature chain is what lets an arbitrary host verify a measurement with no trust relationship and no chain access, so requiring every target host to reach a DZ ledger RPC endpoint would invert the design. Anything that needs a time reference there — the offset replay bound, for instance — must derive it from the signed offset stream, not from a slot lookup.
 
 ## Build Commands
 

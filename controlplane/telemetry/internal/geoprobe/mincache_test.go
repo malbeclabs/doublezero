@@ -56,16 +56,33 @@ func TestMinCache_LowerRTTReplacesBest(t *testing.T) {
 	}
 }
 
-func TestMinCache_EqualRTTReplacesBest(t *testing.T) {
-	c, _ := newTestCache(time.Hour)
+// Replacing best on an equal RTT also resets best's receivedAt clock, so a
+// replayed measurement could pin best past its TTL indefinitely. Only a
+// strictly lower RTT may restart the clock.
+func TestMinCache_EqualRTTDoesNotReplaceBest(t *testing.T) {
+	c, now := newTestCache(time.Hour)
 	c.Update(testMeasurement{rttNs: 1000, label: "first"})
-	info := c.Update(testMeasurement{rttNs: 1000, label: "second"})
-	if info.Result != UpdateBest {
-		t.Fatalf("expected UpdateBest for equal RTT, got %v", info.Result)
+	firstReceivedAt := c.best.receivedAt
+
+	*now = now.Add(5 * time.Minute)
+	if info := c.Update(testMeasurement{rttNs: 1000, label: "replay"}); info.Result == UpdateBest {
+		t.Fatalf("equal-RTT sample became the new best, got %v", info.Result)
 	}
-	got, _ := c.Best()
-	if got.label != "second" {
-		t.Fatalf("expected second, got %s", got.label)
+	if !c.best.receivedAt.Equal(firstReceivedAt) {
+		t.Fatalf("equal-RTT sample refreshed best's clock (%v -> %v); a replay could hold best forever",
+			firstReceivedAt, c.best.receivedAt)
+	}
+	if got, ok := c.Best(); !ok || got.label != "first" {
+		t.Fatalf("expected best to remain 'first', got %v (ok=%v)", got, ok)
+	}
+
+	// Positive control: a strictly lower RTT does replace best and restart its clock.
+	*now = now.Add(5 * time.Minute)
+	if info := c.Update(testMeasurement{rttNs: 999, label: "lower"}); info.Result != UpdateBest {
+		t.Fatalf("expected UpdateBest for a lower RTT, got %v", info.Result)
+	}
+	if c.best.receivedAt.Equal(firstReceivedAt) {
+		t.Fatal("expected a lower-RTT sample to restart best's clock")
 	}
 }
 

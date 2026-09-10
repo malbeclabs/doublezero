@@ -4,7 +4,9 @@ mod common;
 
 use doublezero_builder_stake::state::{self, BuilderStake, ProgramConfig};
 use solana_program_test::tokio;
-use solana_sdk::{instruction::InstructionError, program_error::ProgramError, signature::Signer};
+use solana_sdk::{
+    instruction::InstructionError, program_error::ProgramError, pubkey::Pubkey, signature::Signer,
+};
 
 const ONE_GBPS: u64 = 1_000_000_000;
 
@@ -41,17 +43,36 @@ async fn test_admin_is_set_by_the_upgrade_authority() {
     // A stranger cannot claim it.
     let stranger = t.builder.insecure_clone();
     let err = t
-        .send(common::set_admin(&stranger.pubkey()), &[&stranger])
+        .send(
+            common::set_admin(&stranger.pubkey(), &stranger.pubkey()),
+            &[&stranger],
+        )
         .await
         .expect_err("a non-upgrade-authority signer should not set the admin");
     // The upgrade-authority check reads the program data account, so a wrong signer fails there
     // rather than at an authority comparison.
     common::assert_instruction_error(err, InstructionError::InvalidAccountData);
 
-    t.send(common::set_admin(&admin), &[&upgrade_authority])
-        .await
-        .unwrap();
+    t.send(
+        common::set_admin(&upgrade_authority.pubkey(), &admin),
+        &[&upgrade_authority],
+    )
+    .await
+    .unwrap();
     assert_eq!(t.read_program_config().await.admin_key, admin);
+
+    // The admin need not be the upgrade authority. Every call above happens to set them to the
+    // same key, which is what hid the two roles behind one parameter, so this covers the case
+    // that a deployment actually wants: hold the upgrade key in cold storage and let a warmer
+    // key run the program.
+    let delegate = Pubkey::new_unique();
+    t.send(
+        common::set_admin(&upgrade_authority.pubkey(), &delegate),
+        &[&upgrade_authority],
+    )
+    .await
+    .unwrap();
+    assert_eq!(t.read_program_config().await.admin_key, delegate);
 }
 
 /// A builder posts a 2Z bond against a committed rate and the stake records what it holds.

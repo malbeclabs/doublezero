@@ -551,7 +551,7 @@ async fn test_feed_create_stake_terms_without_builder_rejected() {
 }
 
 /// A stake mirror as the relayer would write it: `tier` covers up to its own ceiling, and the
-/// builder declared `committed_rate_bits_per_sec` when it deposited.
+/// builder declared `committed_rate_bits_per_sec` when it posted the bond.
 fn stake_mirror(stake_ref: Pubkey, builder: Pubkey, tier: StakeTier, bump_seed: u8) -> Vec<u8> {
     borsh::to_vec(&StakeMirror {
         account_type: AccountType::StakeMirror,
@@ -660,7 +660,7 @@ async fn test_feed_create_covered_by_stake_tier() {
     assert_eq!(mirror.feed_key, feed_pubkey);
 }
 
-/// One bit over the tier ceiling is refused. The deposit was sized against the tier, so a rate
+/// One bit over the tier ceiling is refused. The bond was sized against the tier, so a rate
 /// above it is a feed the stake does not back.
 #[tokio::test]
 async fn test_feed_create_rate_above_tier_rejected() {
@@ -720,10 +720,10 @@ async fn test_feed_create_without_stake_mirror_rejected() {
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::StakeDoesNotCoverRate));
 }
 
-/// RFC-28 is one feed per stake: "A builder running a second feed posts a second deposit. Each
-/// feed is collateralized on its own, so slashing one never reaches another." The first feed spends
-/// the stake, and a second feed pointed at the same one is refused even though the tier still
-/// covers its rate.
+/// RFC-28 is one feed per stake: a second feed needs a second bond, and each feed is
+/// collateralized on its own, so slashing one never reaches another. The first feed spends the
+/// stake, and a second feed pointed at the same one is refused even though the tier still covers
+/// its rate.
 #[tokio::test]
 async fn test_feed_create_second_feed_on_same_stake_rejected() {
     let (mut banks_client, program_id, payer, globalstate_pubkey, builder, stake_ref) =
@@ -769,7 +769,7 @@ async fn test_feed_create_second_feed_on_same_stake_rejected() {
 }
 
 /// A staked feed cannot be deleted. Its stake mirror records this feed to enforce one feed per
-/// stake, so closing the feed would leave the builder's deposit backing nothing and still refusing
+/// stake, so closing the feed would leave the builder's bond backing nothing and still refusing
 /// to back anything else. Retirement is the path out, and it lands with the lifecycle work.
 #[tokio::test]
 async fn test_staked_feed_cannot_be_deleted() {

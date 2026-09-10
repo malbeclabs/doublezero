@@ -6,7 +6,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt;
 
-/// A deposit tier from RFC-28. The deposit is sized against the rate a builder commits to, so the
+/// A bond tier from RFC-28. The bond is sized against the rate a builder commits to, so the
 /// tier is what a stake buys: the highest rate a feed backed by it may commit to.
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Eq, Default, Copy, Clone)]
@@ -60,7 +60,7 @@ impl fmt::Display for StakeTier {
 /// directions, so who is allowed to sign one is a trust decision, not an implementation detail.
 ///
 /// One mirror per stake. `stake_ref` is the PDA seed, so it is immutable. RFC-28 collateralizes
-/// each feed on its own deposit, so the mirror is keyed on the stake and not on the builder, and
+/// each feed on its own bond, so the mirror is keyed on the stake and not on the builder, and
 /// `feed_key` records the one feed that stake has been spent on.
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone, Default)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -93,11 +93,11 @@ pub struct StakeMirror {
             deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
-    /// The builder that posted the stake.
+    /// The builder that posted the bond.
     pub builder: Pubkey, // 32
-    /// The tier the deposit bought. This is what a feed's committed rate is checked against.
+    /// The tier the bond bought. This is what a feed's committed rate is checked against.
     pub tier: StakeTier, // 1
-    /// The rate the builder declared when it deposited, which is what the deposit was sized
+    /// The rate the builder declared when it posted the bond, which is what the bond was sized
     /// against. Kept for the record; the coverage check reads `tier`.
     pub committed_rate_bits_per_sec: u64, // 8
     /// The Solana slot of the `builder-stake` event this reflects. A write carrying a slot no newer

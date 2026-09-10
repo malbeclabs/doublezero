@@ -95,21 +95,6 @@ pub fn resolve_user_accesspass(
     }
 }
 
-pub(crate) fn legacy_user_accesspass_selection_error(
-    client: &dyn DoubleZeroClient,
-    user_pk: Pubkey,
-    user: &User,
-) -> eyre::Report {
-    let candidates = legacy_user_accesspass_candidates(client, user);
-    if candidates.is_empty() {
-        return eyre::eyre!("No access pass matches legacy user {user_pk}");
-    }
-    let choices = format_accesspass_choices(&candidates);
-    eyre::eyre!(
-        "Legacy user {user_pk} requires an access pass selection:\n{choices}\nRetry with --access-pass <ADDRESS>."
-    )
-}
-
 fn legacy_user_accesspass_candidates(
     client: &dyn DoubleZeroClient,
     user: &User,
@@ -332,6 +317,37 @@ mod tests {
 
         let resolved = resolve_user_accesspass(&client, user_pk, &user, None).unwrap();
         assert_eq!(resolved, (accesspass_pk, expected_accesspass));
+    }
+
+    #[test]
+    fn test_resolve_user_accesspass_uses_single_legacy_candidate() {
+        let mut client = create_test_client();
+        let program_id = client.get_program_id();
+        let user_pk = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let client_ip = Ipv4Addr::new(10, 0, 0, 1);
+        let user = User {
+            owner: payer,
+            client_ip,
+            ..Default::default()
+        };
+        let (exact_pk, _) = get_accesspass_pda(&program_id, &client_ip, &payer);
+        let (dynamic_pk, _) = get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
+        let dynamic_pass = sample_accesspass(Ipv4Addr::UNSPECIFIED, payer);
+        let expected_accesspass = dynamic_pass.clone();
+
+        client
+            .expect_get()
+            .with(predicate::eq(exact_pk))
+            .return_once(|_| Err(eyre::eyre!("account not found")));
+        client
+            .expect_get()
+            .with(predicate::eq(dynamic_pk))
+            .return_once(move |_| Ok(AccountData::AccessPass(dynamic_pass)));
+
+        let resolved = resolve_user_accesspass(&client, user_pk, &user, None).unwrap();
+
+        assert_eq!(resolved, (dynamic_pk, expected_accesspass));
     }
 
     // Legacy users record no pass. When both possible passes exist, deletion must ask the caller

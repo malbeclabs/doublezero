@@ -1,8 +1,7 @@
 use crate::{
     commands::{
-        accesspass::get::{legacy_user_accesspass_selection_error, resolve_user_accesspass},
-        multicastgroup::subscribe_feed::MAX_FEED_TX_ACCOUNTS,
-        user::get::GetUserCommand,
+        accesspass::get::resolve_user_accesspass,
+        multicastgroup::subscribe_feed::MAX_FEED_TX_ACCOUNTS, user::get::GetUserCommand,
     },
     DoubleZeroClient,
 };
@@ -61,13 +60,6 @@ impl UnsubscribeFeedCommand {
             }
         }
 
-        if user.accesspass_pk == Pubkey::default() && self.accesspass_pk.is_none() {
-            return Err(legacy_user_accesspass_selection_error(
-                client,
-                self.user_pk,
-                &user,
-            ));
-        }
         let (accesspass_pubkey, accesspass) =
             resolve_user_accesspass(client, self.user_pk, &user, self.accesspass_pk)?;
         if !matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_)) {
@@ -713,74 +705,5 @@ mod tests {
         }
         .execute(&client)
         .unwrap();
-    }
-
-    #[test]
-    fn test_commands_unsubscribe_feed_legacy_user_requires_accesspass() {
-        let mut client = create_test_client();
-        let user_pk = Pubkey::new_unique();
-        let feed_pk = Pubkey::new_unique();
-        let payer = client.get_payer();
-        let client_ip = Ipv4Addr::new(100, 0, 0, 1);
-        let user = User {
-            account_type: AccountType::User,
-            owner: payer,
-            user_type: UserType::Multicast,
-            client_ip,
-            feed_pks: vec![feed_pk],
-            accesspass_pk: Pubkey::default(),
-            ..Default::default()
-        };
-        client
-            .expect_get()
-            .with(predicate::eq(user_pk))
-            .return_once(move |_| Ok(AccountData::User(user)));
-
-        let program_id = client.get_program_id();
-        let (exact_pk, _) = get_accesspass_pda(&program_id, &client_ip, &payer);
-        let (dynamic_pk, _) = get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
-        client
-            .expect_get()
-            .with(predicate::eq(exact_pk))
-            .return_once(|_| Err(eyre::eyre!("account not found")));
-        client
-            .expect_get()
-            .with(predicate::eq(dynamic_pk))
-            .return_once(move |_| {
-                Ok(AccountData::AccessPass(AccessPass {
-                    account_type: AccountType::AccessPass,
-                    owner: payer,
-                    bump_seed: 0,
-                    accesspass_type: AccessPassType::EdgeSeat(vec![]),
-                    client_ip: Ipv4Addr::UNSPECIFIED,
-                    user_payer: payer,
-                    last_access_epoch: u64::MAX,
-                    connection_count: 0,
-                    status: AccessPassStatus::Requested,
-                    mgroup_pub_allowlist: vec![],
-                    mgroup_sub_allowlist: vec![],
-                    flags: 0,
-                    tenant_allowlist: vec![],
-                    unicast_user_count: 0,
-                    max_unicast_users: 1,
-                    multicast_user_count: 0,
-                    max_multicast_users: 1,
-                }))
-            });
-
-        let err = UnsubscribeFeedCommand {
-            user_pk,
-            feed_pks: vec![feed_pk],
-            accesspass_pk: None,
-        }
-        .execute(&client)
-        .unwrap_err();
-
-        assert_eq!(
-            err.to_string(),
-            format!(
-                "Legacy user {user_pk} requires an access pass selection:\n  {dynamic_pk}: EdgeSeat([]), client IP 0.0.0.0, 0 connections\nRetry with --access-pass <ADDRESS>."
-            )
-        );
     }
 }

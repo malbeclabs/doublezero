@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::{
     commands::{
-        accesspass::get::{legacy_user_accesspass_selection_error, resolve_user_accesspass},
+        accesspass::get::resolve_user_accesspass,
         common::append_payer_permission_account,
         device::get::GetDeviceCommand,
         multicastgroup::{
@@ -39,13 +39,6 @@ impl DeleteUserCommand {
             .get_user()
             .map_err(|e| eyre::eyre!(e))?;
 
-        if user.accesspass_pk == Pubkey::default() && self.accesspass_pk.is_none() {
-            return Err(legacy_user_accesspass_selection_error(
-                client,
-                self.pubkey,
-                &user,
-            ));
-        }
         let (accesspass_pk, _) =
             resolve_user_accesspass(client, self.pubkey, &user, self.accesspass_pk)?;
 

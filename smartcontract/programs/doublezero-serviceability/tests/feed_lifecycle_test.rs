@@ -7,11 +7,13 @@ use doublezero_serviceability::{
     error::DoubleZeroError,
     instructions::DoubleZeroInstruction,
     pda::{get_feed_pda, get_globalstate_pda, get_stake_mirror_pda},
-    processors::feed::retire::RETIREMENT_NOTICE_SECONDS,
     processors::{
         feed::{
-            create::FeedCreateArgs, finalize_retirement::FeedFinalizeRetirementArgs,
-            halt::FeedHaltArgs, resume::FeedResumeArgs, retire::FeedRetireArgs,
+            create::FeedCreateArgs,
+            finalize_retirement::FeedFinalizeRetirementArgs,
+            halt::FeedHaltArgs,
+            resume::FeedResumeArgs,
+            retire::{FeedRetireArgs, RETIREMENT_NOTICE_SECONDS},
         },
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
     },

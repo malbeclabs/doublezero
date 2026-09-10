@@ -614,9 +614,8 @@ func formatLocationOffset(offset *geoprobe.LocationOffset, addr *net.UDPAddr, si
 		MaxDistanceKm:    maxDistanceKm,
 		MeasurementSlot:  offset.MeasurementSlot,
 		SignatureValid:   signatureValid,
+		SignatureError:   signatureError,
 	}
-
-	output.SignatureError = signatureError
 
 	for _, ref := range offset.References {
 		refRttMs := float64(ref.RttNs) / nanosecondsPerMs

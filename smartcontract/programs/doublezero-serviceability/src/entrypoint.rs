@@ -38,8 +38,9 @@ use crate::{
             suspend::process_suspend_exchange, update::process_update_exchange,
         },
         feed::{
-            create::process_create_feed, delete::process_delete_feed, halt::process_halt_feed,
-            resume::process_resume_feed, update::process_update_feed,
+            create::process_create_feed, delete::process_delete_feed,
+            finalize_retirement::process_finalize_feed_retirement, halt::process_halt_feed,
+            resume::process_resume_feed, retire::process_retire_feed, update::process_update_feed,
         },
         globalconfig::set::process_set_globalconfig,
         globalstate::{
@@ -423,6 +424,12 @@ pub fn process_instruction(
             process_write_stake_mirror(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::HaltFeed(value) => process_halt_feed(program_id, accounts, &value)?,
+        DoubleZeroInstruction::RetireFeed(value) => {
+            process_retire_feed(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::FinalizeFeedRetirement(value) => {
+            process_finalize_feed_retirement(program_id, accounts, &value)?
+        }
         DoubleZeroInstruction::ResumeFeed(value) => {
             process_resume_feed(program_id, accounts, &value)?
         }

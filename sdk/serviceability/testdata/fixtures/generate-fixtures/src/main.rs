@@ -1520,6 +1520,7 @@ fn generate_feed(dir: &Path) {
         committed_rate_bits_per_sec: 1_000_000_000,
         status: FeedStatus::Pending,
         halted_by: Pubkey::default(),
+        retires_at: 0,
     };
 
     let data = borsh::to_vec(&val).unwrap();

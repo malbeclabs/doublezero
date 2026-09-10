@@ -7,8 +7,12 @@ use doublezero_serviceability::{
     error::DoubleZeroError,
     instructions::DoubleZeroInstruction,
     pda::{get_feed_pda, get_globalstate_pda, get_stake_mirror_pda},
+    processors::feed::retire::RETIREMENT_NOTICE_SECONDS,
     processors::{
-        feed::{create::FeedCreateArgs, halt::FeedHaltArgs, resume::FeedResumeArgs},
+        feed::{
+            create::FeedCreateArgs, finalize_retirement::FeedFinalizeRetirementArgs,
+            halt::FeedHaltArgs, resume::FeedResumeArgs, retire::FeedRetireArgs,
+        },
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
     },
     state::{
@@ -349,6 +353,7 @@ fn halted_feed(
         committed_rate_bits_per_sec: ONE_GBPS,
         status: FeedStatus::Halted,
         halted_by,
+        retires_at: 0,
     };
 
     let (mirror_key, mirror_bump) = get_stake_mirror_pda(&program_id, &stake_ref);
@@ -530,4 +535,248 @@ async fn test_a_staked_feed_cannot_resume_without_its_mirror() {
     )
     .await;
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::StakeMirrorMissing));
+}
+
+/// A feed in `Retiring`, seeded with the notice ending at `retires_at`.
+///
+/// Seeded rather than driven so the notice can be placed in the past or the future without moving
+/// the validator's clock. The comparison against `Clock` is what these tests are about; how the
+/// timestamp got there is `retire`'s business and has its own tests above.
+fn retiring_feed(
+    program_id: Pubkey,
+    code: &str,
+    exchange: Pubkey,
+    builder: Pubkey,
+    retires_at: i64,
+) -> (Pubkey, Vec<u8>) {
+    let (feed_key, bump) = get_feed_pda(&program_id, code, &exchange);
+    let feed = Feed {
+        account_type: AccountType::Feed,
+        owner: Pubkey::new_unique(),
+        bump_seed: bump,
+        code: code.to_string(),
+        name: "Retiring".to_string(),
+        exchange,
+        groups: vec![Pubkey::new_unique()],
+        builder,
+        stake_ref: Pubkey::new_unique(),
+        spec_id: "top-of-book@v1.0.0".to_string(),
+        sla_hash: [9u8; 32],
+        committed_rate_bits_per_sec: ONE_GBPS,
+        status: FeedStatus::Retiring,
+        halted_by: Pubkey::default(),
+        retires_at,
+    };
+    (feed_key, borsh::to_vec(&feed).unwrap())
+}
+
+async fn feed_of(banks_client: &mut BanksClient, feed: Pubkey) -> Feed {
+    get_account_data(banks_client, feed)
+        .await
+        .expect("the feed should exist")
+        .get_feed()
+        .expect("it should be a feed")
+}
+
+/// Retiring an active feed starts the notice its seat holders are owed.
+#[tokio::test]
+async fn test_retiring_an_active_feed_starts_the_notice() {
+    let (mut banks_client, program_id, payer, globalstate, feed) = catalog_feed("leaving").await;
+
+    let before = banks_client
+        .get_sysvar::<solana_sdk::clock::Clock>()
+        .await
+        .expect("a clock")
+        .unix_timestamp;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RetireFeed(FeedRetireArgs {}),
+        feed_accounts(feed, globalstate),
+        &payer,
+    )
+    .await;
+
+    let f = feed_of(&mut banks_client, feed).await;
+    assert_eq!(f.status, FeedStatus::Retiring);
+    assert!(
+        f.retires_at >= before + RETIREMENT_NOTICE_SECONDS,
+        "the notice runs a full thirty days from when retirement started"
+    );
+}
+
+/// A feed that never published owes nobody notice, so its wait is zero.
+///
+/// It still has to be retirable: `DeleteFeed` refuses a staked feed, so refusing here as well
+/// would leave a feed that never went live with no way out at all.
+#[tokio::test]
+async fn test_a_pending_feed_retires_without_waiting() {
+    let builder = test_payer();
+    let (mut banks_client, program_id, payer, globalstate, feed) =
+        staked_feed_owned_by(&builder, "stillborn").await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RetireFeed(FeedRetireArgs {}),
+        feed_accounts(feed, globalstate),
+        &payer,
+    )
+    .await;
+
+    let f = feed_of(&mut banks_client, feed).await;
+    assert_eq!(f.status, FeedStatus::Retiring);
+
+    let now = banks_client
+        .get_sysvar::<solana_sdk::clock::Clock>()
+        .await
+        .expect("a clock")
+        .unix_timestamp;
+    assert!(
+        f.retires_at <= now,
+        "a feed that admitted no subscriber waits for nobody"
+    );
+}
+
+/// Retirement is terminal from the moment it starts. Neither lifecycle verb reopens it.
+#[tokio::test]
+async fn test_a_retiring_feed_neither_halts_nor_resumes() {
+    let program_id = Pubkey::new_unique();
+    let (feed, data) = retiring_feed(
+        program_id,
+        "closing",
+        Pubkey::new_unique(),
+        Pubkey::default(),
+        i64::MAX,
+    );
+    let (mut banks_client, payer, recent_blockhash) =
+        init_test_with_accounts(program_id, &[(feed, data)]).await;
+    init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+    let (globalstate, _) = get_globalstate_pda(&program_id);
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::HaltFeed(FeedHaltArgs {}),
+        feed_accounts(feed, globalstate),
+        &payer,
+        &[],
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::FeedNotHaltable));
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::ResumeFeed(FeedResumeArgs {}),
+        feed_accounts(feed, globalstate),
+        &payer,
+        &[],
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::FeedNotResumable));
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::RetireFeed(FeedRetireArgs {}),
+        feed_accounts(feed, globalstate),
+        &payer,
+        &[],
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::FeedNotRetirable));
+}
+
+/// The notice is a promise, so finalizing before it elapses is refused.
+#[tokio::test]
+async fn test_finalizing_before_the_notice_elapses_is_refused() {
+    let program_id = Pubkey::new_unique();
+    let (feed, data) = retiring_feed(
+        program_id,
+        "waiting",
+        Pubkey::new_unique(),
+        Pubkey::default(),
+        i64::MAX,
+    );
+    let (mut banks_client, payer, recent_blockhash) =
+        init_test_with_accounts(program_id, &[(feed, data)]).await;
+    init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::FinalizeFeedRetirement(FeedFinalizeRetirementArgs {}),
+        vec![AccountMeta::new(feed, false)],
+        &payer,
+        &[],
+    )
+    .await;
+    assert_custom_at_ix0(
+        &result,
+        custom_code(DoubleZeroError::RetirementNoticeNotElapsed),
+    );
+    assert_eq!(
+        feed_status(&mut banks_client, feed).await,
+        FeedStatus::Retiring
+    );
+}
+
+/// Once the notice has elapsed anyone may finish the retirement.
+///
+/// Permissionless on purpose. The clock already decided, so this instruction can only agree with
+/// it, and requiring an authority would let a feed sit in `Retiring` forever because whoever held
+/// the key stopped caring. The signer here holds nothing.
+#[tokio::test]
+async fn test_anyone_finalizes_once_the_notice_has_elapsed() {
+    let program_id = Pubkey::new_unique();
+    let (feed, data) = retiring_feed(
+        program_id,
+        "done",
+        Pubkey::new_unique(),
+        Pubkey::default(),
+        0,
+    );
+    let (mut banks_client, payer, recent_blockhash) =
+        init_test_with_accounts(program_id, &[(feed, data)]).await;
+    init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let stranger = test_payer();
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::FinalizeFeedRetirement(FeedFinalizeRetirementArgs {}),
+        vec![AccountMeta::new(feed, false)],
+        &stranger,
+    )
+    .await;
+
+    assert_eq!(
+        feed_status(&mut banks_client, feed).await,
+        FeedStatus::Retired
+    );
+}
+
+/// A feed that is not retiring has no retirement to finish.
+#[tokio::test]
+async fn test_finalizing_a_feed_that_is_not_retiring_is_refused() {
+    let (mut banks_client, program_id, payer, _globalstate, feed) = catalog_feed("running2").await;
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::FinalizeFeedRetirement(FeedFinalizeRetirementArgs {}),
+        vec![AccountMeta::new(feed, false)],
+        &payer,
+        &[],
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::FeedNotRetiring));
 }

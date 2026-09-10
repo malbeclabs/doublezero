@@ -1267,6 +1267,9 @@ export interface Feed {
   // Who halted the feed, the default key when it is not halted. Appended after status, so a feed
   // written before it reads as halted by nobody, which is right: it cannot have been halted.
   haltedBy: PublicKey;
+  // When the retirement notice elapses, zero when the feed is not retiring. Appended after
+  // haltedBy, so a feed written before it reads as not retiring, which is right.
+  retiresAt: bigint;
 }
 
 // Feed lifecycle. Matches FeedStatus in the Rust program.
@@ -1274,6 +1277,7 @@ export const FEED_STATUS_PENDING = 0;
 export const FEED_STATUS_ACTIVE = 1;
 export const FEED_STATUS_HALTED = 2;
 export const FEED_STATUS_RETIRED = 3;
+export const FEED_STATUS_RETIRING = 4;
 
 export function deserializeFeed(data: Uint8Array): Feed {
   const r = new DefensiveReader(data);
@@ -1298,6 +1302,8 @@ export function deserializeFeed(data: Uint8Array): Feed {
   // would show every live catalog feed as out of service.
   const status = hasRfc28Tail ? r.readU8() : FEED_STATUS_ACTIVE;
   const haltedBy = readPubkey(r);
+  // readU64 is unsigned; reinterpret the sign bit, as the seat timestamps above do.
+  const retiresAt = BigInt.asIntN(64, r.readU64());
   return {
     accountType,
     owner,
@@ -1313,5 +1319,6 @@ export function deserializeFeed(data: Uint8Array): Feed {
     committedRateBitsPerSec,
     status,
     haltedBy,
+    retiresAt,
   };
 }

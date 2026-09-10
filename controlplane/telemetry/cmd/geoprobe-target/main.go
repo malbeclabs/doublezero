@@ -30,7 +30,51 @@ const (
 	nanosecondsPerMs         = 1000000.0
 	rateLimitCleanupInterval = 5 * time.Minute
 	rateLimitEntryTTL        = 10 * time.Minute
+
+	// dzSlotDuration is the nominal DoubleZero Ledger slot time.
+	dzSlotDuration = 400 * time.Millisecond
+
+	// RFC-16's replay bound, derived from the offset stream instead of a ledger
+	// clock: geoprobe-target holds no RPC connection by design, so the only
+	// time reference it has is the highest MeasurementSlot a signing key has
+	// proven. A replay can repeat that floor but cannot push it forward without
+	// the corresponding private key.
+	//
+	// maxSlotRegression is how far below the floor an offer may sit and still be
+	// accepted. A probe re-reads the slot from a load-balanced RPC pool, so a
+	// lagging finalized replica can hand it a slot slightly behind the last one;
+	// without slack that would silently stop the sender's ingestion.
+	maxSlotRegression = uint64(2 * time.Minute / dzSlotDuration)
+
+	// maxFloorStall is how long the floor may stand still before repeats stop
+	// counting as live. A healthy sender stamps from geoprobe.SlotCacheTTL, so
+	// the floor advances every ~5m and the steady-state replay window is ~7m.
+	// The stall bound only governs the degraded case where the sending probe
+	// rides out its own RPC outage on a frozen cached slot: six refresh periods
+	// keeps ingesting its genuine measurements, because a dropped measurement
+	// is lost permanently rather than deferred.
+	maxFloorStall = 6 * geoprobe.SlotCacheTTL
+
+	// floorEntryTTL is how long a silent sender's floor is remembered. Only
+	// total silence expires it — any offer, accepted or rejected, keeps it
+	// alive — so this bounds the map, not the replay window. Kept off
+	// -max-offset-age, which tunes the display cache and would otherwise let a
+	// cache setting shorten a security bound.
+	floorEntryTTL = 2 * maxFloorStall
 )
+
+// Machine-readable rejection reasons, logged as the "reason" field so an
+// operator can alert on a sender's measurements going missing. geoprobe-target
+// exposes no prometheus metrics, so these log lines are the only signal.
+const (
+	rejectSlotRegressed = "slot_regressed"
+	rejectFloorStalled  = "floor_stalled"
+)
+
+// signatureUnverifiedMarker records in signature_error that no verification ran
+// at all, distinguishing a -verify-signatures=false row from a historical row
+// whose verification genuinely failed.
+const signatureUnverifiedMarker = "signature verification disabled"
 
 var (
 	twampPort       = flag.Uint("twamp-port", defaultTWAMPPort, "Port to listen for TWAMP probes")
@@ -75,6 +119,9 @@ func main() {
 		"rate_limit", *rateLimit,
 		"max_reference_depth", maxReferenceDepth,
 		"max_offset_age", *maxOffsetAge,
+		"max_slot_regression", maxSlotRegression,
+		"max_floor_stall", maxFloorStall,
+		"floor_entry_ttl", floorEntryTTL,
 	)
 
 	// Keyed by SenderPubkey (geoprobe identity). Each geoprobe is an independent
@@ -101,10 +148,11 @@ func main() {
 	if *rateLimit > 0 {
 		go limiter.cleanup(ctx)
 	}
-	go sweepCaches(ctx, caches)
+	floor := newSlotFloor(floorEntryTTL)
+	go sweepCaches(ctx, caches, floor)
 
 	go runTWAMPReflector(ctx, log, *twampPort, errCh)
-	go runUDPListener(ctx, log, *udpPort, *verifySignature, limiter, chWriter, caches, errCh)
+	go runUDPListener(ctx, log, *udpPort, *verifySignature, limiter, chWriter, caches, floor, errCh)
 
 	select {
 	case err := <-errCh:
@@ -214,7 +262,92 @@ func (rl *rateLimiter) cleanup(ctx context.Context) {
 	}
 }
 
-func sweepCaches(ctx context.Context, caches *geoprobe.MinCacheMap[[32]byte, geoprobe.LocationOffset]) {
+type floorEntry struct {
+	slot       uint64
+	advancedAt time.Time
+	lastSeen   time.Time
+}
+
+// slotFloor bounds offset replay without a ledger clock. MeasurementSlot is
+// inside the signed payload, so the highest slot a key has proven is a lower
+// bound on real time that a replay can repeat but cannot advance.
+//
+// Floors are keyed by AuthorityPubkey, the key VerifyOffsetChain actually
+// checks the signature against — not by SenderPubkey, which is signed but
+// unauthenticated. Anyone can mint a keypair and stamp a real geoprobe's
+// SenderPubkey, so a SenderPubkey-keyed floor would let one datagram carrying
+// a huge slot lock that geoprobe out of the table permanently. In production a
+// probe signs its own offsets, so the two keys move together for real senders.
+type slotFloor struct {
+	mu      sync.Mutex
+	entries map[[32]byte]*floorEntry
+	ttl     time.Duration
+	nowFunc func() time.Time // for testing; defaults to time.Now
+}
+
+func newSlotFloor(ttl time.Duration) *slotFloor {
+	return &slotFloor{
+		entries: make(map[[32]byte]*floorEntry),
+		ttl:     ttl,
+		nowFunc: time.Now,
+	}
+}
+
+// accept reports whether an offer may be ingested, advancing the signing key's
+// floor when it does. On rejection it returns a reason token plus the floor
+// state, for the log line.
+//
+// Callers verify the signature chain first, so in the deployed configuration
+// only a proven slot moves a floor. With -verify-signatures=false nothing is
+// checked and the floor is fed unverified slots along with everything else.
+//
+// A never-seen key seeds its floor from its own first offer, so one stale
+// capture is accepted per key per process restart; the live stream raises the
+// floor past it within minutes. A rejected offer still refreshes lastSeen, so a
+// sustained replay cannot outlive the entry and reseed from itself.
+func (f *slotFloor) accept(authority [32]byte, slot uint64) (ok bool, reason string, floorSlot uint64, floorAge time.Duration) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	now := f.nowFunc()
+	entry, exists := f.entries[authority]
+	if !exists {
+		f.entries[authority] = &floorEntry{slot: slot, advancedAt: now, lastSeen: now}
+		return true, "", slot, 0
+	}
+	entry.lastSeen = now
+
+	age := now.Sub(entry.advancedAt)
+	switch {
+	case slot > entry.slot:
+		entry.slot = slot
+		entry.advancedAt = now
+		age = 0
+	case entry.slot-slot > maxSlotRegression:
+		return false, rejectSlotRegressed, entry.slot, age
+	case age > maxFloorStall:
+		// The floor has not moved in maxFloorStall, so repeats no longer
+		// evidence a live sender. Only a strictly higher slot does.
+		return false, rejectFloorStalled, entry.slot, age
+	}
+
+	return true, "", entry.slot, age
+}
+
+// sweep drops keys silent for ttl, bounding the map the same way the offset
+// caches are bounded.
+func (f *slotFloor) sweep() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	now := f.nowFunc()
+	for k, entry := range f.entries {
+		if now.Sub(entry.lastSeen) > f.ttl {
+			delete(f.entries, k)
+		}
+	}
+}
+
+func sweepCaches(ctx context.Context, caches *geoprobe.MinCacheMap[[32]byte, geoprobe.LocationOffset], floor *slotFloor) {
 	ticker := time.NewTicker(rateLimitCleanupInterval)
 	defer ticker.Stop()
 	for {
@@ -223,6 +356,7 @@ func sweepCaches(ctx context.Context, caches *geoprobe.MinCacheMap[[32]byte, geo
 			return
 		case <-ticker.C:
 			caches.Sweep()
+			floor.sweep()
 		}
 	}
 }
@@ -245,7 +379,7 @@ func runTWAMPReflector(ctx context.Context, log *slog.Logger, port uint, errCh c
 	}
 }
 
-func runUDPListener(ctx context.Context, log *slog.Logger, port uint, verifySignatures bool, limiter *rateLimiter, chWriter *geoprobe.ClickhouseWriter, caches *geoprobe.MinCacheMap[[32]byte, geoprobe.LocationOffset], errCh chan<- error) {
+func runUDPListener(ctx context.Context, log *slog.Logger, port uint, verifySignatures bool, limiter *rateLimiter, chWriter *geoprobe.ClickhouseWriter, caches *geoprobe.MinCacheMap[[32]byte, geoprobe.LocationOffset], floor *slotFloor, errCh chan<- error) {
 	conn, err := geoprobe.NewUDPListener(int(port))
 	if err != nil {
 		errCh <- fmt.Errorf("failed to create UDP listener: %w", err)
@@ -307,7 +441,7 @@ func runUDPListener(ctx context.Context, log *slog.Logger, port uint, verifySign
 			continue
 		}
 
-		handleOffset(log, offset, addr, verifySignatures, chWriter, caches)
+		handleOffset(log, offset, addr, verifySignatures, chWriter, caches, floor)
 	}
 }
 
@@ -325,26 +459,45 @@ func countReferenceDepth(offset *geoprobe.LocationOffset) int {
 	return maxDepth + 1
 }
 
-func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.UDPAddr, verifySignatures bool, chWriter *geoprobe.ClickhouseWriter, caches *geoprobe.MinCacheMap[[32]byte, geoprobe.LocationOffset]) {
-	signatureValid := true
-	var verifyError error
+func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.UDPAddr, verifySignatures bool, chWriter *geoprobe.ClickhouseWriter, caches *geoprobe.MinCacheMap[[32]byte, geoprobe.LocationOffset], floor *slotFloor) {
+	// signature_valid is an assertion the row carries into the public
+	// location_offsets table, so it may only be true when a check actually ran.
+	// With -verify-signatures=false nothing is checked: record false and say
+	// why, rather than asserting a verification that did not happen.
+	signatureValid := false
+	signatureError := ""
 
 	if verifySignatures {
-		verifyError = geoprobe.VerifyOffsetChain(offset)
-		signatureValid = verifyError == nil
-		log.Debug("signature verification complete", "authority_pubkey", solana.PublicKeyFromBytes(offset.AuthorityPubkey[:]).String(), "valid", signatureValid)
+		// Until the chain verifies, a LocationOffset is just an attacker-chosen
+		// UDP datagram. Drop it instead of recording it: every row written to
+		// location_offsets is aggregated by the public lake explorer without
+		// filtering on signature_valid, so persisting forgeries would publish
+		// them.
+		if err := geoprobe.VerifyOffsetChain(offset); err != nil {
+			log.Warn("dropping offset with invalid signature chain",
+				"from", addr,
+				"authority_pubkey", solana.PublicKeyFromBytes(offset.AuthorityPubkey[:]).String(),
+				"sender_pubkey", solana.PublicKeyFromBytes(offset.SenderPubkey[:]).String(),
+				"error", err)
+			return
+		}
+		signatureValid = true
+		log.Debug("signature verification complete", "authority_pubkey", solana.PublicKeyFromBytes(offset.AuthorityPubkey[:]).String(), "valid", true)
+	} else {
+		signatureError = signatureUnverifiedMarker
 	}
 
-	// Until the chain verifies, a LocationOffset is just an attacker-chosen UDP
-	// datagram. Drop it instead of recording it: every row written to
-	// location_offsets is aggregated by the public lake explorer without
-	// filtering on signature_valid, so persisting forgeries would publish them.
-	if !signatureValid {
-		log.Warn("dropping offset with invalid signature chain",
+	// A valid signature never expires, so a captured offset stays verifiable
+	// forever. The slot floor is what stops it being replayed into the table.
+	if ok, reason, floorSlot, floorAge := floor.accept(offset.AuthorityPubkey, offset.MeasurementSlot); !ok {
+		log.Warn("dropping offset outside slot floor",
+			"reason", reason,
 			"from", addr,
 			"authority_pubkey", solana.PublicKeyFromBytes(offset.AuthorityPubkey[:]).String(),
 			"sender_pubkey", solana.PublicKeyFromBytes(offset.SenderPubkey[:]).String(),
-			"error", verifyError)
+			"offset_slot", offset.MeasurementSlot,
+			"floor_slot", floorSlot,
+			"floor_age_seconds", floorAge.Seconds())
 		return
 	}
 
@@ -353,11 +506,7 @@ func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.U
 		if err != nil {
 			log.Error("failed to marshal offset for clickhouse", "error", err)
 		} else {
-			sigErrStr := ""
-			if verifyError != nil {
-				sigErrStr = verifyError.Error()
-			}
-			row := geoprobe.OffsetRowFromLocationOffset(offset, addr.String(), signatureValid, sigErrStr, rawBytes)
+			row := geoprobe.OffsetRowFromLocationOffset(offset, addr.String(), signatureValid, signatureError, rawBytes)
 			chWriter.Record(row)
 		}
 	}
@@ -365,7 +514,7 @@ func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.U
 	cache := caches.Get(offset.SenderPubkey)
 	info := cache.Update(*offset)
 
-	output := formatLocationOffset(offset, addr, signatureValid, verifyError)
+	output := formatLocationOffset(offset, addr, signatureValid, signatureError)
 
 	if *verbose || info.Changed() {
 		if *logFormat == "json" {
@@ -446,7 +595,7 @@ type ReferenceOutput struct {
 	MeasuredRttMs   float64          `json:"measured_rtt_ms"`
 }
 
-func formatLocationOffset(offset *geoprobe.LocationOffset, addr *net.UDPAddr, signatureValid bool, verifyError error) OffsetOutput {
+func formatLocationOffset(offset *geoprobe.LocationOffset, addr *net.UDPAddr, signatureValid bool, signatureError string) OffsetOutput {
 	rttMs := float64(offset.RttNs) / nanosecondsPerMs
 	measuredRttMs := float64(offset.MeasuredRttNs) / nanosecondsPerMs
 	maxDistanceMiles := calculateMaxDistance(offset.RttNs)
@@ -465,10 +614,7 @@ func formatLocationOffset(offset *geoprobe.LocationOffset, addr *net.UDPAddr, si
 		MaxDistanceKm:    maxDistanceKm,
 		MeasurementSlot:  offset.MeasurementSlot,
 		SignatureValid:   signatureValid,
-	}
-
-	if verifyError != nil {
-		output.SignatureError = verifyError.Error()
+		SignatureError:   signatureError,
 	}
 
 	for _, ref := range offset.References {

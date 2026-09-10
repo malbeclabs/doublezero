@@ -88,10 +88,16 @@ impl UpdateMulticastGroupRolesCommand {
         .ok_or_else(|| eyre::eyre!("AccessPass not found"))?;
 
         for group_pk in &group_pks {
-            if self.publisher && !accesspass.mgroup_pub_allowlist.contains(group_pk) {
+            if self.publisher
+                && !user.publishers.contains(group_pk)
+                && !accesspass.mgroup_pub_allowlist.contains(group_pk)
+            {
                 eyre::bail!("User not allowed to publish multicast group ({group_pk})");
             }
-            if self.subscriber && !accesspass.mgroup_sub_allowlist.contains(group_pk) {
+            if self.subscriber
+                && !user.subscribers.contains(group_pk)
+                && !accesspass.mgroup_sub_allowlist.contains(group_pk)
+            {
                 eyre::bail!("User not allowed to subscribe multicast group ({group_pk})");
             }
         }
@@ -271,6 +277,127 @@ mod tests {
             client_ip,
             publisher: true,
             subscriber: false,
+            device_pk: None,
+            feed_pk: None,
+        }
+        .execute(&client);
+
+        assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_adds_publisher_without_reauthorizing_existing_subscriber() {
+        let mut client = create_test_client();
+
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let (mgroup_pubkey, _) = get_multicastgroup_pda(&program_id, 1);
+        let mgroup = MulticastGroup {
+            account_type: AccountType::MulticastGroup,
+            owner: payer,
+            bump_seed: 0,
+            index: 1,
+            code: "test".to_string(),
+            max_bandwidth: 1000,
+            status: MulticastGroupStatus::Activated,
+            tenant_pk: Pubkey::default(),
+            multicast_ip: "223.0.0.1".parse().unwrap(),
+            publisher_count: 0,
+            subscriber_count: 1,
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(mgroup_pubkey))
+            .returning(move |_| Ok(AccountData::MulticastGroup(mgroup.clone())));
+
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+        let user_pubkey = Pubkey::new_unique();
+        let user = User {
+            account_type: AccountType::User,
+            owner: payer,
+            bump_seed: 0,
+            index: 1,
+            tenant_pk: Pubkey::default(),
+            user_type: UserType::Multicast,
+            device_pk: mgroup_pubkey,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip,
+            dz_ip: client_ip,
+            tunnel_id: 0,
+            tunnel_net: NetworkV4::default(),
+            status: UserStatus::Activated,
+            publishers: vec![],
+            subscribers: vec![mgroup_pubkey],
+            validator_pubkey: Pubkey::default(),
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            tunnel_flags: 0,
+            bgp_status: Default::default(),
+            last_bgp_up_at: 0,
+            last_bgp_reported_at: 0,
+            bgp_rtt_ns: 0,
+            ..Default::default()
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(user_pubkey))
+            .returning(move |_| Ok(AccountData::User(user.clone())));
+
+        let (accesspass_pubkey, _) =
+            get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
+        let accesspass = doublezero_serviceability::state::accesspass::AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 0,
+            accesspass_type: doublezero_serviceability::state::accesspass::AccessPassType::EdgeSeat(
+                vec![],
+            ),
+            client_ip: Ipv4Addr::UNSPECIFIED,
+            user_payer: payer,
+            last_access_epoch: 0,
+            connection_count: 1,
+            status: doublezero_serviceability::state::accesspass::AccessPassStatus::Connected,
+            owner: payer,
+            mgroup_pub_allowlist: vec![mgroup_pubkey],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 1,
+            max_multicast_users: 1,
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(accesspass_pubkey))
+            .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
+
+        let expected = update_multicast_group_roles(
+            &program_id,
+            &payer,
+            &mgroup_pubkey,
+            &accesspass_pubkey,
+            &user_pubkey,
+            &[],
+            UpdateMulticastGroupRolesArgs {
+                client_ip,
+                publisher: true,
+                subscriber: true,
+                use_onchain_allocation: true,
+                extra_group_count: 0,
+            },
+        );
+        client
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
+
+        expect_missing_permission_account(&mut client);
+
+        let res = UpdateMulticastGroupRolesCommand {
+            group_pks: vec![mgroup_pubkey],
+            user_pk: user_pubkey,
+            client_ip,
+            publisher: true,
+            subscriber: true,
             device_pk: None,
             feed_pk: None,
         }

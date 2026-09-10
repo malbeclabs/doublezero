@@ -1275,6 +1275,9 @@ class Feed:
     sla_hash: bytes = b"\x00" * 32
     committed_rate_bits_per_sec: int = 0
     status: int = 0
+    # Who halted the feed, default when it is not halted. Appended after status, so a feed
+    # written before it reads as halted by nobody, which is right: it cannot have been halted.
+    halted_by: Pubkey = Pubkey.default()
     pub_key: Pubkey = Pubkey.default()  # set from account address after deserialization
 
     @classmethod
@@ -1301,4 +1304,5 @@ class Feed:
         # Not pending: a feed written before RFC-28 has no status byte, and reading one as pending
         # would show every live catalog feed as out of service.
         f.status = r.read_u8() if has_rfc28_tail else FEED_STATUS_ACTIVE
+        f.halted_by = _read_pubkey(r)
         return f

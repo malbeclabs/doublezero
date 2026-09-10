@@ -113,12 +113,24 @@ pub fn halt_feed(program_id: &Pubkey, payer: &Pubkey, feed: &Pubkey) -> Instruct
     )
 }
 
-/// `ResumeFeed` (variant 121). Accounts: `[feed, globalstate]`.
+/// `ResumeFeed` (variant 121). Accounts: `[feed, globalstate]`, then the stake mirror.
 ///
-/// Puts a halted feed back to publishing. Signed by the same keys `halt_feed` accepts.
-pub fn resume_feed(program_id: &Pubkey, payer: &Pubkey, feed: &Pubkey) -> Instruction {
+/// Puts a halted feed back to publishing. Signed by the keys `halt_feed` accepts, except that an
+/// operator's halt takes an operator to lift.
+///
+/// `stake_mirror` is required for a staked feed and must be `None` for a catalog one. Resume
+/// re-proves that the stake still covers the feed's rate, because a mirror can be corrected
+/// downward while a feed sits halted, so a staked feed without its mirror is refused rather than
+/// read as having no stake to check. It rides after the payer and system program, found by its
+/// address rather than its position, so a catalog feed's caller is not forced to send one.
+pub fn resume_feed(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    feed: &Pubkey,
+    stake_mirror: Option<&Pubkey>,
+) -> Instruction {
     let (globalstate, _) = get_globalstate_pda(program_id);
-    common::build_with_permission(
+    let mut ix = common::build_with_permission(
         program_id,
         DoubleZeroInstruction::ResumeFeed(FeedResumeArgs {}),
         vec![
@@ -126,7 +138,12 @@ pub fn resume_feed(program_id: &Pubkey, payer: &Pubkey, feed: &Pubkey) -> Instru
             AccountMeta::new(globalstate, false),
         ],
         payer,
-    )
+    );
+    if let Some(stake_mirror) = stake_mirror {
+        ix.accounts
+            .push(AccountMeta::new_readonly(*stake_mirror, false));
+    }
+    ix
 }
 
 #[cfg(test)]
@@ -196,9 +213,19 @@ mod tests {
         let halt = halt_feed(&pid, &payer, &feed);
         assert_eq!(halt.data[0], 120);
         assert_eq!(halt.accounts, expected);
-        let resume = resume_feed(&pid, &payer, &feed);
+        let resume = resume_feed(&pid, &payer, &feed, None);
         assert_eq!(resume.data[0], 121);
         assert_eq!(resume.accounts, expected);
+
+        // A staked feed's mirror rides after the payer and system program, where the processor
+        // looks for it. Without it, resume refuses with `StakeMirrorMissing`.
+        let mirror = Pubkey::new_unique();
+        let staked = resume_feed(&pid, &payer, &feed, Some(&mirror));
+        assert_eq!(staked.accounts[..expected.len()], expected[..]);
+        assert_eq!(
+            staked.accounts.last().unwrap(),
+            &AccountMeta::new_readonly(mirror, false)
+        );
     }
 
     /// Tripwire for the module-doc note: `FEED_AUTHORITY` is currently absent from

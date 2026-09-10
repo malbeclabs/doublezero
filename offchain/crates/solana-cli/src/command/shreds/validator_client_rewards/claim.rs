@@ -1,4 +1,4 @@
-use std::io::Write;
+use std::{io::Write, num::NonZeroUsize};
 
 use anyhow::{Context, Result, bail, ensure};
 use clap::Args;
@@ -6,7 +6,9 @@ use doublezero_cli_core::CliContext;
 use doublezero_solana_client_tools::{
     account::zero_copy::ZeroCopyAccountOwnedData,
     payer::{TransactionOutcome, Wallet},
-    rpc::try_fetch_multiple_accounts,
+    rpc::{SolanaConnection, try_fetch_multiple_accounts},
+    squads::{OptionalSquadsArgs, try_write_vault_transaction, vault_transaction_payload_budget},
+    transaction::MAX_TRANSACTION_SIZE,
 };
 use doublezero_solana_sdk::{
     shred_subscription::{
@@ -24,18 +26,29 @@ use doublezero_solana_sdk::{
 };
 use solana_commitment_config::CommitmentConfig;
 use solana_compute_budget_interface::ComputeBudgetInstruction;
-use solana_sdk::{account::Account, instruction::AccountMeta, program_pack::Pack, pubkey::Pubkey};
-use spl_associated_token_account_interface::address::get_associated_token_address;
+use solana_sdk::{
+    account::Account, instruction::Instruction, message::Message, program_pack::Pack,
+    pubkey::Pubkey,
+};
+use spl_associated_token_account_interface::{
+    address::get_associated_token_address, instruction::create_associated_token_account_idempotent,
+};
 
 /*
    doublezero-solana shreds validator-client-rewards claim \
        --client-id <ID> --rewards-token-mint <PUBKEY> \
        [--subscription-epoch <EPOCH> ...] \
-       [--destination-token-account <PUBKEY>]
+       [--destination-token-account <PUBKEY>] \
+       [--max-transactions <N>] \
+       [--multisig <PUBKEY> [--vault-index <U8>]]
 
    When no --subscription-epoch is given, every outstanding holding for the
    client and mint is discovered and claimed across as many transactions as
-   needed (up to MAX_CLAIM_EPOCHS_PER_TX holdings per tx).
+   needed. Each transaction takes as many holdings as fit its size limit.
+
+   With --multisig, the Squads vault stands in for the wallet as manager, and
+   the transactions are printed as base58 payloads for import into Squads
+   rather than signed and sent.
 */
 
 #[derive(Debug, Args)]
@@ -50,9 +63,16 @@ pub struct ClaimCommand {
     /// for this client and mint is discovered and claimed.
     #[arg(long = "subscription-epoch", num_args = 1..)]
     pub subscription_epochs: Vec<u64>,
-    /// Destination token account. Defaults to ATA(manager, rewards_token_mint).
+    /// Destination token account. Defaults to ATA(manager, rewards_token_mint),
+    /// where the manager is the wallet, or the vault with --multisig.
     #[arg(long)]
     pub destination_token_account: Option<Pubkey>,
+    /// Emit at most N transactions. Holdings are claimed in epoch order, so
+    /// the first N are deterministic. Defaults to all of them.
+    #[arg(long, value_name = "N")]
+    pub max_transactions: Option<NonZeroUsize>,
+    #[command(flatten)]
+    pub squads: OptionalSquadsArgs,
     #[command(flatten)]
     pub write_opts: crate::command::WriteVerbOptions,
 }
@@ -65,34 +85,64 @@ pub(crate) fn resolve_destination(
     override_destination.unwrap_or_else(|| get_associated_token_address(manager, mint))
 }
 
+/// Refuse an actor that is not the recorded manager. `actor` names what was
+/// checked, the wallet or the vault, so the message says which key fell short.
 pub(crate) fn validate_manager(
-    wallet: &Pubkey,
-    validator_client_rewards_manager: &Pubkey,
+    actor: &str,
+    actor_key: &Pubkey,
+    validator_client_rewards_manager_key: &Pubkey,
 ) -> Result<()> {
     ensure!(
-        wallet == validator_client_rewards_manager,
-        "manager mismatch: wallet is {wallet}, validator client rewards manager is {validator_client_rewards_manager}"
+        actor_key == validator_client_rewards_manager_key,
+        "manager mismatch: {actor} is {actor_key}, validator client rewards manager is {validator_client_rewards_manager_key}"
     );
     Ok(())
 }
-
-// Upper bound on epochs per claim tx. Each `ClaimHoldingId` adds 9 bytes of
-// instruction data and the holding account adds 32 bytes to the account list,
-// so beyond ~20 the tx blows past the 1232-byte packet limit. 16 is a
-// conservative cap that leaves room for the destination/rent/program-config
-// accounts and the CheckCliVersion ix.
-pub(crate) const MAX_CLAIM_EPOCHS_PER_TX: usize = 16;
 
 // How far back (in subscription epochs) auto-discovery probes from the current
 // epoch. Holdings older than the on-chain abandonment window are swept, so this
 // covers every holding that can still exist.
 const MAX_DISCOVERY_LOOKBACK: u64 = 90;
 
+#[derive(Debug)]
 struct HoldingToClaim {
     epoch: u64,
     bump_seed: u8,
     holding_pda: Pubkey,
     pre_balance: u64,
+}
+
+// Who signs for the manager: the wallet itself, or a Squads vault the multisig
+// signs for once a payload is imported and approved.
+enum Actor {
+    Wallet(Box<Wallet>),
+    Vault {
+        vault_key: Pubkey,
+        connection: SolanaConnection,
+    },
+}
+
+impl Actor {
+    fn key(&self) -> Pubkey {
+        match self {
+            Self::Wallet(wallet) => wallet.pubkey(),
+            Self::Vault { vault_key, .. } => *vault_key,
+        }
+    }
+
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Wallet(_) => "wallet",
+            Self::Vault { .. } => "vault",
+        }
+    }
+
+    fn connection(&self) -> &SolanaConnection {
+        match self {
+            Self::Wallet(wallet) => &wallet.connection,
+            Self::Vault { connection, .. } => connection,
+        }
+    }
 }
 
 /// Decode a fetched account as a claim holding for `mint`, returning its
@@ -108,15 +158,29 @@ fn holding_balance(account: Option<&Account>, mint: &Pubkey) -> Option<u64> {
 
 impl ClaimCommand {
     pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
-        let wallet = crate::command::build_wallet(ctx, self.write_opts)?;
-        let wallet_key = wallet.pubkey();
+        // The vault path builds no wallet, so --multisig runs on a machine with no
+        // keypair. Every signing and sending option is inert there.
+        let connection =
+            crate::command::solana_connection(ctx, &self.write_opts.connection_options);
+        let actor = match self.squads.try_find_vault_address(&connection).await? {
+            Some(vault_key) => Actor::Vault {
+                vault_key,
+                connection,
+            },
+            None => Actor::Wallet(Box::new(crate::command::build_wallet(
+                ctx,
+                self.write_opts,
+            )?)),
+        };
+        let actor_key = actor.key();
+        let connection = actor.connection();
 
         let validator_client_rewards_key = find_validator_client_rewards_address(self.client_id).0;
         let program_config_key = find_program_config_address().0;
 
         // Single fetch: validator client rewards, program config.
         let accounts = try_fetch_multiple_accounts(
-            &wallet.connection,
+            connection,
             &[validator_client_rewards_key, program_config_key],
         )
         .await
@@ -136,13 +200,19 @@ impl ClaimCommand {
             .with_context(|| {
                 format!("failed to decode ValidatorClientRewards at {validator_client_rewards_key}")
             })?;
-        validate_manager(&wallet_key, &validator_client_rewards.manager_key)?;
+        // Refusing here is what stops a payload the multisig can never execute
+        // from consuming an approval round.
+        validate_manager(
+            actor.label(),
+            &actor_key,
+            &validator_client_rewards.manager_key,
+        )?;
 
         let config_account = accounts
             .get(1)
             .and_then(|a| a.as_ref())
             .with_context(|| format!("ProgramConfig {program_config_key} not found onchain"))?;
-        let rent_beneficiary = parse_program_config_shred_oracle_key(&config_account.data)
+        let rent_beneficiary_key = parse_program_config_shred_oracle_key(&config_account.data)
             .context("failed to parse shred_oracle_key from ProgramConfig")?;
 
         // Resolve the set of holdings to claim: explicit epochs (validated), or
@@ -159,16 +229,15 @@ impl ClaimCommand {
             }
             // The shred-subscription program stamps `current_subscription_epoch`
             // from the Clock of the cluster it runs on, which is exactly the
-            // cluster `wallet.connection` talks to, so the live epoch there is
-            // the discovery ceiling.
-            let current_epoch = wallet
-                .connection
+            // cluster `connection` talks to, so the live epoch there is the
+            // discovery ceiling.
+            let current_epoch = connection
                 .get_epoch_info()
                 .await
                 .context("fetching current epoch")?
                 .epoch;
             let discovered = discover_holdings(
-                &wallet,
+                connection,
                 &validator_client_rewards_key,
                 &self.rewards_token_mint,
                 current_epoch,
@@ -201,7 +270,7 @@ impl ClaimCommand {
             discovered
         } else {
             validate_explicit_holdings(
-                &wallet,
+                connection,
                 &validator_client_rewards_key,
                 &self.rewards_token_mint,
                 &self.subscription_epochs,
@@ -218,167 +287,441 @@ impl ClaimCommand {
             return Ok(());
         }
 
-        // Resolve destination token account and validate it.
-        let destination = resolve_destination(
-            &wallet_key,
+        // Resolve the destination token account. An existing one has to be a
+        // token account for the mint. A missing one is an error on the direct
+        // path, and on the vault path it is created by every payload, so long
+        // as it is the vault's own associated token account.
+        let destination_key = resolve_destination(
+            &actor_key,
             &self.rewards_token_mint,
             self.destination_token_account,
         );
-        let destination_account = wallet
-            .connection
-            .get_account_with_commitment(&destination, CommitmentConfig::confirmed())
+        let destination_account = connection
+            .get_account_with_commitment(&destination_key, CommitmentConfig::confirmed())
             .await
-            .with_context(|| format!("fetching destination token account {destination}"))?
-            .value
-            .with_context(|| {
-                format!(
-                    "destination token account {destination} does not exist. \
-                     Run: `spl-token create-account --owner {wallet_key} {} --fee-payer {wallet_key}`",
-                    self.rewards_token_mint
+            .with_context(|| format!("fetching destination token account {destination_key}"))?
+            .value;
+        let (destination_authority_key, create_destination_ix) = match (destination_account, &actor)
+        {
+            (Some(destination_account), _) => {
+                if destination_account.owner != spl_token_interface::ID {
+                    bail!(
+                        "destination {destination_key} is not an SPL token account (owner = {})",
+                        destination_account.owner
+                    );
+                }
+                let destination_token =
+                    spl_token_interface::state::Account::unpack(&destination_account.data)
+                        .with_context(|| {
+                            format!("unpacking destination token account {destination_key}")
+                        })?;
+                if destination_token.mint != self.rewards_token_mint {
+                    bail!(
+                        "destination {destination_key} mint mismatch: expected {}, found {}",
+                        self.rewards_token_mint,
+                        destination_token.mint
+                    );
+                }
+                (destination_token.owner, None)
+            }
+            (None, Actor::Wallet(_)) => bail!(
+                "destination token account {destination_key} does not exist. \
+                     Run: `spl-token create-account --owner {actor_key} {} --fee-payer {actor_key}`",
+                self.rewards_token_mint
+            ),
+            (None, Actor::Vault { vault_key, .. }) => {
+                ensure!(
+                    self.destination_token_account.is_none(),
+                    "destination token account {destination_key} does not exist, and this \
+                         command only creates the vault's own associated token account. Create \
+                         it first, or drop --destination-token-account to claim into the vault's \
+                         associated token account"
+                );
+                (
+                    *vault_key,
+                    Some(create_associated_token_account_idempotent(
+                        vault_key,
+                        vault_key,
+                        &self.rewards_token_mint,
+                        &spl_token_interface::ID,
+                    )),
                 )
-            })?;
-        if destination_account.owner != spl_token_interface::ID {
-            bail!(
-                "destination {destination} is not an SPL token account (owner = {})",
-                destination_account.owner
-            );
-        }
-        let destination_token =
-            spl_token_interface::state::Account::unpack(&destination_account.data)
-                .with_context(|| format!("unpacking destination token account {destination}"))?;
-        if destination_token.mint != self.rewards_token_mint {
-            bail!(
-                "destination {destination} mint mismatch: expected {}, found {}",
-                self.rewards_token_mint,
-                destination_token.mint
-            );
-        }
+            }
+        };
+
+        let check_cli_version_ix = super::super::build_check_cli_version_instruction()?;
+        let build_claim_ix = |batch: &[HoldingToClaim]| {
+            build_claim_instruction(
+                self.client_id,
+                &actor_key,
+                &destination_key,
+                &rent_beneficiary_key,
+                &self.rewards_token_mint,
+                batch,
+            )
+        };
+
+        // Grow each transaction one holding at a time while a trial still fits.
+        // The direct path measures the v0 transaction the wallet sends, counting
+        // the fee payer and both compute budget instructions whether or not a
+        // price is configured, so packing does not shift with the flags. The
+        // vault path measures the legacy message the base58 payload carries
+        // against what Squads leaves of the transaction that wraps it.
+        let batches = match &actor {
+            Actor::Wallet(wallet) => pack_holdings(&holdings, |batch| {
+                let instructions = direct_instructions(
+                    &check_cli_version_ix,
+                    build_claim_ix(batch)?,
+                    batch.len(),
+                    Some(&ComputeBudgetInstruction::set_compute_unit_price(0)),
+                );
+                Ok(wallet.try_transaction_size(&instructions)? <= MAX_TRANSACTION_SIZE)
+            })?,
+            Actor::Vault { vault_key, .. } => pack_holdings(&holdings, |batch| {
+                let instructions = vault_instructions(
+                    &check_cli_version_ix,
+                    create_destination_ix.as_ref(),
+                    build_claim_ix(batch)?,
+                );
+                let payload = Message::new(&instructions, Some(vault_key)).serialize();
+                Ok(payload.len() <= vault_transaction_payload_budget(instructions.len()))
+            })?,
+        };
+
+        let emitted_count = self
+            .max_transactions
+            .map_or(batches.len(), |max| max.get().min(batches.len()));
+        let (emitted, withheld) = batches.split_at(emitted_count);
 
         let total_holdings = holdings.len();
         let total_pre_balance = holdings.iter().fold(0u64, |total, holding| {
             total.saturating_add(holding.pre_balance)
         });
-        let batches = holdings.chunks(MAX_CLAIM_EPOCHS_PER_TX).collect::<Vec<_>>();
-        let batch_count = batches.len();
 
         writeln!(
             out,
             "Shred subscription - Claim Validator Client Rewards \
-             (client_id={}, mint={}, holdings={total_holdings}, transactions={batch_count})",
+             (client_id={}, mint={}, holdings={total_holdings}, transactions={emitted_count})",
             self.client_id, self.rewards_token_mint,
         )?;
-        writeln!(out, "  manager       : {wallet_key}")?;
-        writeln!(out, "  destination   : {destination}")?;
-        writeln!(out, "  rent recovers : {rent_beneficiary}")?;
-
-        // Submit one transaction per batch of up to MAX_CLAIM_EPOCHS_PER_TX
-        // holdings. Batches are independent, so a later failure does not undo an
-        // earlier executed batch.
-        let mut executed_holdings = 0;
-        let mut last_executed = false;
-        for (batch_index, batch) in batches.into_iter().enumerate() {
-            let epochs = batch
-                .iter()
-                .map(|holding| holding.epoch)
-                .collect::<Vec<_>>();
-            let claim_holding_ids = batch
-                .iter()
-                .map(|holding| ClaimHoldingId {
-                    subscription_epoch: holding.epoch,
-                    bump_seed: holding.bump_seed,
-                })
-                .collect::<Vec<_>>();
-
-            let claim_accounts = ClaimValidatorClientRewardsAccounts::new(
-                self.client_id,
-                &wallet_key,
-                &destination,
-                &rent_beneficiary,
-                &self.rewards_token_mint,
-                &epochs,
-            );
-            let metas: Vec<AccountMeta> = claim_accounts.into();
-            let ix = try_build_instruction(
-                &ID,
-                metas,
-                &ShredSubscriptionInstructionData::ClaimValidatorClientRewards(claim_holding_ids),
-            )?;
-
-            let mut instructions = vec![super::super::build_check_cli_version_instruction()?, ix];
-            // ~30k CU per holding (token transfer + close + state decrement),
-            // plus the check-cli-version ix.
-            let compute_unit_limit = 30_000u32.saturating_mul(epochs.len() as u32 + 1);
-            instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(
-                compute_unit_limit,
-            ));
-            if let Some(ref compute_unit_price_ix) = wallet.compute_unit_price_ix {
-                instructions.push(compute_unit_price_ix.clone());
-            }
-
-            if batch_count > 1 {
-                writeln!(
-                    out,
-                    "\nTransaction {}/{batch_count}: {} holding(s), epochs {epochs:?}",
-                    batch_index + 1,
-                    batch.len(),
-                )?;
-            }
-
-            let transaction = wallet.new_transaction(&instructions).await?;
-            let tx_outcome = wallet.send_or_simulate_transaction(&transaction).await?;
-
-            if let TransactionOutcome::Executed(tx_sig) = tx_outcome {
-                executed_holdings += batch.len();
-                last_executed = true;
-                writeln!(out, "Claimed: {tx_sig}")?;
-                // The on-chain handler transfers the full balance of each
-                // holding, but these balances were read pre-tx — a top-up
-                // between the read and the claim makes the actual drained amount
-                // higher. Diff the destination balance before/after for the
-                // authoritative number.
-                for holding in batch {
-                    writeln!(
-                        out,
-                        "  epoch {}: {} from {} (pre-claim)",
-                        holding.epoch, holding.pre_balance, holding.holding_pda,
-                    )?;
-                }
-                wallet.write_verbose_output(out, &[tx_sig]).await?;
-            }
-        }
-
-        if last_executed {
+        if !withheld.is_empty() {
             writeln!(
                 out,
-                "\nPre-claim total: {total_pre_balance} ({executed_holdings}/{total_holdings} holding(s) claimed across {batch_count} transaction(s))."
+                "  {} more transaction(s) withheld by --max-transactions",
+                withheld.len()
             )?;
+        }
 
-            // Re-fetch the validator client rewards account to report the
-            // post-tx claim_holding_count.
-            match wallet
-                .connection
-                .try_fetch_zero_copy_data_with_commitment::<ValidatorClientRewards>(
-                    &validator_client_rewards_key,
-                    CommitmentConfig::confirmed(),
-                )
-                .await
-            {
-                Ok(refetched) => writeln!(
+        match &actor {
+            Actor::Wallet(wallet) => {
+                writeln!(out, "  manager               : {actor_key}")?;
+                writeln!(out, "  destination           : {destination_key}")?;
+                writeln!(out, "  destination authority : {destination_authority_key}")?;
+                writeln!(out, "  rent recovers         : {rent_beneficiary_key}")?;
+
+                execute_direct(
                     out,
-                    "Remaining claim holding count: {}",
-                    refetched.claim_holding_count
-                )?,
-                Err(err) => {
-                    eprintln!(
-                        "warning: post-claim validator client rewards re-fetch failed: {err}"
-                    );
-                    writeln!(out, "Remaining claim holding count: (unavailable)")?;
+                    wallet,
+                    emitted,
+                    &check_cli_version_ix,
+                    &build_claim_ix,
+                    total_holdings,
+                    total_pre_balance,
+                    &validator_client_rewards_key,
+                )
+                .await?;
+            }
+            Actor::Vault {
+                vault_key,
+                connection,
+            } => {
+                writeln!(out, "  manager (vault)       : {vault_key}")?;
+                if let Some(multisig_key) = self.squads.multisig {
+                    writeln!(
+                        out,
+                        "  multisig              : {multisig_key} (vault index {})",
+                        self.squads.vault_index
+                    )?;
                 }
+                match create_destination_ix {
+                    Some(_) => writeln!(
+                        out,
+                        "  destination           : {destination_key} (missing; every payload \
+                         creates it, and the vault pays the rent, so the vault has to hold SOL)"
+                    )?,
+                    None => writeln!(out, "  destination           : {destination_key}")?,
+                }
+                writeln!(out, "  destination authority : {destination_authority_key}")?;
+                writeln!(out, "  rent recovers         : {rent_beneficiary_key}")?;
+                writeln!(out)?;
+                writeln!(
+                    out,
+                    "Nothing was signed or sent. --keypair, --fee-payer, --dry-run, \
+                     --with-compute-unit-price and --verbose have no effect with --multisig."
+                )?;
+
+                for (index, batch) in emitted.iter().enumerate() {
+                    let instructions = vault_instructions(
+                        &check_cli_version_ix,
+                        create_destination_ix.as_ref(),
+                        build_claim_ix(batch)?,
+                    );
+                    let batch_pre_balance = batch.iter().fold(0u64, |total, holding| {
+                        total.saturating_add(holding.pre_balance)
+                    });
+
+                    writeln!(out)?;
+                    writeln!(out, "{}", "-".repeat(72))?;
+                    writeln!(out, "Vault transaction {} of {emitted_count}", index + 1)?;
+                    writeln!(
+                        out,
+                        "  holdings        : {} (epochs {})",
+                        batch.len(),
+                        epoch_range(batch)
+                    )?;
+                    writeln!(out, "  pre-claim total : {batch_pre_balance}")?;
+                    try_write_vault_transaction(out, connection, vault_key, &instructions)?;
+                }
+
+                writeln!(out)?;
+                writeln!(out, "{}", "-".repeat(72))?;
+                writeln!(out, "Recap of the {emitted_count} payload(s) above:")?;
+                for (index, batch) in emitted.iter().enumerate() {
+                    writeln!(
+                        out,
+                        "  {}: {} holding(s), epochs {}",
+                        index + 1,
+                        batch.len(),
+                        epoch_range(batch)
+                    )?;
+                }
+                writeln!(
+                    out,
+                    "The payloads are independent: import them in any order, and a partial \
+                     import is safe. Re-running this command discovers only the holdings \
+                     that are still outstanding."
+                )?;
             }
         }
 
-        Ok(())
+        write_withheld_note(out, withheld)
     }
+}
+
+/// Sign and send each batch with the wallet, reporting what each transaction
+/// drained and the holding count left afterwards.
+#[allow(clippy::too_many_arguments)]
+async fn execute_direct(
+    out: &mut impl Write,
+    wallet: &Wallet,
+    batches: &[&[HoldingToClaim]],
+    check_cli_version_ix: &Instruction,
+    build_claim_ix: &impl Fn(&[HoldingToClaim]) -> Result<Instruction>,
+    total_holdings: usize,
+    total_pre_balance: u64,
+    validator_client_rewards_key: &Pubkey,
+) -> Result<()> {
+    let batch_count = batches.len();
+
+    // Batches are independent, so a later failure does not undo an earlier
+    // executed batch.
+    let mut executed_holdings = 0;
+    let mut last_executed = false;
+    for (batch_index, batch) in batches.iter().enumerate() {
+        let instructions = direct_instructions(
+            check_cli_version_ix,
+            build_claim_ix(batch)?,
+            batch.len(),
+            wallet.compute_unit_price_ix.as_ref(),
+        );
+
+        if batch_count > 1 {
+            writeln!(
+                out,
+                "\nTransaction {}/{batch_count}: {} holding(s), epochs {}",
+                batch_index + 1,
+                batch.len(),
+                epoch_range(batch),
+            )?;
+        }
+
+        let transaction = wallet.new_transaction(&instructions).await?;
+        let tx_outcome = wallet.send_or_simulate_transaction(&transaction).await?;
+
+        if let TransactionOutcome::Executed(tx_sig) = tx_outcome {
+            executed_holdings += batch.len();
+            last_executed = true;
+            writeln!(out, "Claimed: {tx_sig}")?;
+            // The on-chain handler transfers the full balance of each
+            // holding, but these balances were read pre-tx. A top-up
+            // between the read and the claim makes the actual drained amount
+            // higher. Diff the destination balance before/after for the
+            // authoritative number.
+            for holding in batch.iter() {
+                writeln!(
+                    out,
+                    "  epoch {}: {} from {} (pre-claim)",
+                    holding.epoch, holding.pre_balance, holding.holding_pda,
+                )?;
+            }
+            wallet.write_verbose_output(out, &[tx_sig]).await?;
+        }
+    }
+
+    if last_executed {
+        writeln!(
+            out,
+            "\nPre-claim total: {total_pre_balance} ({executed_holdings}/{total_holdings} holding(s) claimed across {batch_count} transaction(s))."
+        )?;
+
+        // Re-fetch the validator client rewards account to report the
+        // post-tx claim_holding_count.
+        match wallet
+            .connection
+            .try_fetch_zero_copy_data_with_commitment::<ValidatorClientRewards>(
+                validator_client_rewards_key,
+                CommitmentConfig::confirmed(),
+            )
+            .await
+        {
+            Ok(refetched) => writeln!(
+                out,
+                "Remaining claim holding count: {}",
+                refetched.claim_holding_count
+            )?,
+            Err(err) => {
+                eprintln!("warning: post-claim validator client rewards re-fetch failed: {err}");
+                writeln!(out, "Remaining claim holding count: (unavailable)")?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn build_claim_instruction(
+    client_id: u16,
+    manager_key: &Pubkey,
+    destination_key: &Pubkey,
+    rent_beneficiary_key: &Pubkey,
+    mint_key: &Pubkey,
+    batch: &[HoldingToClaim],
+) -> Result<Instruction> {
+    let epochs = batch
+        .iter()
+        .map(|holding| holding.epoch)
+        .collect::<Vec<_>>();
+    let claim_holding_ids = batch
+        .iter()
+        .map(|holding| ClaimHoldingId {
+            subscription_epoch: holding.epoch,
+            bump_seed: holding.bump_seed,
+        })
+        .collect();
+
+    let instruction = try_build_instruction(
+        &ID,
+        ClaimValidatorClientRewardsAccounts::new(
+            client_id,
+            manager_key,
+            destination_key,
+            rent_beneficiary_key,
+            mint_key,
+            &epochs,
+        ),
+        &ShredSubscriptionInstructionData::ClaimValidatorClientRewards(claim_holding_ids),
+    )?;
+    Ok(instruction)
+}
+
+/// The instruction list the wallet signs: the version check, the claim, and the
+/// compute budget. The trial passes a placeholder price so it is always counted.
+fn direct_instructions(
+    check_cli_version_ix: &Instruction,
+    claim_ix: Instruction,
+    holding_count: usize,
+    compute_unit_price_ix: Option<&Instruction>,
+) -> Vec<Instruction> {
+    // ~30k CU per holding (token transfer + close + state decrement), plus
+    // the check-cli-version instruction.
+    let compute_unit_limit = 30_000u32.saturating_mul(holding_count as u32 + 1);
+    let mut instructions = vec![
+        check_cli_version_ix.clone(),
+        claim_ix,
+        ComputeBudgetInstruction::set_compute_unit_limit(compute_unit_limit),
+    ];
+    instructions.extend(compute_unit_price_ix.cloned());
+    instructions
+}
+
+/// The payload a vault imports: the version check, the destination create when
+/// the account is missing, and the claim. No compute budget instructions, since
+/// Squads sets the budget on its own execute transaction and a budget
+/// instruction reached through a CPI is a no-op that only burns compute units.
+fn vault_instructions(
+    check_cli_version_ix: &Instruction,
+    create_destination_ix: Option<&Instruction>,
+    claim_ix: Instruction,
+) -> Vec<Instruction> {
+    let mut instructions = vec![check_cli_version_ix.clone()];
+    instructions.extend(create_destination_ix.cloned());
+    instructions.push(claim_ix);
+    instructions
+}
+
+/// Split epoch-ordered holdings into consecutive batches, growing each one
+/// holding at a time while `fits` accepts it.
+fn pack_holdings(
+    holdings: &[HoldingToClaim],
+    mut fits: impl FnMut(&[HoldingToClaim]) -> Result<bool>,
+) -> Result<Vec<&[HoldingToClaim]>> {
+    let mut batches = Vec::new();
+    let mut start = 0;
+    while start < holdings.len() {
+        ensure!(
+            fits(&holdings[start..=start])?,
+            "the holding for epoch {} does not fit a transaction on its own",
+            holdings[start].epoch
+        );
+        let mut end = start + 1;
+        while end < holdings.len() && fits(&holdings[start..=end])? {
+            end += 1;
+        }
+        batches.push(&holdings[start..end]);
+        start = end;
+    }
+    Ok(batches)
+}
+
+fn epoch_range(batch: &[HoldingToClaim]) -> String {
+    match (batch.first(), batch.last()) {
+        (Some(first), Some(last)) if first.epoch != last.epoch => {
+            format!("{}..={}", first.epoch, last.epoch)
+        }
+        (Some(first), _) => first.epoch.to_string(),
+        (None, _) => String::from("none"),
+    }
+}
+
+fn write_withheld_note(out: &mut impl Write, withheld: &[&[HoldingToClaim]]) -> Result<()> {
+    if withheld.is_empty() {
+        return Ok(());
+    }
+    let holding_count = withheld.iter().map(|batch| batch.len()).sum::<usize>();
+    let epochs = withheld
+        .iter()
+        .flat_map(|batch| batch.iter().map(|holding| holding.epoch))
+        .collect::<Vec<_>>();
+    writeln!(
+        out,
+        "\nWithheld {} transaction(s) covering {holding_count} holding(s) (epochs {}..={}) \
+         because of --max-transactions. Re-run this command once the transactions above have \
+         executed, or name those epochs with --subscription-epoch.",
+        withheld.len(),
+        epochs[0],
+        epochs[epochs.len() - 1],
+    )?;
+    Ok(())
 }
 
 /// Discover every outstanding claim holding for `validator_client_rewards_key`/`mint`
@@ -386,7 +729,7 @@ impl ClaimCommand {
 /// `[ceiling_epoch - MAX_DISCOVERY_LOOKBACK, ceiling_epoch]`. Returns the
 /// holdings that exist, sorted by epoch.
 async fn discover_holdings(
-    wallet: &Wallet,
+    connection: &SolanaConnection,
     validator_client_rewards_key: &Pubkey,
     mint: &Pubkey,
     ceiling_epoch: u64,
@@ -399,7 +742,7 @@ async fn discover_holdings(
         })
         .collect::<Vec<_>>();
     let keys = derived.iter().map(|(_, pda, _)| *pda).collect::<Vec<_>>();
-    let probed = try_fetch_multiple_accounts(&wallet.connection, &keys)
+    let probed = try_fetch_multiple_accounts(connection, &keys)
         .await
         .context("probing claim holdings")?;
     let mut found = Vec::new();
@@ -419,7 +762,7 @@ async fn discover_holdings(
 
 /// Resolve an explicit set of subscription epochs into claimable holdings.
 async fn validate_explicit_holdings(
-    wallet: &Wallet,
+    connection: &SolanaConnection,
     validator_client_rewards_key: &Pubkey,
     mint: &Pubkey,
     epochs: &[u64],
@@ -437,7 +780,7 @@ async fn validate_explicit_holdings(
         .collect::<Vec<_>>();
 
     let keys = derived.iter().map(|(_, pda, _)| *pda).collect::<Vec<_>>();
-    let accounts = try_fetch_multiple_accounts(&wallet.connection, &keys)
+    let accounts = try_fetch_multiple_accounts(connection, &keys)
         .await
         .context("fetching claim holdings")?;
 
@@ -482,6 +825,10 @@ async fn validate_explicit_holdings(
 #[cfg(test)]
 mod tests {
     use clap::Parser;
+    use doublezero_solana_client_tools::{
+        rpc::NetworkEnvironment, squads::try_encode_vault_transaction,
+    };
+    use solana_sdk::signature::Keypair;
 
     use super::*;
 
@@ -491,42 +838,127 @@ mod tests {
         cmd: ClaimCommand,
     }
 
+    fn parse(extra: &[&str]) -> Result<ClaimCommand, clap::Error> {
+        let mint = Pubkey::new_unique().to_string();
+        let mut args = vec!["test", "--client-id", "7", "--rewards-token-mint", &mint];
+        args.extend_from_slice(extra);
+        Cli::try_parse_from(args).map(|cli| cli.cmd)
+    }
+
+    fn holdings(count: usize) -> Vec<HoldingToClaim> {
+        (0..count)
+            .map(|index| HoldingToClaim {
+                epoch: 700 + index as u64,
+                bump_seed: 255,
+                holding_pda: Pubkey::new_unique(),
+                pre_balance: 10,
+            })
+            .collect()
+    }
+
+    fn wallet(fee_payer: Option<Keypair>) -> Wallet {
+        Wallet {
+            connection: SolanaConnection::new(NetworkEnvironment::DEFAULT_LOCALNET_URL.into()),
+            signer: Keypair::new(),
+            compute_unit_price_ix: None,
+            verbose: false,
+            fee_payer,
+            dry_run: false,
+        }
+    }
+
+    struct Fixture {
+        client_id: u16,
+        manager_key: Pubkey,
+        destination_key: Pubkey,
+        rent_beneficiary_key: Pubkey,
+        mint_key: Pubkey,
+        check_cli_version_ix: Instruction,
+    }
+
+    impl Fixture {
+        fn new(manager_key: Pubkey) -> Self {
+            Self {
+                client_id: 7,
+                manager_key,
+                destination_key: Pubkey::new_unique(),
+                rent_beneficiary_key: Pubkey::new_unique(),
+                mint_key: Pubkey::new_unique(),
+                check_cli_version_ix: super::super::super::build_check_cli_version_instruction()
+                    .unwrap(),
+            }
+        }
+
+        fn claim_ix(&self, batch: &[HoldingToClaim]) -> Instruction {
+            build_claim_instruction(
+                self.client_id,
+                &self.manager_key,
+                &self.destination_key,
+                &self.rent_beneficiary_key,
+                &self.mint_key,
+                batch,
+            )
+            .unwrap()
+        }
+
+        fn direct(&self, batch: &[HoldingToClaim], with_price: bool) -> Vec<Instruction> {
+            let price_ix = ComputeBudgetInstruction::set_compute_unit_price(1_000);
+            direct_instructions(
+                &self.check_cli_version_ix,
+                self.claim_ix(batch),
+                batch.len(),
+                with_price.then_some(&price_ix),
+            )
+        }
+
+        fn vault(
+            &self,
+            batch: &[HoldingToClaim],
+            create_destination_ix: Option<&Instruction>,
+        ) -> Vec<Instruction> {
+            vault_instructions(
+                &self.check_cli_version_ix,
+                create_destination_ix,
+                self.claim_ix(batch),
+            )
+        }
+    }
+
     #[test]
     fn test_parses_required_args_with_implicit_destination() {
-        let mint = Pubkey::new_unique();
-        let cli = Cli::try_parse_from([
-            "test",
-            "--client-id",
-            "7",
-            "--rewards-token-mint",
-            &mint.to_string(),
-            "--subscription-epoch",
-            "100",
-        ])
-        .unwrap();
-        assert_eq!(cli.cmd.client_id, 7);
-        assert_eq!(cli.cmd.rewards_token_mint, mint);
-        assert_eq!(cli.cmd.subscription_epochs, vec![100]);
-        assert!(cli.cmd.destination_token_account.is_none());
+        let cmd = parse(&["--subscription-epoch", "100"]).unwrap();
+        assert_eq!(cmd.client_id, 7);
+        assert_eq!(cmd.subscription_epochs, vec![100]);
+        assert!(cmd.destination_token_account.is_none());
+        assert!(cmd.squads.multisig.is_none());
+        assert!(cmd.max_transactions.is_none());
     }
 
     #[test]
     fn test_parses_explicit_destination() {
-        let mint = Pubkey::new_unique();
         let destination = Pubkey::new_unique();
-        let cli = Cli::try_parse_from([
-            "test",
-            "--client-id",
-            "7",
-            "--rewards-token-mint",
-            &mint.to_string(),
-            "--subscription-epoch",
-            "100",
-            "--destination-token-account",
-            &destination.to_string(),
-        ])
-        .unwrap();
-        assert_eq!(cli.cmd.destination_token_account, Some(destination));
+        let cmd = parse(&["--destination-token-account", &destination.to_string()]).unwrap();
+        assert_eq!(cmd.destination_token_account, Some(destination));
+    }
+
+    #[test]
+    fn test_parses_multisig_and_vault_index() {
+        let multisig = Pubkey::new_unique();
+        let cmd = parse(&["--multisig", &multisig.to_string(), "--vault-index", "2"]).unwrap();
+        assert_eq!(cmd.squads.multisig, Some(multisig));
+        assert_eq!(cmd.squads.vault_index, 2);
+    }
+
+    #[test]
+    fn test_vault_index_requires_multisig() {
+        assert!(parse(&["--vault-index", "2"]).is_err());
+    }
+
+    #[test]
+    fn test_max_transactions_refuses_zero() {
+        assert!(parse(&["--max-transactions", "0"]).is_err());
+        let cmd = parse(&["--max-transactions", "1"]).unwrap();
+        assert_eq!(cmd.max_transactions, NonZeroUsize::new(1));
     }
 
     #[test]
@@ -550,34 +982,184 @@ mod tests {
 
     #[test]
     fn test_validate_manager_matches() {
-        let wallet = Pubkey::new_unique();
-        assert!(validate_manager(&wallet, &wallet).is_ok());
+        let wallet_key = Pubkey::new_unique();
+        assert!(validate_manager("wallet", &wallet_key, &wallet_key).is_ok());
     }
 
     #[test]
-    fn test_validate_manager_mismatch() {
-        let wallet = Pubkey::new_unique();
-        let manager = Pubkey::new_unique();
-        let err = validate_manager(&wallet, &manager).unwrap_err();
-        let message = format!("{err}");
-        assert!(message.contains("manager mismatch"));
-        assert!(message.contains(&wallet.to_string()));
-        assert!(message.contains(&manager.to_string()));
+    fn test_validate_manager_mismatch_names_the_actor_checked() {
+        let actor_key = Pubkey::new_unique();
+        let manager_key = Pubkey::new_unique();
+        for actor in ["wallet", "vault"] {
+            let message = validate_manager(actor, &actor_key, &manager_key)
+                .unwrap_err()
+                .to_string();
+            assert!(message.contains("manager mismatch"));
+            assert!(
+                message.contains(&format!("{actor} is {actor_key}")),
+                "{message}"
+            );
+            assert!(message.contains(&manager_key.to_string()));
+        }
     }
 
     #[test]
     fn test_allows_missing_subscription_epoch() {
         // Omitting --subscription-epoch is valid: the command discovers and
         // claims every outstanding holding for the client and mint.
-        let mint = Pubkey::new_unique();
-        let cli = Cli::try_parse_from([
-            "test",
-            "--client-id",
-            "7",
-            "--rewards-token-mint",
-            &mint.to_string(),
-        ])
+        let cmd = parse(&[]).unwrap();
+        assert!(cmd.subscription_epochs.is_empty());
+    }
+
+    #[test]
+    fn test_pack_holdings_grows_each_batch_until_it_stops_fitting() {
+        let holdings = holdings(7);
+        let batches = pack_holdings(&holdings, |batch| Ok(batch.len() <= 3)).unwrap();
+
+        let sizes = batches.iter().map(|batch| batch.len()).collect::<Vec<_>>();
+        assert_eq!(sizes, [3, 3, 1]);
+        assert_eq!(batches[1][0].epoch, 703);
+        assert_eq!(batches[2][0].epoch, 706);
+    }
+
+    #[test]
+    fn test_pack_holdings_refuses_a_holding_that_fits_nowhere() {
+        let holdings = holdings(2);
+        let error = pack_holdings(&holdings, |batch| {
+            Ok(!batch.iter().any(|holding| holding.epoch == 701))
+        })
+        .unwrap_err()
+        .to_string();
+        assert!(error.contains("epoch 701"), "{error}");
+    }
+
+    #[test]
+    fn test_pack_holdings_of_nothing_is_no_batches() {
+        assert!(pack_holdings(&[], |_| Ok(true)).unwrap().is_empty());
+    }
+
+    fn direct_batches(wallet: &Wallet, fixture: &Fixture, holdings: &[HoldingToClaim]) -> usize {
+        let batches = pack_holdings(holdings, |batch| {
+            Ok(wallet.try_transaction_size(&fixture.direct(batch, true))? <= MAX_TRANSACTION_SIZE)
+        })
         .unwrap();
-        assert!(cli.cmd.subscription_epochs.is_empty());
+
+        // Every batch fits as sent, with and without a configured price, and
+        // the first would not take one more holding.
+        for batch in &batches {
+            for with_price in [false, true] {
+                let size = wallet
+                    .try_transaction_size(&fixture.direct(batch, with_price))
+                    .unwrap();
+                assert!(size <= MAX_TRANSACTION_SIZE, "{size}");
+            }
+        }
+        let overfull = &holdings[..batches[0].len() + 1];
+        assert!(
+            wallet
+                .try_transaction_size(&fixture.direct(overfull, true))
+                .unwrap()
+                > MAX_TRANSACTION_SIZE
+        );
+
+        batches[0].len()
+    }
+
+    #[test]
+    fn test_direct_transaction_takes_19_holdings_with_one_signer() {
+        let wallet = wallet(None);
+        let fixture = Fixture::new(wallet.pubkey());
+        assert_eq!(direct_batches(&wallet, &fixture, &holdings(91)), 19);
+    }
+
+    #[test]
+    fn test_direct_transaction_takes_16_holdings_with_a_distinct_fee_payer() {
+        let wallet = wallet(Some(Keypair::new()));
+        let fixture = Fixture::new(wallet.pubkey());
+        assert_eq!(direct_batches(&wallet, &fixture, &holdings(91)), 16);
+    }
+
+    fn vault_batches(
+        vault_key: &Pubkey,
+        fixture: &Fixture,
+        holdings: &[HoldingToClaim],
+        create_destination_ix: Option<&Instruction>,
+    ) -> usize {
+        let batches = pack_holdings(holdings, |batch| {
+            let instructions = fixture.vault(batch, create_destination_ix);
+            let payload = Message::new(&instructions, Some(vault_key)).serialize();
+            Ok(payload.len() <= vault_transaction_payload_budget(instructions.len()))
+        })
+        .unwrap();
+
+        // The checked encoder takes every batch and refuses the first with one
+        // more holding, so the trial and the encoder agree.
+        for batch in &batches {
+            let instructions = fixture.vault(batch, create_destination_ix);
+            try_encode_vault_transaction(vault_key, &instructions).unwrap();
+            assert_eq!(instructions[0], fixture.check_cli_version_ix);
+            if let Some(create_destination_ix) = create_destination_ix {
+                assert_eq!(&instructions[1], create_destination_ix);
+            }
+        }
+        let overfull = fixture.vault(&holdings[..batches[0].len() + 1], create_destination_ix);
+        assert!(try_encode_vault_transaction(vault_key, &overfull).is_err());
+
+        batches[0].len()
+    }
+
+    #[test]
+    fn test_vault_payload_takes_12_holdings_into_an_existing_destination() {
+        let vault_key = Pubkey::new_unique();
+        let fixture = Fixture::new(vault_key);
+        assert_eq!(vault_batches(&vault_key, &fixture, &holdings(91), None), 12);
+    }
+
+    #[test]
+    fn test_vault_payload_takes_10_holdings_when_every_payload_creates_the_destination() {
+        let vault_key = Pubkey::new_unique();
+        let mut fixture = Fixture::new(vault_key);
+        fixture.destination_key = get_associated_token_address(&vault_key, &fixture.mint_key);
+        let create_destination_ix = create_associated_token_account_idempotent(
+            &vault_key,
+            &vault_key,
+            &fixture.mint_key,
+            &spl_token_interface::ID,
+        );
+        assert_eq!(
+            vault_batches(
+                &vault_key,
+                &fixture,
+                &holdings(91),
+                Some(&create_destination_ix)
+            ),
+            10
+        );
+    }
+
+    #[test]
+    fn test_withheld_note_names_the_count_and_the_epochs() {
+        let holdings = holdings(5);
+        let batches = pack_holdings(&holdings, |batch| Ok(batch.len() <= 2)).unwrap();
+        let (_, withheld) = batches.split_at(1);
+
+        let mut out = Vec::new();
+        write_withheld_note(&mut out, withheld).unwrap();
+        let note = String::from_utf8(out).unwrap();
+        assert!(
+            note.contains("Withheld 2 transaction(s) covering 3 holding(s) (epochs 702..=704)"),
+            "{note}"
+        );
+
+        let mut out = Vec::new();
+        write_withheld_note(&mut out, &[]).unwrap();
+        assert!(out.is_empty());
+    }
+
+    #[test]
+    fn test_epoch_range_collapses_a_single_epoch() {
+        let holdings = holdings(3);
+        assert_eq!(epoch_range(&holdings), "700..=702");
+        assert_eq!(epoch_range(&holdings[..1]), "700");
     }
 }

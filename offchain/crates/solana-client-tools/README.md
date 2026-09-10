@@ -92,6 +92,11 @@ multisig and its vault.
 try_print_vault_transaction(&connection, &vault_key, &[instruction])?;
 ```
 
+A verb that writes to an `out: &mut impl Write` uses `try_write_vault_transaction`
+with `out` as its first argument, which is what `try_print_vault_transaction` calls
+with stdout. Either way the base58 payload is alone on its own line, so a copy of that
+line takes exactly the payload.
+
 Alongside the base58 payload this prints an explorer transaction inspector link
 that decodes it, so the caller can read the instruction back rather than import an
 opaque blob. The link carries the same base58 payload, so there is one encoding to

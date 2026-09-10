@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use anyhow::{Context, Result, bail, ensure};
 use clap::Args;
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
@@ -299,19 +301,33 @@ pub fn try_print_vault_transaction(
     vault_key: &Pubkey,
     instructions: &[Instruction],
 ) -> Result<()> {
+    try_write_vault_transaction(&mut std::io::stdout(), connection, vault_key, instructions)
+}
+
+/// Write a base58 encoded transaction for import into the Squads UI. The encoded
+/// payload is alone on its own line, so a copy of that line takes exactly the payload.
+pub fn try_write_vault_transaction(
+    out: &mut impl Write,
+    connection: &SolanaConnection,
+    vault_key: &Pubkey,
+    instructions: &[Instruction],
+) -> Result<()> {
     let encoded = try_encode_vault_transaction(vault_key, instructions)?;
     let rpc_url = connection.url();
 
-    println!("Import this base58 encoded transaction into Squads:");
-    println!("{encoded}");
-    println!();
-    println!("Read it back first:");
-    println!("{}", inspector_url(&encoded, &rpc_url));
+    writeln!(out, "Import this base58 encoded transaction into Squads:")?;
+    writeln!(out, "{encoded}")?;
+    writeln!(out)?;
+    writeln!(out, "Read it back first:")?;
+    writeln!(out, "{}", inspector_url(&encoded, &rpc_url))?;
 
     if !is_public_solana_endpoint(&rpc_url) {
-        println!();
-        println!("WARNING: that link carries the endpoint this command was given.");
-        println!("Do not share it anywhere that endpoint should not go.");
+        writeln!(out)?;
+        writeln!(
+            out,
+            "WARNING: that link carries the endpoint this command was given."
+        )?;
+        writeln!(out, "Do not share it anywhere that endpoint should not go.")?;
     }
 
     Ok(())
@@ -526,6 +542,21 @@ mod tests {
         let encoded = try_encode_vault_transaction(&VAULT_KEY, instructions).unwrap();
 
         bs58::decode(encoded).into_vec().unwrap().len()
+    }
+
+    #[test]
+    fn test_write_vault_transaction_puts_the_payload_alone_on_its_own_line() {
+        let instructions = [instruction_with_data_len(3)];
+        let encoded = try_encode_vault_transaction(&VAULT_KEY, &instructions).unwrap();
+        let connection = SolanaConnection::new(NetworkEnvironment::PUBLIC_SOLANA_DEVNET_URL.into());
+
+        let mut out = Vec::new();
+        try_write_vault_transaction(&mut out, &connection, &VAULT_KEY, &instructions).unwrap();
+        let written = String::from_utf8(out).unwrap();
+
+        assert!(written.lines().any(|line| line == encoded), "{written}");
+        assert!(written.contains(&inspector_url(&encoded, connection.url().as_str())));
+        assert!(!written.contains("WARNING"));
     }
 
     #[test]

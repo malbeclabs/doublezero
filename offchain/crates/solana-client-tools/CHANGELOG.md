@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 - add `squads::try_write_vault_transaction`, which writes the import payload to an `impl Write` the way a verb's `out` requires. `try_print_vault_transaction` delegates to it ([malbeclabs/doublezero#4185](https://github.com/malbeclabs/doublezero/issues/4185))
+- `Wallet` signs once when a directly constructed wallet names the same key as fee payer and signer. `try_new` already refuses that pairing, so only callers building the struct themselves are affected
 - add `Wallet::try_transaction_size`, the serialized size of the transaction `new_transaction` would build, signed by the same fee payer and signer, so a caller packing instructions measures what it will send ([malbeclabs/doublezero#4185](https://github.com/malbeclabs/doublezero/issues/4185))
 - add `squads::vault_transaction_payload_budget` and `squads::try_encode_vault_transaction`, which size a payload against the transaction Squads wraps around it rather than the transaction limit alone. Replaces `encode_vault_transaction` and `print_vault_transaction` with checked `try_` forms ([malbeclabs/doublezero#4184](https://github.com/malbeclabs/doublezero/issues/4184))
 - add a `squads` module with Squads Protocol v4 vault support. Behind a new default-on `squads` feature, so consumers can opt out with `default-features = false`

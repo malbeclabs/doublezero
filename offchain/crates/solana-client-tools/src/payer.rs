@@ -203,11 +203,16 @@ impl Wallet {
     }
 
     // The fee payer signs first, since `try_new_transaction` takes the first signer as the
-    // payer. `try_new` refuses a fee payer equal to the signer, so the two are distinct.
+    // payer. `try_new` refuses a fee payer equal to the signer, but the fields are public,
+    // so a directly constructed wallet can still name one key twice, and a duplicate signer
+    // fails the signing.
     fn signers(&self) -> Vec<&Keypair> {
         let mut signers = Vec::with_capacity(2);
         if let Some(ref fee_payer) = self.fee_payer {
             signers.push(fee_payer);
+            if fee_payer.pubkey() == self.signer.pubkey() {
+                return signers;
+            }
         }
         signers.push(&self.signer);
         signers
@@ -476,6 +481,28 @@ mod tests {
             with_fee_payer - alone,
             64 // the fee payer's signature
                 + 32 // the fee payer's key
+        );
+    }
+
+    #[test]
+    fn test_transaction_size_signs_once_when_the_fee_payer_is_the_signer() {
+        let alone = wallet_with_fee_payer(None);
+        let doubled = Wallet {
+            signer: alone.signer.insecure_clone(),
+            fee_payer: Some(alone.signer.insecure_clone()),
+            ..wallet_with_fee_payer(None)
+        };
+        let instruction = Instruction::new_with_bytes(
+            Pubkey::new_unique(),
+            &[],
+            vec![AccountMeta::new_readonly(alone.pubkey(), true)],
+        );
+
+        assert_eq!(
+            doubled
+                .try_transaction_size(std::slice::from_ref(&instruction))
+                .unwrap(),
+            alone.try_transaction_size(&[instruction]).unwrap()
         );
     }
 

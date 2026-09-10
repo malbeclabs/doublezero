@@ -1,6 +1,6 @@
 use crate::{
     commands::{
-        accesspass::get::GetAccessPassCommand,
+        accesspass::get::resolve_user_accesspass,
         multicastgroup::subscribe_feed::MAX_FEED_TX_ACCOUNTS, user::get::GetUserCommand,
     },
     DoubleZeroClient,
@@ -28,6 +28,7 @@ use std::net::Ipv4Addr;
 pub struct UnsubscribeFeedCommand {
     pub user_pk: Pubkey,
     pub feed_pks: Vec<Pubkey>,
+    pub accesspass_pk: Option<Pubkey>,
 }
 
 impl UnsubscribeFeedCommand {
@@ -59,14 +60,8 @@ impl UnsubscribeFeedCommand {
             }
         }
 
-        // The user's own IP, not a caller-supplied one: the pass lookup must match the pass the
-        // user was created against.
-        let (accesspass_pubkey, accesspass) = GetAccessPassCommand {
-            client_ip: user.client_ip,
-            user_payer: user.owner,
-        }
-        .execute(client)?
-        .ok_or_else(|| eyre::eyre!("AccessPass not found"))?;
+        let (accesspass_pubkey, accesspass) =
+            resolve_user_accesspass(client, self.user_pk, &user, self.accesspass_pk)?;
         if !matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_)) {
             eyre::bail!(
                 "the access pass is {}; only an EdgeSeat pass carries feeds",
@@ -274,6 +269,7 @@ mod tests {
             status: UserStatus::Activated,
             subscribers,
             feed_pks: held_feeds,
+            accesspass_pk: get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer).0,
             ..Default::default()
         };
         client
@@ -381,6 +377,7 @@ mod tests {
         UnsubscribeFeedCommand {
             user_pk: f.user_pk,
             feed_pks: vec![feed2_pk],
+            accesspass_pk: None,
         }
         .execute(&client)
         .unwrap();
@@ -420,6 +417,7 @@ mod tests {
         UnsubscribeFeedCommand {
             user_pk: f.user_pk,
             feed_pks: vec![feed_pk],
+            accesspass_pk: None,
         }
         .execute(&client)
         .unwrap();
@@ -494,6 +492,7 @@ mod tests {
         UnsubscribeFeedCommand {
             user_pk: f.user_pk,
             feed_pks: vec![feed1_pk, feed2_pk],
+            accesspass_pk: None,
         }
         .execute(&client)
         .unwrap();
@@ -515,6 +514,7 @@ mod tests {
         let err = UnsubscribeFeedCommand {
             user_pk: f.user_pk,
             feed_pks: vec![feed_pk, feed_pk],
+            accesspass_pk: None,
         }
         .execute(&client)
         .unwrap_err();
@@ -576,6 +576,7 @@ mod tests {
         let err = UnsubscribeFeedCommand {
             user_pk: f.user_pk,
             feed_pks: vec![held_pk],
+            accesspass_pk: None,
         }
         .execute(&client)
         .unwrap_err();
@@ -630,6 +631,7 @@ mod tests {
         UnsubscribeFeedCommand {
             user_pk: f.user_pk,
             feed_pks: vec![stale_pk],
+            accesspass_pk: None,
         }
         .execute(&client)
         .unwrap();
@@ -653,6 +655,7 @@ mod tests {
         let err = UnsubscribeFeedCommand {
             user_pk: f.user_pk,
             feed_pks: vec![unheld_pk],
+            accesspass_pk: None,
         }
         .execute(&client)
         .unwrap_err();
@@ -698,6 +701,7 @@ mod tests {
         UnsubscribeFeedCommand {
             user_pk: f.user_pk,
             feed_pks: vec![live_pk],
+            accesspass_pk: None,
         }
         .execute(&client)
         .unwrap();

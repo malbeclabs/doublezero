@@ -119,6 +119,10 @@ pub struct Connect {
     #[arg(long, global = true)]
     pub device: Option<String>,
 
+    /// Access pass for a legacy user that does not record one
+    #[arg(long, global = true)]
+    pub access_pass: Option<Pubkey>,
+
     /// Base URL of the RFC-27 IP ownership verification service, overriding the environment
     /// default. Point this at a local or devnet verifier; `DZ_IP_VERIFIER_URL` does the same.
     #[arg(long, global = true)]
@@ -172,12 +176,10 @@ enum FeedJoinUser {
 /// can render its own diagnostic before bailing. With `enforce_epoch`, the pass must also cover
 /// the current epoch.
 ///
-/// [`LedgerClient::get_accesspass`] resolves through `GetAccessPassCommand`, which probes the
-/// dynamic (0.0.0.0) PDA before the exact-IP one, so a wildcard-seat holder — including the
-/// `EdgeSeat` passes the Feed Oracle issues — is found here without a second lookup. That is the
-/// same ordering `CreateUserCommand` uses to pick the PDA it sends, and the program accepts either
-/// (`smartcontract/programs/doublezero-serviceability/src/processors/user/create_core.rs`), so
-/// this pre-flight accepts exactly what the transaction will.
+/// This check finds an access pass before a new user exists.
+/// It tries the `0.0.0.0` address before the exact-IP address.
+/// New users record the selected address. Feed changes use that address.
+/// Legacy users must provide `--access-pass`.
 fn check_accesspass<L: LedgerClient>(
     ledger: &L,
     client_ip: Ipv4Addr,
@@ -978,6 +980,7 @@ impl Connect {
             let result = ledger.unsubscribe_feed(UnsubscribeFeedCommand {
                 user_pk: *user_pk,
                 feed_pks: unsub_pks,
+                accesspass_pk: self.access_pass,
             });
             if result.is_ok() {
                 writeln!(out, "    Left feed(s): {}", unsub_feeds.join(", "))?;
@@ -1590,6 +1593,7 @@ impl Connect {
         ledger.subscribe_feed(SubscribeFeedCommand {
             user_pk,
             feed_pks: join.feed_pks,
+            accesspass_pk: self.access_pass,
         })?;
         Ok(())
     }
@@ -3512,7 +3516,11 @@ mod tests {
         }
 
         pub fn expect_subscribe_feed(&mut self, user_pk: Pubkey, feed_pks: Vec<Pubkey>) {
-            let expected_command = SubscribeFeedCommand { user_pk, feed_pks };
+            let expected_command = SubscribeFeedCommand {
+                user_pk,
+                feed_pks,
+                accesspass_pk: None,
+            };
 
             let users = self.users.clone();
             let feeds = self.feeds.clone();
@@ -3545,7 +3553,11 @@ mod tests {
         }
 
         pub fn expect_unsubscribe_feed(&mut self, user_pk: Pubkey, feed_pks: Vec<Pubkey>) {
-            let expected_command = UnsubscribeFeedCommand { user_pk, feed_pks };
+            let expected_command = UnsubscribeFeedCommand {
+                user_pk,
+                feed_pks,
+                accesspass_pk: None,
+            };
 
             let users = self.users.clone();
             self.ledger

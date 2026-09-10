@@ -988,8 +988,9 @@ type User struct {
 	BgpRttNs uint64
 	// FeedPks are the EdgeSeat Feeds whose per-feed seats this user consumed at connect (multicast
 	// only); empty for non-EdgeSeat/unicast users. A user may hold seats on multiple feeds.
-	FeedPks [][32]byte
-	PubKey  [32]byte
+	FeedPks          [][32]byte
+	AccessPassPubKey [32]byte
+	PubKey           [32]byte
 }
 
 func (u User) MarshalJSON() ([]byte, error) {
@@ -1012,38 +1013,40 @@ func (u User) MarshalJSON() ([]byte, error) {
 
 	jsonUser := &struct {
 		UserAlias
-		Owner           string   `json:"Owner"`
-		TenantPubKey    string   `json:"TenantPubKey"`
-		DevicePubKey    string   `json:"DevicePubKey"`
-		ClientIp        string   `json:"ClientIp"`
-		DzIp            string   `json:"DzIp"`
-		TunnelNet       string   `json:"TunnelNet"`
-		Publishers      []string `json:"Publishers"`
-		Subscribers     []string `json:"Subscribers"`
-		ValidatorPubKey string   `json:"ValidatorPubKey"`
-		TunnelEndpoint  string   `json:"TunnelEndpoint"`
-		Status          string   `json:"Status"`
-		CyoaType        string   `json:"CyoaType"`
-		UserType        string   `json:"UserType"`
-		PubKey          string   `json:"PubKey"`
-		FeedPks         []string `json:"FeedPks"`
+		Owner            string   `json:"Owner"`
+		TenantPubKey     string   `json:"TenantPubKey"`
+		DevicePubKey     string   `json:"DevicePubKey"`
+		ClientIp         string   `json:"ClientIp"`
+		DzIp             string   `json:"DzIp"`
+		TunnelNet        string   `json:"TunnelNet"`
+		Publishers       []string `json:"Publishers"`
+		Subscribers      []string `json:"Subscribers"`
+		ValidatorPubKey  string   `json:"ValidatorPubKey"`
+		TunnelEndpoint   string   `json:"TunnelEndpoint"`
+		Status           string   `json:"Status"`
+		CyoaType         string   `json:"CyoaType"`
+		UserType         string   `json:"UserType"`
+		PubKey           string   `json:"PubKey"`
+		FeedPks          []string `json:"FeedPks"`
+		AccessPassPubKey string   `json:"AccessPassPubKey"`
 	}{
-		UserAlias:       UserAlias(u),
-		Owner:           base58.Encode(u.Owner[:]),
-		TenantPubKey:    base58.Encode(u.TenantPubKey[:]),
-		DevicePubKey:    base58.Encode(u.DevicePubKey[:]),
-		ClientIp:        net.IP(u.ClientIp[:]).String(),
-		DzIp:            net.IP(u.DzIp[:]).String(),
-		TunnelNet:       onChainNetToString(u.TunnelNet),
-		Publishers:      publishers,
-		Subscribers:     subscribers,
-		ValidatorPubKey: base58.Encode(u.ValidatorPubKey[:]),
-		TunnelEndpoint:  net.IP(u.TunnelEndpoint[:]).String(),
-		Status:          u.Status.String(),
-		CyoaType:        u.CyoaType.String(),
-		UserType:        u.UserType.String(),
-		PubKey:          base58.Encode(u.PubKey[:]),
-		FeedPks:         feedPks,
+		UserAlias:        UserAlias(u),
+		Owner:            base58.Encode(u.Owner[:]),
+		TenantPubKey:     base58.Encode(u.TenantPubKey[:]),
+		DevicePubKey:     base58.Encode(u.DevicePubKey[:]),
+		ClientIp:         net.IP(u.ClientIp[:]).String(),
+		DzIp:             net.IP(u.DzIp[:]).String(),
+		TunnelNet:        onChainNetToString(u.TunnelNet),
+		Publishers:       publishers,
+		Subscribers:      subscribers,
+		ValidatorPubKey:  base58.Encode(u.ValidatorPubKey[:]),
+		TunnelEndpoint:   net.IP(u.TunnelEndpoint[:]).String(),
+		Status:           u.Status.String(),
+		CyoaType:         u.CyoaType.String(),
+		UserType:         u.UserType.String(),
+		PubKey:           base58.Encode(u.PubKey[:]),
+		FeedPks:          feedPks,
+		AccessPassPubKey: base58.Encode(u.AccessPassPubKey[:]),
 	}
 
 	return json.Marshal(jsonUser)

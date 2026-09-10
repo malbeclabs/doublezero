@@ -14,6 +14,9 @@ pub struct DeleteUserCliCommand {
     /// User Pubkey to delete
     #[arg(long, value_parser = validate_pubkey)]
     pub pubkey: String,
+    /// Access pass for a legacy user
+    #[arg(long, value_parser = validate_pubkey)]
+    pub access_pass: Option<String>,
 }
 
 impl DeleteUserCliCommand {
@@ -27,7 +30,15 @@ impl DeleteUserCliCommand {
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
         let pubkey = Pubkey::from_str(&self.pubkey)?;
-        let signature = client.delete_user(DeleteUserCommand { pubkey })?;
+        let accesspass_pk = self
+            .access_pass
+            .as_deref()
+            .map(Pubkey::from_str)
+            .transpose()?;
+        let signature = client.delete_user(DeleteUserCommand {
+            pubkey,
+            accesspass_pk,
+        })?;
         writeln!(out, "Signature: {signature}",)?;
 
         Ok(())
@@ -57,6 +68,7 @@ mod tests {
         let mut client = create_test_client();
 
         let (pda_pubkey, _bump_seed) = get_user_old_pda(&client.get_program_id(), 1);
+        let accesspass_pk = Pubkey::new_unique();
         let signature = Signature::from([
             120, 138, 162, 185, 59, 209, 241, 157, 71, 157, 74, 131, 4, 87, 54, 28, 38, 180, 222,
             82, 64, 62, 61, 62, 22, 46, 17, 203, 187, 136, 62, 43, 11, 38, 235, 17, 239, 82, 240,
@@ -101,7 +113,10 @@ mod tests {
 
         client
             .expect_delete_user()
-            .with(predicate::eq(DeleteUserCommand { pubkey: pda_pubkey }))
+            .with(predicate::eq(DeleteUserCommand {
+                pubkey: pda_pubkey,
+                accesspass_pk: Some(accesspass_pk),
+            }))
             .returning(move |_| Ok(signature));
 
         /*****************************************************************************************************/
@@ -110,6 +125,7 @@ mod tests {
         let res = block_on(
             DeleteUserCliCommand {
                 pubkey: pda_pubkey.to_string(),
+                access_pass: Some(accesspass_pk.to_string()),
             }
             .execute(&ctx, &client, &mut output),
         );

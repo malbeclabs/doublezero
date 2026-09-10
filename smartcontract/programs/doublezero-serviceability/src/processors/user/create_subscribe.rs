@@ -290,7 +290,7 @@ pub fn process_create_subscribe_user(
 
     if result.pda_ver == PDAVersion::V1 {
         try_acc_create(
-            &result.user,
+            result.user.as_ref(),
             user_account,
             payer_account,
             system_program,
@@ -310,7 +310,7 @@ pub fn process_create_subscribe_user(
         )?;
     } else {
         try_acc_create(
-            &result.user,
+            result.user.as_ref(),
             user_account,
             payer_account,
             system_program,

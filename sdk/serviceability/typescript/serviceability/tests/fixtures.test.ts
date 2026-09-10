@@ -408,28 +408,35 @@ describe("User fixture", () => {
       expect(expected).toBeDefined();
       expect(u.feedPks[i].toBase58()).toBe(expected!);
     }
+    const expectedAccessPass = meta.fields.find(
+      (f) => f.name === "AccessPassPk",
+    )?.value;
+    expect(expectedAccessPass).toBeDefined();
+    expect(u.accessPassPubKey.toBase58()).toBe(expectedAccessPass!);
   });
 
   test("backward compat: old layout yields zero for new fields", () => {
     const [data] = loadFixture("user");
     // Remove feed_pks (4 + 2*32 = 68) + bgp_rtt_ns (8) + last_bgp_reported_at (8)
-    // + last_bgp_up_at (8) + bgp_status (1) = 93 bytes
-    const truncated = data.slice(0, data.length - 93);
+    // + last_bgp_up_at (8) + bgp_status (1) + accesspass_pk (32) = 125 bytes
+    const truncated = data.slice(0, data.length - 125);
     const u = deserializeUser(truncated);
     expect(u.bgpStatus).toBe(0);
     expect(u.lastBgpUpAt).toBe(0n);
     expect(u.lastBgpReportedAt).toBe(0n);
     expect(u.bgpRttNs).toBe(0n);
     expect(u.feedPks).toEqual([]);
+    expect(u.accessPassPubKey.equals(PublicKey.default)).toBe(true);
   });
 
   test("old layout: zeroed scalar feed slot reads as empty feedPks", () => {
     const [data] = loadFixture("user");
-    // Replace feed_pks (4 + 2*32 = 68 bytes) with the old 32-zero-byte scalar slot.
-    const old = new Uint8Array(data.length - 68 + 32);
-    old.set(data.slice(0, data.length - 68));
+    // Remove accesspass_pk and replace feed_pks with the old 32-zero-byte scalar slot.
+    const old = new Uint8Array(data.length - 100 + 32);
+    old.set(data.slice(0, data.length - 100));
     const u = deserializeUser(old);
     expect(u.feedPks).toEqual([]);
+    expect(u.accessPassPubKey.equals(PublicKey.default)).toBe(true);
   });
 });
 

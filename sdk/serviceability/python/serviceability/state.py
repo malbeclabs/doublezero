@@ -876,6 +876,7 @@ class User:
     # EdgeSeat Feeds whose per-feed seats this user consumed at connect (empty if none). Occupies
     # the former scalar feed_pk slot, which was never written with a real feed on any cluster.
     feed_pks: list[Pubkey] = field(default_factory=list)
+    access_pass_pub_key: Pubkey = Pubkey.default()
 
     @classmethod
     def from_bytes(cls, data: bytes) -> User:
@@ -909,6 +910,7 @@ class User:
         # which read as an empty vec with the leftover zero bytes ignored as trailing data.
         # _read_pubkey_vec returns [] on EOF, so accounts predating the slot default to empty too.
         u.feed_pks = _read_pubkey_vec(r)
+        u.access_pass_pub_key = _read_pubkey(r)
         return u
 
 

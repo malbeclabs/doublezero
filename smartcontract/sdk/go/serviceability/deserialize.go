@@ -318,6 +318,7 @@ func DeserializeUser(reader *ByteReader, user *User) {
 	// slice (the 28 leftover zero bytes are ignored as trailing data). ReadPubkeySlice returns nil
 	// on EOF, so accounts predating the slot deserialize with the field absent — len 0 either way.
 	user.FeedPks = reader.ReadPubkeySlice()
+	user.AccessPassPubKey = reader.ReadPubkey()
 	// Note: user.PubKey is set separately in client.go after deserialization
 }
 

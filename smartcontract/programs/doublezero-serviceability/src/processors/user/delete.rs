@@ -141,15 +141,21 @@ pub fn process_delete_user(
         )?;
     }
 
-    let (accesspass_pda, _) = get_accesspass_pda(program_id, &user.client_ip, &user.owner);
-    let (accesspass_dynamic_pda, _) =
-        get_accesspass_pda(program_id, &Ipv4Addr::UNSPECIFIED, &user.owner);
-    // Access Pass must exist and match the client_ip or allow_multiple_ip must be enabled
-    assert!(
-        accesspass_account.key == &accesspass_pda
-            || accesspass_account.key == &accesspass_dynamic_pda,
-        "Invalid AccessPass PDA",
-    );
+    if user.accesspass_pk == Pubkey::default() {
+        let (accesspass_pda, _) = get_accesspass_pda(program_id, &user.client_ip, &user.owner);
+        let (accesspass_dynamic_pda, _) =
+            get_accesspass_pda(program_id, &Ipv4Addr::UNSPECIFIED, &user.owner);
+        assert!(
+            accesspass_account.key == &accesspass_pda
+                || accesspass_account.key == &accesspass_dynamic_pda,
+            "Invalid AccessPass PDA",
+        );
+    } else {
+        assert_eq!(
+            accesspass_account.key, &user.accesspass_pk,
+            "AccessPass does not match the User",
+        );
+    }
 
     if !accesspass_account.data_is_empty() {
         // Read Access Pass

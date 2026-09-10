@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use crate::{
     commands::{
-        accesspass::get::GetAccessPassCommand,
+        accesspass::get::resolve_user_accesspass,
         common::append_payer_permission_account,
         device::get::GetDeviceCommand,
         multicastgroup::{
@@ -19,11 +19,15 @@ use solana_sdk::{pubkey::Pubkey, signature::Signature};
 #[derive(Debug, PartialEq, Clone)]
 pub struct DeleteUserCommand {
     pub pubkey: Pubkey,
+    pub accesspass_pk: Option<Pubkey>,
 }
 
 impl DeleteUserCommand {
     pub fn new(pubkey: Pubkey) -> Self {
-        Self { pubkey }
+        Self {
+            pubkey,
+            accesspass_pk: None,
+        }
     }
 }
 
@@ -34,6 +38,9 @@ impl DeleteUserCommand {
             .map_err(|_| eyre::eyre!("User not found ({})", self.pubkey))?
             .get_user()
             .map_err(|e| eyre::eyre!(e))?;
+
+        let (accesspass_pk, _) =
+            resolve_user_accesspass(client, self.pubkey, &user, self.accesspass_pk)?;
 
         let unique_mgroup_pks: Vec<Pubkey> = user
             .publishers
@@ -62,15 +69,6 @@ impl DeleteUserCommand {
             }
             .execute(client)?;
         }
-
-        // GetAccessPassCommand prefers a shared dynamic (UNSPECIFIED) pass and falls
-        // back to the exact client-IP pass.
-        let (accesspass_pk, _) = GetAccessPassCommand {
-            client_ip: user.client_ip,
-            user_payer: user.owner,
-        }
-        .execute(client)?
-        .ok_or_else(|| eyre::eyre!("You have no Access Pass"))?;
 
         let (_, device) = GetDeviceCommand {
             pubkey_or_code: user.device_pk.to_string(),
@@ -164,7 +162,7 @@ mod tests {
         let client_ip = Ipv4Addr::new(192, 168, 1, 10);
 
         // User with one subscriber - delete must unsubscribe first.
-        let user_activated_with_sub = User {
+        let mut user_activated_with_sub = User {
             account_type: AccountType::User,
             owner: client.get_payer(),
             bump_seed: 0,
@@ -209,6 +207,7 @@ mod tests {
             &Ipv4Addr::UNSPECIFIED,
             &client.get_payer(),
         );
+        user_activated_with_sub.accesspass_pk = accesspass_pubkey;
         let accesspass = AccessPass {
             account_type: AccountType::AccessPass,
             bump_seed: 0,
@@ -240,7 +239,15 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::User(user_clone1.clone())));
 
-        // Call 2: ListMulticastGroupCommand - gets all multicast groups
+        let accesspass_clone2 = accesspass.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(accesspass_pubkey))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(AccountData::AccessPass(accesspass_clone2.clone())));
+
+        // ListMulticastGroupCommand gets all multicast groups
         let mgroup_for_list = mgroup.clone();
         client
             .expect_gets()
@@ -306,16 +313,7 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(|_| Ok(Signature::new_unique()));
 
-        // Call 6: AccessPass fetch for DeleteUserCommand
-        let accesspass_clone2 = accesspass.clone();
-        client
-            .expect_get()
-            .with(predicate::eq(accesspass_pubkey))
-            .times(1)
-            .in_sequence(&mut seq)
-            .returning(move |_| Ok(AccountData::AccessPass(accesspass_clone2.clone())));
-
-        // Call 7: Device fetch for DeleteUserCommand
+        // Device fetch for DeleteUserCommand
         let device = Device {
             account_type: AccountType::Device,
             dz_prefixes: "10.0.0.0/24".parse().unwrap(),
@@ -355,6 +353,7 @@ mod tests {
 
         let res = DeleteUserCommand {
             pubkey: user_pubkey,
+            accesspass_pk: None,
         }
         .execute(&client);
 
@@ -374,7 +373,7 @@ mod tests {
         let client_ip = Ipv4Addr::new(192, 168, 1, 10);
 
         // User is both publisher and subscriber of the same group
-        let user_activated = User {
+        let mut user_activated = User {
             account_type: AccountType::User,
             owner: client.get_payer(),
             bump_seed: 0,
@@ -419,6 +418,7 @@ mod tests {
             &Ipv4Addr::UNSPECIFIED,
             &client.get_payer(),
         );
+        user_activated.accesspass_pk = accesspass_pubkey;
         let accesspass = AccessPass {
             account_type: AccountType::AccessPass,
             bump_seed: 0,
@@ -450,7 +450,15 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::User(user_clone1.clone())));
 
-        // Call 2: ListMulticastGroupCommand - gets all multicast groups
+        let accesspass_clone2 = accesspass.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(accesspass_pubkey))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(AccountData::AccessPass(accesspass_clone2.clone())));
+
+        // ListMulticastGroupCommand gets all multicast groups
         let mgroup_for_list = mgroup.clone();
         client
             .expect_gets()
@@ -513,15 +521,6 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(|_| Ok(Signature::new_unique()));
 
-        // AccessPass fetch for DeleteUser
-        let accesspass_clone2 = accesspass.clone();
-        client
-            .expect_get()
-            .with(predicate::eq(accesspass_pubkey))
-            .times(1)
-            .in_sequence(&mut seq)
-            .returning(move |_| Ok(AccountData::AccessPass(accesspass_clone2.clone())));
-
         // Device fetch for DeleteUser
         let device = Device {
             account_type: AccountType::Device,
@@ -560,6 +559,7 @@ mod tests {
 
         let res = DeleteUserCommand {
             pubkey: user_pubkey,
+            accesspass_pk: None,
         }
         .execute(&client);
 
@@ -651,13 +651,8 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            accesspass_pk: accesspass_pubkey,
             ..Default::default()
-        };
-
-        let user_activated_final = User {
-            status: UserStatus::Activated,
-            subscribers: vec![],
-            ..user_with_sub.clone()
         };
 
         let mgroup = MulticastGroup {
@@ -685,7 +680,15 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(move |_| Ok(AccountData::User(user_clone1.clone())));
 
-        // Call 2: ListMulticastGroupCommand
+        let accesspass_clone2 = accesspass.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(accesspass_pubkey))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(move |_| Ok(AccountData::AccessPass(accesspass_clone2.clone())));
+
+        // ListMulticastGroupCommand
         let mgroup_for_list = mgroup.clone();
         client
             .expect_gets()
@@ -760,25 +763,7 @@ mod tests {
             .in_sequence(&mut seq)
             .returning(|_| Ok(Signature::new_unique()));
 
-        // Call 7a: UNSPECIFIED AccessPass lookup fails (fallback path) — DeleteUserCommand
-        let user_clone_fallback2 = user_activated_final.clone();
-        client
-            .expect_get()
-            .with(predicate::eq(unspecified_accesspass_pubkey))
-            .times(1)
-            .in_sequence(&mut seq)
-            .returning(move |_| Ok(AccountData::User(user_clone_fallback2.clone())));
-
-        // Call 7b: AccessPass fetch via client_ip fallback — keyed to (client_ip, user_owner)
-        let accesspass_clone2 = accesspass.clone();
-        client
-            .expect_get()
-            .with(predicate::eq(accesspass_pubkey))
-            .times(1)
-            .in_sequence(&mut seq)
-            .returning(move |_| Ok(AccountData::AccessPass(accesspass_clone2.clone())));
-
-        // Call 7c: Device fetch for DeleteUserCommand
+        // Device fetch for DeleteUserCommand
         let device = Device {
             account_type: AccountType::Device,
             dz_prefixes: "10.0.0.0/24".parse().unwrap(),
@@ -817,6 +802,7 @@ mod tests {
 
         let res = DeleteUserCommand {
             pubkey: user_pubkey,
+            accesspass_pk: None,
         }
         .execute(&client);
 
@@ -833,6 +819,8 @@ mod tests {
         let user_pubkey = Pubkey::new_unique();
         let device_pk = Pubkey::new_unique();
         let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+        let (accesspass_pubkey, _) =
+            get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
 
         let user = User {
             account_type: AccountType::User,
@@ -857,6 +845,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            accesspass_pk: accesspass_pubkey,
             ..Default::default()
         };
 
@@ -866,8 +855,6 @@ mod tests {
             .returning(move |_| Ok(AccountData::User(user.clone())));
 
         // Mock AccessPass fetch (UNSPECIFIED IP path)
-        let (accesspass_pubkey, _) =
-            get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
         let accesspass = AccessPass {
             account_type: AccountType::AccessPass,
             bump_seed: 0,
@@ -935,6 +922,7 @@ mod tests {
 
         let res = DeleteUserCommand {
             pubkey: user_pubkey,
+            accesspass_pk: None,
         }
         .execute(&client);
 
@@ -951,6 +939,8 @@ mod tests {
         let user_pubkey = Pubkey::new_unique();
         let device_pk = Pubkey::new_unique();
         let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+        let (accesspass_pubkey, _) =
+            get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
 
         let user = User {
             account_type: AccountType::User,
@@ -975,6 +965,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            accesspass_pk: accesspass_pubkey,
             ..Default::default()
         };
 
@@ -983,8 +974,6 @@ mod tests {
             .with(predicate::eq(user_pubkey))
             .returning(move |_| Ok(AccountData::User(user.clone())));
 
-        let (accesspass_pubkey, _) =
-            get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
         let accesspass = AccessPass {
             account_type: AccountType::AccessPass,
             bump_seed: 0,
@@ -1055,6 +1044,7 @@ mod tests {
 
         let res = DeleteUserCommand {
             pubkey: user_pubkey,
+            accesspass_pk: None,
         }
         .execute(&client);
 

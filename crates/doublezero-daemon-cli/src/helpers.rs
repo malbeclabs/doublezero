@@ -10,6 +10,9 @@ use crate::client::DaemonClient;
 /// Build the standard daemon-verb progress spinner (stderr; transient UI).
 /// Informational and result lines route through the shared writer instead.
 pub(crate) fn init_spinner(len: u64) -> ProgressBar {
+    if cfg!(test) {
+        return ProgressBar::hidden();
+    }
     let spinner = ProgressBar::new(len);
     spinner.set_style(
         ProgressStyle::default_spinner()

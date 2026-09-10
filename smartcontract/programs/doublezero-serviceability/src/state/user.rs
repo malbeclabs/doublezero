@@ -294,6 +294,15 @@ pub struct User {
         )
     )]
     pub feed_pks: Vec<Pubkey>, // 4 + 32 * len
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            default,
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
+        )
+    )]
+    pub accesspass_pk: Pubkey, // 32
 }
 
 impl Default for User {
@@ -322,6 +331,7 @@ impl Default for User {
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
             feed_pks: Vec::new(),
+            accesspass_pk: Pubkey::default(),
         }
     }
 }
@@ -380,6 +390,7 @@ impl TryFrom<&[u8]> for User {
             // zero bytes here (never a real feed), which read as an empty vec; the 28 bytes left
             // over are trailing data this decoder ignores. Accounts predating the slot default too.
             feed_pks: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
+            accesspass_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::User {
@@ -609,6 +620,7 @@ mod tests {
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
             feed_pks: vec![Pubkey::new_unique(), Pubkey::new_unique()],
+            accesspass_pk: Pubkey::new_unique(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -618,6 +630,7 @@ mod tests {
         val2.validate().unwrap();
 
         assert_eq!(val.feed_pks, val2.feed_pks);
+        assert_eq!(val.accesspass_pk, val2.accesspass_pk);
 
         assert_eq!(
             borsh::object_length(&val).unwrap(),
@@ -664,6 +677,7 @@ mod tests {
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
             feed_pks: vec![],
+            accesspass_pk: Pubkey::new_unique(),
         };
 
         let err = val.validate();
@@ -697,6 +711,7 @@ mod tests {
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
             feed_pks: vec![],
+            accesspass_pk: Pubkey::new_unique(),
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -729,6 +744,7 @@ mod tests {
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
             feed_pks: vec![],
+            accesspass_pk: Pubkey::new_unique(),
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -761,6 +777,7 @@ mod tests {
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
             feed_pks: vec![],
+            accesspass_pk: Pubkey::new_unique(),
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -793,6 +810,7 @@ mod tests {
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
             feed_pks: vec![],
+            accesspass_pk: Pubkey::new_unique(),
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -825,6 +843,7 @@ mod tests {
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
             feed_pks: vec![],
+            accesspass_pk: Pubkey::new_unique(),
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -858,6 +877,7 @@ mod tests {
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
             feed_pks: vec![],
+            accesspass_pk: Pubkey::new_unique(),
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -950,6 +970,7 @@ mod tests {
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
             feed_pks: vec![],
+            accesspass_pk: Pubkey::new_unique(),
         }
     }
 
@@ -1094,6 +1115,7 @@ mod tests {
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
             feed_pks: vec![],
+            accesspass_pk: Pubkey::new_unique(),
         };
 
         assert!(val.validate().is_ok());
@@ -1153,12 +1175,13 @@ mod tests {
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
             feed_pks: vec![],
+            accesspass_pk: Pubkey::new_unique(),
         };
         let data = borsh::to_vec(&user).unwrap();
         // Remove tunnel_flags (1) + bgp_status (1) + last_bgp_up_at (8) + last_bgp_reported_at (8)
-        // + bgp_rtt_ns (8) + feed_pks length prefix (4) to simulate an old account that predates
-        // all of them.
-        let old_data = &data[..data.len() - 30];
+        // + bgp_rtt_ns (8) + feed_pks length prefix (4) + accesspass_pk (32) to simulate an old
+        // account that predates all of them.
+        let old_data = &data[..data.len() - 62];
         let deserialized = User::try_from(old_data).unwrap();
         assert_eq!(
             deserialized.tunnel_flags, 0,
@@ -1185,6 +1208,7 @@ mod tests {
             deserialized.bgp_rtt_ns, 0,
             "Old accounts must default bgp_rtt_ns to 0"
         );
+        assert_eq!(deserialized.accesspass_pk, Pubkey::default());
     }
 
     #[test]
@@ -1213,6 +1237,7 @@ mod tests {
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
             feed_pks: vec![],
+            accesspass_pk: Pubkey::new_unique(),
         };
         let data = borsh::to_vec(&user).unwrap();
         let deserialized = User::try_from(&data[..]).unwrap();
@@ -1234,11 +1259,12 @@ mod tests {
         };
         let mut data = borsh::to_vec(&user).unwrap();
         // Replace the trailing empty-vec length prefix (4 zero bytes) with the old 32-zero-byte
-        // scalar slot.
-        data.truncate(data.len() - 4);
+        // scalar slot and remove the access pass field.
+        data.truncate(data.len() - 36);
         data.extend_from_slice(&[0u8; 32]);
         let deserialized = User::try_from(&data[..]).unwrap();
         assert!(deserialized.feed_pks.is_empty());
+        assert_eq!(deserialized.accesspass_pk, Pubkey::default());
     }
 
     use crate::state::accesspass::{AccessPassStatus, FeedSeat};
@@ -1325,6 +1351,7 @@ mod tests {
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
             feed_pks: vec![],
+            accesspass_pk: Pubkey::new_unique(),
         }
     }
 

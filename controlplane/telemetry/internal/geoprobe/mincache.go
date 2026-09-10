@@ -117,15 +117,18 @@ func (c *MinCache[T]) Update(value T) UpdateInfo {
 		info.Result = UpdateBest
 		return info
 	}
-	if rttNs <= c.best.rttNs {
-		// New record low: reset best's clock, clear backup.
+	if rttNs < c.best.rttNs {
+		// New record low: reset best's clock, clear backup. An equal-RTT value
+		// must not replace best, because replacing also resets best's
+		// receivedAt clock — a replayed measurement would otherwise hold best
+		// forever.
 		c.best = entry
 		c.backup = nil
 		info.Result = UpdateBest
 		return info
 	}
 
-	// rttNs > best. Only collect a backup while best is in its final guard.
+	// rttNs >= best. Only collect a backup while best is in its final guard.
 	if c.maxAge-now.Sub(c.best.receivedAt) > guard {
 		c.backup = nil
 		return info

@@ -82,6 +82,8 @@ type Collector struct {
 	probeToLocation  map[int]string    // Maps probe IDs to location codes
 	mu               sync.RWMutex      // Protects probeToLocation map
 	measurementState *MeasurementState // Shared state; initialized in Run()
+	cloudMode        bool              // Measures cloud regions from cloudNodes instead of exchanges
+	cloudNodes       map[string]CloudNode
 }
 
 type MeasurementSpec struct {

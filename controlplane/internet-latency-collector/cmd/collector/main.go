@@ -37,6 +37,7 @@ const (
 	defaultLedgerSubmissionInterval     = 1 * time.Minute
 	defaultWheresitupStateFile          = "wheresitup_jobs_to_process.json"
 	defaultLogLevel                     = "info"
+	cloudNodeFileEnvVar                 = "DZ_ILC_CLOUD_NODE_FILE"
 
 	// defaultLedgerRPCTimeout bounds each individual ledger RPC request. The default solana-go
 	// client uses a 5-minute timeout, which lets a request block long enough for a fetched
@@ -59,6 +60,7 @@ var (
 	stateDir                     string
 	logLevel                     string
 	locationFile                 string
+	cloudNodeFile                string
 	dryRun                       bool
 	wheresitupStateFile          string
 	ripeatlasProbesPerLocation   int
@@ -162,18 +164,34 @@ RIPE Atlas measurements hourly, and exports RIPE Atlas results periodically.`,
 			os.Exit(1)
 		}
 
-		// Create data provider collectors.
-		ripeatlasCollector := ripeatlas.NewCollector(log, exporter, env, func(ctx context.Context) []collector.LocationMatch {
-			return collector.GetLocations(ctx, log, serviceabilityClient)
-		})
-		wheresitupCollector := wheresitup.NewCollector(log, exporter, env, func(ctx context.Context) []collector.LocationMatch {
-			return collector.GetLocations(ctx, log, serviceabilityClient)
-		})
+		// Create data provider collectors. A cloud node file selects cloud mode: RIPE Atlas alone.
+		nodeFile := cloudNodeFilePath()
+		var ripeatlasCollector collector.RipeAtlasCollectorInterface
+		var wheresitupCollector collector.WheresitupCollectorInterface
+		if nodeFile != "" {
+			nodes, err := loadCloudNodes(log, nodeFile)
+			if err != nil {
+				log.Error("failed to load cloud node file", "error", err, "file", nodeFile)
+				os.Exit(1)
+			}
+			log.Info("Running in cloud mode",
+				slog.String("node_file", nodeFile),
+				slog.Int("node_count", len(nodes)))
+			ripeatlasCollector = ripeatlas.NewCloudCollector(log, exporter, env, nodes)
+		} else {
+			ripeatlasCollector = ripeatlas.NewCollector(log, exporter, env, func(ctx context.Context) []collector.LocationMatch {
+				return collector.GetLocations(ctx, log, serviceabilityClient)
+			})
+			wheresitupCollector = wheresitup.NewCollector(log, exporter, env, func(ctx context.Context) []collector.LocationMatch {
+				return collector.GetLocations(ctx, log, serviceabilityClient)
+			})
+		}
 
 		config := collector.Config{
 			Logger:     log,
 			Wheresitup: wheresitupCollector,
 			RipeAtlas:  ripeatlasCollector,
+			CloudMode:  nodeFile != "",
 
 			WheresitupSamplingInterval:   defaultWheresitupSamplingInterval,
 			RipeAtlasSamplingInterval:    defaultRipeAtlasSamplingInterval,
@@ -379,6 +397,34 @@ var wheresitupListJobsCmd = &cobra.Command{
 	},
 }
 
+func cloudNodeFilePath() string {
+	if cloudNodeFile != "" {
+		return cloudNodeFile
+	}
+	return os.Getenv(cloudNodeFileEnvVar)
+}
+
+func loadCloudNodes(logger *slog.Logger, filename string) ([]ripeatlas.CloudNode, error) {
+	jsonNodes, err := collector.LoadNodesFromJSON(logger, filename)
+	if err != nil {
+		return nil, err
+	}
+
+	nodes := make([]ripeatlas.CloudNode, 0, len(jsonNodes))
+	for _, node := range jsonNodes {
+		nodes = append(nodes, ripeatlas.CloudNode{
+			Code:          node.Code,
+			Cloud:         node.Cloud,
+			Latitude:      node.Latitude,
+			Longitude:     node.Longitude,
+			AtlasProbeIDs: node.AtlasProbeIDs,
+			PingTarget:    node.PingTarget,
+		})
+	}
+
+	return nodes, nil
+}
+
 func loadLocations(ctx context.Context, logger *slog.Logger, serviceabilityClient *serviceability.Client) []collector.LocationMatch {
 	if locationFile != "" {
 		logger.Info("Loading locations from JSON file", slog.String("file", locationFile))
@@ -431,6 +477,7 @@ func init() {
 	runCmd.Flags().DurationVar(&ripeatlasMeasurementInterval, "ripeatlas-measurement-interval", defaultRipeAtlasMeasurementInterval, "Interval at which to run RIPE Atlas measurements")
 	runCmd.Flags().DurationVar(&ledgerSubmissionInterval, "ledger-submission-interval", defaultLedgerSubmissionInterval, "Interval at which to submit metrics to the ledger")
 	runCmd.Flags().StringVar(&metricsAddr, "metrics-addr", "127.0.0.1:2113", "Address to bind the metrics server to")
+	runCmd.Flags().StringVar(&cloudNodeFile, "cloud-node-file", "", "JSON file of cloud regions to measure (code, cloud, lat, lng, atlas_probe_ids, ping_target); enables cloud mode. Falls back to "+cloudNodeFileEnvVar)
 
 	ripeatlasCreateMeasurementsCmd.Flags().IntVar(&ripeatlasProbesPerLocation, "probes-per-location", defaultAtlasProbesPerLocation, "Number of RIPE Atlas probes to associate with each DoubleZero location")
 

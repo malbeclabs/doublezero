@@ -33,35 +33,45 @@ type Config struct {
 	StateDir                     string
 	ProbesPerLocation            int
 	MetricsAddr                  string
+	CloudMode                    bool
 }
 
 func (cfg *Config) Validate() error {
 	if cfg.Logger == nil {
 		return errors.New("logger is required")
 	}
-	if cfg.Wheresitup == nil {
-		return errors.New("wheresitup collector is required")
+	if cfg.Wheresitup == nil && cfg.RipeAtlas == nil {
+		return errors.New("at least one of the wheresitup and ripe atlas collectors is required")
 	}
-	if cfg.RipeAtlas == nil {
-		return errors.New("ripe atlas collector is required")
+	if cfg.CloudMode {
+		if cfg.RipeAtlas == nil {
+			return errors.New("ripe atlas collector is required in cloud mode")
+		}
+		if cfg.Wheresitup != nil {
+			return errors.New("wheresitup collector is not supported in cloud mode")
+		}
 	}
-	if cfg.WheresitupSamplingInterval <= 0 {
-		return errors.New("wheresitup sampling interval must be greater than 0")
+	if cfg.Wheresitup != nil {
+		if cfg.WheresitupSamplingInterval <= 0 {
+			return errors.New("wheresitup sampling interval must be greater than 0")
+		}
+		if cfg.ProcessedJobsFile == "" {
+			return errors.New("processed jobs file is required")
+		}
 	}
-	if cfg.RipeAtlasSamplingInterval <= 0 {
-		return errors.New("ripe atlas sampling interval must be greater than 0")
-	}
-	if cfg.RipeAtlasMeasurementInterval <= 0 {
-		return errors.New("ripe atlas measurement interval must be greater than 0")
-	}
-	if cfg.RipeAtlasExportInterval <= 0 {
-		return errors.New("ripe atlas export interval must be greater than 0")
-	}
-	if cfg.ProbesPerLocation <= 0 {
-		return errors.New("probes per location must be greater than 0")
-	}
-	if cfg.ProcessedJobsFile == "" {
-		return errors.New("processed jobs file is required")
+	if cfg.RipeAtlas != nil {
+		if cfg.RipeAtlasSamplingInterval <= 0 {
+			return errors.New("ripe atlas sampling interval must be greater than 0")
+		}
+		if cfg.RipeAtlasMeasurementInterval <= 0 {
+			return errors.New("ripe atlas measurement interval must be greater than 0")
+		}
+		if cfg.RipeAtlasExportInterval <= 0 {
+			return errors.New("ripe atlas export interval must be greater than 0")
+		}
+		if cfg.ProbesPerLocation <= 0 {
+			return errors.New("probes per location must be greater than 0")
+		}
 	}
 	if cfg.StateDir == "" {
 		return errors.New("state directory is required")

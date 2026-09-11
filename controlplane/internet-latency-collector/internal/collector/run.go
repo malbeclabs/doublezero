@@ -12,6 +12,7 @@ import (
 
 func (c *Collector) Run(ctx context.Context) error {
 	c.log.Info("Starting continuous collector",
+		slog.Bool("cloud_mode", c.cfg.CloudMode),
 		slog.String("wheresitup_sampling_interval", c.cfg.WheresitupSamplingInterval.String()),
 		slog.String("ripe_atlas_sampling_interval", c.cfg.RipeAtlasSamplingInterval.String()),
 		slog.String("ripe_atlas_measurement_interval", c.cfg.RipeAtlasMeasurementInterval.String()),
@@ -24,16 +25,20 @@ func (c *Collector) Run(ctx context.Context) error {
 
 	c.log.Info("Initializing metrics")
 
-	if err := c.cfg.Wheresitup.InitializeCreditBalance(ctx); err != nil {
-		c.log.Warn("Failed to initialize Wheresitup credit balance metric", slog.String("error", err.Error()))
+	if c.cfg.Wheresitup != nil {
+		if err := c.cfg.Wheresitup.InitializeCreditBalance(ctx); err != nil {
+			c.log.Warn("Failed to initialize Wheresitup credit balance metric", slog.String("error", err.Error()))
+		}
 	}
 
-	if err := c.cfg.RipeAtlas.InitializeCreditBalance(ctx); err != nil {
-		c.log.Warn("Failed to initialize RIPE Atlas credit balance metric", slog.String("error", err.Error()))
-	}
+	if c.cfg.RipeAtlas != nil {
+		if err := c.cfg.RipeAtlas.InitializeCreditBalance(ctx); err != nil {
+			c.log.Warn("Failed to initialize RIPE Atlas credit balance metric", slog.String("error", err.Error()))
+		}
 
-	if err := c.cfg.RipeAtlas.InitializeMeasurementMetrics(c.cfg.StateDir); err != nil {
-		c.log.Warn("Failed to initialize RIPE Atlas measurement metrics", slog.String("error", err.Error()))
+		if err := c.cfg.RipeAtlas.InitializeMeasurementMetrics(c.cfg.StateDir); err != nil {
+			c.log.Warn("Failed to initialize RIPE Atlas measurement metrics", slog.String("error", err.Error()))
+		}
 	}
 
 	// Start Prometheus metrics endpoint
@@ -54,24 +59,28 @@ func (c *Collector) Run(ctx context.Context) error {
 	errChan := make(chan error, 2)
 
 	// Wheresitup job creation and export
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := c.cfg.Wheresitup.Run(ctx, c.cfg.WheresitupSamplingInterval, c.cfg.DryRun, c.cfg.ProcessedJobsFile, c.cfg.StateDir); err != nil {
-			errChan <- fmt.Errorf("wheresitup collector error: %w", err)
-			cancel() // Cancel other goroutines on error
-		}
-	}()
+	if c.cfg.Wheresitup != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := c.cfg.Wheresitup.Run(ctx, c.cfg.WheresitupSamplingInterval, c.cfg.DryRun, c.cfg.ProcessedJobsFile, c.cfg.StateDir); err != nil {
+				errChan <- fmt.Errorf("wheresitup collector error: %w", err)
+				cancel() // Cancel other goroutines on error
+			}
+		}()
+	}
 
 	// Ripe Atlas measurement creation and export
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		if err := c.cfg.RipeAtlas.Run(ctx, c.cfg.DryRun, c.cfg.ProbesPerLocation, c.cfg.StateDir, c.cfg.RipeAtlasSamplingInterval, c.cfg.RipeAtlasMeasurementInterval, c.cfg.RipeAtlasExportInterval); err != nil {
-			errChan <- fmt.Errorf("ripe atlas collector error: %w", err)
-			cancel() // Cancel other goroutines on error
-		}
-	}()
+	if c.cfg.RipeAtlas != nil {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := c.cfg.RipeAtlas.Run(ctx, c.cfg.DryRun, c.cfg.ProbesPerLocation, c.cfg.StateDir, c.cfg.RipeAtlasSamplingInterval, c.cfg.RipeAtlasMeasurementInterval, c.cfg.RipeAtlasExportInterval); err != nil {
+				errChan <- fmt.Errorf("ripe atlas collector error: %w", err)
+				cancel() // Cancel other goroutines on error
+			}
+		}()
+	}
 
 	// Wait for all goroutines to complete
 	wg.Wait()

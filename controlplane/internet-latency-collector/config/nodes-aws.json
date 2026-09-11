@@ -1,0 +1,209 @@
+[
+  {
+    "code": "ap-east-1",
+    "cloud": "aws",
+    "lat": 22.3193,
+    "lng": 114.1694,
+    "atlas_probe_ids": [
+      1012347,
+      1012349,
+      1012350,
+      1012351
+    ],
+    "ping_target": "16.162.0.253"
+  },
+  {
+    "code": "ap-northeast-1",
+    "cloud": "aws",
+    "lat": 35.6762,
+    "lng": 139.6503,
+    "atlas_probe_ids": [
+      1003384,
+      1010741,
+      1012762,
+      1013401
+    ],
+    "ping_target": "3.112.0.0"
+  },
+  {
+    "code": "ap-northeast-2",
+    "cloud": "aws",
+    "lat": 37.5665,
+    "lng": 126.978,
+    "atlas_probe_ids": [
+      1002619,
+      1015781,
+      1017320
+    ],
+    "ping_target": "13.209.0.0"
+  },
+  {
+    "code": "ap-south-1",
+    "cloud": "aws",
+    "lat": 19.076,
+    "lng": 72.8777,
+    "atlas_probe_ids": [
+      1003379
+    ],
+    "ping_target": "3.6.0.0"
+  },
+  {
+    "code": "ap-southeast-1",
+    "cloud": "aws",
+    "lat": 1.3521,
+    "lng": 103.8198,
+    "atlas_probe_ids": [
+      1003382,
+      1002618,
+      1012208,
+      1015779
+    ],
+    "ping_target": "3.0.0.9"
+  },
+  {
+    "code": "ca-central-1",
+    "cloud": "aws",
+    "lat": 45.5019,
+    "lng": -73.5674,
+    "atlas_probe_ids": [
+      1003389,
+      1005332,
+      1015534
+    ],
+    "ping_target": "3.98.0.0"
+  },
+  {
+    "code": "eu-central-1",
+    "cloud": "aws",
+    "lat": 50.1109,
+    "lng": 8.6821,
+    "atlas_probe_ids": [
+      1000566,
+      1005334,
+      1015777,
+      1016525
+    ],
+    "ping_target": "3.64.0.0"
+  },
+  {
+    "code": "eu-north-1",
+    "cloud": "aws",
+    "lat": 59.3293,
+    "lng": 18.0686,
+    "atlas_probe_ids": [
+      1003374,
+      1005867
+    ],
+    "ping_target": "13.50.0.254"
+  },
+  {
+    "code": "eu-south-2",
+    "cloud": "aws",
+    "lat": 41.6488,
+    "lng": -0.8891,
+    "atlas_probe_ids": [
+      1004991,
+      1016435
+    ],
+    "ping_target": "15.216.0.0"
+  },
+  {
+    "code": "eu-west-1",
+    "cloud": "aws",
+    "lat": 53.3498,
+    "lng": -6.2603,
+    "atlas_probe_ids": [
+      1003378,
+      1002616,
+      1010727,
+      1012211
+    ],
+    "ping_target": "3.248.0.0"
+  },
+  {
+    "code": "eu-west-2",
+    "cloud": "aws",
+    "lat": 51.5074,
+    "lng": -0.1278,
+    "atlas_probe_ids": [
+      1003377,
+      1005333,
+      1009922,
+      1015778
+    ],
+    "ping_target": "3.8.0.0"
+  },
+  {
+    "code": "eu-west-3",
+    "cloud": "aws",
+    "lat": 48.8566,
+    "lng": 2.3522,
+    "atlas_probe_ids": [
+      1003375,
+      1016689
+    ],
+    "ping_target": "13.36.0.0"
+  },
+  {
+    "code": "sa-east-1",
+    "cloud": "aws",
+    "lat": -23.5505,
+    "lng": -46.6333,
+    "atlas_probe_ids": [
+      1000709,
+      1002617,
+      1015704
+    ],
+    "ping_target": "15.228.0.0"
+  },
+  {
+    "code": "us-east-1",
+    "cloud": "aws",
+    "lat": 39.0438,
+    "lng": -77.4874,
+    "atlas_probe_ids": [
+      1003385,
+      1009925,
+      1010723,
+      1012092
+    ],
+    "ping_target": "34.192.0.54"
+  },
+  {
+    "code": "us-east-2",
+    "cloud": "aws",
+    "lat": 39.9612,
+    "lng": -82.9988,
+    "atlas_probe_ids": [
+      1003386,
+      1000074,
+      1005330,
+      1015708
+    ],
+    "ping_target": "3.130.0.254"
+  },
+  {
+    "code": "us-west-1",
+    "cloud": "aws",
+    "lat": 37.3382,
+    "lng": -121.8863,
+    "atlas_probe_ids": [
+      1003387,
+      1013400
+    ],
+    "ping_target": "13.52.0.0"
+  },
+  {
+    "code": "us-west-2",
+    "cloud": "aws",
+    "lat": 45.8399,
+    "lng": -119.7006,
+    "atlas_probe_ids": [
+      1003388,
+      1005331,
+      1007744,
+      1012207
+    ],
+    "ping_target": "35.95.2.254"
+  }
+]

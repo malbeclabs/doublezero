@@ -12,5 +12,5 @@ lint:
 
 .PHONY: build
 build:
-	CGO_ENABLED=0 go build -v $(LDFLAGS) -o bin/doublezero-internet-latency-collector cmd/collector/main.go
+	CGO_ENABLED=0 go build -v $(LDFLAGS) -o bin/doublezero-internet-latency-collector ./cmd/collector
 

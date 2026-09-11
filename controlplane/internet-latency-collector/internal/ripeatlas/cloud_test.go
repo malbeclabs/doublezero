@@ -112,6 +112,8 @@ func TestInternetLatency_RIPEAtlas_Cloud_ConstructorEnablesMode(t *testing.T) {
 	c := newCloudTestCollector(t, log, &MockClient{}, "mainnet-beta", cloudTestNodes())
 
 	require.True(t, c.cloudMode, "NewCloudCollector must enable cloud mode")
+	require.True(t, c.cloudExportEnabled(), "NewCloudCollector must enable cloud export")
+	require.Equal(t, "aws", c.cloudByLocation["us-east-1"])
 	require.Len(t, c.cloudNodes, 2)
 	require.Equal(t, "3.248.0.0", c.cloudNodes["eu-west-1"].PingTarget)
 	require.Equal(t, []int{1000731, 1000732}, c.cloudNodes["us-east-1"].AtlasProbeIDs)

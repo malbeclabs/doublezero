@@ -84,7 +84,8 @@ type Collector struct {
 	getLocationsFunc func(ctx context.Context) []collector.LocationMatch
 	env              string
 	probeToLocation  map[int]string    // Maps probe IDs to location codes
-	mu               sync.RWMutex      // Protects probeToLocation map
+	cloudByLocation  map[string]string // Maps location codes to cloud names; empty outside cloud export
+	mu               sync.RWMutex      // Protects probeToLocation and cloudByLocation
 	measurementState *MeasurementState // Shared state; initialized in Run()
 	cloudMode        bool              // Measures cloud regions from cloudNodes instead of exchanges
 	cloudNodes       map[string]CloudNode
@@ -629,7 +630,7 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 				sourceLocation = loc
 			}
 
-			records = append(records, exporter.Record{
+			record := exporter.Record{
 				DataProvider: exporter.DataProviderNameRIPEAtlas,
 				// Source and target are swapped here to match alphabetical ordering expected by downstream systems.
 				// We alphabetically sort the measurements by exchange code, but from the perspective of the measurement
@@ -638,9 +639,50 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 				TargetExchangeCode: sourceLocation,
 				Timestamp:          timestamp,
 				RTT:                latency,
-			})
+			}
+
+			if c.cloudExportEnabled() {
+				sent, received := parsePacketCountsFromResult(result)
+				cloudInfo, ok := c.cloudInfoFor(targetLocation, sourceLocation, probeID, sent, received)
+				if !ok {
+					continue
+				}
+				record.Cloud = cloudInfo
+			}
+
+			records = append(records, record)
 
 			processedResults++
+		} else if c.cloudExportEnabled() {
+			// A result that got no reply is exported with a zero RTT, which keeps total loss
+			// distinguishable from a pair that was never measured.
+			sourceLocation, ok := probeToLocationLocal[probeID]
+			if !ok {
+				continue
+			}
+
+			sent, received := parsePacketCountsFromResult(result)
+			if sent == 0 || received > 0 || timestamp.IsZero() {
+				continue
+			}
+
+			cloudInfo, ok := c.cloudInfoFor(targetLocation, sourceLocation, probeID, sent, received)
+			if !ok {
+				continue
+			}
+
+			if timestamp.After(maxTimestamp) {
+				maxTimestamp = timestamp
+			}
+
+			records = append(records, exporter.Record{
+				DataProvider:       exporter.DataProviderNameRIPEAtlas,
+				SourceExchangeCode: targetLocation,
+				TargetExchangeCode: sourceLocation,
+				Timestamp:          timestamp,
+				RTT:                0,
+				Cloud:              cloudInfo,
+			})
 		}
 	}
 

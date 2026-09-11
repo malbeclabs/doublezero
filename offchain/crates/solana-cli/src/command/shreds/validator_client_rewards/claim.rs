@@ -7,7 +7,7 @@ use doublezero_solana_client_tools::{
     account::zero_copy::ZeroCopyAccountOwnedData,
     payer::{TransactionOutcome, Wallet},
     rpc::{SolanaConnection, try_fetch_multiple_accounts},
-    squads::{OptionalSquadsArgs, try_write_vault_transaction, vault_transaction_payload_budget},
+    squads::{OptionalSquadsArgs, try_write_vault_transaction, vault_transaction_packing_budget},
     transaction::MAX_TRANSACTION_SIZE,
 };
 use doublezero_solana_sdk::{
@@ -98,6 +98,46 @@ pub(crate) fn validate_manager(
     );
     Ok(())
 }
+
+/// Validate a destination token account that already exists, returning its authority.
+/// The vault path passes `vault_key`, which requires the vault to be that authority: its
+/// approvers see a base58 blob, so a destination the multisig does not control is a
+/// destination nothing in the payload reveals. The direct path passes `None`, since an
+/// operator signing with their own key is directing their own rewards.
+pub(crate) fn validate_existing_destination(
+    destination_key: &Pubkey,
+    destination_account: &Account,
+    mint: &Pubkey,
+    vault_key: Option<&Pubkey>,
+) -> Result<Pubkey> {
+    ensure!(
+        destination_account.owner == spl_token_interface::ID,
+        "destination {destination_key} is not an SPL token account (owner = {})",
+        destination_account.owner
+    );
+    let destination_token = spl_token_interface::state::Account::unpack(&destination_account.data)
+        .with_context(|| format!("unpacking destination token account {destination_key}"))?;
+    ensure!(
+        destination_token.mint == *mint,
+        "destination {destination_key} mint mismatch: expected {mint}, found {}",
+        destination_token.mint
+    );
+    if let Some(vault_key) = vault_key {
+        ensure!(
+            destination_token.owner == *vault_key,
+            "destination {destination_key} authority is {}, not the vault {vault_key}. \
+             Approvers see only the base58 payload, so a claim into an account the multisig \
+             does not control is invisible to them. Drop --destination-token-account to claim \
+             into the vault's associated token account",
+            destination_token.owner
+        );
+    }
+    Ok(destination_token.owner)
+}
+
+// Token transfer, close, and state decrement, per holding a claim instruction
+// carries.
+const CLAIM_COMPUTE_UNITS_PER_HOLDING: u32 = 30_000;
 
 // How far back (in subscription epochs) auto-discovery probes from the current
 // epoch. Holdings older than the on-chain abandonment window are swept, so this
@@ -304,25 +344,17 @@ impl ClaimCommand {
         let (destination_authority_key, create_destination_ix) = match (destination_account, &actor)
         {
             (Some(destination_account), _) => {
-                if destination_account.owner != spl_token_interface::ID {
-                    bail!(
-                        "destination {destination_key} is not an SPL token account (owner = {})",
-                        destination_account.owner
-                    );
-                }
-                let destination_token =
-                    spl_token_interface::state::Account::unpack(&destination_account.data)
-                        .with_context(|| {
-                            format!("unpacking destination token account {destination_key}")
-                        })?;
-                if destination_token.mint != self.rewards_token_mint {
-                    bail!(
-                        "destination {destination_key} mint mismatch: expected {}, found {}",
-                        self.rewards_token_mint,
-                        destination_token.mint
-                    );
-                }
-                (destination_token.owner, None)
+                let vault_key = match &actor {
+                    Actor::Wallet(_) => None,
+                    Actor::Vault { vault_key, .. } => Some(vault_key),
+                };
+                let destination_authority_key = validate_existing_destination(
+                    &destination_key,
+                    &destination_account,
+                    &self.rewards_token_mint,
+                    vault_key,
+                )?;
+                (destination_authority_key, None)
             }
             (None, Actor::Wallet(_)) => bail!(
                 "destination token account {destination_key} does not exist. \
@@ -330,8 +362,12 @@ impl ClaimCommand {
                 self.rewards_token_mint
             ),
             (None, Actor::Vault { vault_key, .. }) => {
+                // Compared against the derived address rather than against whether the
+                // flag was given, so naming the vault's own associated token account
+                // explicitly reaches the same place as leaving the flag off.
                 ensure!(
-                    self.destination_token_account.is_none(),
+                    destination_key
+                        == get_associated_token_address(vault_key, &self.rewards_token_mint),
                     "destination token account {destination_key} does not exist, and this \
                          command only creates the vault's own associated token account. Create \
                          it first, or drop --destination-token-account to claim into the vault's \
@@ -349,6 +385,14 @@ impl ClaimCommand {
             }
         };
 
+        // What a payload's own create-ATA instruction costs at execute, for the budget
+        // note the vault output prints. `None` where no payload creates the destination.
+        let create_destination_units = create_destination_ix.as_ref().map(|_| {
+            Wallet::ata_address_and_create_compute_units(&actor_key, &self.rewards_token_mint).1
+        });
+
+        // Built unconditionally, and prepended only by the direct path. See
+        // `vault_instructions` for why a vault payload does not carry it.
         let check_cli_version_ix = super::super::build_check_cli_version_instruction()?;
         let build_claim_ix = |batch: &[HoldingToClaim]| {
             build_claim_instruction(
@@ -378,13 +422,12 @@ impl ClaimCommand {
                 Ok(wallet.try_transaction_size(&instructions)? <= MAX_TRANSACTION_SIZE)
             })?,
             Actor::Vault { vault_key, .. } => pack_holdings(&holdings, |batch| {
-                let instructions = vault_instructions(
-                    &check_cli_version_ix,
-                    create_destination_ix.as_ref(),
-                    build_claim_ix(batch)?,
-                );
+                let instructions =
+                    vault_instructions(create_destination_ix.as_ref(), build_claim_ix(batch)?);
                 let payload = Message::new(&instructions, Some(vault_key)).serialize();
-                Ok(payload.len() <= vault_transaction_payload_budget(instructions.len()))
+                // The packing budget, not the encoder's hard budget, so a memo typed
+                // into the import dialog still fits.
+                Ok(payload.len() <= vault_transaction_packing_budget(instructions.len()))
             })?,
         };
 
@@ -393,24 +436,18 @@ impl ClaimCommand {
             .map_or(batches.len(), |max| max.get().min(batches.len()));
         let (emitted, withheld) = batches.split_at(emitted_count);
 
-        let total_holdings = holdings.len();
-        let total_pre_balance = holdings.iter().fold(0u64, |total, holding| {
-            total.saturating_add(holding.pre_balance)
-        });
+        // Counted over `emitted`, not over every holding discovered. With
+        // --max-transactions the rest are not claimed by this invocation, and an
+        // operator reconciling a claim reads these numbers as what moved.
+        // `write_withheld_note` accounts for the remainder.
+        let (emitted_holdings, emitted_pre_balance) = emitted_totals(emitted);
 
         writeln!(
             out,
             "Shred subscription - Claim Validator Client Rewards \
-             (client_id={}, mint={}, holdings={total_holdings}, transactions={emitted_count})",
+             (client_id={}, mint={}, holdings={emitted_holdings}, transactions={emitted_count})",
             self.client_id, self.rewards_token_mint,
         )?;
-        if !withheld.is_empty() {
-            writeln!(
-                out,
-                "  {} more transaction(s) withheld by --max-transactions",
-                withheld.len()
-            )?;
-        }
 
         match &actor {
             Actor::Wallet(wallet) => {
@@ -425,8 +462,8 @@ impl ClaimCommand {
                     emitted,
                     &check_cli_version_ix,
                     &build_claim_ix,
-                    total_holdings,
-                    total_pre_balance,
+                    emitted_holdings,
+                    emitted_pre_balance,
                     &validator_client_rewards_key,
                 )
                 .await?;
@@ -459,13 +496,17 @@ impl ClaimCommand {
                     "Nothing was signed or sent. --keypair, --fee-payer, --dry-run, \
                      --with-compute-unit-price and --verbose have no effect with --multisig."
                 )?;
+                writeln!(
+                    out,
+                    "A payload carries no version check and no compute budget: it executes \
+                     days after it is written, and Squads sets the budget on its own execute \
+                     transaction. Check that budget against the compute units each payload \
+                     reports below."
+                )?;
 
                 for (index, batch) in emitted.iter().enumerate() {
-                    let instructions = vault_instructions(
-                        &check_cli_version_ix,
-                        create_destination_ix.as_ref(),
-                        build_claim_ix(batch)?,
-                    );
+                    let instructions =
+                        vault_instructions(create_destination_ix.as_ref(), build_claim_ix(batch)?);
                     let batch_pre_balance = batch.iter().fold(0u64, |total, holding| {
                         total.saturating_add(holding.pre_balance)
                     });
@@ -477,9 +518,14 @@ impl ClaimCommand {
                         out,
                         "  holdings        : {} (epochs {})",
                         batch.len(),
-                        epoch_range(batch)
+                        epoch_list(batch)
                     )?;
                     writeln!(out, "  pre-claim total : {batch_pre_balance}")?;
+                    writeln!(
+                        out,
+                        "  compute units   : {} needed at execute",
+                        vault_compute_units(batch.len(), create_destination_units)
+                    )?;
                     try_write_vault_transaction(out, connection, vault_key, &instructions)?;
                 }
 
@@ -492,7 +538,7 @@ impl ClaimCommand {
                         "  {}: {} holding(s), epochs {}",
                         index + 1,
                         batch.len(),
-                        epoch_range(batch)
+                        epoch_list(batch)
                     )?;
                 }
                 writeln!(
@@ -517,8 +563,8 @@ async fn execute_direct(
     batches: &[&[HoldingToClaim]],
     check_cli_version_ix: &Instruction,
     build_claim_ix: &impl Fn(&[HoldingToClaim]) -> Result<Instruction>,
-    total_holdings: usize,
-    total_pre_balance: u64,
+    emitted_holdings: usize,
+    emitted_pre_balance: u64,
     validator_client_rewards_key: &Pubkey,
 ) -> Result<()> {
     let batch_count = batches.len();
@@ -526,7 +572,7 @@ async fn execute_direct(
     // Batches are independent, so a later failure does not undo an earlier
     // executed batch.
     let mut executed_holdings = 0;
-    let mut last_executed = false;
+    let mut any_executed = false;
     for (batch_index, batch) in batches.iter().enumerate() {
         let instructions = direct_instructions(
             check_cli_version_ix,
@@ -541,7 +587,7 @@ async fn execute_direct(
                 "\nTransaction {}/{batch_count}: {} holding(s), epochs {}",
                 batch_index + 1,
                 batch.len(),
-                epoch_range(batch),
+                epoch_list(batch),
             )?;
         }
 
@@ -550,7 +596,7 @@ async fn execute_direct(
 
         if let TransactionOutcome::Executed(tx_sig) = tx_outcome {
             executed_holdings += batch.len();
-            last_executed = true;
+            any_executed = true;
             writeln!(out, "Claimed: {tx_sig}")?;
             // The on-chain handler transfers the full balance of each
             // holding, but these balances were read pre-tx. A top-up
@@ -568,10 +614,10 @@ async fn execute_direct(
         }
     }
 
-    if last_executed {
+    if any_executed {
         writeln!(
             out,
-            "\nPre-claim total: {total_pre_balance} ({executed_holdings}/{total_holdings} holding(s) claimed across {batch_count} transaction(s))."
+            "\nPre-claim total: {emitted_pre_balance} ({executed_holdings}/{emitted_holdings} holding(s) claimed across {batch_count} transaction(s))."
         )?;
 
         // Re-fetch the validator client rewards account to report the
@@ -642,9 +688,9 @@ fn direct_instructions(
     holding_count: usize,
     compute_unit_price_ix: Option<&Instruction>,
 ) -> Vec<Instruction> {
-    // ~30k CU per holding (token transfer + close + state decrement), plus
-    // the check-cli-version instruction.
-    let compute_unit_limit = 30_000u32.saturating_mul(holding_count as u32 + 1);
+    // One holding's worth on top of the count, for the check-cli-version instruction.
+    let compute_unit_limit =
+        CLAIM_COMPUTE_UNITS_PER_HOLDING.saturating_mul(holding_count as u32 + 1);
     let mut instructions = vec![
         check_cli_version_ix.clone(),
         claim_ix,
@@ -654,19 +700,35 @@ fn direct_instructions(
     instructions
 }
 
-/// The payload a vault imports: the version check, the destination create when
-/// the account is missing, and the claim. No compute budget instructions, since
-/// Squads sets the budget on its own execute transaction and a budget
-/// instruction reached through a CPI is a no-op that only burns compute units.
+/// The payload a vault imports: the destination create when the account is
+/// missing, and the claim.
+///
+/// No CheckCliVersion. It is evaluated at execute, days after this payload is
+/// stamped, so it says nothing about the version that built the payload and a
+/// floor raised while approvals are collected would revert every payload
+/// outstanding. The direct path, which sends within milliseconds of building,
+/// keeps it.
+///
+/// No compute budget instructions either, since Squads sets the budget on its
+/// own execute transaction and a budget instruction reached through a CPI is a
+/// no-op that only burns compute units.
 fn vault_instructions(
-    check_cli_version_ix: &Instruction,
     create_destination_ix: Option<&Instruction>,
     claim_ix: Instruction,
 ) -> Vec<Instruction> {
-    let mut instructions = vec![check_cli_version_ix.clone()];
+    let mut instructions = Vec::with_capacity(2);
     instructions.extend(create_destination_ix.cloned());
     instructions.push(claim_ix);
     instructions
+}
+
+/// Compute units the vault's execute transaction needs for `instructions`, which
+/// carry no budget of their own. Same ~30k per holding the direct path prices,
+/// plus the destination create where a payload carries one.
+fn vault_compute_units(holding_count: usize, create_destination_units: Option<u32>) -> u32 {
+    CLAIM_COMPUTE_UNITS_PER_HOLDING
+        .saturating_mul(holding_count as u32)
+        .saturating_add(create_destination_units.unwrap_or_default())
 }
 
 /// Split epoch-ordered holdings into consecutive batches, growing each one
@@ -693,14 +755,51 @@ fn pack_holdings(
     Ok(batches)
 }
 
-fn epoch_range(batch: &[HoldingToClaim]) -> String {
-    match (batch.first(), batch.last()) {
-        (Some(first), Some(last)) if first.epoch != last.epoch => {
-            format!("{}..={}", first.epoch, last.epoch)
-        }
-        (Some(first), _) => first.epoch.to_string(),
-        (None, _) => String::from("none"),
+/// The epochs a batch covers, collapsing only runs that are genuinely
+/// consecutive: `700, 705..=707`. Discovery probes a window and keeps whatever
+/// exists, so a batch is usually sparse, and on the vault path this string is
+/// the only place a human copying payloads sees which epochs are in one.
+fn epoch_list(batch: &[HoldingToClaim]) -> String {
+    if batch.is_empty() {
+        return String::from("none");
     }
+    let mut runs = Vec::new();
+    let mut start = batch[0].epoch;
+    let mut end = start;
+    for holding in &batch[1..] {
+        if holding.epoch == end + 1 {
+            end = holding.epoch;
+            continue;
+        }
+        runs.push((start, end));
+        start = holding.epoch;
+        end = start;
+    }
+    runs.push((start, end));
+
+    runs.into_iter()
+        .map(|(start, end)| {
+            if start == end {
+                start.to_string()
+            } else {
+                format!("{start}..={end}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+/// What this invocation claims: the holdings its emitted batches cover and their
+/// pre-claim balance. Folded over `emitted` and never over every holding
+/// discovered, since with --max-transactions the rest are left for a later run
+/// and `write_withheld_note` accounts for them.
+fn emitted_totals(emitted: &[&[HoldingToClaim]]) -> (usize, u64) {
+    emitted
+        .iter()
+        .flat_map(|batch| batch.iter())
+        .fold((0, 0), |(count, total), holding| {
+            (count + 1, total.saturating_add(holding.pre_balance))
+        })
 }
 
 fn write_withheld_note(out: &mut impl Write, withheld: &[&[HoldingToClaim]]) -> Result<()> {
@@ -708,18 +807,20 @@ fn write_withheld_note(out: &mut impl Write, withheld: &[&[HoldingToClaim]]) -> 
         return Ok(());
     }
     let holding_count = withheld.iter().map(|batch| batch.len()).sum::<usize>();
+    // The exact epochs, space separated, so the line pastes straight after
+    // --subscription-epoch. A collapsed range would name epochs that hold
+    // nothing, which `validate_explicit_holdings` then warns about and skips.
     let epochs = withheld
         .iter()
-        .flat_map(|batch| batch.iter().map(|holding| holding.epoch))
-        .collect::<Vec<_>>();
+        .flat_map(|batch| batch.iter().map(|holding| holding.epoch.to_string()))
+        .collect::<Vec<_>>()
+        .join(" ");
     writeln!(
         out,
-        "\nWithheld {} transaction(s) covering {holding_count} holding(s) (epochs {}..={}) \
-         because of --max-transactions. Re-run this command once the transactions above have \
-         executed, or name those epochs with --subscription-epoch.",
+        "\nWithheld {} transaction(s) covering {holding_count} holding(s) because of \
+         --max-transactions. Re-run this command once the transactions above have executed, \
+         or claim them directly with --subscription-epoch {epochs}",
         withheld.len(),
-        epochs[0],
-        epochs[epochs.len() - 1],
     )?;
     Ok(())
 }
@@ -826,7 +927,11 @@ async fn validate_explicit_holdings(
 mod tests {
     use clap::Parser;
     use doublezero_solana_client_tools::{
-        rpc::NetworkEnvironment, squads::try_encode_vault_transaction,
+        rpc::NetworkEnvironment,
+        squads::{
+            SQUADS_IMPORT_MEMO_RESERVE_BYTES, try_encode_vault_transaction,
+            vault_transaction_payload_budget,
+        },
     };
     use solana_sdk::signature::Keypair;
 
@@ -849,6 +954,18 @@ mod tests {
         (0..count)
             .map(|index| HoldingToClaim {
                 epoch: 700 + index as u64,
+                bump_seed: 255,
+                holding_pda: Pubkey::new_unique(),
+                pre_balance: 10,
+            })
+            .collect()
+    }
+
+    fn sparse_holdings(epochs: &[u64]) -> Vec<HoldingToClaim> {
+        epochs
+            .iter()
+            .map(|&epoch| HoldingToClaim {
+                epoch,
                 bump_seed: 255,
                 holding_pda: Pubkey::new_unique(),
                 pre_balance: 10,
@@ -916,11 +1033,7 @@ mod tests {
             batch: &[HoldingToClaim],
             create_destination_ix: Option<&Instruction>,
         ) -> Vec<Instruction> {
-            vault_instructions(
-                &self.check_cli_version_ix,
-                create_destination_ix,
-                self.claim_ix(batch),
-            )
+            vault_instructions(create_destination_ix, self.claim_ix(batch))
         }
     }
 
@@ -1088,35 +1201,53 @@ mod tests {
         let batches = pack_holdings(holdings, |batch| {
             let instructions = fixture.vault(batch, create_destination_ix);
             let payload = Message::new(&instructions, Some(vault_key)).serialize();
-            Ok(payload.len() <= vault_transaction_payload_budget(instructions.len()))
+            Ok(payload.len() <= vault_transaction_packing_budget(instructions.len()))
         })
         .unwrap();
 
-        // The checked encoder takes every batch and refuses the first with one
-        // more holding, so the trial and the encoder agree.
+        // The checked encoder takes every batch, and takes it with 32 bytes of
+        // memo spent out of the payload's headroom, which is the room the
+        // packing budget exists to leave. No payload carries a version check.
         for batch in &batches {
             let instructions = fixture.vault(batch, create_destination_ix);
             try_encode_vault_transaction(vault_key, &instructions).unwrap();
-            assert_eq!(instructions[0], fixture.check_cli_version_ix);
-            if let Some(create_destination_ix) = create_destination_ix {
-                assert_eq!(&instructions[1], create_destination_ix);
+            assert!(!instructions.contains(&fixture.check_cli_version_ix));
+            match create_destination_ix {
+                Some(create_destination_ix) => {
+                    assert_eq!(&instructions[0], create_destination_ix);
+                    assert_eq!(instructions.len(), 2);
+                }
+                None => assert_eq!(instructions.len(), 1),
             }
+
+            let payload = Message::new(&instructions, Some(vault_key)).serialize();
+            let budget = vault_transaction_payload_budget(instructions.len());
+            assert!(
+                payload.len() + SQUADS_IMPORT_MEMO_RESERVE_BYTES <= budget,
+                "{} of {budget}",
+                payload.len()
+            );
         }
+
+        // One more holding is over the packing budget. The encoder still takes
+        // it, because it checks the hard budget, which is what leaves the memo
+        // no room.
         let overfull = fixture.vault(&holdings[..batches[0].len() + 1], create_destination_ix);
-        assert!(try_encode_vault_transaction(vault_key, &overfull).is_err());
+        let payload = Message::new(&overfull, Some(vault_key)).serialize();
+        assert!(payload.len() > vault_transaction_packing_budget(overfull.len()));
 
         batches[0].len()
     }
 
     #[test]
-    fn test_vault_payload_takes_12_holdings_into_an_existing_destination() {
+    fn test_vault_payload_takes_11_holdings_into_an_existing_destination() {
         let vault_key = Pubkey::new_unique();
         let fixture = Fixture::new(vault_key);
-        assert_eq!(vault_batches(&vault_key, &fixture, &holdings(91), None), 12);
+        assert_eq!(vault_batches(&vault_key, &fixture, &holdings(91), None), 11);
     }
 
     #[test]
-    fn test_vault_payload_takes_10_holdings_when_every_payload_creates_the_destination() {
+    fn test_vault_payload_takes_9_holdings_when_every_payload_creates_the_destination() {
         let vault_key = Pubkey::new_unique();
         let mut fixture = Fixture::new(vault_key);
         fixture.destination_key = get_associated_token_address(&vault_key, &fixture.mint_key);
@@ -1133,13 +1264,16 @@ mod tests {
                 &holdings(91),
                 Some(&create_destination_ix)
             ),
-            10
+            9
         );
     }
 
     #[test]
-    fn test_withheld_note_names_the_count_and_the_epochs() {
-        let holdings = holdings(5);
+    fn test_withheld_note_names_the_count_and_the_exact_epochs() {
+        // Sparse, because the note tells the operator to paste these epochs after
+        // --subscription-epoch and an expanded range would name epochs that hold
+        // nothing.
+        let holdings = sparse_holdings(&[700, 705, 706, 712, 720]);
         let batches = pack_holdings(&holdings, |batch| Ok(batch.len() <= 2)).unwrap();
         let (_, withheld) = batches.split_at(1);
 
@@ -1147,9 +1281,10 @@ mod tests {
         write_withheld_note(&mut out, withheld).unwrap();
         let note = String::from_utf8(out).unwrap();
         assert!(
-            note.contains("Withheld 2 transaction(s) covering 3 holding(s) (epochs 702..=704)"),
+            note.contains("Withheld 2 transaction(s) covering 3 holding(s)"),
             "{note}"
         );
+        assert!(note.contains("--subscription-epoch 706 712 720"), "{note}");
 
         let mut out = Vec::new();
         write_withheld_note(&mut out, &[]).unwrap();
@@ -1157,9 +1292,126 @@ mod tests {
     }
 
     #[test]
-    fn test_epoch_range_collapses_a_single_epoch() {
+    fn test_epoch_list_collapses_only_consecutive_runs() {
         let holdings = holdings(3);
-        assert_eq!(epoch_range(&holdings), "700..=702");
-        assert_eq!(epoch_range(&holdings[..1]), "700");
+        assert_eq!(epoch_list(&holdings), "700..=702");
+        assert_eq!(epoch_list(&holdings[..1]), "700");
+        assert_eq!(epoch_list(&[]), "none");
+
+        // Discovery keeps whatever exists in the window, so a batch is usually
+        // sparse and a plain first..=last would name epochs holding nothing.
+        let sparse = sparse_holdings(&[700, 705, 706, 707, 712]);
+        assert_eq!(epoch_list(&sparse), "700, 705..=707, 712");
+    }
+
+    #[test]
+    fn test_emitted_totals_cover_only_the_emitted_batches() {
+        let holdings = holdings(5);
+        let batches = pack_holdings(&holdings, |batch| Ok(batch.len() <= 2)).unwrap();
+        let (emitted, withheld) = batches.split_at(1);
+
+        // Two holdings at 10 each, and the three withheld ones are not in it.
+        assert_eq!(emitted_totals(emitted), (2, 20));
+        assert_eq!(emitted_totals(withheld), (3, 30));
+        assert_eq!(emitted_totals(&batches), (5, 50));
+        assert_eq!(emitted_totals(&[]), (0, 0));
+    }
+
+    fn token_account(owner_program: Pubkey, authority_key: Pubkey, mint_key: Pubkey) -> Account {
+        let mut data = vec![0; spl_token_interface::state::Account::LEN];
+        spl_token_interface::state::Account {
+            mint: mint_key,
+            owner: authority_key,
+            state: spl_token_interface::state::AccountState::Initialized,
+            ..Default::default()
+        }
+        .pack_into_slice(&mut data);
+        Account {
+            lamports: 1,
+            data,
+            owner: owner_program,
+            executable: false,
+            rent_epoch: 0,
+        }
+    }
+
+    #[test]
+    fn test_validate_existing_destination_refuses_an_authority_that_is_not_the_vault() {
+        let vault_key = Pubkey::new_unique();
+        let mint_key = Pubkey::new_unique();
+        let destination_key = Pubkey::new_unique();
+        let stranger_key = Pubkey::new_unique();
+        let account = token_account(spl_token_interface::ID, stranger_key, mint_key);
+
+        let err =
+            validate_existing_destination(&destination_key, &account, &mint_key, Some(&vault_key))
+                .unwrap_err()
+                .to_string();
+        assert!(err.contains(&stranger_key.to_string()), "{err}");
+        assert!(err.contains(&vault_key.to_string()), "{err}");
+
+        // The vault's own account passes, and the direct path, which passes no
+        // vault, is free to direct rewards wherever its signer chooses.
+        let vault_owned = token_account(spl_token_interface::ID, vault_key, mint_key);
+        assert_eq!(
+            validate_existing_destination(
+                &destination_key,
+                &vault_owned,
+                &mint_key,
+                Some(&vault_key)
+            )
+            .unwrap(),
+            vault_key
+        );
+        assert_eq!(
+            validate_existing_destination(&destination_key, &account, &mint_key, None).unwrap(),
+            stranger_key
+        );
+    }
+
+    #[test]
+    fn test_validate_existing_destination_refuses_a_foreign_owner_and_mint() {
+        let mint_key = Pubkey::new_unique();
+        let destination_key = Pubkey::new_unique();
+        let authority_key = Pubkey::new_unique();
+
+        let foreign_program = token_account(Pubkey::new_unique(), authority_key, mint_key);
+        assert!(
+            validate_existing_destination(&destination_key, &foreign_program, &mint_key, None)
+                .unwrap_err()
+                .to_string()
+                .contains("not an SPL token account")
+        );
+
+        let other_mint =
+            token_account(spl_token_interface::ID, authority_key, Pubkey::new_unique());
+        assert!(
+            validate_existing_destination(&destination_key, &other_mint, &mint_key, None)
+                .unwrap_err()
+                .to_string()
+                .contains("mint mismatch")
+        );
+    }
+
+    #[test]
+    fn test_naming_the_vault_associated_token_account_reaches_the_default_destination() {
+        // The missing-destination branch compares the resolved address against the
+        // derived one, so naming it explicitly is the same request as leaving the
+        // flag off rather than one the command refuses.
+        let vault_key = Pubkey::new_unique();
+        let mint_key = Pubkey::new_unique();
+        let derived = get_associated_token_address(&vault_key, &mint_key);
+        assert_eq!(
+            resolve_destination(&vault_key, &mint_key, Some(derived)),
+            resolve_destination(&vault_key, &mint_key, None)
+        );
+    }
+
+    #[test]
+    fn test_vault_compute_units_price_the_claim_and_the_destination_create() {
+        assert_eq!(vault_compute_units(11, None), 330_000);
+        // The create is added whole, whatever a payload's own derivation costs.
+        assert_eq!(vault_compute_units(11, Some(26_500)), 356_500);
+        assert_eq!(vault_compute_units(0, None), 0);
     }
 }

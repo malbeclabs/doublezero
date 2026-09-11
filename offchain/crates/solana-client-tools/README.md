@@ -139,10 +139,18 @@ as its `transaction_message`, bundled with the compute budget pair, a
 payload all the way to the approvers. A payload that overruns it is refused at import,
 before any approval exists.
 
-| Function                                              | Purpose                                  |
-|-------------------------------------------------------|------------------------------------------|
-| `vault_transaction_payload_budget(instruction_count)` | Bytes the payload's message may occupy.  |
-| `try_encode_vault_transaction(vault, instructions)`   | Encodes, or refuses an unusable payload. |
+| Function                                              | Purpose                                    |
+|-------------------------------------------------------|--------------------------------------------|
+| `vault_transaction_packing_budget(instruction_count)` | Bytes a packer should aim at.              |
+| `vault_transaction_payload_budget(instruction_count)` | Bytes the payload's message may occupy.    |
+| `try_encode_vault_transaction(vault, instructions)`   | Encodes, or refuses an unusable payload.   |
+
+A caller packing instructions into a payload aims at the packing budget, not the
+payload budget. The payload budget is the hard ceiling the encoder enforces, and a
+payload filled to it imports only so long as nobody types a memo. The packing budget
+is that ceiling less `SQUADS_IMPORT_MEMO_RESERVE_BYTES`, an allowance for a memo of
+up to 32 bytes on the create instruction and again on the approval. Nothing bounds the
+text, so a longer memo is still on the operator who types it.
 
 The budget governs the serialized legacy message, meaning
 `Message::serialize().len()`, not the base58 string the encoder returns, which is

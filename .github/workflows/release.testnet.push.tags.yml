@@ -69,6 +69,9 @@ jobs:
           private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
           owner: malbeclabs
           repositories: doublezero
+          # Scope the token down to what checkout and the tag push need, rather
+          # than inheriting every permission the release-bot App holds here.
+          permission-contents: write
 
       - name: Checkout repository
         uses: actions/checkout@v4

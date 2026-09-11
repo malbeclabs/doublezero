@@ -247,3 +247,84 @@ func TestInternetLatency_RIPEAtlas_TargetAddress_EmptyStoredValueIsNotAChange(t 
 
 	require.Empty(t, stoppedMeasurements, "an unset stored target address must not force a recreation")
 }
+
+func TestInternetLatency_RIPEAtlas_TargetAddress_ProbeChangeStillRecreatesMeasurement(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	var createdMeasurements []MeasurementRequest
+	var stoppedMeasurements []int
+	var mu sync.Mutex
+
+	existing := []Measurement{
+		{
+			ID:          1001,
+			Description: "DoubleZero [testnet] to ams probe 301",
+			Target:      "3.3.3.2",
+			Status: struct {
+				Name string `json:"name"`
+				ID   int    `json:"id"`
+			}{Name: "Ongoing"},
+			Type: "ping",
+		},
+	}
+
+	mockClient := &MockClient{
+		GetAllMeasurementsFunc: func(ctx context.Context, tag string) ([]Measurement, error) {
+			return existing, nil
+		},
+		CreateMeasurementFunc: func(ctx context.Context, request MeasurementRequest) (*MeasurementResponse, error) {
+			mu.Lock()
+			createdMeasurements = append(createdMeasurements, request)
+			measurementID := 5000 + len(createdMeasurements)
+			mu.Unlock()
+			return &MeasurementResponse{Measurements: []int{measurementID}}, nil
+		},
+		StopMeasurementFunc: func(ctx context.Context, measurementID int) error {
+			mu.Lock()
+			stoppedMeasurements = append(stoppedMeasurements, measurementID)
+			mu.Unlock()
+			return nil
+		},
+		GetMeasurementResultsIncrementalFunc: func(ctx context.Context, measurementID int, startTimestamp int64) ([]any, error) {
+			return []any{}, nil
+		},
+	}
+
+	stateDir := t.TempDir()
+	c := &Collector{client: mockClient, log: log, env: "testnet", getLocationsFunc: func(ctx context.Context) []collector.LocationMatch {
+		return []collector.LocationMatch{}
+	}}
+
+	// State written before the address field existed, so only the target probe can differ:
+	// 301 is stored, 300 is the nearest responsive probe for ams.
+	c.measurementState = NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
+	c.measurementState.SetMetadata(1001, MeasurementMeta{
+		TargetLocation: "ams",
+		TargetProbeID:  301,
+		Sources: []SourceProbeMeta{
+			{LocationCode: "lon", ProbeID: 200, LastResponseAt: time.Now().Unix()},
+			{LocationCode: "nyc", ProbeID: 100, LastResponseAt: time.Now().Unix()},
+		},
+		CreatedAt:    time.Now().Unix() - 60,
+		LastExportAt: time.Now().Unix(),
+	})
+
+	err := c.configureMeasurements(t.Context(), exchangeTestLocations(), false, 1, stateDir, 10*time.Minute)
+	require.NoError(t, err)
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	require.Contains(t, stoppedMeasurements, 1001, "a changed target probe must recreate the measurement")
+
+	var amsCreated []string
+	for _, m := range createdMeasurements {
+		if m.Definitions[0].Target == "3.3.3.1" {
+			amsCreated = append(amsCreated, m.Definitions[0].Description)
+		}
+	}
+	require.Equal(t, []string{"DoubleZero [testnet] to ams probe 300"}, amsCreated,
+		"ams is recreated exactly once, against its current probe")
+}

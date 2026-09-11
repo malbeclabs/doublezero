@@ -267,6 +267,8 @@ pub enum DoubleZeroError {
     FeedNotRetiring, // variant 127
     #[error("The retirement notice has not elapsed")]
     RetirementNoticeNotElapsed, // variant 128
+    #[error("A retiring feed must finish its notice before it can be deleted")]
+    RetiringFeedCannotBeDeleted, // variant 129
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -401,6 +403,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::FeedNotRetirable => ProgramError::Custom(126),
             DoubleZeroError::FeedNotRetiring => ProgramError::Custom(127),
             DoubleZeroError::RetirementNoticeNotElapsed => ProgramError::Custom(128),
+            DoubleZeroError::RetiringFeedCannotBeDeleted => ProgramError::Custom(129),
         }
     }
 }
@@ -536,6 +539,7 @@ impl From<u32> for DoubleZeroError {
             126 => DoubleZeroError::FeedNotRetirable,
             127 => DoubleZeroError::FeedNotRetiring,
             128 => DoubleZeroError::RetirementNoticeNotElapsed,
+            129 => DoubleZeroError::RetiringFeedCannotBeDeleted,
             _ => DoubleZeroError::Custom(e),
         }
     }

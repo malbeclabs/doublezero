@@ -2,7 +2,11 @@ use crate::{
     authorize::authorize,
     error::DoubleZeroError,
     serializer::try_acc_close,
-    state::{feed::Feed, globalstate::GlobalState, permission::permission_flags},
+    state::{
+        feed::{Feed, FeedStatus},
+        globalstate::GlobalState,
+        permission::permission_flags,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -63,6 +67,17 @@ pub fn process_delete_feed(
             feed.builder
         );
         return Err(DoubleZeroError::StakedFeedCannotBeDeleted.into());
+    }
+
+    // A feed under notice is not a catalog entry to drop either. Closing it here would end the
+    // thirty days seat holders were promised, and the promise is the only thing `Retiring` means.
+    // Finalize it first: `Retired` deletes like anything else.
+    if feed.status == FeedStatus::Retiring {
+        msg!(
+            "Feed {} is retiring and cannot be deleted until its notice elapses",
+            feed_account.key
+        );
+        return Err(DoubleZeroError::RetiringFeedCannotBeDeleted.into());
     }
 
     msg!("Deleted feed: {}", feed_account.key);

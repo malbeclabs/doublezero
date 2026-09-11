@@ -10,6 +10,7 @@ use doublezero_serviceability::{
     processors::{
         feed::{
             create::FeedCreateArgs,
+            delete::FeedDeleteArgs,
             finalize_retirement::FeedFinalizeRetirementArgs,
             halt::FeedHaltArgs,
             resume::FeedResumeArgs,
@@ -1034,4 +1035,92 @@ async fn test_retired_is_terminal() {
     )
     .await;
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::FeedNotRetiring));
+}
+
+/// Deleting a feed cannot shortcut its notice.
+///
+/// `DeleteFeed` already refuses a staked feed, so this is about the catalog ones. Without the
+/// guard an authority retires a feed, tells its holders they have thirty days, and closes the
+/// account the same minute. The notice is the only thing `Retiring` means, so an instruction that
+/// ends it early empties the state.
+#[tokio::test]
+async fn test_a_retiring_feed_cannot_be_deleted_before_its_notice_ends() {
+    let (mut banks_client, program_id, payer, globalstate, feed) = catalog_feed("nodelete").await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RetireFeed(FeedRetireArgs {}),
+        feed_accounts(feed, globalstate),
+        &payer,
+    )
+    .await;
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::DeleteFeed(FeedDeleteArgs {}),
+        feed_accounts(feed, globalstate),
+        &payer,
+        &[],
+    )
+    .await;
+    assert_custom_at_ix0(
+        &result,
+        custom_code(DoubleZeroError::RetiringFeedCannotBeDeleted),
+    );
+    assert_eq!(
+        feed_status(&mut banks_client, feed).await,
+        FeedStatus::Retiring,
+        "the refused delete leaves the feed as it was"
+    );
+}
+
+/// A retired feed deletes like any other catalog entry. The guard above holds during the notice,
+/// not after it, or a finished retirement would leave an account nobody can clean up.
+#[tokio::test]
+async fn test_a_retired_feed_deletes() {
+    let program_id = Pubkey::new_unique();
+    // Seeded past the notice rather than waiting thirty days for a catalog feed's. What `retire`
+    // writes is tested above; this is about what `delete` does once the state is `Retired`.
+    let (feed, data) = retiring_feed(
+        program_id,
+        "cleanup",
+        Pubkey::new_unique(),
+        Pubkey::default(),
+        0,
+    );
+    let (mut banks_client, payer, recent_blockhash) =
+        init_test_with_accounts(program_id, &[(feed, data)]).await;
+    init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+    let (globalstate, _) = get_globalstate_pda(&program_id);
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::FinalizeFeedRetirement(FeedFinalizeRetirementArgs {}),
+        vec![AccountMeta::new(feed, false)],
+        &payer,
+    )
+    .await;
+    assert_eq!(
+        feed_status(&mut banks_client, feed).await,
+        FeedStatus::Retired
+    );
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteFeed(FeedDeleteArgs {}),
+        feed_accounts(feed, globalstate),
+        &payer,
+    )
+    .await;
+    assert_eq!(get_account_data(&mut banks_client, feed).await, None);
 }

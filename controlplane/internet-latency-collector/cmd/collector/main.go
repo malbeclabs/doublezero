@@ -434,11 +434,15 @@ func init() {
 
 	ripeatlasCreateMeasurementsCmd.Flags().IntVar(&ripeatlasProbesPerLocation, "probes-per-location", defaultAtlasProbesPerLocation, "Number of RIPE Atlas probes to associate with each DoubleZero location")
 
+	nodefileCmd.PersistentFlags().StringVar(&nodeFilePath, "node-file", defaultNodeFilePath, "Path to the cloud region node file")
+	nodefileCmd.PersistentFlags().BoolVar(&nodeFileSkipPing, "skip-ping", false, "Check only that each ping target is still published, without sending a ping")
+
 	cobra.EnableCommandSorting = false
 
 	rootCmd.AddCommand(ripeatlasCmd)
 	rootCmd.AddCommand(wheresitupCmd)
 	rootCmd.AddCommand(runCmd)
+	rootCmd.AddCommand(nodefileCmd)
 
 	ripeatlasCmd.AddCommand(ripeatlasListProbesCmd)
 	ripeatlasCmd.AddCommand(ripeatlasListMeasurementsCmd)
@@ -447,6 +451,9 @@ func init() {
 
 	wheresitupCmd.AddCommand(wheresitupListSourcesCmd)
 	wheresitupCmd.AddCommand(wheresitupListJobsCmd)
+
+	nodefileCmd.AddCommand(nodefileGenerateCmd)
+	nodefileCmd.AddCommand(nodefileVerifyCmd)
 }
 
 func main() {

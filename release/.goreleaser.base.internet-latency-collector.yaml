@@ -11,7 +11,7 @@ monorepo:
 
 builds:
   - id: doublezero-internet-latency-collector
-    main: cmd/collector/main.go
+    main: ./cmd/collector
     binary: doublezero-internet-latency-collector
     env:
       - CGO_ENABLED=0

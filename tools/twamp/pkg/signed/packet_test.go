@@ -669,3 +669,48 @@ func TestParseOffsetInfo(t *testing.T) {
 		assert.False(t, ok)
 	})
 }
+
+// An unsigned datagram is what an attacker sends when they cannot sign at all,
+// and ed25519.Verify accepts the all-zero (pubkey, signature) pair for a
+// fraction of messages: the zero pubkey decodes to a point of order 4 rather
+// than to nothing, so the verification equation holds whenever the message hash
+// lands on the right residue — roughly one message in four. Seq 1 is one such
+// message with every other probe field zero, which is why the seq is fixed here
+// rather than left at 0 (which is one of the messages that happens to fail).
+func TestProbePacket_Verify_ZeroPubkeyAndSignature(t *testing.T) {
+	t.Parallel()
+
+	buf := make([]byte, signed.ProbePacketSize)
+	binary.BigEndian.PutUint32(buf[0:4], 1)
+
+	probe, err := signed.UnmarshalProbePacket(buf)
+	require.NoError(t, err)
+	require.Equal(t, [32]byte{}, probe.SenderPubkey)
+	require.Equal(t, [64]byte{}, probe.Signature)
+
+	assert.False(t, probe.Verify(), "unsigned probe with a zero sender pubkey must not verify")
+}
+
+func TestReplyPacket_Verify_ZeroPubkeyAndSignature(t *testing.T) {
+	t.Parallel()
+
+	reply, err := signed.UnmarshalReplyPacket(make([]byte, signed.MinReplyPacketSize))
+	require.NoError(t, err)
+	require.Equal(t, [32]byte{}, reply.AuthorityPubkey)
+	require.Equal(t, [64]byte{}, reply.Signature)
+
+	assert.False(t, reply.Verify(), "unsigned reply with a zero authority pubkey must not verify")
+
+	// Same check on a real reply whose authority and signature are stripped, so
+	// the guard is not passing only because of this one payload's hash.
+	_, senderSigner := newTestSigner(t)
+	_, reflectorSigner := newTestSigner(t)
+	probe := signed.NewProbePacket(1, senderSigner)
+	signedReply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 42, 1.0, 2.0, 3, 4, false)
+	require.NoError(t, err)
+	require.True(t, signedReply.Verify())
+
+	signedReply.AuthorityPubkey = [32]byte{}
+	signedReply.Signature = [64]byte{}
+	assert.False(t, signedReply.Verify(), "zeroing the authority pubkey must not make a reply verify")
+}

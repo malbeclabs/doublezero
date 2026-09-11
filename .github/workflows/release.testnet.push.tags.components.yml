@@ -41,4 +41,5 @@ jobs:
       version: ${{ github.event.inputs.version }}
       component: ${{ matrix.component }}
     secrets:
-      DOUBLEZERO_PAT: ${{ secrets.DOUBLEZERO_PAT }}
+      RELEASE_BOT_APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
+      RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}

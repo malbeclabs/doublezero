@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/collector"
@@ -231,6 +233,46 @@ func (c *Client) GetProbesInRadius(ctx context.Context, latitude, longitude floa
 	}
 
 	return allProbes, nil
+}
+
+// GetConnectedProbeIDs returns which of the given probe IDs RIPE Atlas currently reports as
+// Connected, which is status 1. The call carries no measurement credits.
+func (c *Client) GetConnectedProbeIDs(ctx context.Context, probeIDs []int) (map[int]bool, error) {
+	connected := make(map[int]bool, len(probeIDs))
+	if len(probeIDs) == 0 {
+		return connected, nil
+	}
+
+	ids := make([]string, len(probeIDs))
+	for i, probeID := range probeIDs {
+		ids[i] = strconv.Itoa(probeID)
+	}
+	endpoint := "/probes/?status=1&id__in=" + strings.Join(ids, ",")
+
+	for {
+		resp, err := c.makeRequest(ctx, endpoint)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get probe status: %w", err)
+		}
+
+		var response ProbesResponse
+		err = json.NewDecoder(resp.Body).Decode(&response)
+		resp.Body.Close()
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode probes response: %w", err)
+		}
+
+		for _, probe := range response.Results {
+			connected[probe.ID] = true
+		}
+
+		if response.Next == "" {
+			break
+		}
+		endpoint = strings.TrimPrefix(response.Next, c.BaseURL)
+	}
+
+	return connected, nil
 }
 
 func (c *Client) GetProbesForLocations(ctx context.Context, locations []LocationProbeMatch) ([]LocationProbeMatch, error) {

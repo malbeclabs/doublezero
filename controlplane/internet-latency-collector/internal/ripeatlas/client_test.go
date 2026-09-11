@@ -1065,3 +1065,69 @@ func TestInternetLatency_RIPEAtlas_GetCreditBalance(t *testing.T) {
 	require.NoError(t, err, "GetCreditBalance() should not return error")
 	require.Equal(t, 1000.0, balance, "Expected credit balance to be 1000")
 }
+
+func TestInternetLatency_RIPEAtlas_GetConnectedProbeIDs(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	var endpoints []string
+	client := &Client{
+		log:     log,
+		BaseURL: "https://atlas.ripe.net/api/v2",
+		HTTPClient: &MockHTTPClient{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				endpoints = append(endpoints, req.URL.String())
+				body, _ := json.Marshal(ProbesResponse{
+					Count:   2,
+					Results: []Probe{{ID: 1000731}, {ID: 1000733}},
+				})
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader(body)),
+				}, nil
+			},
+		},
+	}
+
+	connected, err := client.GetConnectedProbeIDs(t.Context(), []int{1000731, 1000732, 1000733})
+
+	require.NoError(t, err)
+	require.Equal(t, map[int]bool{1000731: true, 1000733: true}, connected)
+	require.Len(t, endpoints, 1)
+	require.Contains(t, endpoints[0], "id__in=1000731,1000732,1000733")
+	require.Contains(t, endpoints[0], "status=1")
+}
+
+func TestInternetLatency_RIPEAtlas_GetConnectedProbeIDs_Pagination(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	callCount := 0
+	client := &Client{
+		log:     log,
+		BaseURL: "https://atlas.ripe.net/api/v2",
+		HTTPClient: &MockHTTPClient{
+			DoFunc: func(req *http.Request) (*http.Response, error) {
+				callCount++
+				response := ProbesResponse{Count: 2, Results: []Probe{{ID: 1000733}}}
+				if callCount == 1 {
+					response.Next = "https://atlas.ripe.net/api/v2/probes/?page=2"
+					response.Results = []Probe{{ID: 1000731}}
+				}
+				body, _ := json.Marshal(response)
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       io.NopCloser(bytes.NewReader(body)),
+				}, nil
+			},
+		},
+	}
+
+	connected, err := client.GetConnectedProbeIDs(t.Context(), []int{1000731, 1000733})
+
+	require.NoError(t, err)
+	require.Equal(t, 2, callCount)
+	require.Equal(t, map[int]bool{1000731: true, 1000733: true}, connected)
+}

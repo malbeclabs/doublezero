@@ -47,6 +47,7 @@ const (
 type clientInterface interface {
 	GetProbesInRadius(ctx context.Context, latitude, longitude float64, radiusKm int, anchorsOnly bool) ([]Probe, error)
 	GetProbesForLocations(ctx context.Context, locations []LocationProbeMatch) ([]LocationProbeMatch, error)
+	GetConnectedProbeIDs(ctx context.Context, probeIDs []int) (map[int]bool, error)
 	CreateMeasurement(ctx context.Context, request MeasurementRequest) (*MeasurementResponse, error)
 	GetAllMeasurements(ctx context.Context, tag string) ([]Measurement, error)
 	GetMeasurementResultsIncremental(ctx context.Context, measurementID int, startTimestamp int64) ([]any, error)
@@ -742,46 +743,58 @@ func (c *Collector) RunRipeAtlasMeasurementCreation(ctx context.Context, dryRun 
 		slog.Bool("dry_run", dryRun),
 		slog.Int("location_count", len(locations)))
 
-	// Convert LocationMatch to LocationProbeMatch
-	var locationProbeMatches []LocationProbeMatch
-	for _, loc := range locations {
-		locationProbeMatches = append(locationProbeMatches, LocationProbeMatch{
-			LocationMatch: loc,
-			NearbyProbes:  []Probe{},
-			ProbeCount:    0,
-		})
-	}
-	c.log.Info("Found locations", slog.Int("location_count", len(locations)))
+	// The node file names each cloud region's probes, so cloud mode runs no probe discovery and
+	// matches no probe by proximity. Selection happens in configureMeasurements.
+	var locationMatches []LocationProbeMatch
+	if c.cloudMode {
+		for _, loc := range locations {
+			locationMatches = append(locationMatches, LocationProbeMatch{LocationMatch: loc})
+		}
+	} else {
+		// Convert LocationMatch to LocationProbeMatch
+		var locationProbeMatches []LocationProbeMatch
+		for _, loc := range locations {
+			locationProbeMatches = append(locationProbeMatches, LocationProbeMatch{
+				LocationMatch: loc,
+				NearbyProbes:  []Probe{},
+				ProbeCount:    0,
+			})
+		}
+		c.log.Info("Found locations", slog.Int("location_count", len(locations)))
 
-	// Get probes for all locations
-	locationMatches, err := c.client.GetProbesForLocations(ctx, locationProbeMatches)
-	if err != nil {
-		return collector.NewAPIError("get_probes_for_locations", "failed to get probes for locations", err).
-			WithContext("location_count", len(locations))
-	}
+		// Get probes for all locations
+		var err error
+		locationMatches, err = c.client.GetProbesForLocations(ctx, locationProbeMatches)
+		if err != nil {
+			return collector.NewAPIError("get_probes_for_locations", "failed to get probes for locations", err).
+				WithContext("location_count", len(locations))
+		}
 
-	c.log.Info("Found probes for locations", slog.Int("locations_with_probes", len(locationMatches)))
+		c.log.Info("Found probes for locations", slog.Int("locations_with_probes", len(locationMatches)))
 
-	c.mu.Lock()
-	c.probeToLocation = make(map[int]string)
-	for _, match := range locationMatches {
-		if len(match.NearbyProbes) > 0 {
-			// Map the closest probe to this location
-			nearestProbes := getNearestProbesSorted(match.NearbyProbes,
-				match.Latitude, match.Longitude, probesPerLocation)
-			if len(nearestProbes) > 0 {
-				c.probeToLocation[nearestProbes[0].ID] = match.LocationCode
+		c.mu.Lock()
+		c.probeToLocation = make(map[int]string)
+		for _, match := range locationMatches {
+			if len(match.NearbyProbes) > 0 {
+				// Map the closest probe to this location
+				nearestProbes := getNearestProbesSorted(match.NearbyProbes,
+					match.Latitude, match.Longitude, probesPerLocation)
+				if len(nearestProbes) > 0 {
+					c.probeToLocation[nearestProbes[0].ID] = match.LocationCode
 
-				// Calculate and record distance to nearest probe
-				nearestProbe := nearestProbes[0]
-				distance := collector.HaversineDistance(
-					match.Latitude, match.Longitude,
-					nearestProbe.Geometry.Coordinates[1], nearestProbe.Geometry.Coordinates[0])
-				metrics.DistanceFromExchangeToProbe.WithLabelValues("ripeatlas", match.LocationCode).Set(distance)
+					// Calculate and record distance to nearest probe
+					nearestProbe := nearestProbes[0]
+					if len(nearestProbe.Geometry.Coordinates) >= 2 {
+						distance := collector.HaversineDistance(
+							match.Latitude, match.Longitude,
+							nearestProbe.Geometry.Coordinates[1], nearestProbe.Geometry.Coordinates[0])
+						metrics.DistanceFromExchangeToProbe.WithLabelValues("ripeatlas", match.LocationCode).Set(distance)
+					}
+				}
 			}
 		}
+		c.mu.Unlock()
 	}
-	c.mu.Unlock()
 
 	// Configure measurements between locations
 	if err := c.configureMeasurements(ctx, locationMatches, dryRun, probesPerLocation, stateDir, samplingInterval); err != nil {
@@ -814,7 +827,16 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 	// the probe has stopped responding to our measurements and was marked unresponsive in
 	// the local measurement state. Without this pass, generateWantedMeasurements would log
 	// "No responsive probes found for location" and skip the location entirely.
-	locationMatches = c.fetchFallbackProbesForUnresponsiveLocations(ctx, locationMatches, measurementState)
+	//
+	// Cloud mode has no substitute to reach for: a probe outside the region's own list would
+	// measure the public internet instead of the cloud backbone.
+	var liveCloudProbes map[int]bool
+	if c.cloudMode {
+		liveCloudProbes = c.cloudLiveProbes(ctx)
+		locationMatches = c.selectCloudProbes(locationMatches, liveCloudProbes, measurementState)
+	} else {
+		locationMatches = c.fetchFallbackProbesForUnresponsiveLocations(ctx, locationMatches, measurementState)
+	}
 
 	// Step 3: Generate the list of measurements we want, skipping unresponsive probes
 	wantedMeasurements := c.generateWantedMeasurements(locationMatches, probesPerLocation, measurementState)
@@ -987,6 +1009,9 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 
 		// Regenerate wanted measurements now that new probes are marked unresponsive,
 		// so the reconciliation below uses updated probe selections
+		if c.cloudMode {
+			locationMatches = c.selectCloudProbes(locationMatches, liveCloudProbes, measurementState)
+		}
 		wantedMeasurements = c.generateWantedMeasurements(locationMatches, probesPerLocation, measurementState)
 	}
 
@@ -1468,6 +1493,15 @@ func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMa
 			}
 
 			if len(sourceLocation.NearbyProbes) == 0 {
+				continue
+			}
+
+			if c.cloudMode {
+				// Selection already named the region's one probe, from its own list.
+				sourceSpecs = append(sourceSpecs, SourceSpec{
+					LocationCode: sourceLocation.LocationCode,
+					Probe:        sourceLocation.NearbyProbes[0],
+				})
 				continue
 			}
 

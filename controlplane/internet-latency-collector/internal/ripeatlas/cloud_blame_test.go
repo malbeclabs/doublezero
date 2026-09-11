@@ -288,6 +288,71 @@ func cloudFleetMeasurements() []Measurement {
 	}
 }
 
+func TestInternetLatency_RIPEAtlas_CloudBlame_FleetThatExportedNothingIsNotTornDown(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	var createdMeasurements []MeasurementRequest
+	var stoppedMeasurements []int
+	var mu sync.Mutex
+
+	mockClient := &MockClient{
+		GetAllMeasurementsFunc: func(ctx context.Context, tag string) ([]Measurement, error) {
+			return cloudFleetMeasurements(), nil
+		},
+		CreateMeasurementFunc: func(ctx context.Context, request MeasurementRequest) (*MeasurementResponse, error) {
+			mu.Lock()
+			createdMeasurements = append(createdMeasurements, request)
+			measurementID := 9000 + len(createdMeasurements)
+			mu.Unlock()
+			return &MeasurementResponse{Measurements: []int{measurementID}}, nil
+		},
+		StopMeasurementFunc: func(ctx context.Context, measurementID int) error {
+			mu.Lock()
+			stoppedMeasurements = append(stoppedMeasurements, measurementID)
+			mu.Unlock()
+			return nil
+		},
+	}
+
+	stateDir := t.TempDir()
+	c := newCloudTestCollector(t, log, mockClient, "mainnet-beta", cloudFleetNodes())
+
+	// A first deployment three hours in: every measurement was created in one batch, nothing
+	// has landed yet, so every source still reads zero.
+	threeHoursAgo := time.Now().Unix() - 10800
+	c.measurementState = NewMeasurementState(filepath.Join(stateDir, CloudTimestampFileName))
+	c.measurementState.SetMetadata(8001, MeasurementMeta{
+		TargetLocation: "eu-west-1",
+		TargetAddress:  "3.248.0.0",
+		Sources: []SourceProbeMeta{
+			{LocationCode: "us-east-1", ProbeID: 1000731, LastResponseAt: 0},
+			{LocationCode: "us-west-2", ProbeID: 1000901, LastResponseAt: 0},
+		},
+		CreatedAt: threeHoursAgo,
+	})
+	c.measurementState.SetMetadata(8002, MeasurementMeta{
+		TargetLocation: "us-east-1",
+		TargetAddress:  "34.192.0.54",
+		Sources: []SourceProbeMeta{
+			{LocationCode: "us-west-2", ProbeID: 1000901, LastResponseAt: 0},
+		},
+		CreatedAt: threeHoursAgo,
+	})
+
+	err := c.configureMeasurements(t.Context(), cloudFleetLocations(), false, 1, stateDir, 10*time.Minute)
+	require.NoError(t, err)
+
+	require.Empty(t, c.measurementState.GetUnresponsiveProbes(),
+		"a fleet that has exported nothing names no source probe as the cause")
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Empty(t, stoppedMeasurements, "a fleet that has exported nothing must not be torn down")
+	require.Empty(t, createdMeasurements, "the measurements already running are still the wanted ones")
+}
+
 func TestInternetLatency_RIPEAtlas_CloudBlame_LiveMeasurementBlamesItsDarkSource(t *testing.T) {
 	t.Parallel()
 
@@ -332,4 +397,62 @@ func TestInternetLatency_RIPEAtlas_CloudBlame_LiveMeasurementBlamesItsDarkSource
 		"the one source that has delivered nothing to a measurement that is exporting must be blamed")
 	require.False(t, c.measurementState.IsProbeUnresponsive(1000731),
 		"a source that is delivering must not be blamed")
+}
+
+func TestInternetLatency_RIPEAtlas_CloudBlame_FleetThatStoppedExportingIsNotTornDown(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	var stoppedMeasurements []int
+	var mu sync.Mutex
+
+	mockClient := &MockClient{
+		GetAllMeasurementsFunc: func(ctx context.Context, tag string) ([]Measurement, error) {
+			return cloudFleetMeasurements(), nil
+		},
+		StopMeasurementFunc: func(ctx context.Context, measurementID int) error {
+			mu.Lock()
+			stoppedMeasurements = append(stoppedMeasurements, measurementID)
+			mu.Unlock()
+			return nil
+		},
+	}
+
+	stateDir := t.TempDir()
+	c := newCloudTestCollector(t, log, mockClient, "mainnet-beta", cloudFleetNodes())
+
+	// The measurements were recreated three hours ago and delivered for a while, then every
+	// export stopped: the sources enlisted at recreation still read zero.
+	now := time.Now().Unix()
+	c.measurementState = NewMeasurementState(filepath.Join(stateDir, CloudTimestampFileName))
+	c.measurementState.SetMetadata(8001, MeasurementMeta{
+		TargetLocation: "eu-west-1",
+		TargetAddress:  "3.248.0.0",
+		Sources: []SourceProbeMeta{
+			{LocationCode: "us-east-1", ProbeID: 1000731, LastResponseAt: 0},
+			{LocationCode: "us-west-2", ProbeID: 1000901, LastResponseAt: 0},
+		},
+		CreatedAt:    now - 10800,
+		LastExportAt: now - 7200,
+	})
+	c.measurementState.SetMetadata(8002, MeasurementMeta{
+		TargetLocation: "us-east-1",
+		TargetAddress:  "34.192.0.54",
+		Sources: []SourceProbeMeta{
+			{LocationCode: "us-west-2", ProbeID: 1000901, LastResponseAt: 0},
+		},
+		CreatedAt:    now - 10800,
+		LastExportAt: now - 7200,
+	})
+
+	err := c.configureMeasurements(t.Context(), cloudFleetLocations(), false, 1, stateDir, 10*time.Minute)
+	require.NoError(t, err)
+
+	require.Empty(t, c.measurementState.GetUnresponsiveProbes(),
+		"a measurement that has stopped exporting names no source probe as the cause")
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Empty(t, stoppedMeasurements, "a fleet that has stopped exporting must not be torn down")
 }

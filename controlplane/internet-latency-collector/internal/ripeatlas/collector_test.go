@@ -25,6 +25,7 @@ import (
 type MockClient struct {
 	GetProbesInRadiusFunc                func(ctx context.Context, latitude, longitude float64, radiusKm int, anchorsOnly bool) ([]Probe, error)
 	GetProbesForLocationsFunc            func(ctx context.Context, locations []LocationProbeMatch) ([]LocationProbeMatch, error)
+	GetConnectedProbeIDsFunc             func(ctx context.Context, probeIDs []int) (map[int]bool, error)
 	CreateMeasurementFunc                func(ctx context.Context, request MeasurementRequest) (*MeasurementResponse, error)
 	GetAllMeasurementsFunc               func(ctx context.Context, env string) ([]Measurement, error)
 	GetMeasurementResultsFunc            func(ctx context.Context, measurementID int) ([]any, error)
@@ -45,6 +46,19 @@ func (m *MockClient) GetProbesForLocations(ctx context.Context, locations []Loca
 		return m.GetProbesForLocationsFunc(ctx, locations)
 	}
 	return []LocationProbeMatch{}, nil
+}
+
+// The default reports every requested probe as Connected, so tests that are not about liveness
+// see the probes their node file names.
+func (m *MockClient) GetConnectedProbeIDs(ctx context.Context, probeIDs []int) (map[int]bool, error) {
+	if m.GetConnectedProbeIDsFunc != nil {
+		return m.GetConnectedProbeIDsFunc(ctx, probeIDs)
+	}
+	connected := make(map[int]bool, len(probeIDs))
+	for _, probeID := range probeIDs {
+		connected[probeID] = true
+	}
+	return connected, nil
 }
 
 func (m *MockClient) CreateMeasurement(ctx context.Context, request MeasurementRequest) (*MeasurementResponse, error) {
@@ -1946,4 +1960,32 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LossCountsAsRe
 				"LastResponseAt drives the unresponsive-probe marking, which recreates measurements")
 		})
 	}
+}
+
+func TestInternetLatency_RIPEAtlas_ProbeWithoutGeometryIsSkipped(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	mockClient := &MockClient{
+		GetProbesForLocationsFunc: func(ctx context.Context, locations []LocationProbeMatch) ([]LocationProbeMatch, error) {
+			return []LocationProbeMatch{{
+				LocationMatch: collector.LocationMatch{LocationCode: "ams", Latitude: 52.3, Longitude: 4.9},
+				NearbyProbes:  []Probe{{ID: 100, Address: "1.1.1.1"}},
+				ProbeCount:    1,
+			}}, nil
+		},
+	}
+
+	c := &Collector{
+		client: mockClient,
+		log:    log,
+		env:    "test",
+		getLocationsFunc: func(ctx context.Context) []collector.LocationMatch {
+			return []collector.LocationMatch{{LocationCode: "ams", Latitude: 52.3, Longitude: 4.9}}
+		},
+	}
+
+	err := c.RunRipeAtlasMeasurementCreation(t.Context(), false, 1, t.TempDir(), 10*time.Minute)
+	require.NoError(t, err)
 }

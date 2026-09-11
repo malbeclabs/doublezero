@@ -59,6 +59,26 @@ var (
 		Help: "Number of times the exporter has encountered a submitter account full error",
 	}, []string{"data_provider", "source_exchange_pk", "target_exchange_pk", "epoch"})
 
+	ExporterClickHouseRecordsWrittenTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "doublezero_internet_latency_collector_exporter_clickhouse_records_written_total",
+		Help: "Total number of records written to ClickHouse by the exporter",
+	})
+
+	ExporterClickHouseRecordsDroppedTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "doublezero_internet_latency_collector_exporter_clickhouse_records_dropped_total",
+		Help: "Total number of records dropped from the ClickHouse exporter buffer because it was full",
+	})
+
+	ExporterClickHouseInsertErrorsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "doublezero_internet_latency_collector_exporter_clickhouse_insert_errors_total",
+		Help: "Total number of failed ClickHouse inserts from the exporter",
+	})
+
+	ExporterClickHouseBufferedRecords = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "doublezero_internet_latency_collector_exporter_clickhouse_buffered_records",
+		Help: "Number of records currently buffered in the ClickHouse exporter",
+	})
+
 	LatencySamplesPerCollectionIntervalExpected = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "doublezero_internet_latency_collector_latency_samples_per_collection_interval_expected",
 		Help: "Expected number of exchange pair latency samples per collection interval",

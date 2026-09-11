@@ -3,9 +3,20 @@ package ripeatlas
 import (
 	"context"
 	"log/slog"
+	"strings"
 
 	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/collector"
 	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/exporter"
+)
+
+const (
+	CloudTimestampFileName = "ripe_atlas_cloud_timestamps.json"
+
+	exchangeDescriptionPrefix = "DoubleZero "
+	cloudDescriptionPrefix    = "DoubleZero Cloud "
+
+	cloudTagSuffix      = "-cloud"
+	cloudMeasurementTag = "doublezero-cloud"
 )
 
 type CloudNode struct {
@@ -43,4 +54,50 @@ func NewCloudCollector(logger *slog.Logger, exporter exporter.Exporter, env stri
 			return locations
 		},
 	}
+}
+
+func (c *Collector) timestampFileName() string {
+	if c.cloudMode {
+		return CloudTimestampFileName
+	}
+	return TimestampFileName
+}
+
+func (c *Collector) descriptionPrefix() string {
+	if c.cloudMode {
+		return cloudDescriptionPrefix
+	}
+	return exchangeDescriptionPrefix
+}
+
+func (c *Collector) measurementTag() string {
+	if c.cloudMode {
+		return c.env + cloudTagSuffix
+	}
+	return c.env
+}
+
+// The cloud prefix extends the exchange prefix, so exchange mode has to reject it explicitly.
+func (c *Collector) ownsDescription(description string) bool {
+	if !strings.HasPrefix(description, c.descriptionPrefix()) {
+		return false
+	}
+	return c.cloudMode || !strings.HasPrefix(description, cloudDescriptionPrefix)
+}
+
+// Exchange descriptions end "to <code> probe <id>", cloud descriptions "to <code> target <address>".
+func (c *Collector) targetLocationFromDescription(description string) (string, bool) {
+	parts := strings.Split(description, " to ")
+	if len(parts) != 2 {
+		return "", false
+	}
+	marker := " probe"
+	if c.cloudMode {
+		marker = " target"
+	}
+	idx := strings.Index(parts[1], marker)
+	if idx == -1 {
+		return "", false
+	}
+	return parts[1][:idx], true
 }

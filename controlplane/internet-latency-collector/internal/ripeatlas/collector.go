@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 	"sync"
 	"time"
 
@@ -33,6 +32,10 @@ const (
 	// tuning this reporting window cannot perturb the marking path.
 	sourceSampleGracePeriod = 2 * time.Hour
 
+	// neverStartedRotationGrace is how long after its measurement was created a cloud source
+	// probe may deliver nothing before it is marked unresponsive and replaced.
+	neverStartedRotationGrace = 2 * time.Hour
+
 	// maxSourcesWithoutSamplesLogged caps the per-cycle sample of sources named in the
 	// log. The full count is on the metric; a widespread outage should not emit hundreds
 	// of identifiers every hour.
@@ -45,7 +48,7 @@ type clientInterface interface {
 	GetProbesInRadius(ctx context.Context, latitude, longitude float64, radiusKm int, anchorsOnly bool) ([]Probe, error)
 	GetProbesForLocations(ctx context.Context, locations []LocationProbeMatch) ([]LocationProbeMatch, error)
 	CreateMeasurement(ctx context.Context, request MeasurementRequest) (*MeasurementResponse, error)
-	GetAllMeasurements(ctx context.Context, env string) ([]Measurement, error)
+	GetAllMeasurements(ctx context.Context, tag string) ([]Measurement, error)
 	GetMeasurementResultsIncremental(ctx context.Context, measurementID int, startTimestamp int64) ([]any, error)
 	StopMeasurement(ctx context.Context, measurementID int) error
 	GetCreditBalance(ctx context.Context) (float64, error)
@@ -123,7 +126,7 @@ func (c *Collector) InitializeCreditBalance(ctx context.Context) error {
 }
 
 func (c *Collector) InitializeMeasurementMetrics(stateDir string) error {
-	timestampFile := filepath.Join(stateDir, TimestampFileName)
+	timestampFile := filepath.Join(stateDir, c.timestampFileName())
 	measurementState := NewMeasurementState(timestampFile)
 
 	if err := measurementState.Load(); err != nil {
@@ -240,7 +243,7 @@ func (c *Collector) parseLatencyFromResult(result any) (time.Duration, time.Time
 func (c *Collector) ClearAllMeasurements(ctx context.Context) error {
 	c.log.Info("Retrieving all measurements")
 
-	measurements, err := c.client.GetAllMeasurements(ctx, c.env)
+	measurements, err := c.client.GetAllMeasurements(ctx, c.measurementTag())
 	if err != nil {
 		return collector.NewAPIError("get_measurements", "failed to get measurements", err)
 	}
@@ -262,8 +265,8 @@ func (c *Collector) ClearAllMeasurements(ctx context.Context) error {
 			continue
 		}
 
-		// Only clear DoubleZero measurements to avoid affecting other measurements
-		if !strings.Contains(measurement.Description, "DoubleZero") {
+		// Only clear this mode's measurements to avoid affecting other measurements
+		if !c.ownsDescription(measurement.Description) {
 			c.log.Debug("Skipping measurement - not a DoubleZero measurement",
 				slog.Int("measurement_id", measurement.ID),
 				slog.String("description", measurement.Description))
@@ -302,7 +305,7 @@ func (c *Collector) ClearAllMeasurements(ctx context.Context) error {
 }
 
 func (c *Collector) ListMeasurements(ctx context.Context) error {
-	measurements, err := c.client.GetAllMeasurements(ctx, c.env)
+	measurements, err := c.client.GetAllMeasurements(ctx, c.measurementTag())
 	if err != nil {
 		return collector.NewAPIError("get_measurements", "failed to get measurements", err)
 	}
@@ -394,14 +397,14 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir strin
 	measurementState := c.measurementState
 	if measurementState == nil {
 		// Fallback for standalone/test usage without Run()
-		timestampFile := filepath.Join(stateDir, TimestampFileName)
+		timestampFile := filepath.Join(stateDir, c.timestampFileName())
 		measurementState = NewMeasurementState(timestampFile)
 		if err := measurementState.Load(); err != nil {
 			return err
 		}
 	}
 
-	measurements, err := c.client.GetAllMeasurements(ctx, c.env)
+	measurements, err := c.client.GetAllMeasurements(ctx, c.measurementTag())
 	if err != nil {
 		return collector.NewAPIError("get_measurements", "failed to get measurements", err)
 	}
@@ -414,7 +417,7 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir strin
 	// Filter for active DoubleZero measurements
 	var activeMeasurements []Measurement
 	for _, measurement := range measurements {
-		if strings.Contains(measurement.Description, "DoubleZero") && measurement.Status.Name != "Stopped" {
+		if c.ownsDescription(measurement.Description) && measurement.Status.Name != "Stopped" {
 			activeMeasurements = append(activeMeasurements, measurement)
 		}
 	}
@@ -794,7 +797,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 	// Step 1: Get measurement state (shared instance from Run(), or fallback for tests)
 	measurementState := c.measurementState
 	if measurementState == nil {
-		timestampFile := filepath.Join(stateDir, TimestampFileName)
+		timestampFile := filepath.Join(stateDir, c.timestampFileName())
 		measurementState = NewMeasurementState(timestampFile)
 		if err := measurementState.Load(); err != nil {
 			c.log.Warn("Failed to load measurement state", slog.String("error", err.Error()))
@@ -817,16 +820,16 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 	wantedMeasurements := c.generateWantedMeasurements(locationMatches, probesPerLocation, measurementState)
 
 	// Step 4: Get all existing measurements
-	existingMeasurements, err := c.client.GetAllMeasurements(ctx, c.env)
+	existingMeasurements, err := c.client.GetAllMeasurements(ctx, c.measurementTag())
 	if err != nil {
 		c.log.Warn("Failed to get existing measurements", slog.String("error", err.Error()))
 		existingMeasurements = []Measurement{}
 	}
 
-	// Filter for DoubleZero measurements only
+	// Filter for this mode's measurements only
 	var doubleZeroMeasurements []Measurement
 	for _, m := range existingMeasurements {
-		if strings.HasPrefix(m.Description, "DoubleZero ") && m.Status.Name != "Stopped" {
+		if c.ownsDescription(m.Description) && m.Status.Name != "Stopped" {
 			doubleZeroMeasurements = append(doubleZeroMeasurements, m)
 		}
 	}
@@ -834,15 +837,8 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 	// Step 3: Build map of existing measurements by target location
 	existingByTarget := make(map[string]Measurement)
 	for _, m := range doubleZeroMeasurements {
-		// Format: "DoubleZero [env] to TARGET probe Y"
-		parts := strings.Split(m.Description, " to ")
-		if len(parts) == 2 {
-			targetPart := parts[1]
-			// Extract location code (before " probe")
-			if idx := strings.Index(targetPart, " probe"); idx != -1 {
-				targetLocation := targetPart[:idx]
-				existingByTarget[targetLocation] = m
-			}
+		if targetLocation, ok := c.targetLocationFromDescription(m.Description); ok {
+			existingByTarget[targetLocation] = m
 		}
 	}
 
@@ -873,6 +869,17 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 			}
 
 			if isStale {
+				if c.cloudMode {
+					// The target is an address, not a probe, so nothing here names a probe to blame.
+					c.log.Warn("Measurement has no recent exports",
+						slog.Int("measurement_id", measurement.ID),
+						slog.String("target_location", meta.TargetLocation),
+						slog.String("target_address", meta.TargetAddress),
+						slog.String("reason", reason),
+						slog.Time("created_at", time.Unix(meta.CreatedAt, 0)),
+						slog.Time("last_export_at", time.Unix(meta.LastExportAt, 0)))
+					continue
+				}
 				c.log.Warn("Marking probe as unresponsive - no exports after 1 hour",
 					slog.Int("measurement_id", measurement.ID),
 					slog.Int("probe_id", meta.TargetProbeID),
@@ -893,7 +900,12 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 			// Skip measurements whose target is already marked unresponsive —
 			// source probes in these measurements will have stale LastResponseAt
 			// because the target isn't replying, not because the sources are broken
-			if measurementState.IsProbeUnresponsive(meta.TargetProbeID) {
+			if !c.cloudMode && measurementState.IsProbeUnresponsive(meta.TargetProbeID) {
+				continue
+			}
+			// Cloud mode has no target probe carrying that signal. A measurement that is
+			// not exporting makes every source of it look dark, and step 4 reported it.
+			if c.cloudMode && meta.LastExportAt < probeTimeout {
 				continue
 			}
 			for _, source := range meta.Sources {
@@ -907,14 +919,22 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 				}
 				// Skip probes where LastResponseAt hasn't been populated yet —
 				// on first deploy, all existing source probes have 0 and need
-				// at least one export cycle to populate the field
-				if source.LastResponseAt == 0 {
+				// at least one export cycle to populate the field. Cloud mode instead
+				// judges a source that never delivers against its measurement's creation time.
+				neverStarted := source.LastResponseAt == 0
+				pastGrace := meta.CreatedAt < currentTime-int64(neverStartedRotationGrace.Seconds())
+				if neverStarted && !(c.cloudMode && pastGrace) {
 					continue
 				}
 				// Last response was > 1 hour ago
-				if source.LastResponseAt < probeTimeout {
+				if neverStarted || source.LastResponseAt < probeTimeout {
+					message := "Marking source probe as unresponsive - no results after 1 hour"
 					reason := "no_recent_responses"
-					c.log.Warn("Marking source probe as unresponsive - no results after 1 hour",
+					if neverStarted {
+						message = "Marking source probe as unresponsive - no results since creation"
+						reason = "never_responded"
+					}
+					c.log.Warn(message,
 						slog.Int("measurement_id", measurement.ID),
 						slog.Int("probe_id", source.ProbeID),
 						slog.String("source_location", source.LocationCode),
@@ -996,6 +1016,19 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 				continue
 			}
 
+			// Check if target probe has changed. Cloud mode pings an address, so its
+			// measurement identity is the target address, not a probe.
+			targetProbeChanged := !c.cloudMode && meta.TargetProbeID != wanted.TargetProbe.ID
+			if targetProbeChanged {
+				c.log.Info("Measurement has outdated target probe, marking for recreation",
+					slog.Int("measurement_id", existing.ID),
+					slog.String("target", wanted.TargetLocationCode),
+					slog.Int("existing_probe_id", meta.TargetProbeID),
+					slog.Int("wanted_probe_id", wanted.TargetProbe.ID))
+				toCreate = append(toCreate, wanted)
+				continue
+			}
+
 			// An empty stored target address predates the field and is not a mismatch.
 			if meta.TargetAddress != "" && meta.TargetAddress != wanted.TargetAddress {
 				c.log.Info("Measurement has outdated target address, marking for recreation",
@@ -1003,18 +1036,6 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 					slog.String("target", wanted.TargetLocationCode),
 					slog.String("existing_target_address", meta.TargetAddress),
 					slog.String("wanted_target_address", wanted.TargetAddress))
-				toCreate = append(toCreate, wanted)
-				continue
-			}
-
-			// Check if target probe has changed
-			targetProbeChanged := meta.TargetProbeID != wanted.TargetProbe.ID
-			if targetProbeChanged {
-				c.log.Info("Measurement has outdated target probe, marking for recreation",
-					slog.Int("measurement_id", existing.ID),
-					slog.String("target", wanted.TargetLocationCode),
-					slog.Int("existing_probe_id", meta.TargetProbeID),
-					slog.Int("wanted_probe_id", wanted.TargetProbe.ID))
 				toCreate = append(toCreate, wanted)
 				continue
 			}
@@ -1057,47 +1078,11 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 	toRemove := []Measurement{}
 	measurementsToRecreate := make(map[string]bool)
 
-	// First, identify measurements that need recreation due to outdated target or source probes
-	for _, wanted := range wantedMeasurements {
-		if existing, exists := existingByTarget[wanted.TargetLocationCode]; exists {
-			meta, hasMeta := measurementState.GetMetadata(existing.ID)
-			if hasMeta {
-				if meta.TargetAddress != "" && meta.TargetAddress != wanted.TargetAddress {
-					measurementsToRecreate[wanted.TargetLocationCode] = true
-					continue
-				}
-
-				// Check if target probe has changed
-				if meta.TargetProbeID != wanted.TargetProbe.ID {
-					measurementsToRecreate[wanted.TargetLocationCode] = true
-					continue
-				}
-
-				// Check if sources match (both location and probe ID)
-				existingSources := make(map[string]int)
-				for _, source := range meta.Sources {
-					existingSources[source.LocationCode] = source.ProbeID
-				}
-
-				wantedSources := make(map[string]int)
-				for _, source := range wanted.SourceSpecs {
-					wantedSources[source.LocationCode] = source.Probe.ID
-				}
-
-				sourcesMatch := len(existingSources) == len(wantedSources)
-				if sourcesMatch {
-					for loc, wantedProbeID := range wantedSources {
-						if existingProbeID, ok := existingSources[loc]; !ok || existingProbeID != wantedProbeID {
-							sourcesMatch = false
-							break
-						}
-					}
-				}
-
-				if !sourcesMatch {
-					measurementsToRecreate[wanted.TargetLocationCode] = true
-				}
-			}
+	// A wanted measurement being created while one already exists for its target is a
+	// replacement, so the measurement it replaces has to be stopped.
+	for _, wanted := range toCreate {
+		if _, exists := existingByTarget[wanted.TargetLocationCode]; exists {
+			measurementsToRecreate[wanted.TargetLocationCode] = true
 		}
 	}
 
@@ -1112,17 +1097,12 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 			continue
 		}
 
-		parts := strings.Split(measurement.Description, " to ")
-		if len(parts) == 2 {
-			targetPart := parts[1]
-			if idx := strings.Index(targetPart, " probe"); idx != -1 {
-				targetLocation := targetPart[:idx]
-				if !wantedTargets[targetLocation] {
-					toRemove = append(toRemove, measurement)
-				} else if measurementsToRecreate[targetLocation] {
-					// This measurement needs to be recreated due to outdated target or source probes
-					toRemove = append(toRemove, measurement)
-				}
+		if targetLocation, ok := c.targetLocationFromDescription(measurement.Description); ok {
+			if !wantedTargets[targetLocation] {
+				toRemove = append(toRemove, measurement)
+			} else if measurementsToRecreate[targetLocation] {
+				// This measurement needs to be recreated due to outdated target or source probes
+				toRemove = append(toRemove, measurement)
 			}
 		}
 	}
@@ -1222,7 +1202,15 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		} else {
 			// Use simplified description without source list
 			var description string
-			if c.env != "" {
+			if c.cloudMode {
+				if c.env != "" {
+					description = fmt.Sprintf("%s[%s] to %s target %s",
+						cloudDescriptionPrefix, c.env, spec.TargetLocationCode, spec.TargetAddress)
+				} else {
+					description = fmt.Sprintf("%sto %s target %s",
+						cloudDescriptionPrefix, spec.TargetLocationCode, spec.TargetAddress)
+				}
+			} else if c.env != "" {
 				description = fmt.Sprintf("DoubleZero [%s] to %s probe %d",
 					c.env, spec.TargetLocationCode, spec.TargetProbe.ID)
 			} else {
@@ -1233,9 +1221,13 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 			// Build tags including environment if set
 			var tags []string
 			if c.env != "" {
-				tags = append(tags, c.env)
+				tags = append(tags, c.measurementTag())
 			}
-			tags = append(tags, "doublezero")
+			if c.cloudMode {
+				tags = append(tags, cloudMeasurementTag)
+			} else {
+				tags = append(tags, "doublezero")
+			}
 
 			var probes []MeasurementProbe
 			for _, source := range spec.SourceSpecs {
@@ -1427,25 +1419,9 @@ func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMa
 	// Create one measurement per target location
 	// Each measurement will ping from all other locations' probes to this target
 	for targetIdx, targetLocation := range sortedLocations {
-		if len(targetLocation.NearbyProbes) == 0 {
-			continue
-		}
-
-		responsiveProbes := filterResponsiveProbes(targetLocation.NearbyProbes, measurementState)
-		if len(responsiveProbes) == 0 {
-			c.log.Warn("No responsive probes found for location",
-				slog.String("location", targetLocation.LocationCode))
-			continue
-		}
-
-		targetProbes := getNearestProbesSorted(responsiveProbes,
-			targetLocation.Latitude, targetLocation.Longitude, probesPerLocation)
-		if len(targetProbes) == 0 {
-			continue
-		}
-		targetProbe := targetProbes[0]
-
-		targetAddress := targetProbe.Address
+		// Cloud mode pings a fixed address, so the target location needs no probe of its own.
+		var targetProbe Probe
+		var targetAddress string
 		if c.cloudMode {
 			node, ok := c.cloudNodes[targetLocation.LocationCode]
 			if !ok || node.PingTarget == "" {
@@ -1454,6 +1430,25 @@ func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMa
 				continue
 			}
 			targetAddress = node.PingTarget
+		} else {
+			if len(targetLocation.NearbyProbes) == 0 {
+				continue
+			}
+
+			responsiveProbes := filterResponsiveProbes(targetLocation.NearbyProbes, measurementState)
+			if len(responsiveProbes) == 0 {
+				c.log.Warn("No responsive probes found for location",
+					slog.String("location", targetLocation.LocationCode))
+				continue
+			}
+
+			targetProbes := getNearestProbesSorted(responsiveProbes,
+				targetLocation.Latitude, targetLocation.Longitude, probesPerLocation)
+			if len(targetProbes) == 0 {
+				continue
+			}
+			targetProbe = targetProbes[0]
+			targetAddress = targetProbe.Address
 		}
 
 		// Collect source probes from all other locations
@@ -1518,7 +1513,7 @@ func (c *Collector) Run(ctx context.Context, dryRun bool, probesPerLocation int,
 	}
 
 	// Initialize shared measurement state once, used by both goroutines
-	timestampFile := filepath.Join(stateDir, TimestampFileName)
+	timestampFile := filepath.Join(stateDir, c.timestampFileName())
 	c.measurementState = NewMeasurementState(timestampFile)
 	if err := c.measurementState.Load(); err != nil {
 		c.log.Warn("Failed to load measurement state at startup", slog.String("error", err.Error()))

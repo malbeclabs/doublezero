@@ -300,15 +300,15 @@ func (c *Client) CreateMeasurement(ctx context.Context, request MeasurementReque
 	return &measurementResponse, nil
 }
 
-func (c *Client) GetAllMeasurements(ctx context.Context, env string) ([]Measurement, error) {
-	if env == "" {
-		return nil, fmt.Errorf("env parameter is required")
+func (c *Client) GetAllMeasurements(ctx context.Context, tag string) ([]Measurement, error) {
+	if tag == "" {
+		return nil, fmt.Errorf("tag parameter is required")
 	}
 
 	allMeasurements := []Measurement{}
 	// Include both Ongoing and Scheduled statuses to catch newly created measurements
 	// Status values: 1=Scheduled, 2=Ongoing
-	endpoint := fmt.Sprintf("/measurements/my/?status=Ongoing,Scheduled&tags=%s", env)
+	endpoint := fmt.Sprintf("/measurements/my/?status=Ongoing,Scheduled&tags=%s", tag)
 
 	for {
 		resp, err := c.makeRequest(ctx, endpoint)

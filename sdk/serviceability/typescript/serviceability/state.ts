@@ -1264,6 +1264,9 @@ export interface Feed {
   slaHash: Uint8Array;
   committedRateBitsPerSec: bigint;
   status: number;
+  // Who halted the feed, the default key when it is not halted. Appended after status, so a feed
+  // written before it reads as halted by nobody, which is right: it cannot have been halted.
+  haltedBy: PublicKey;
 }
 
 // Feed lifecycle. Matches FeedStatus in the Rust program.
@@ -1294,6 +1297,7 @@ export function deserializeFeed(data: Uint8Array): Feed {
   // Not "pending": a feed written before RFC-28 has no status byte, and reading one as pending
   // would show every live catalog feed as out of service.
   const status = hasRfc28Tail ? r.readU8() : FEED_STATUS_ACTIVE;
+  const haltedBy = readPubkey(r);
   return {
     accountType,
     owner,
@@ -1308,5 +1312,6 @@ export function deserializeFeed(data: Uint8Array): Feed {
     slaHash,
     committedRateBitsPerSec,
     status,
+    haltedBy,
   };
 }

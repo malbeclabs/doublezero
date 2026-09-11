@@ -1519,6 +1519,7 @@ fn generate_feed(dir: &Path) {
         sla_hash: [0xE6; 32],
         committed_rate_bits_per_sec: 1_000_000_000,
         status: FeedStatus::Pending,
+        halted_by: Pubkey::default(),
     };
 
     let data = borsh::to_vec(&val).unwrap();

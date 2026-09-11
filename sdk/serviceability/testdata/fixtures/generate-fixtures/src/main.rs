@@ -1518,9 +1518,12 @@ fn generate_feed(dir: &Path) {
         spec_id: "top-of-book@v1.0.0".into(),
         sla_hash: [0xE6; 32],
         committed_rate_bits_per_sec: 1_000_000_000,
-        status: FeedStatus::Pending,
+        status: FeedStatus::Retiring,
         halted_by: Pubkey::default(),
-        retires_at: 0,
+        // A distinct nonzero timestamp, so a decoder that reads the wrong offset, the wrong width
+        // or drops the field cannot pass. Negative, because `retires_at` is an i64 and a positive
+        // value cannot tell a signed read from an unsigned one.
+        retires_at: -1_764_547_200,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -1543,7 +1546,9 @@ fn generate_feed(dir: &Path) {
             FieldValue { name: "SpecId".into(), value: "top-of-book@v1.0.0".into(), typ: "string".into() },
             FieldValue { name: "SlaHash".into(), value: "e6".repeat(32), typ: "string".into() },
             FieldValue { name: "CommittedRateBitsPerSec".into(), value: "1000000000".into(), typ: "u64".into() },
-            FieldValue { name: "Status".into(), value: "0".into(), typ: "u8".into() },
+            FieldValue { name: "Status".into(), value: "4".into(), typ: "u8".into() },
+            FieldValue { name: "HaltedBy".into(), value: pubkey_bs58(&Pubkey::default()), typ: "pubkey".into() },
+            FieldValue { name: "RetiresAt".into(), value: "-1764547200".into(), typ: "i64".into() },
         ],
     };
 

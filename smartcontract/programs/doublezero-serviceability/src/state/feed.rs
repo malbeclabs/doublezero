@@ -309,4 +309,52 @@ mod tests {
         let data = borsh::to_vec(&val).unwrap();
         assert!(Feed::try_from(&data[..]).is_err());
     }
+
+    /// `Retiring` must serialize as byte 4 and survive a round trip, and `retires_at` must survive
+    /// a negative value.
+    ///
+    /// The doc on `Retiring` calls discriminant 4 the load-bearing compatibility decision, since
+    /// renumbering `Halted` or `Retired` would reinterpret every stored feed. Nothing pinned that
+    /// byte, so this does, at the byte rather than through the enum.
+    #[test]
+    fn test_retiring_round_trips_and_holds_discriminant_four() {
+        let mut feed = feed_with(Pubkey::new_unique(), vec![Pubkey::new_unique()]);
+        feed.status = FeedStatus::Retiring;
+        feed.halted_by = Pubkey::new_unique();
+        feed.retires_at = -1_764_547_200;
+
+        let bytes = borsh::to_vec(&feed).unwrap();
+        let decoded = Feed::try_from(&bytes[..]).unwrap();
+        assert_eq!(decoded, feed);
+        assert_eq!(decoded.status, FeedStatus::Retiring);
+        assert_eq!(decoded.retires_at, -1_764_547_200);
+        assert_eq!(decoded.halted_by, feed.halted_by);
+
+        // The status byte sits immediately before `halted_by` and `retires_at`, the last three
+        // fields, so index from the end rather than counting the variable-length ones.
+        let status_index = bytes.len() - 32 - 8 - 1;
+        assert_eq!(
+            bytes[status_index], 4,
+            "Retiring is discriminant 4; changing it reinterprets every stored feed"
+        );
+    }
+
+    /// Every status round trips at its own discriminant, so none can be renumbered quietly.
+    #[test]
+    fn test_every_status_holds_its_discriminant() {
+        for (status, byte) in [
+            (FeedStatus::Pending, 0u8),
+            (FeedStatus::Active, 1),
+            (FeedStatus::Halted, 2),
+            (FeedStatus::Retired, 3),
+            (FeedStatus::Retiring, 4),
+        ] {
+            let mut feed = feed_with(Pubkey::new_unique(), vec![]);
+            feed.status = status;
+            let bytes = borsh::to_vec(&feed).unwrap();
+            let status_index = bytes.len() - 32 - 8 - 1;
+            assert_eq!(bytes[status_index], byte, "{status} must stay byte {byte}");
+            assert_eq!(Feed::try_from(&bytes[..]).unwrap().status, status);
+        }
+    }
 }

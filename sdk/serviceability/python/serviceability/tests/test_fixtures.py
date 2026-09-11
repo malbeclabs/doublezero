@@ -14,6 +14,7 @@ from serviceability.state import (
     Exchange,
     FEED_STATUS_ACTIVE,
     FEED_STATUS_PENDING,
+    FEED_STATUS_RETIRING,
     Feed,
     GlobalConfig,
     GlobalState,
@@ -627,6 +628,8 @@ class TestFixtureFeed:
                 "SlaHash": feed.sla_hash.hex(),
                 "CommittedRateBitsPerSec": feed.committed_rate_bits_per_sec,
                 "Status": feed.status,
+                "HaltedBy": feed.halted_by,
+                "RetiresAt": feed.retires_at,
             },
         )
         assert feed.account_type == 18
@@ -634,7 +637,10 @@ class TestFixtureFeed:
         assert feed.code == "shreds"
         assert feed.name == "Shreds"
         assert len(feed.groups) == 2
-        assert feed.status == FEED_STATUS_PENDING
+        assert feed.status == FEED_STATUS_RETIRING
+        # Negative on purpose: retires_at is an i64, and a positive value cannot tell a signed
+        # read from an unsigned one.
+        assert feed.retires_at == -1_764_547_200
 
     def test_legacy_deserialize(self):
         # A feed written before RFC-28 ends after groups. The stake fields default, and the status

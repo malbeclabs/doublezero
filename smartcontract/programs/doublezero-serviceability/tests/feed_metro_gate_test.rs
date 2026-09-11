@@ -22,7 +22,7 @@ use doublezero_serviceability::{
         contributor::create::ContributorCreateArgs,
         device::{create::DeviceCreateArgs, update::DeviceUpdateArgs},
         exchange::create::ExchangeCreateArgs,
-        feed::create::FeedCreateArgs,
+        feed::{create::FeedCreateArgs, retire::FeedRetireArgs},
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
         location::create::LocationCreateArgs,
         multicastgroup::create::MulticastGroupCreateArgs,
@@ -34,6 +34,7 @@ use doublezero_serviceability::{
         accounttype::AccountType,
         device::DeviceType,
         feature_flags::FeatureFlag,
+        feed::FeedStatus,
         stake_mirror::{StakeMirror, StakeTier},
         user::{UserCYOA, UserStatus, UserType},
     },
@@ -817,7 +818,7 @@ async fn test_non_active_feed_admits_no_subscriber() {
     let (exchange, mgroup) = (f.exchange_pubkey, f.mgroup_pubkey);
     let feed = create_staked_feed(&mut f, "pending", exchange, vec![mgroup]).await;
 
-    // The oracle sold a seat on it. Pre-selling a Pending feed is legitimate; connecting is not.
+    // A seat provisioner sold a seat on it. Pre-selling a Pending feed is legitimate; connecting is not.
     set_pass_feeds(
         &mut f,
         vec![FeedSeat {
@@ -844,4 +845,61 @@ async fn test_non_active_feed_admits_no_subscriber() {
         .get_accesspass()
         .unwrap();
     assert_eq!(pass.feed_seats()[0].current_users, 0);
+}
+
+/// A retiring feed still admits its subscribers, which is the whole point of the notice. RFC-28
+/// gives seat holders thirty days before publication stops; refusing them here would end the
+/// service on the day the notice starts and leave the notice protecting nobody who can reconnect.
+///
+/// The companion half, that no new seat is sold during the notice, lives in
+/// `set_access_pass_feeds_test.rs`.
+#[tokio::test]
+async fn test_a_retiring_feed_still_admits_its_seat_holders() {
+    let mut f = setup_feed_fixture([100, 0, 0, 27]).await;
+    let (exchange, mgroup) = (f.exchange_pubkey, f.mgroup_pubkey);
+    let feed = create_feed(&mut f, "closing", exchange, vec![mgroup]).await;
+    set_pass_feeds(
+        &mut f,
+        vec![FeedSeat {
+            feed_key: feed,
+            max_users: 2,
+            max_future_users: 2,
+            current_users: 0,
+            anniversary_day: 15,
+            window_end: TEST_WINDOW_END,
+            terminates_at: TEST_TERMINATES_AT,
+        }],
+    )
+    .await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut f.banks_client).await;
+    execute_transaction(
+        &mut f.banks_client,
+        recent_blockhash,
+        f.program_id,
+        DoubleZeroInstruction::RetireFeed(FeedRetireArgs {}),
+        vec![
+            AccountMeta::new(feed, false),
+            AccountMeta::new(f.globalstate_pubkey, false),
+        ],
+        &f.payer,
+    )
+    .await;
+    let retiring = get_account_data(&mut f.banks_client, feed)
+        .await
+        .expect("feed exists")
+        .get_feed()
+        .unwrap();
+    assert_eq!(retiring.status, FeedStatus::Retiring);
+
+    try_subscribe_with_feed(&mut f, feed)
+        .await
+        .expect("a retiring feed should still admit its seat holders");
+
+    let pass = get_account_data(&mut f.banks_client, f.accesspass_pubkey)
+        .await
+        .unwrap()
+        .get_accesspass()
+        .unwrap();
+    assert_eq!(pass.feed_seats()[0].current_users, 1);
 }

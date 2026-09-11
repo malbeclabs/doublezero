@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.40.0](https://github.com/malbeclabs/doublezero/compare/client/v0.39.0...client/v0.40.0) - 2026-09-11
+
+### Breaking
+
+### Changes
+
 - CLI
   - `doublezero-solana shreds payments` asks the Solana node for version 1 and reads the JsonParsed instruction list, so a v1 fund no longer fails the listing with error -32015.
 - CI

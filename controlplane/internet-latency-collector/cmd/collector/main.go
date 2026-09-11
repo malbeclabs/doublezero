@@ -23,6 +23,7 @@ import (
 	wheresitup "github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/wheresitup"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	"github.com/malbeclabs/doublezero/telemetry/migrations"
 	"github.com/malbeclabs/doublezero/tools/solana/pkg/epoch"
 	dzrpc "github.com/malbeclabs/doublezero/tools/solana/pkg/rpc"
 )
@@ -38,6 +39,13 @@ const (
 	defaultWheresitupStateFile          = "wheresitup_jobs_to_process.json"
 	defaultLogLevel                     = "info"
 	cloudNodeFileEnvVar                 = "DZ_ILC_CLOUD_NODE_FILE"
+	cloudNodeFileUsage                  = "JSON file of cloud regions to measure (code, cloud, lat, lng, atlas_probe_ids, ping_target); enables cloud mode. Falls back to " + cloudNodeFileEnvVar
+	defaultClickhouseAddr               = "localhost:9440"
+	defaultClickhouseDB                 = "default"
+	defaultClickhouseUser               = "default"
+
+	// A partial ClickHouse batch needs an external tick: the exporter has no timer of its own.
+	defaultCloudFlushInterval = 30 * time.Second
 
 	// defaultLedgerRPCTimeout bounds each individual ledger RPC request. The default solana-go
 	// client uses a 5-minute timeout, which lets a request block long enough for a fetched
@@ -124,84 +132,69 @@ RIPE Atlas measurements hourly, and exports RIPE Atlas results periodically.`,
 			slog.String("serviceability_program_id", networkConfig.ServiceabilityProgramID.String()),
 		)
 
-		// Validate oracle agent keypair path.
-		if keypairPath == "" {
-			log.Error("keypair path is required")
-			os.Exit(1)
-		}
-		if _, err := os.Stat(keypairPath); os.IsNotExist(err) {
-			log.Error("oracle agent keypair does not exist", "path", keypairPath)
-			os.Exit(1)
-		}
-		keypair, err := solana.PrivateKeyFromSolanaKeygenFile(keypairPath)
-		if err != nil {
-			log.Error("Failed to load oracle agent keypair", "error", err)
-			os.Exit(1)
-		}
-
-		// Create exporter.
-		telemetryClient := telemetry.New(log, solanaRPCClient, &keypair, networkConfig.TelemetryProgramID)
-		epochFinder, err := epoch.NewFinder(log, solanaRPCClient)
-		if err != nil {
-			log.Error("failed to create epoch finder", "error", err)
-			os.Exit(1)
-		}
-		exporter, err := exporter.NewBufferedLedgerExporter(exporter.BufferedLedgerExporterConfig{
-			Logger:             log,
-			Serviceability:     serviceabilityClient,
-			Telemetry:          telemetryClient,
-			SubmissionInterval: ledgerSubmissionInterval,
-			OracleAgentPK:      keypair.PublicKey(),
-			DataProviderSamplingIntervals: map[exporter.DataProviderName]time.Duration{
-				exporter.DataProviderNameWheresitup: defaultWheresitupSamplingInterval,
-				exporter.DataProviderNameRIPEAtlas:  defaultRipeAtlasSamplingInterval,
-			},
-			EpochFinder:    epochFinder,
-			AttemptTimeout: 2 * ledgerRPCTimeout,
-		})
-		if err != nil {
-			log.Error("failed to create exporter", "error", err)
-			os.Exit(1)
-		}
-
-		// Create data provider collectors. A cloud node file selects cloud mode: RIPE Atlas alone.
+		// A cloud node file selects cloud mode: RIPE Atlas alone, to ClickHouse, no keypair.
 		nodeFile := cloudNodeFilePath()
-		var ripeatlasCollector collector.RipeAtlasCollectorInterface
-		var wheresitupCollector collector.WheresitupCollectorInterface
-		if nodeFile != "" {
-			nodes, err := loadCloudNodes(log, nodeFile)
+		cloudMode := nodeFile != ""
+
+		var exp exporter.Exporter
+		var ledgerExporter *exporter.BufferedLedgerExporter
+		var cloudExporter *exporter.ClickHouseExporter
+
+		if cloudMode {
+			var err error
+			cloudExporter, err = newCloudExporter(log)
 			if err != nil {
-				log.Error("failed to load cloud node file", "error", err, "file", nodeFile)
+				log.Error("failed to create clickhouse exporter", "error", err)
 				os.Exit(1)
 			}
-			log.Info("Running in cloud mode",
-				slog.String("node_file", nodeFile),
-				slog.Int("node_count", len(nodes)))
-			ripeatlasCollector = ripeatlas.NewCloudCollector(log, exporter, env, nodes)
+			exp = cloudExporter
 		} else {
-			ripeatlasCollector = ripeatlas.NewCollector(log, exporter, env, func(ctx context.Context) []collector.LocationMatch {
-				return collector.GetLocations(ctx, log, serviceabilityClient)
+			// Validate oracle agent keypair path.
+			if keypairPath == "" {
+				log.Error("keypair path is required")
+				os.Exit(1)
+			}
+			if _, err := os.Stat(keypairPath); os.IsNotExist(err) {
+				log.Error("oracle agent keypair does not exist", "path", keypairPath)
+				os.Exit(1)
+			}
+			keypair, err := solana.PrivateKeyFromSolanaKeygenFile(keypairPath)
+			if err != nil {
+				log.Error("Failed to load oracle agent keypair", "error", err)
+				os.Exit(1)
+			}
+
+			// Create exporter.
+			telemetryClient := telemetry.New(log, solanaRPCClient, &keypair, networkConfig.TelemetryProgramID)
+			epochFinder, err := epoch.NewFinder(log, solanaRPCClient)
+			if err != nil {
+				log.Error("failed to create epoch finder", "error", err)
+				os.Exit(1)
+			}
+			ledgerExporter, err = exporter.NewBufferedLedgerExporter(exporter.BufferedLedgerExporterConfig{
+				Logger:             log,
+				Serviceability:     serviceabilityClient,
+				Telemetry:          telemetryClient,
+				SubmissionInterval: ledgerSubmissionInterval,
+				OracleAgentPK:      keypair.PublicKey(),
+				DataProviderSamplingIntervals: map[exporter.DataProviderName]time.Duration{
+					exporter.DataProviderNameWheresitup: defaultWheresitupSamplingInterval,
+					exporter.DataProviderNameRIPEAtlas:  defaultRipeAtlasSamplingInterval,
+				},
+				EpochFinder:    epochFinder,
+				AttemptTimeout: 2 * ledgerRPCTimeout,
 			})
-			wheresitupCollector = wheresitup.NewCollector(log, exporter, env, func(ctx context.Context) []collector.LocationMatch {
-				return collector.GetLocations(ctx, log, serviceabilityClient)
-			})
+			if err != nil {
+				log.Error("failed to create exporter", "error", err)
+				os.Exit(1)
+			}
+			exp = ledgerExporter
 		}
 
-		config := collector.Config{
-			Logger:     log,
-			Wheresitup: wheresitupCollector,
-			RipeAtlas:  ripeatlasCollector,
-			CloudMode:  nodeFile != "",
-
-			WheresitupSamplingInterval:   defaultWheresitupSamplingInterval,
-			RipeAtlasSamplingInterval:    defaultRipeAtlasSamplingInterval,
-			RipeAtlasMeasurementInterval: ripeatlasMeasurementInterval,
-			RipeAtlasExportInterval:      defaultRipeAtlasExportInterval,
-			DryRun:                       dryRun,
-			ProcessedJobsFile:            wheresitupStateFile,
-			StateDir:                     stateDir,
-			ProbesPerLocation:            ripeatlasProbesPerLocation,
-			MetricsAddr:                  metricsAddr,
+		config, err := newCollectorConfig(log, exp, nodeFile)
+		if err != nil {
+			log.Error("Operation failed: new_collector_config", "error", err)
+			os.Exit(1)
 		}
 
 		c, err := collector.New(config)
@@ -215,12 +208,16 @@ RIPE Atlas measurements hourly, and exports RIPE Atlas results periodically.`,
 
 		var wg sync.WaitGroup
 		var errCh = make(chan error, 2)
-		wg.Add(2)
 
-		// Start the ledger exporter.
+		// Start the record sink: the ledger submission loop, or the ClickHouse flush ticker.
+		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			if err := exporter.Run(ctx); err != nil {
+			if cloudMode {
+				runCloudFlushLoop(ctx, log, cloudExporter, defaultCloudFlushInterval)
+				return
+			}
+			if err := ledgerExporter.Run(ctx); err != nil {
 				log.Error("failed to run exporter", "error", err)
 				cancel()
 				errCh <- err
@@ -228,6 +225,7 @@ RIPE Atlas measurements hourly, and exports RIPE Atlas results periodically.`,
 		}()
 
 		// Start the collector.
+		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			if err := c.Run(ctx); err != nil {
@@ -239,6 +237,16 @@ RIPE Atlas measurements hourly, and exports RIPE Atlas results periodically.`,
 		}()
 
 		wg.Wait()
+
+		// Both goroutines can hand records to the exporter, so it closes only after both stop.
+		if cloudExporter != nil {
+			if err := cloudExporter.Close(); err != nil {
+				log.Warn("failed to close clickhouse exporter",
+					slog.String("error", err.Error()),
+					slog.Int("buffered", cloudExporter.Buffered()))
+			}
+		}
+
 		close(errCh)
 		if err := <-errCh; err != nil {
 			log.Error("run failed", "error", err)
@@ -291,9 +299,11 @@ var ripeatlasListMeasurementsCmd = &cobra.Command{
 		log := collector.NewLogger(collector.LogLevel(logLevel))
 		log.Info("Operation started: list_ripeatlas_measurements")
 
-		ripeCollector := ripeatlas.NewCollector(log, nil, env, func(ctx context.Context) []collector.LocationMatch {
-			return collector.GetLocations(ctx, log, serviceabilityClient)
-		})
+		ripeCollector, err := newRipeAtlasCollector(log, nil, cloudNodeFilePath())
+		if err != nil {
+			log.Error("Operation failed: new_ripeatlas_collector", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
 
 		if err := ripeCollector.ListMeasurements(context.Background()); err != nil {
 			log.Error("Operation failed: list_ripeatlas_measurements", slog.String("error", err.Error()))
@@ -309,9 +319,11 @@ var ripeatlasCreateMeasurementsCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		log := collector.NewLogger(collector.LogLevel(logLevel))
 
-		ripeCollector := ripeatlas.NewCollector(log, nil, env, func(ctx context.Context) []collector.LocationMatch {
-			return collector.GetLocations(ctx, log, serviceabilityClient)
-		})
+		ripeCollector, err := newRipeAtlasCollector(log, nil, cloudNodeFilePath())
+		if err != nil {
+			log.Error("Operation failed: new_ripeatlas_collector", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
 
 		if err := ripeCollector.RunRipeAtlasMeasurementCreation(context.Background(), dryRun, ripeatlasProbesPerLocation, stateDir, defaultRipeAtlasSamplingInterval); err != nil {
 			log.Error("Operation failed: create_ripeatlas_measurements", slog.String("error", err.Error()))
@@ -328,9 +340,11 @@ var ripeatlasClearMeasurementsCmd = &cobra.Command{
 		log := collector.NewLogger(collector.LogLevel(logLevel))
 		log.Info("Operation started: clear_atlas_measurements")
 
-		ripeCollector := ripeatlas.NewCollector(log, nil, env, func(ctx context.Context) []collector.LocationMatch {
-			return collector.GetLocations(ctx, log, serviceabilityClient)
-		})
+		ripeCollector, err := newRipeAtlasCollector(log, nil, cloudNodeFilePath())
+		if err != nil {
+			log.Error("Operation failed: new_ripeatlas_collector", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
 
 		if err := ripeCollector.ClearAllMeasurements(context.Background()); err != nil {
 			log.Error("Operation failed: clear_ripeatlas_measurements", slog.String("error", err.Error()))
@@ -425,6 +439,133 @@ func loadCloudNodes(logger *slog.Logger, filename string) ([]ripeatlas.CloudNode
 	return nodes, nil
 }
 
+// newRipeAtlasCollector builds the collector for the configured mode. Cloud mode has its own
+// measurement tag, description prefix and state file.
+func newRipeAtlasCollector(log *slog.Logger, exp exporter.Exporter, nodeFile string) (*ripeatlas.Collector, error) {
+	if nodeFile == "" {
+		return ripeatlas.NewCollector(log, exp, env, func(ctx context.Context) []collector.LocationMatch {
+			return collector.GetLocations(ctx, log, serviceabilityClient)
+		}), nil
+	}
+
+	nodes, err := loadCloudNodes(log, nodeFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load cloud node file %s: %w", nodeFile, err)
+	}
+
+	log.Info("Running in cloud mode",
+		slog.String("node_file", nodeFile),
+		slog.Int("node_count", len(nodes)),
+		slog.String("state_file", ripeatlas.CloudTimestampFileName))
+
+	return ripeatlas.NewCloudCollector(log, exp, env, nodes), nil
+}
+
+func newCollectorConfig(log *slog.Logger, exp exporter.Exporter, nodeFile string) (collector.Config, error) {
+	ripeatlasCollector, err := newRipeAtlasCollector(log, exp, nodeFile)
+	if err != nil {
+		return collector.Config{}, err
+	}
+
+	cfg := collector.Config{
+		Logger:    log,
+		RipeAtlas: ripeatlasCollector,
+		CloudMode: nodeFile != "",
+
+		WheresitupSamplingInterval:   defaultWheresitupSamplingInterval,
+		RipeAtlasSamplingInterval:    defaultRipeAtlasSamplingInterval,
+		RipeAtlasMeasurementInterval: ripeatlasMeasurementInterval,
+		RipeAtlasExportInterval:      defaultRipeAtlasExportInterval,
+		DryRun:                       dryRun,
+		ProcessedJobsFile:            wheresitupStateFile,
+		StateDir:                     stateDir,
+		ProbesPerLocation:            ripeatlasProbesPerLocation,
+		MetricsAddr:                  metricsAddr,
+	}
+
+	if nodeFile == "" {
+		cfg.Wheresitup = wheresitup.NewCollector(log, exp, env, func(ctx context.Context) []collector.LocationMatch {
+			return collector.GetLocations(ctx, log, serviceabilityClient)
+		})
+	}
+
+	return cfg, nil
+}
+
+type clickhouseConfig struct {
+	Addr          string
+	Database      string
+	Username      string
+	Password      string
+	Table         string
+	TLSDisabled   bool
+	RunMigrations bool
+}
+
+func getenv(key, def string) string {
+	if v, ok := os.LookupEnv(key); ok && v != "" {
+		return v
+	}
+	return def
+}
+
+func loadClickHouseConfig() clickhouseConfig {
+	return clickhouseConfig{
+		Addr:          getenv("CLICKHOUSE_ADDR", defaultClickhouseAddr),
+		Database:      getenv("CLICKHOUSE_DB", defaultClickhouseDB),
+		Username:      getenv("CLICKHOUSE_USER", defaultClickhouseUser),
+		Password:      getenv("CLICKHOUSE_PASS", ""),
+		Table:         getenv("CLICKHOUSE_TABLE", exporter.DefaultClickHouseTable),
+		TLSDisabled:   getenv("CLICKHOUSE_TLS_DISABLED", "") == "true",
+		RunMigrations: getenv("CLICKHOUSE_RUN_MIGRATIONS", "") == "true",
+	}
+}
+
+func newCloudExporter(log *slog.Logger) (*exporter.ClickHouseExporter, error) {
+	cfg := loadClickHouseConfig()
+
+	log.Info("Creating cloud exporter",
+		slog.String("addr", cfg.Addr),
+		slog.String("database", cfg.Database),
+		slog.String("table", cfg.Table),
+		slog.Bool("tls_disabled", cfg.TLSDisabled),
+		slog.Bool("run_migrations", cfg.RunMigrations))
+
+	if cfg.RunMigrations {
+		if err := migrations.RunMigrations(cfg.Addr, cfg.Database, cfg.Username, cfg.Password, !cfg.TLSDisabled, log); err != nil {
+			return nil, fmt.Errorf("failed to run clickhouse migrations: %w", err)
+		}
+	}
+
+	return exporter.NewClickHouseExporter(exporter.ClickHouseExporterConfig{
+		Logger:      log,
+		Addr:        cfg.Addr,
+		Database:    cfg.Database,
+		Username:    cfg.Username,
+		Password:    cfg.Password,
+		TLSDisabled: cfg.TLSDisabled,
+		Table:       cfg.Table,
+	})
+}
+
+func runCloudFlushLoop(ctx context.Context, log *slog.Logger, exp *exporter.ClickHouseExporter, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := exp.Flush(ctx); err != nil {
+				log.Warn("failed to flush clickhouse exporter",
+					slog.String("error", err.Error()),
+					slog.Int("buffered", exp.Buffered()))
+			}
+		}
+	}
+}
+
 func loadLocations(ctx context.Context, logger *slog.Logger, serviceabilityClient *serviceability.Client) []collector.LocationMatch {
 	if locationFile != "" {
 		logger.Info("Loading locations from JSON file", slog.String("file", locationFile))
@@ -477,9 +618,12 @@ func init() {
 	runCmd.Flags().DurationVar(&ripeatlasMeasurementInterval, "ripeatlas-measurement-interval", defaultRipeAtlasMeasurementInterval, "Interval at which to run RIPE Atlas measurements")
 	runCmd.Flags().DurationVar(&ledgerSubmissionInterval, "ledger-submission-interval", defaultLedgerSubmissionInterval, "Interval at which to submit metrics to the ledger")
 	runCmd.Flags().StringVar(&metricsAddr, "metrics-addr", "127.0.0.1:2113", "Address to bind the metrics server to")
-	runCmd.Flags().StringVar(&cloudNodeFile, "cloud-node-file", "", "JSON file of cloud regions to measure (code, cloud, lat, lng, atlas_probe_ids, ping_target); enables cloud mode. Falls back to "+cloudNodeFileEnvVar)
+	runCmd.Flags().StringVar(&cloudNodeFile, "cloud-node-file", "", cloudNodeFileUsage)
 
+	ripeatlasListMeasurementsCmd.Flags().StringVar(&cloudNodeFile, "cloud-node-file", "", cloudNodeFileUsage)
 	ripeatlasCreateMeasurementsCmd.Flags().IntVar(&ripeatlasProbesPerLocation, "probes-per-location", defaultAtlasProbesPerLocation, "Number of RIPE Atlas probes to associate with each DoubleZero location")
+	ripeatlasCreateMeasurementsCmd.Flags().StringVar(&cloudNodeFile, "cloud-node-file", "", cloudNodeFileUsage)
+	ripeatlasClearMeasurementsCmd.Flags().StringVar(&cloudNodeFile, "cloud-node-file", "", cloudNodeFileUsage)
 
 	nodefileCmd.PersistentFlags().StringVar(&nodeFilePath, "node-file", defaultNodeFilePath, "Path to the cloud region node file")
 	nodefileCmd.PersistentFlags().BoolVar(&nodeFileSkipPing, "skip-ping", false, "Check only that each ping target is still published, without sending a ping")

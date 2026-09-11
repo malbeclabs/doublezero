@@ -30,8 +30,9 @@ use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{get_feed_pda, get_globalstate_pda, get_stake_mirror_pda},
     processors::feed::{
-        create::FeedCreateArgs, delete::FeedDeleteArgs, halt::FeedHaltArgs, resume::FeedResumeArgs,
-        update::FeedUpdateArgs,
+        create::FeedCreateArgs, delete::FeedDeleteArgs,
+        finalize_retirement::FeedFinalizeRetirementArgs, halt::FeedHaltArgs,
+        resume::FeedResumeArgs, retire::FeedRetireArgs, update::FeedUpdateArgs,
     },
 };
 use solana_program::{
@@ -158,6 +159,40 @@ pub fn resume_feed(
     ix
 }
 
+/// `RetireFeed` (variant 122). Accounts: `[feed, globalstate]`.
+///
+/// Starts the notice seat holders are owed and stops new seats being sold. Signed by the keys
+/// `halt_feed` accepts, the feed's own builder included, because a builder that wants out of
+/// running a feed should not need an operator to stop.
+///
+/// This does not retire the feed. `finalize_feed_retirement` does, once the notice elapses.
+pub fn retire_feed(program_id: &Pubkey, payer: &Pubkey, feed: &Pubkey) -> Instruction {
+    let (globalstate, _) = get_globalstate_pda(program_id);
+    common::build_with_permission(
+        program_id,
+        DoubleZeroInstruction::RetireFeed(FeedRetireArgs {}),
+        vec![
+            AccountMeta::new(*feed, false),
+            AccountMeta::new(globalstate, false),
+        ],
+        payer,
+    )
+}
+
+/// `FinalizeFeedRetirement` (variant 123). Accounts: `[feed]`.
+///
+/// Moves a feed from `Retiring` to `Retired` once its notice has elapsed. Permissionless, and so
+/// on the no-permission path: the clock decides the outcome, and this instruction can only agree
+/// with it. No globalstate either, because there is no authority to check against.
+pub fn finalize_feed_retirement(program_id: &Pubkey, payer: &Pubkey, feed: &Pubkey) -> Instruction {
+    common::build(
+        program_id,
+        DoubleZeroInstruction::FinalizeFeedRetirement(FeedFinalizeRetirementArgs {}),
+        vec![AccountMeta::new(*feed, false)],
+        payer,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,6 +315,24 @@ mod tests {
         let resume = resume_feed(&pid, &payer, &feed, None);
         assert_eq!(resume.data[0], 121);
         assert_eq!(resume.accounts, expected);
+
+        let retire = retire_feed(&pid, &payer, &feed);
+        assert_eq!(retire.data[0], 122);
+        assert_eq!(retire.accounts, expected);
+
+        // Finalize is permissionless, so it carries no globalstate: nothing about it is checked
+        // against an authority, and sending one would ask a caller for an account the processor
+        // never reads.
+        let finalize = finalize_feed_retirement(&pid, &payer, &feed);
+        assert_eq!(finalize.data[0], 123);
+        assert_eq!(
+            finalize.accounts,
+            vec![
+                AccountMeta::new(feed, false),
+                AccountMeta::new(payer, true),
+                AccountMeta::new(system_program::ID, false),
+            ]
+        );
 
         // A staked feed's mirror rides after the payer and system program, where the processor
         // looks for it. Without it, resume refuses with `StakeMirrorMissing`.

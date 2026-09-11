@@ -74,8 +74,18 @@
     },
     {
       "name": "Status",
-      "value": "0",
+      "value": "4",
       "typ": "u8"
+    },
+    {
+      "name": "HaltedBy",
+      "value": "11111111111111111111111111111111",
+      "typ": "pubkey"
+    },
+    {
+      "name": "RetiresAt",
+      "value": "-1764547200",
+      "typ": "i64"
     }
   ]
 }

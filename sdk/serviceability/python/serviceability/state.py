@@ -1254,6 +1254,7 @@ FEED_STATUS_PENDING = 0
 FEED_STATUS_ACTIVE = 1
 FEED_STATUS_HALTED = 2
 FEED_STATUS_RETIRED = 3
+FEED_STATUS_RETIRING = 4
 
 
 @dataclass
@@ -1280,6 +1281,9 @@ class Feed:
     # Who halted the feed, default when it is not halted. Appended after status, so a feed
     # written before it reads as halted by nobody, which is right: it cannot have been halted.
     halted_by: Pubkey = Pubkey.default()
+    # When the retirement notice elapses, zero when the feed is not retiring. Appended after
+    # halted_by, so a feed written before it reads as not retiring, which is right.
+    retires_at: int = 0
     pub_key: Pubkey = Pubkey.default()  # set from account address after deserialization
 
     @classmethod
@@ -1307,4 +1311,5 @@ class Feed:
         # would show every live catalog feed as out of service.
         f.status = r.read_u8() if has_rfc28_tail else FEED_STATUS_ACTIVE
         f.halted_by = _read_pubkey(r)
+        f.retires_at = _read_i64(r)
         return f

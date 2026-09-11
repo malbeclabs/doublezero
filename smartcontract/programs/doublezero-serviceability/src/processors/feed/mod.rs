@@ -1,7 +1,9 @@
 pub mod create;
 pub mod delete;
+pub mod finalize_retirement;
 pub mod halt;
 pub mod resume;
+pub mod retire;
 pub mod update;
 
 use crate::{
@@ -112,11 +114,17 @@ pub fn enforce_feed_metro_gate(
 /// status changes, so retirement and slashing need no sweep over the access passes that already
 /// carry a seat for it.
 ///
+/// `Retiring` admits, and that is the point of the state. RFC-28 gives seat holders thirty days
+/// notice *before publication stops*, so a feed serves its existing holders throughout. Refusing
+/// here would lock out anyone who reconnects on the first day of the notice, which would leave the
+/// notice protecting only the population that cannot come back. A new seat is refused instead
+/// where seats are provisioned, so nobody buys into a feed that is closing.
+///
 /// Call this where a seat is spent, never from the shared coverage check: `unsubscribe_feed` runs
 /// through that too, and gating there would leave a user holding a seat on a retired feed with no
 /// way to release it.
 pub fn require_feed_admits(feed_key: &Pubkey, feed: &Feed) -> Result<(), DoubleZeroError> {
-    if feed.status != FeedStatus::Active {
+    if !matches!(feed.status, FeedStatus::Active | FeedStatus::Retiring) {
         msg!(
             "Feed {} is {}, so it admits no subscribers",
             feed_key,

@@ -23,8 +23,14 @@ pub enum FeedStatus {
     Active = 1,
     /// Publication stopped by the builder. Resumable.
     Halted = 2,
-    /// Terminal. Set after the thirty-day notice elapses.
+    /// Terminal. Set after the notice elapses.
     Retired = 3,
+    /// Retiring, with the notice to seat holders running. Not resumable: the only way out is
+    /// `Retired`.
+    ///
+    /// Discriminant 4 rather than a value between `Halted` and `Retired`, because those are
+    /// written into live accounts and renumbering them would reinterpret every stored feed.
+    Retiring = 4,
 }
 
 impl fmt::Display for FeedStatus {
@@ -34,6 +40,7 @@ impl fmt::Display for FeedStatus {
             FeedStatus::Active => "active",
             FeedStatus::Halted => "halted",
             FeedStatus::Retired => "retired",
+            FeedStatus::Retiring => "retiring",
         };
         write!(f, "{s}")
     }
@@ -111,6 +118,13 @@ pub struct Feed {
     /// moment an operator halts, and with `Retired` unreachable and `DeleteFeed` refusing a staked
     /// feed, nothing else stops one.
     pub halted_by: Pubkey, // 32
+    /// When this feed's retirement notice elapses, as a unix timestamp, zero when it is not
+    /// retiring.
+    ///
+    /// Set when retirement starts and never moved, so the date a seat holder was given is the
+    /// date that arrives. A feed that never sold a seat gets `now`, because the notice exists for
+    /// seat holders and a feed that was never `Active` has none.
+    pub retires_at: i64, // 8
 }
 
 impl Feed {
@@ -169,6 +183,9 @@ impl TryFrom<&[u8]> for Feed {
             // Zero on a feed written before this field existed, which reads as "not halted by
             // anyone" and is right: such a feed cannot have been halted at all.
             halted_by: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            // Zero on a feed written before this field, which reads as "not retiring" and is
+            // right: such a feed cannot have started a notice.
+            retires_at: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Feed {
@@ -291,5 +308,53 @@ mod tests {
         val.account_type = AccountType::Exchange;
         let data = borsh::to_vec(&val).unwrap();
         assert!(Feed::try_from(&data[..]).is_err());
+    }
+
+    /// `Retiring` must serialize as byte 4 and survive a round trip, and `retires_at` must survive
+    /// a negative value.
+    ///
+    /// The doc on `Retiring` calls discriminant 4 the load-bearing compatibility decision, since
+    /// renumbering `Halted` or `Retired` would reinterpret every stored feed. Nothing pinned that
+    /// byte, so this does, at the byte rather than through the enum.
+    #[test]
+    fn test_retiring_round_trips_and_holds_discriminant_four() {
+        let mut feed = feed_with(Pubkey::new_unique(), vec![Pubkey::new_unique()]);
+        feed.status = FeedStatus::Retiring;
+        feed.halted_by = Pubkey::new_unique();
+        feed.retires_at = -1_764_547_200;
+
+        let bytes = borsh::to_vec(&feed).unwrap();
+        let decoded = Feed::try_from(&bytes[..]).unwrap();
+        assert_eq!(decoded, feed);
+        assert_eq!(decoded.status, FeedStatus::Retiring);
+        assert_eq!(decoded.retires_at, -1_764_547_200);
+        assert_eq!(decoded.halted_by, feed.halted_by);
+
+        // The status byte sits immediately before `halted_by` and `retires_at`, the last three
+        // fields, so index from the end rather than counting the variable-length ones.
+        let status_index = bytes.len() - 32 - 8 - 1;
+        assert_eq!(
+            bytes[status_index], 4,
+            "Retiring is discriminant 4; changing it reinterprets every stored feed"
+        );
+    }
+
+    /// Every status round trips at its own discriminant, so none can be renumbered quietly.
+    #[test]
+    fn test_every_status_holds_its_discriminant() {
+        for (status, byte) in [
+            (FeedStatus::Pending, 0u8),
+            (FeedStatus::Active, 1),
+            (FeedStatus::Halted, 2),
+            (FeedStatus::Retired, 3),
+            (FeedStatus::Retiring, 4),
+        ] {
+            let mut feed = feed_with(Pubkey::new_unique(), vec![]);
+            feed.status = status;
+            let bytes = borsh::to_vec(&feed).unwrap();
+            let status_index = bytes.len() - 32 - 8 - 1;
+            assert_eq!(bytes[status_index], byte, "{status} must stay byte {byte}");
+            assert_eq!(Feed::try_from(&bytes[..]).unwrap().status, status);
+        }
     }
 }

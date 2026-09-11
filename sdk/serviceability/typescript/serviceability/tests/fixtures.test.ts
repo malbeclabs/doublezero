@@ -22,6 +22,7 @@ import {
   deserializeFeed,
   FEED_STATUS_ACTIVE,
   FEED_STATUS_PENDING,
+  FEED_STATUS_RETIRING,
 } from "../state.js";
 
 const FIXTURES_DIR = join(
@@ -647,6 +648,8 @@ describe("Feed fixture", () => {
       SlaHash: Buffer.from(feed.slaHash).toString("hex"),
       CommittedRateBitsPerSec: feed.committedRateBitsPerSec,
       Status: feed.status,
+      HaltedBy: feed.haltedBy,
+      RetiresAt: feed.retiresAt,
     });
 
     expect(feed.accountType).toBe(18);
@@ -654,7 +657,10 @@ describe("Feed fixture", () => {
     expect(feed.code).toBe("shreds");
     expect(feed.name).toBe("Shreds");
     expect(feed.groups).toHaveLength(2);
-    expect(feed.status).toBe(FEED_STATUS_PENDING);
+    expect(feed.status).toBe(FEED_STATUS_RETIRING);
+    // Negative on purpose: it is the only value that makes the asIntN reinterpretation in the
+    // decoder meaningful. Read as unsigned this would be a very large positive number.
+    expect(feed.retiresAt).toBe(-1764547200n);
   });
 
   // A feed written before RFC-28 ends after groups. The stake fields default, and the status reads

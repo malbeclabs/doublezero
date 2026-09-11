@@ -154,6 +154,7 @@ pub fn process_create_feed(
             FeedStatus::Pending
         },
         halted_by: Pubkey::default(),
+        retires_at: 0,
     };
 
     try_acc_create(

@@ -102,6 +102,7 @@ var (
 	ErrInvalidMeasurement  = NewValidationError("measurement_validation", "invalid measurement data", nil)
 	ErrInvalidInterval     = NewValidationError("interval_validation", "invalid interval configuration", nil)
 	ErrInsufficientSources = NewValidationError("source_validation", "insufficient sources for operation", nil)
+	ErrInvalidNodeFile     = NewValidationError("node_file_validation", "invalid node file", nil)
 
 	ErrRateLimitExceeded   = NewAPIError("api_rate_limit", "rate limit exceeded", nil)
 	ErrUnauthorized        = NewAPIError("api_auth", "unauthorized access", nil)

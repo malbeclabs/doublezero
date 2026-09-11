@@ -32,6 +32,7 @@ type UnresponsiveProbeEntry struct {
 type MeasurementMeta struct {
 	TargetLocation string            `json:"target_location"`
 	TargetProbeID  int               `json:"target_probe_id"`
+	TargetAddress  string            `json:"target_address,omitempty"`
 	Sources        []SourceProbeMeta `json:"sources"`
 	CreatedAt      int64             `json:"created_at"`
 	LastExportAt   int64             `json:"last_export_at,omitempty"`

@@ -90,6 +90,7 @@ type MeasurementSpec struct {
 	TargetLocation     string
 	TargetLocationCode string
 	TargetProbe        Probe
+	TargetAddress      string
 	SourceSpecs        []SourceSpec
 }
 
@@ -995,6 +996,17 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 				continue
 			}
 
+			// An empty stored target address predates the field and is not a mismatch.
+			if meta.TargetAddress != "" && meta.TargetAddress != wanted.TargetAddress {
+				c.log.Info("Measurement has outdated target address, marking for recreation",
+					slog.Int("measurement_id", existing.ID),
+					slog.String("target", wanted.TargetLocationCode),
+					slog.String("existing_target_address", meta.TargetAddress),
+					slog.String("wanted_target_address", wanted.TargetAddress))
+				toCreate = append(toCreate, wanted)
+				continue
+			}
+
 			// Check if target probe has changed
 			targetProbeChanged := meta.TargetProbeID != wanted.TargetProbe.ID
 			if targetProbeChanged {
@@ -1050,6 +1062,11 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		if existing, exists := existingByTarget[wanted.TargetLocationCode]; exists {
 			meta, hasMeta := measurementState.GetMetadata(existing.ID)
 			if hasMeta {
+				if meta.TargetAddress != "" && meta.TargetAddress != wanted.TargetAddress {
+					measurementsToRecreate[wanted.TargetLocationCode] = true
+					continue
+				}
+
 				// Check if target probe has changed
 				if meta.TargetProbeID != wanted.TargetProbe.ID {
 					measurementsToRecreate[wanted.TargetLocationCode] = true
@@ -1200,6 +1217,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 			c.log.Info("Would create measurement (dry run)",
 				slog.String("target_location", spec.TargetLocation),
 				slog.Int("target_probe", spec.TargetProbe.ID),
+				slog.String("target_address", spec.TargetAddress),
 				slog.Int("source_count", len(spec.SourceSpecs)))
 		} else {
 			// Use simplified description without source list
@@ -1236,7 +1254,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 						Interval:       int(samplingInterval.Seconds()),
 						Packets:        1,
 						PacketInterval: 1000, // Delay between packets; only matters when Packets > 1
-						Target:         spec.TargetProbe.Address,
+						Target:         spec.TargetAddress,
 						Description:    description,
 						Tags:           tags,
 					},
@@ -1268,6 +1286,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 				meta := MeasurementMeta{
 					TargetLocation: spec.TargetLocationCode,
 					TargetProbeID:  spec.TargetProbe.ID,
+					TargetAddress:  spec.TargetAddress,
 					Sources:        sources,
 					CreatedAt:      time.Now().Unix(),
 				}
@@ -1426,6 +1445,17 @@ func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMa
 		}
 		targetProbe := targetProbes[0]
 
+		targetAddress := targetProbe.Address
+		if c.cloudMode {
+			node, ok := c.cloudNodes[targetLocation.LocationCode]
+			if !ok || node.PingTarget == "" {
+				c.log.Warn("No ping target for location, skipping measurement",
+					slog.String("location", targetLocation.LocationCode))
+				continue
+			}
+			targetAddress = node.PingTarget
+		}
+
 		// Collect source probes from all other locations
 		// Since we're iterating in alphabetical order and only need to measure once between any pair,
 		// we only include sources from locations that come after this target in the alphabet
@@ -1466,6 +1496,7 @@ func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMa
 				TargetLocation:     targetLocation.LocationCode,
 				TargetLocationCode: targetLocation.LocationCode,
 				TargetProbe:        targetProbe,
+				TargetAddress:      targetAddress,
 				SourceSpecs:        sourceSpecs,
 			})
 		}

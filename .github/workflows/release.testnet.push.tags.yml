@@ -27,8 +27,11 @@ on:
         type: boolean
         default: false
     secrets:
-      DOUBLEZERO_PAT:
-        description: 'PAT to push tags to the repository'
+      RELEASE_BOT_APP_ID:
+        description: 'Release bot app, which mints the token that pushes the tag'
+        required: true
+      RELEASE_BOT_PRIVATE_KEY:
+        description: 'Private key of the release bot app'
         required: true
 
 # This workflow is pure mechanism and carries no environment; the approval
@@ -55,11 +58,23 @@ jobs:
               exit 1 ;;
           esac
 
+      # A token from the app, not GITHUB_TOKEN: a tag pushed with GITHUB_TOKEN
+      # starts no workflow, so the package builds this release waits for would
+      # never run. Not a personal token either, because those expire after a
+      # year and take the release down with them.
+      - uses: actions/create-github-app-token@v2
+        id: app
+        with:
+          app-id: ${{ secrets.RELEASE_BOT_APP_ID }}
+          private-key: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+          owner: malbeclabs
+          repositories: doublezero
+
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           repository: malbeclabs/doublezero
-          token: ${{ secrets.DOUBLEZERO_PAT }}
+          token: ${{ steps.app.outputs.token }}
           # empty ref = the sha this run is pinned to (actions/checkout default)
           ref: ${{ inputs.ref }}
           fetch-tags: true

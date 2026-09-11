@@ -331,7 +331,8 @@ jobs:
       skip_existing: true
       dry_run: ${{ inputs.dry_run }}
     secrets:
-      DOUBLEZERO_PAT: ${{ secrets.DOUBLEZERO_PAT }}
+      RELEASE_BOT_APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
+      RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
 
   verify-cloudsmith:
     runs-on: ubuntu-latest

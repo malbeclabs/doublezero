@@ -32,6 +32,7 @@ builds:
       - linux
     goarch:
       - amd64
+      - arm64
   - id: doublezero-cli                  # default env = testnet
     builder: rust
     tool: cargo
@@ -45,6 +46,24 @@ builds:
     env:
       - CC_x86_64_unknown_linux_musl=musl-gcc
       - CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc
+      - BUILD_VERSION={{.Version}}
+  - id: doublezero-cli-arm64             # default env = testnet
+    builder: rust
+    # aws-lc-sys's build script feeds raw `--target=<rust-triple>` flags straight to the C
+    # compiler for its hand-written arm assembly, which a plain musl-gcc cross toolchain (or a
+    # bare `zig cc` CC shim) does not accept as-is; cargo-zigbuild rewrites that invocation for
+    # zig's own target syntax, so it is used here instead of `cargo build` + a CC override.
+    # Verified locally: `cargo zigbuild --release --package=doublezero --bin=doublezero --target
+    # aarch64-unknown-linux-musl` produces a statically-linked ARM64 ELF binary.
+    tool: cargo
+    binary: doublezero
+    targets:
+      - aarch64-unknown-linux-musl
+    command: zigbuild
+    flags:
+      - --package=doublezero
+      - --release
+    env:
       - BUILD_VERSION={{.Version}}
   - id: doublezero-cli-mainnet-beta       # default env = mainnet-beta
     builder: rust
@@ -61,11 +80,25 @@ builds:
       - CC_x86_64_unknown_linux_musl=musl-gcc
       - CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc
       - BUILD_VERSION={{.Version}}
+  - id: doublezero-cli-mainnet-beta-arm64 # default env = mainnet-beta
+    builder: rust
+    # See doublezero-cli-arm64 above for why this uses cargo-zigbuild.
+    tool: cargo
+    binary: doublezero
+    targets:
+      - aarch64-unknown-linux-musl
+    command: zigbuild
+    flags:
+      - --package=doublezero
+      - --release
+      - --features=default-mainnet-beta
+    env:
+      - BUILD_VERSION={{.Version}}
 
 archives:
   - id: doublezero_archive
     formats: ['tar.gz']
-    ids: [doublezero-cli, doublezerod]
+    ids: [doublezero-cli, doublezero-cli-arm64, doublezerod]
     # this name template makes the OS and Arch compatible with the results of `uname`.
     name_template: >-
       {{ .ProjectName }}_
@@ -78,7 +111,7 @@ archives:
 nfpms:
   - id: doublezero
     package_name: doublezero
-    ids: [doublezerod, doublezero-cli]
+    ids: [doublezerod, doublezero-cli, doublezero-cli-arm64]
     vendor: doublezero
     homepage: doublezero.xyz
     maintainer: steve <steve@malbeclabs.com>
@@ -121,7 +154,7 @@ nfpms:
   - id: doublezero-mainnet-beta
     package_name: doublezero
     file_name_template: "{{ .PackageName }}-mainnet-beta_{{ .Version }}_{{ .Arch }}"
-    ids: [doublezerod, doublezero-cli-mainnet-beta]
+    ids: [doublezerod, doublezero-cli-mainnet-beta, doublezero-cli-mainnet-beta-arm64]
     vendor: doublezero
     homepage: doublezero.xyz
     maintainer: steve <steve@malbeclabs.com>

@@ -33,11 +33,22 @@ jobs:
       - name: Install rust for cli
         uses: dtolnay/rust-toolchain@1.97.1
         with:
-          targets: x86_64-unknown-linux-musl
+          targets: x86_64-unknown-linux-musl,aarch64-unknown-linux-musl
       - name: Install dependencies for rpm packaging and musl static build
         run: |
           sudo apt update
           sudo apt-get install squashfs-tools rpm musl-tools -y
+      # aarch64-unknown-linux-musl cross-compilation (see doublezero-cli-arm64 in
+      # release/.goreleaser.base.client.yaml for why cargo-zigbuild is needed here instead of a
+      # musl-gcc cross toolchain).
+      - name: Install zig for aarch64 musl cross-compilation
+        run: |
+          curl -sSfL https://ziglang.org/download/0.16.0/zig-x86_64-linux-0.16.0.tar.xz -o /tmp/zig.tar.xz
+          sudo tar -xf /tmp/zig.tar.xz -C /usr/local
+          sudo ln -sf /usr/local/zig-x86_64-linux-0.16.0/zig /usr/local/bin/zig
+          zig version
+      - name: Install cargo-zigbuild
+        run: cargo install cargo-zigbuild
       - name: build client release
         uses: goreleaser/goreleaser-action@v6
         with:

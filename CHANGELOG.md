@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Client
+  - `client/INSTALL.md`'s scripted deb install now waits for the dpkg lock first: on a freshly-booted Ubuntu host, `unattended-upgrades` can hold `/var/lib/dpkg/lock-frontend` for several minutes, and the Cloudsmith setup script redirects `apt-get`'s output to a log file, so the wait looked like a hang with zero feedback. (#3540)
+
 ## [v0.40.0](https://github.com/malbeclabs/doublezero/compare/client/v0.39.0...client/v0.40.0) - 2026-09-11
 
 ### Breaking

@@ -7,7 +7,16 @@ The DoubleZero client can be either installed as a apt/deb or rpm package or bui
 ### Add Debian/APT Repository
 
 #### Scripted Install
+
+On a freshly-booted host, `unattended-upgrades` can hold the dpkg lock for several minutes. The
+setup script below redirects `apt-get`'s output to a log file, so it silently waits on that lock
+with no visible progress — it isn't hung, just quiet. Wait for the lock first so you see what's
+happening:
 ```
+$ while sudo fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
+    echo "waiting for apt lock (likely unattended-upgrades)..."; sleep 2
+  done
+
 $ curl -1sLf \
   'https://dl.cloudsmith.io/public/malbeclabs/doublezero/setup.deb.sh' \
   | sudo -E bash

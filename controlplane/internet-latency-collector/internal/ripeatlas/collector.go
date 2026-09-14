@@ -185,9 +185,17 @@ func getNearestProbesSorted(probes []Probe, latitude, longitude float64, maxCoun
 	return collector.GetNearestSourcesSorted(probes, latitude, longitude, maxCount)
 }
 
-func filterValidProbes(probes []Probe) []Probe {
+// filterValidProbes drops probes the collector cannot measure with: no IPv4
+// address, a non-routable one, or RIPE's system-ipv4-doesnt-work tag.
+func filterValidProbes(log *slog.Logger, probes []Probe) []Probe {
 	var validProbes []Probe
 	for _, probe := range probes {
+		if probe.hasTag(tagIPv4DoesntWork) {
+			log.Info("Excluding RIPE probe that cannot perform IPv4 measurements",
+				slog.Int("probe_id", probe.ID),
+				slog.String("tag", tagIPv4DoesntWork))
+			continue
+		}
 		if probe.Address != "" && collector.IsInternetRoutable(probe.Address) {
 			validProbes = append(validProbes, probe)
 		}
@@ -1370,7 +1378,7 @@ func (c *Collector) fetchFallbackProbesForUnresponsiveLocations(ctx context.Cont
 			continue
 		}
 
-		fallbackProbes := filterValidProbes(probes)
+		fallbackProbes := filterValidProbes(c.log, probes)
 		if len(fallbackProbes) > 0 {
 			c.log.Info("Using non-anchor fallback probes for location",
 				slog.String("location", match.LocationCode),

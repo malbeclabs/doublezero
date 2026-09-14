@@ -1065,3 +1065,34 @@ func TestInternetLatency_RIPEAtlas_GetCreditBalance(t *testing.T) {
 	require.NoError(t, err, "GetCreditBalance() should not return error")
 	require.Equal(t, 1000.0, balance, "Expected credit balance to be 1000")
 }
+
+func TestInternetLatency_RIPEAtlas_ProbeTagsDecode(t *testing.T) {
+	t.Parallel()
+
+	body := `{
+		"count": 1,
+		"results": [
+			{
+				"id": 1009793,
+				"address_v4": "1.2.3.4",
+				"status": {"id": 1, "name": "Connected"},
+				"tags": [
+					{"name": "System: IPv4 Doesn't Work", "slug": "system-ipv4-doesnt-work"},
+					{"name": "System: Resolves A Correctly", "slug": "system-resolves-a-correctly"}
+				]
+			}
+		]
+	}`
+
+	var response ProbesResponse
+	require.NoError(t, json.Unmarshal([]byte(body), &response))
+	require.Len(t, response.Results, 1)
+
+	probe := response.Results[0]
+	require.Len(t, probe.Tags, 2)
+	require.Equal(t, "System: IPv4 Doesn't Work", probe.Tags[0].Name)
+	require.Equal(t, "system-ipv4-doesnt-work", probe.Tags[0].Slug)
+	require.Equal(t, "system-resolves-a-correctly", probe.Tags[1].Slug)
+	require.True(t, probe.hasTag(tagIPv4DoesntWork))
+	require.False(t, probe.hasTag("nonexistent-tag"))
+}

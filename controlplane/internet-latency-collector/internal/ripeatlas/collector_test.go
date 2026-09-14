@@ -143,25 +143,83 @@ func TestInternetLatency_RIPEAtlas_CalculateAndSortProbeDistances(t *testing.T) 
 func TestInternetLatency_RIPEAtlas_FilterValidProbes(t *testing.T) {
 	t.Parallel()
 
-	probes := []Probe{
-		{ID: 1, Address: "8.8.8.8"},
-		{ID: 2, Address: "192.168.1.1"},
-		{ID: 3, Address: ""},
-		{ID: 4, Address: "1.1.1.1"},
-		{ID: 5, Address: "10.0.0.1"},
-		{ID: 6, Address: "::1"},
-		{ID: 7, Address: "2001:4860:4860::8888"},
+	tests := []struct {
+		name  string
+		probe Probe
+		want  bool
+	}{
+		{
+			name:  "Routable address, no tags",
+			probe: Probe{ID: 1, Address: "8.8.8.8"},
+			want:  true,
+		},
+		{
+			name:  "Routable address, tagged system-ipv4-works",
+			probe: probeWithTags(2, "1.1.1.1", "system-ipv4-works"),
+			want:  true,
+		},
+		{
+			name:  "Routable address, unrelated tags only",
+			probe: probeWithTags(3, "9.9.9.9", "core", "home"),
+			want:  true,
+		},
+		{
+			name:  "Routable address, tagged system-ipv4-doesnt-work",
+			probe: probeWithTags(4, "8.8.4.4", "system-ipv4-doesnt-work"),
+			want:  false,
+		},
+		{
+			name:  "Tagged system-ipv4-doesnt-work alongside other tags",
+			probe: probeWithTags(5, "8.8.4.4", "system-ipv4-works", "system-ipv4-doesnt-work"),
+			want:  false,
+		},
+		{
+			name:  "Empty address",
+			probe: Probe{ID: 6, Address: ""},
+			want:  false,
+		},
+		{
+			name:  "Private address",
+			probe: Probe{ID: 7, Address: "192.168.1.1"},
+			want:  false,
+		},
+		{
+			name:  "Loopback address",
+			probe: Probe{ID: 8, Address: "::1"},
+			want:  false,
+		},
+		{
+			name:  "Routable IPv6 address",
+			probe: Probe{ID: 9, Address: "2001:4860:4860::8888"},
+			want:  true,
+		},
 	}
 
-	result := filterValidProbes(probes)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 
-	// Should only include probes with internet-routable IPs
-	expectedIDs := map[int]bool{1: true, 4: true, 7: true}
-	require.Len(t, result, len(expectedIDs), "Unexpected number of valid probes")
-
-	for _, probe := range result {
-		require.True(t, expectedIDs[probe.ID], "Unexpected probe ID %d in result", probe.ID)
+			result := filterValidProbes(logger, []Probe{tt.probe})
+			if tt.want {
+				require.Len(t, result, 1)
+				require.Equal(t, tt.probe.ID, result[0].ID)
+			} else {
+				require.Empty(t, result)
+			}
+		})
 	}
+}
+
+// probeWithTags builds a probe carrying the given RIPE tag slugs.
+func probeWithTags(id int, address string, slugs ...string) Probe {
+	p := Probe{ID: id, Address: address}
+	for _, slug := range slugs {
+		p.Tags = append(p.Tags, struct {
+			Name string `json:"name"`
+			Slug string `json:"slug"`
+		}{Name: slug, Slug: slug})
+	}
+	return p
 }
 
 func TestInternetLatency_RIPEAtlas_NewCollector(t *testing.T) {

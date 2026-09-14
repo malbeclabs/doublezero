@@ -222,7 +222,6 @@ mod tests {
             .unwrap_or_else(Pubkey::new_unique);
 
         let user = User {
-            account_type: AccountType::User,
             owner: payer,
             user_type: UserType::Multicast,
             device_pk,

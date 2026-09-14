@@ -233,7 +233,7 @@ mod tests {
             accountdata::AccountData,
             accounttype::AccountType,
             feed::Feed,
-            user::{User, UserStatus, UserType},
+            user::{User, UserType},
         },
     };
     use mockall::predicate;
@@ -261,12 +261,10 @@ mod tests {
         let device_pk = Pubkey::new_unique();
 
         let user = User {
-            account_type: AccountType::User,
             owner: payer,
             user_type: UserType::Multicast,
             device_pk,
             client_ip,
-            status: UserStatus::Activated,
             subscribers,
             feed_pks: held_feeds,
             accesspass_pk: get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer).0,

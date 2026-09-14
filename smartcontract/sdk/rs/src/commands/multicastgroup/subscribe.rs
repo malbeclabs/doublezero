@@ -135,7 +135,6 @@ mod tests {
         tests::utils::{create_test_client, expect_missing_permission_account},
         DoubleZeroClient,
     };
-    use doublezero_program_common::types::NetworkV4;
     use doublezero_serviceability::{
         pda::{get_accesspass_pda, get_multicastgroup_pda, get_permission_pda},
         processors::multicastgroup::subscribe::UpdateMulticastGroupRolesArgs,
@@ -143,7 +142,7 @@ mod tests {
             accountdata::AccountData,
             accounttype::AccountType,
             multicastgroup::{MulticastGroup, MulticastGroupStatus},
-            user::{User, UserCYOA, UserStatus, UserType},
+            user::User,
         },
     };
     use doublezero_serviceability_instruction::multicastgroup::update_multicast_group_roles;
@@ -183,28 +182,8 @@ mod tests {
 
         let user_pubkey = Pubkey::new_unique();
         let user = User {
-            account_type: AccountType::User,
             owner: payer,
-            bump_seed: 0,
-            index: 1,
-            tenant_pk: Pubkey::default(),
-            user_type: UserType::Multicast,
-            device_pk: mgroup_pubkey,
-            cyoa_type: UserCYOA::GREOverDIA,
             client_ip,
-            dz_ip: client_ip,
-            tunnel_id: 0,
-            tunnel_net: NetworkV4::default(),
-            status: UserStatus::Activated,
-            publishers: vec![],
-            subscribers: vec![],
-            validator_pubkey: Pubkey::default(),
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            tunnel_flags: 0,
-            bgp_status: Default::default(),
-            last_bgp_up_at: 0,
-            last_bgp_reported_at: 0,
-            bgp_rtt_ns: 0,
             ..Default::default()
         };
 
@@ -313,28 +292,9 @@ mod tests {
         let client_ip = Ipv4Addr::new(192, 168, 1, 10);
         let user_pubkey = Pubkey::new_unique();
         let user = User {
-            account_type: AccountType::User,
             owner: payer,
-            bump_seed: 0,
-            index: 1,
-            tenant_pk: Pubkey::default(),
-            user_type: UserType::Multicast,
-            device_pk: mgroup_pubkey,
-            cyoa_type: UserCYOA::GREOverDIA,
             client_ip,
-            dz_ip: client_ip,
-            tunnel_id: 0,
-            tunnel_net: NetworkV4::default(),
-            status: UserStatus::Activated,
-            publishers: vec![],
             subscribers: vec![mgroup_pubkey],
-            validator_pubkey: Pubkey::default(),
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            tunnel_flags: 0,
-            bgp_status: Default::default(),
-            last_bgp_up_at: 0,
-            last_bgp_reported_at: 0,
-            bgp_rtt_ns: 0,
             ..Default::default()
         };
         client
@@ -442,28 +402,8 @@ mod tests {
         let client_ip = Ipv4Addr::new(192, 168, 1, 10);
         let user_pubkey = Pubkey::new_unique();
         let user = User {
-            account_type: AccountType::User,
             owner: payer,
-            bump_seed: 0,
-            index: 1,
-            tenant_pk: Pubkey::default(),
-            user_type: UserType::Multicast,
-            device_pk: mgroup1,
-            cyoa_type: UserCYOA::GREOverDIA,
             client_ip,
-            dz_ip: client_ip,
-            tunnel_id: 0,
-            tunnel_net: NetworkV4::default(),
-            status: UserStatus::Activated,
-            publishers: vec![],
-            subscribers: vec![],
-            validator_pubkey: Pubkey::default(),
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            tunnel_flags: 0,
-            bgp_status: Default::default(),
-            last_bgp_up_at: 0,
-            last_bgp_reported_at: 0,
-            bgp_rtt_ns: 0,
             ..Default::default()
         };
 

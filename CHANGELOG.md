@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- SDK
+  - `smartcontract/sdk/rs`'s `User` test literals are pruned to only the fields each test asserts on or that drive the command's behavior, letting `User::default()` (#4080) fill the rest — second slice of #4084, covering `commands/tenant/delete.rs`, `commands/multicastgroup/{subscribe,subscribe_feed,unsubscribe_feed}.rs`, and `commands/user/{delete,requestban,update}.rs`. `commands/accesspass/get.rs` was already pruned; `crates/doublezero-daemon-cli` is left for a follow-up (`connect.rs` alone has ~70 more literals). (#4084)
+
 ## [v0.40.0](https://github.com/malbeclabs/doublezero/compare/client/v0.39.0...client/v0.40.0) - 2026-09-11
 
 ### Breaking

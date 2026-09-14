@@ -99,17 +99,11 @@ mod tests {
     };
     use doublezero_serviceability::{
         processors::user::requestban::UserRequestBanArgs,
-        state::{
-            accountdata::AccountData,
-            accounttype::AccountType,
-            device::Device,
-            user::{User, UserCYOA, UserStatus, UserType},
-        },
+        state::{accountdata::AccountData, accounttype::AccountType, device::Device, user::User},
     };
     use doublezero_serviceability_instruction::user::request_ban_user;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
-    use std::net::Ipv4Addr;
 
     #[test]
     fn test_request_ban_user() {
@@ -120,31 +114,9 @@ mod tests {
 
         let user_pubkey = Pubkey::new_unique();
         let device_pk = Pubkey::new_unique();
-        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
 
         let user = User {
-            account_type: AccountType::User,
-            owner: payer,
-            bump_seed: 0,
-            index: 1,
-            tenant_pk: Pubkey::default(),
-            user_type: UserType::IBRLWithAllocatedIP,
             device_pk,
-            cyoa_type: UserCYOA::GREOverDIA,
-            client_ip,
-            dz_ip: Ipv4Addr::new(10, 0, 0, 1),
-            tunnel_id: 100,
-            tunnel_net: "10.1.0.0/31".parse().unwrap(),
-            status: UserStatus::Activated,
-            publishers: vec![],
-            subscribers: vec![],
-            validator_pubkey: Pubkey::default(),
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            tunnel_flags: 0,
-            bgp_status: Default::default(),
-            last_bgp_up_at: 0,
-            last_bgp_reported_at: 0,
-            bgp_rtt_ns: 0,
             ..Default::default()
         };
 

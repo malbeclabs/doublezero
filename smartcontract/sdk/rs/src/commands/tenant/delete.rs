@@ -127,7 +127,6 @@ mod tests {
         commands::tenant::delete::DeleteTenantCommand, tests::utils::create_test_client,
         DoubleZeroClient,
     };
-    use doublezero_program_common::types::NetworkV4;
     use doublezero_serviceability::{
         pda::{get_accesspass_pda, get_permission_pda},
         processors::{
@@ -140,7 +139,7 @@ mod tests {
             accounttype::AccountType,
             device::Device,
             tenant::{Tenant, TenantBillingConfig, TenantPaymentStatus},
-            user::{User, UserCYOA, UserStatus, UserType},
+            user::User,
         },
     };
     use doublezero_serviceability_instruction::{
@@ -193,31 +192,11 @@ mod tests {
         let device_pk = Pubkey::new_unique();
         let program_id = client.get_program_id();
         let payer = client.get_payer();
-        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
 
         let mut user = User {
-            account_type: AccountType::User,
             owner: client.get_payer(),
-            bump_seed: 0,
-            index: 1,
             tenant_pk: tenant_pubkey,
-            user_type: UserType::IBRL,
             device_pk,
-            cyoa_type: UserCYOA::GREOverDIA,
-            client_ip,
-            dz_ip: client_ip,
-            tunnel_id: 0,
-            tunnel_net: NetworkV4::default(),
-            status: UserStatus::Activated,
-            publishers: vec![],
-            subscribers: vec![],
-            validator_pubkey: Pubkey::default(),
-            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
-            tunnel_flags: 0,
-            bgp_status: Default::default(),
-            last_bgp_up_at: 0,
-            last_bgp_reported_at: 0,
-            bgp_rtt_ns: 0,
             ..Default::default()
         };
 

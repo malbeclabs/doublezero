@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Client
+  - Publish `aarch64`/`arm64` client packages (deb/rpm) alongside the existing `x86_64`/`amd64` ones. `doublezerod` cross-compiles natively (`CGO_ENABLED=0`); the Rust `doublezero` CLI cross-compiles via `cargo-zigbuild` instead of a musl-gcc cross toolchain, since aws-lc-sys's hand-written arm assembly build script feeds raw `--target=<rust-triple>` flags to the C compiler that a bare cross-gcc (or a plain `zig cc` shim) does not accept. Verified locally that `cargo zigbuild --release --target aarch64-unknown-linux-musl` produces a working statically-linked ARM64 binary. (#4176)
+
 ## [v0.40.0](https://github.com/malbeclabs/doublezero/compare/client/v0.39.0...client/v0.40.0) - 2026-09-11
 
 ### Breaking

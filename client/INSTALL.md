@@ -2,6 +2,8 @@
 
 The DoubleZero client can be either installed as a apt/deb or rpm package or built from source. We _highly_ suggest using the stable version noted in the "How to connect to DoubleZero" section of the documentation here: https://docs.malbeclabs.com/connect/
 
+Published packages support both `x86_64`/`amd64` and `aarch64`/`arm64` (e.g. AWS Graviton, Ampere).
+
 ## Package Installation
 
 ### Add Debian/APT Repository

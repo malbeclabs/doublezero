@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Device Telemetry
+  - A submission that fails every attempt while the partition buffer is at capacity now drops only the oldest unwritten samples that do not fit and requeues the newest that do, instead of discarding the whole unwritten batch the moment it stops fitting entirely. Also corrects an off-by-one that treated an exact-fit backlog (`bufLen + len(unwritten) == capacity`) as over capacity and dropped it in full. (#4233)
+
 ## [v0.40.0](https://github.com/malbeclabs/doublezero/compare/client/v0.39.0...client/v0.40.0) - 2026-09-11
 
 ### Breaking

@@ -1578,8 +1578,12 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_UnresponsiveTargetDoesN
 	err := c.configureMeasurements(t.Context(), locationMatches, false, 1, stateDir, 1*time.Minute)
 	require.NoError(t, err)
 
-	// Probe 6726 should be marked unresponsive (target staleness via Phase 1)
-	require.True(t, c.measurementState.IsProbeUnresponsive(6726), "Target probe 6726 should be marked unresponsive")
+	// Probe 6726 should be barred from target selection (target staleness via Phase 1)
+	require.True(t, c.measurementState.IsTargetUnresponsive(6726), "Target probe 6726 should be barred as a target")
+
+	// ...but it remains available to source measurements. Failing to answer pings says
+	// nothing about sending them, and xsin has no other probe to source from.
+	require.False(t, c.measurementState.IsProbeUnresponsive(6726), "Failed target probe 6726 should still be usable as a source")
 
 	// Source probes 6626 and 7080 should NOT be marked unresponsive — their stale LastResponseAt
 	// in measurement 1002 is because the target (6726) stopped responding, not because they're broken
@@ -2069,4 +2073,253 @@ func TestInternetLatency_RIPEAtlas_FilterValidProbes_KeepsNATProbes(t *testing.T
 
 	require.Len(t, result, 1)
 	require.Equal(t, 2, result[0].ID)
+}
+
+// failingExporter reports a write failure for every batch. The package has no mock
+// exporter (wheresitup's is package-private), and every other test here uses the real
+// CSV exporter, which does not fail on demand.
+type failingExporter struct{}
+
+func (failingExporter) WriteRecords(_ context.Context, _ []exporter.Record) error {
+	return errors.New("write failed")
+}
+func (failingExporter) Close() error { return nil }
+
+func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_RecordsTargetLoss(t *testing.T) {
+	t.Parallel()
+
+	base := time.Now().Add(-time.Hour).Truncate(time.Second)
+
+	answered := func(probeID int, at time.Time) map[string]any {
+		return map[string]any{
+			"prb_id":    float64(probeID),
+			"timestamp": float64(at.Unix()),
+			"result":    []any{map[string]any{"rtt": float64(26.0)}},
+		}
+	}
+	timedOut := func(probeID int, at time.Time) map[string]any {
+		return map[string]any{
+			"prb_id":    float64(probeID),
+			"timestamp": float64(at.Unix()),
+			"result":    []any{map[string]any{"x": "*"}},
+		}
+	}
+
+	// newCollector returns a collector whose client replays whatever the current
+	// element of batches holds, one batch per export call.
+	newCollector := func(t *testing.T, exp exporter.Exporter, batches *[][]any) (*Collector, *MeasurementState) {
+		t.Helper()
+		outputDir := t.TempDir()
+		log := slog.New(slog.NewJSONHandler(io.Discard, nil))
+		if exp == nil {
+			e, err := exporter.NewCSVExporter(log, "ripe_atlas_measurements", outputDir)
+			require.NoError(t, err)
+			exp = e
+		}
+
+		call := 0
+		mockClient := &MockClient{
+			GetMeasurementResultsIncrementalFunc: func(_ context.Context, _ int, _ int64) ([]any, error) {
+				if call >= len(*batches) {
+					return []any{}, nil
+				}
+				batch := (*batches)[call]
+				call++
+				return batch, nil
+			},
+		}
+		c := &Collector{client: mockClient, log: log, exporter: exp}
+
+		ms := NewMeasurementState(filepath.Join(outputDir, TimestampFileName))
+		ms.SetMetadata(1, MeasurementMeta{
+			TargetLocation: "cmh",
+			TargetProbeID:  12651,
+			Sources: []SourceProbeMeta{
+				{LocationCode: "nyc", ProbeID: 100},
+				{LocationCode: "chi", ProbeID: 101},
+			},
+			CreatedAt: time.Now().Add(-2 * time.Hour).Unix(),
+		})
+		return c, ms
+	}
+
+	t.Run("counts every ping aimed at the target", func(t *testing.T) {
+		t.Parallel()
+
+		batches := [][]any{{
+			answered(100, base),
+			timedOut(101, base.Add(time.Second)),
+			timedOut(100, base.Add(2*time.Second)),
+		}}
+		c, ms := newCollector(t, nil, &batches)
+
+		_, _, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.NoError(t, err)
+
+		meta, ok := ms.GetMetadata(1)
+		require.True(t, ok)
+		require.Equal(t, int64(3), meta.TargetAttempts, "every uploaded result is an attempt")
+		require.Equal(t, int64(1), meta.TargetSuccesses, "only results carrying an rtt are successes")
+		require.Equal(t, base.Add(2*time.Second).Unix(), meta.TargetLossCursor)
+	})
+
+	t.Run("re-delivered trailing timeouts are not counted twice", func(t *testing.T) {
+		t.Parallel()
+
+		// The export cursor advances only past the success at base, so the two later
+		// timeouts come back on the next incremental query. Counting them again would
+		// drive a target that merely lost its most recent pings toward the threshold.
+		firstBatch := []any{
+			answered(100, base),
+			timedOut(101, base.Add(time.Second)),
+			timedOut(100, base.Add(2*time.Second)),
+		}
+		batches := [][]any{firstBatch, firstBatch[1:]}
+		c, ms := newCollector(t, nil, &batches)
+
+		_, _, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.NoError(t, err)
+		_, _, err = c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.NoError(t, err)
+
+		meta, ok := ms.GetMetadata(1)
+		require.True(t, ok)
+		require.Equal(t, int64(3), meta.TargetAttempts, "the replayed timeouts must not be recounted")
+		require.Equal(t, int64(1), meta.TargetSuccesses)
+	})
+
+	t.Run("a failed export counts nothing", func(t *testing.T) {
+		t.Parallel()
+
+		batches := [][]any{{
+			answered(100, base),
+			timedOut(101, base.Add(time.Second)),
+		}}
+		c, ms := newCollector(t, failingExporter{}, &batches)
+
+		_, _, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.Error(t, err)
+
+		meta, ok := ms.GetMetadata(1)
+		require.True(t, ok)
+		require.Zero(t, meta.TargetAttempts, "a batch that never landed must not be counted")
+		require.Zero(t, meta.TargetSuccesses)
+		require.Zero(t, meta.TargetLossCursor, "the loss cursor must not advance past an unwritten batch")
+	})
+}
+
+func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_LossyTargetIsRotated(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	var createdMeasurements []MeasurementRequest
+	var stoppedMeasurements []int
+	var mu sync.Mutex
+
+	const lossyTargetProbe = 12651   // stands in for the NAT'd Columbus probe
+	const replacementProbe = 1012487 // a directly reachable probe further out
+
+	existingMeasurements := []Measurement{
+		{
+			ID:          1001,
+			Description: "DoubleZero [testnet] to cmh probe 12651",
+			Target:      "107.192.62.177",
+			Status: struct {
+				Name string `json:"name"`
+				ID   int    `json:"id"`
+			}{Name: "Ongoing"},
+			Type: "ping",
+		},
+	}
+
+	mockClient := &MockClient{
+		GetAllMeasurementsFunc: func(_ context.Context, _ string) ([]Measurement, error) {
+			return existingMeasurements, nil
+		},
+		CreateMeasurementFunc: func(_ context.Context, request MeasurementRequest) (*MeasurementResponse, error) {
+			mu.Lock()
+			createdMeasurements = append(createdMeasurements, request)
+			id := 2000 + len(createdMeasurements)
+			mu.Unlock()
+			return &MeasurementResponse{Measurements: []int{id}}, nil
+		},
+		StopMeasurementFunc: func(_ context.Context, measurementID int) error {
+			mu.Lock()
+			stoppedMeasurements = append(stoppedMeasurements, measurementID)
+			mu.Unlock()
+			return nil
+		},
+		GetMeasurementResultsIncrementalFunc: func(_ context.Context, _ int, _ int64) ([]any, error) {
+			return []any{}, nil
+		},
+	}
+
+	stateDir := filepath.Join(t.TempDir(), "state")
+	require.NoError(t, os.MkdirAll(stateDir, 0o755))
+
+	c := &Collector{client: mockClient, log: log, env: "testnet", getLocationsFunc: func(_ context.Context) []collector.LocationMatch {
+		return []collector.LocationMatch{}
+	}}
+
+	// The target is exporting steadily, so the staleness check is satisfied and only the
+	// loss ratio can catch it: 15 of 100 pings answered, in a window that has closed.
+	windowStart := time.Now().Add(-2 * TargetLossWindow).Unix()
+	c.measurementState = NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
+	c.measurementState.SetMetadata(1001, MeasurementMeta{
+		TargetLocation: "cmh",
+		TargetProbeID:  lossyTargetProbe,
+		Sources: []SourceProbeMeta{
+			{LocationCode: "nyc", ProbeID: 100, LastResponseAt: time.Now().Unix()},
+		},
+		CreatedAt:         windowStart - 3600,
+		LastExportAt:      time.Now().Unix(),
+		TargetWindowStart: windowStart,
+		TargetAttempts:    100,
+		TargetSuccesses:   15,
+	})
+
+	locationMatches := []LocationProbeMatch{
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "cmh", Latitude: 40.11, Longitude: -83.00},
+			NearbyProbes: []Probe{
+				{ID: lossyTargetProbe, Address: "107.192.62.177", Latitude: 40.11, Longitude: -83.00},
+				{ID: replacementProbe, Address: "69.58.112.238", Latitude: 40.12, Longitude: -83.01},
+			},
+			ProbeCount: 2,
+		},
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "nyc", Latitude: 40.77, Longitude: -74.07},
+			NearbyProbes:  []Probe{{ID: 100, Address: "162.255.145.7", Latitude: 40.77, Longitude: -74.07}},
+			ProbeCount:    1,
+		},
+	}
+
+	err := c.configureMeasurements(t.Context(), locationMatches, false, 1, stateDir, 10*time.Minute)
+	require.NoError(t, err)
+
+	// The lossy target is barred from targeting...
+	require.True(t, c.measurementState.IsTargetUnresponsive(lossyTargetProbe),
+		"a target above the loss threshold should be barred from target selection")
+
+	// ...but stays available to source measurements for other locations.
+	require.False(t, c.measurementState.IsProbeUnresponsive(lossyTargetProbe),
+		"target loss must not bar the probe from sourcing, since NAT breaks inbound only")
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	require.Contains(t, stoppedMeasurements, 1001, "the measurement against the lossy target should be stopped")
+
+	var cmhTargets []string
+	for _, req := range createdMeasurements {
+		for _, def := range req.Definitions {
+			if strings.Contains(def.Description, "to cmh") {
+				cmhTargets = append(cmhTargets, def.Target)
+			}
+		}
+	}
+	require.NotEmpty(t, cmhTargets, "a replacement measurement for cmh should be created")
+	require.Contains(t, cmhTargets, "69.58.112.238", "cmh should be retargeted at the remaining probe")
+	require.NotContains(t, cmhTargets, "107.192.62.177", "cmh should not be retargeted at the lossy probe")
 }

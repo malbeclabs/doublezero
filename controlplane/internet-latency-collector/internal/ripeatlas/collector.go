@@ -228,6 +228,22 @@ func preferDirectTargets(probes []Probe) []Probe {
 	return direct
 }
 
+// filterSelectableTargets drops probes that cannot serve as a measurement target,
+// whether because they failed as a target or because they are unresponsive outright.
+//
+// Source selection uses filterResponsiveProbes instead, which consults only the latter:
+// a probe that does not answer pings may still send them perfectly well, so barring it
+// from sourcing would drop its location's circuits for no reason.
+func filterSelectableTargets(probes []Probe, measurementState *MeasurementState) []Probe {
+	var selectable []Probe
+	for _, probe := range probes {
+		if !measurementState.IsTargetUnresponsive(probe.ID) && probe.Address != "" {
+			selectable = append(selectable, probe)
+		}
+	}
+	return selectable
+}
+
 func filterResponsiveProbes(probes []Probe, measurementState *MeasurementState) []Probe {
 	var responsiveProbes []Probe
 	for _, probe := range probes {
@@ -637,7 +653,13 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	// Tally every ping aimed at the target so a target that replies steadily but
 	// rarely can be told apart from a healthy one. Both look identical to the
 	// staleness check, which only asks whether anything came back at all.
-	var targetAttempts, targetSuccesses int64
+	//
+	// Counting is gated on the loss cursor rather than the export cursor. The export
+	// cursor advances only past results carrying a latency, so every timeout newer
+	// than the last success comes back from each incremental query until a later
+	// success arrives; counting those repeats would inflate the ratio.
+	var targetAttempts, targetSuccesses, newestResult int64
+	lossCursor := meta.TargetLossCursor
 
 	// Process results - use slice to preserve all samples
 	var records []exporter.Record
@@ -645,9 +667,17 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 		// Parse latency from result (now also returns probe ID)
 		latency, timestamp, probeID := c.parseLatencyFromResult(result)
 
-		targetAttempts++
-		if latency > 0 {
-			targetSuccesses++
+		// Results are counted at one second granularity, so a result sharing the
+		// cursor's second is skipped. Undercounting biases away from blacklisting a
+		// usable target, which is the safe direction to err in.
+		if resultAt := timestamp.Unix(); resultAt > lossCursor {
+			targetAttempts++
+			if latency > 0 {
+				targetSuccesses++
+			}
+			if resultAt > newestResult {
+				newestResult = resultAt
+			}
 		}
 
 		// A result the probe uploaded proves it ran the measurement even if nothing came
@@ -680,8 +710,6 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 		}
 	}
 
-	measurementState.RecordTargetResults(measurement.ID, targetAttempts, targetSuccesses, time.Now().Unix())
-
 	// Write the batch of records with the exporter.
 	if len(records) > 0 {
 		if err := c.exporter.WriteRecords(ctx, records); err != nil {
@@ -689,6 +717,11 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 			return 0, nil, fmt.Errorf("failed to write records: %w", err)
 		}
 	}
+
+	// Counted only once the batch is durable. A failed write leaves both cursors where
+	// they were, so the same results come back next time and are counted then; counting
+	// before the write would tally them on every failed attempt.
+	measurementState.RecordTargetResults(measurement.ID, targetAttempts, targetSuccesses, newestResult, time.Now().Unix())
 
 	// Update the timestamp tracker with the newest timestamp seen
 	if maxTimestamp.After(lastTimestamp) {
@@ -889,6 +922,10 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 	}
 
 	// Step 4: Prune expired unresponsive probes so they get retried
+	if pruned := measurementState.PruneExpiredUnresponsiveTargets(); pruned > 0 {
+		c.log.Info("Pruned expired unresponsive targets",
+			slog.Int("pruned_count", pruned))
+	}
 	if pruned := measurementState.PruneExpiredUnresponsiveProbes(); pruned > 0 {
 		c.log.Info("Pruned expired unresponsive probes",
 			slog.Int("pruned_count", pruned))
@@ -922,7 +959,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 					slog.String("reason", reason),
 					slog.Time("created_at", time.Unix(meta.CreatedAt, 0)),
 					slog.Time("last_export_at", time.Unix(meta.LastExportAt, 0)))
-				measurementState.AddUnresponsiveProbe(meta.TargetProbeID)
+				measurementState.AddUnresponsiveTarget(meta.TargetProbeID)
 				newUnresponsiveProbes++
 				continue
 			}
@@ -942,7 +979,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 					slog.Int64("successes", successes),
 					slog.Float64("loss_ratio", 1-float64(successes)/float64(attempts)),
 					slog.Float64("max_loss_ratio", MaxTargetLossRatio))
-				measurementState.AddUnresponsiveProbe(meta.TargetProbeID)
+				measurementState.AddUnresponsiveTarget(meta.TargetProbeID)
 				newUnresponsiveProbes++
 			}
 		}
@@ -955,7 +992,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 			// Skip measurements whose target is already marked unresponsive —
 			// source probes in these measurements will have stale LastResponseAt
 			// because the target isn't replying, not because the sources are broken
-			if measurementState.IsProbeUnresponsive(meta.TargetProbeID) {
+			if measurementState.IsTargetUnresponsive(meta.TargetProbeID) {
 				continue
 			}
 			for _, source := range meta.Sources {
@@ -1418,7 +1455,7 @@ func (c *Collector) fetchFallbackProbesForUnresponsiveLocations(ctx context.Cont
 		if len(match.NearbyProbes) == 0 {
 			continue
 		}
-		if len(filterResponsiveProbes(match.NearbyProbes, measurementState)) > 0 {
+		if len(filterSelectableTargets(match.NearbyProbes, measurementState)) > 0 {
 			continue // at least one probe is still responsive — no fallback needed
 		}
 
@@ -1475,7 +1512,7 @@ func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMa
 			continue
 		}
 
-		responsiveProbes := filterResponsiveProbes(targetLocation.NearbyProbes, measurementState)
+		responsiveProbes := filterSelectableTargets(targetLocation.NearbyProbes, measurementState)
 		if len(responsiveProbes) == 0 {
 			c.log.Warn("No responsive probes found for location",
 				slog.String("location", targetLocation.LocationCode))

@@ -455,7 +455,7 @@ func TestInternetLatency_RIPEAtlas_State_EvaluateTargetLoss(t *testing.T) {
 		start := time.Now().Unix()
 
 		// 15% success, the rate observed against a NAT'd target probe.
-		ms.RecordTargetResults(measurementID, 100, 15, start)
+		ms.RecordTargetResults(measurementID, 100, 15, start, start)
 
 		lossy, _, _ := ms.EvaluateTargetLoss(measurementID, start+windowSecs-1)
 		require.False(t, lossy, "window should not be judged before it closes")
@@ -471,22 +471,33 @@ func TestInternetLatency_RIPEAtlas_State_EvaluateTargetLoss(t *testing.T) {
 		ms := newState()
 		start := time.Now().Unix()
 
-		ms.RecordTargetResults(measurementID, 100, 99, start)
+		ms.RecordTargetResults(measurementID, 100, 99, start, start)
 
 		lossy, _, _ := ms.EvaluateTargetLoss(measurementID, start+windowSecs)
 		require.False(t, lossy)
 	})
 
-	t.Run("sparse window is not judged", func(t *testing.T) {
+	t.Run("sparse window is not judged but keeps accumulating", func(t *testing.T) {
 		t.Parallel()
 		ms := newState()
 		start := time.Now().Unix()
 
 		// Total loss, but too few attempts to tell a lossy target from a quiet one.
-		ms.RecordTargetResults(measurementID, MinTargetAttemptsForLossCheck-1, 0, start)
+		ms.RecordTargetResults(measurementID, MinTargetAttemptsForLossCheck-1, 0, start, start)
 
-		lossy, _, _ := ms.EvaluateTargetLoss(measurementID, start+windowSecs)
+		lossy, attempts, _ := ms.EvaluateTargetLoss(measurementID, start+windowSecs)
 		require.False(t, lossy)
+		require.Equal(t, int64(MinTargetAttemptsForLossCheck-1), attempts)
+
+		// The short window stays open rather than discarding its evidence, so a
+		// measurement with too few sources to reach the minimum in one hour is still
+		// judged once enough attempts accumulate.
+		ms.RecordTargetResults(measurementID, 1, 0, start+windowSecs, start+windowSecs)
+
+		lossy, attempts, successes := ms.EvaluateTargetLoss(measurementID, start+2*windowSecs)
+		require.True(t, lossy, "accumulated window should be judged once it reaches the minimum")
+		require.Equal(t, int64(MinTargetAttemptsForLossCheck), attempts)
+		require.Zero(t, successes)
 	})
 
 	t.Run("window resets after evaluation", func(t *testing.T) {
@@ -494,12 +505,12 @@ func TestInternetLatency_RIPEAtlas_State_EvaluateTargetLoss(t *testing.T) {
 		ms := newState()
 		start := time.Now().Unix()
 
-		ms.RecordTargetResults(measurementID, 100, 10, start)
+		ms.RecordTargetResults(measurementID, 100, 10, start, start)
 		lossy, _, _ := ms.EvaluateTargetLoss(measurementID, start+windowSecs)
 		require.True(t, lossy)
 
 		// A recovered probe is judged on the new window alone, not the old loss.
-		ms.RecordTargetResults(measurementID, 100, 100, start+windowSecs)
+		ms.RecordTargetResults(measurementID, 100, 100, start+windowSecs, start+windowSecs)
 		lossy, attempts, successes := ms.EvaluateTargetLoss(measurementID, start+2*windowSecs)
 		require.False(t, lossy)
 		require.Equal(t, int64(100), attempts)
@@ -510,7 +521,7 @@ func TestInternetLatency_RIPEAtlas_State_EvaluateTargetLoss(t *testing.T) {
 		t.Parallel()
 		ms := newState()
 
-		ms.RecordTargetResults(999, 100, 0, time.Now().Unix())
+		ms.RecordTargetResults(999, 100, 0, time.Now().Unix(), time.Now().Unix())
 		lossy, attempts, _ := ms.EvaluateTargetLoss(999, time.Now().Unix()+windowSecs)
 		require.False(t, lossy)
 		require.Zero(t, attempts)

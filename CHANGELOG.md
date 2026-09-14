@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+  - The `user delete`, `user request-ban` and `user update` tests build their expected `User` with `User::default()` instead of a 22-field literal whose non-asserted fields were noise. First slice of #4084. (#4235)
+
 ## [v0.40.0](https://github.com/malbeclabs/doublezero/compare/client/v0.39.0...client/v0.40.0) - 2026-09-11
 
 ### Breaking

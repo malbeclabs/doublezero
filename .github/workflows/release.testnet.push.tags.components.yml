@@ -43,3 +43,16 @@ jobs:
     secrets:
       RELEASE_BOT_APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
       RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}
+
+  module-tag:
+    name: "Tag root Go module with version ${{ github.event.inputs.version }}"
+    needs: approve
+    uses: ./.github/workflows/release.testnet.push.tags.yml
+    permissions:
+      contents: write
+    with:
+      version: ${{ github.event.inputs.version }}
+      module_tag: true
+    secrets:
+      RELEASE_BOT_APP_ID: ${{ secrets.RELEASE_BOT_APP_ID }}
+      RELEASE_BOT_PRIVATE_KEY: ${{ secrets.RELEASE_BOT_PRIVATE_KEY }}

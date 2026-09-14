@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CI
+  - The testnet release path pushes a bare `vX.Y.Z` tag for the root Go module alongside the nine component tags, at the same commit and through the same approval-gated `release.testnet.push.tags.yml` mechanism (new `module_tag` input; a separate `push-module-tag` job in the orchestrator and `module-tag` job in the manual dispatcher). The root module has had no usable version since `v0.8.0` (2025-12-02) — every release since is component-prefixed, which Go's resolver ignores for the root path — so `go get github.com/malbeclabs/doublezero@vX.Y.Z` failed and consumers pinned pseudo-versions. For the root tag `skip_existing` no longer downgrades a mismatched existing tag to a warning (a moved module tag is an unrecoverable checksum error for every consumer once `proxy.golang.org` has cached it), and the tag's commit is asserted to descend from the previous module tag so `go get -u` cannot walk a consumer backwards. (#4162)
+
 ## [v0.40.0](https://github.com/malbeclabs/doublezero/compare/client/v0.39.0...client/v0.40.0) - 2026-09-11
 
 ### Breaking

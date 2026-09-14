@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+  - `doublezero-solana shreds validator-client-rewards set-proportion` takes `--multisig`, so a manager held by a Squads vault can set a proportion. The vault stands in for the wallet, no keypair is loaded, and the command prints a base58 payload for import into Squads instead of sending. Both paths now refuse a wallet or vault that is not the recorded manager before anything is built. (malbeclabs/doublezero#4186)
+
 ## [v0.40.0](https://github.com/malbeclabs/doublezero/compare/client/v0.39.0...client/v0.40.0) - 2026-09-11
 
 ### Breaking

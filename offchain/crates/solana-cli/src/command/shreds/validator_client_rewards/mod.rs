@@ -5,9 +5,10 @@ mod show;
 
 use std::io::Write;
 
-use anyhow::Result;
+use anyhow::{Result, ensure};
 use clap::{Args, Subcommand};
 use doublezero_cli_core::CliContext;
+use solana_sdk::pubkey::Pubkey;
 
 #[derive(Debug, Args)]
 pub struct ValidatorClientRewardsCommand {
@@ -41,6 +42,48 @@ impl ValidatorClientRewardsSubcommand {
             Self::InitHolding(command) => command.execute(ctx, out).await,
             Self::Claim(command) => command.execute(ctx, out).await,
             Self::Show(command) => command.execute(ctx, out).await,
+        }
+    }
+}
+
+/// Refuse an actor that is not the recorded manager. `actor` names what was
+/// checked, the wallet or the vault, so the message says which key fell short.
+fn validate_manager(
+    actor: &str,
+    actor_key: &Pubkey,
+    validator_client_rewards_manager_key: &Pubkey,
+) -> Result<()> {
+    ensure!(
+        actor_key == validator_client_rewards_manager_key,
+        "manager mismatch: {actor} is {actor_key}, validator client rewards manager is {validator_client_rewards_manager_key}"
+    );
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_manager_matches() {
+        let wallet_key = Pubkey::new_unique();
+        assert!(validate_manager("wallet", &wallet_key, &wallet_key).is_ok());
+    }
+
+    #[test]
+    fn test_validate_manager_mismatch_names_the_actor_checked() {
+        let actor_key = Pubkey::new_unique();
+        let manager_key = Pubkey::new_unique();
+        for actor in ["wallet", "vault"] {
+            let message = validate_manager(actor, &actor_key, &manager_key)
+                .unwrap_err()
+                .to_string();
+            assert!(message.contains("manager mismatch"));
+            assert!(
+                message.contains(&format!("{actor} is {actor_key}")),
+                "{message}"
+            );
+            assert!(message.contains(&manager_key.to_string()));
         }
     }
 }

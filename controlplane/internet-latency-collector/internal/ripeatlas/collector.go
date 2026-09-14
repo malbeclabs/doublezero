@@ -200,7 +200,28 @@ func filterValidProbes(log *slog.Logger, probes []Probe) []Probe {
 			validProbes = append(validProbes, probe)
 		}
 	}
-	return validProbes
+	return preferDirectProbes(validProbes)
+}
+
+// preferDirectProbes drops probes behind NAT when any directly reachable probe is
+// available. A NAT'd probe answers only a fraction of the pings aimed at it, which
+// is enough to look alive but not enough to keep a circuit inside the freshness
+// window downstream alerting expects.
+//
+// NAT'd probes are kept when they are all a location has. Dropping them outright
+// would dark the location entirely, which is worse than a lossy target — the same
+// reasoning that makes anchor selection fall back to non-anchors.
+func preferDirectProbes(probes []Probe) []Probe {
+	var direct []Probe
+	for _, probe := range probes {
+		if !probe.BehindNAT() {
+			direct = append(direct, probe)
+		}
+	}
+	if len(direct) == 0 {
+		return probes
+	}
+	return direct
 }
 
 func filterResponsiveProbes(probes []Probe, measurementState *MeasurementState) []Probe {
@@ -609,11 +630,21 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	var maxTimestamp time.Time
 	processedResults := 0
 
+	// Tally every ping aimed at the target so a target that replies steadily but
+	// rarely can be told apart from a healthy one. Both look identical to the
+	// staleness check, which only asks whether anything came back at all.
+	var targetAttempts, targetSuccesses int64
+
 	// Process results - use slice to preserve all samples
 	var records []exporter.Record
 	for _, result := range results {
 		// Parse latency from result (now also returns probe ID)
 		latency, timestamp, probeID := c.parseLatencyFromResult(result)
+
+		targetAttempts++
+		if latency > 0 {
+			targetSuccesses++
+		}
 
 		// A result the probe uploaded proves it ran the measurement even if nothing came
 		// back, and LastResponseAt aging out rotates the probe (Step 4b) and recreates
@@ -644,6 +675,8 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 			processedResults++
 		}
 	}
+
+	measurementState.RecordTargetResults(measurement.ID, targetAttempts, targetSuccesses, time.Now().Unix())
 
 	// Write the batch of records with the exporter.
 	if len(records) > 0 {
@@ -885,6 +918,26 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 					slog.String("reason", reason),
 					slog.Time("created_at", time.Unix(meta.CreatedAt, 0)),
 					slog.Time("last_export_at", time.Unix(meta.LastExportAt, 0)))
+				measurementState.AddUnresponsiveProbe(meta.TargetProbeID)
+				newUnresponsiveProbes++
+				continue
+			}
+
+			// A target can reply often enough to clear the staleness check above and
+			// still drop most of what is aimed at it. The surviving samples arrive too
+			// sparsely to keep every circuit fresh, so circuits take turns falling out
+			// of the freshness window and the location looks intermittently absent
+			// rather than plainly broken.
+			if lossy, attempts, successes := measurementState.EvaluateTargetLoss(measurement.ID, currentTime); lossy {
+				c.log.Warn("Marking probe as unresponsive - target loss above threshold",
+					slog.Int("measurement_id", measurement.ID),
+					slog.Int("probe_id", meta.TargetProbeID),
+					slog.String("target_location", meta.TargetLocation),
+					slog.String("reason", "excessive_target_loss"),
+					slog.Int64("attempts", attempts),
+					slog.Int64("successes", successes),
+					slog.Float64("loss_ratio", 1-float64(successes)/float64(attempts)),
+					slog.Float64("max_loss_ratio", MaxTargetLossRatio))
 				measurementState.AddUnresponsiveProbe(meta.TargetProbeID)
 				newUnresponsiveProbes++
 			}

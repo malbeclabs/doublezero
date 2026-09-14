@@ -11,6 +11,21 @@ import (
 const (
 	// UnresponsiveProbeExpiry is how long a probe stays blacklisted before being retried.
 	UnresponsiveProbeExpiry = 24 * time.Hour
+
+	// TargetLossWindow is how long loss against a target probe accumulates before the
+	// ratio is judged. It matches the staleness timeout so both checks reason over the
+	// same horizon.
+	TargetLossWindow = time.Hour
+
+	// MinTargetAttemptsForLossCheck is the number of pings that must land in a window
+	// before its loss ratio means anything. Below this a quiet window is indistinguishable
+	// from a lossy one.
+	MinTargetAttemptsForLossCheck = 30
+
+	// MaxTargetLossRatio is the share of pings a target may drop before it is treated as
+	// unresponsive. A healthy anchor sits near zero; a probe behind NAT runs far above
+	// this while still replying often enough to keep the staleness check satisfied.
+	MaxTargetLossRatio = 0.5
 )
 
 type MeasurementState struct {
@@ -35,6 +50,13 @@ type MeasurementMeta struct {
 	Sources        []SourceProbeMeta `json:"sources"`
 	CreatedAt      int64             `json:"created_at"`
 	LastExportAt   int64             `json:"last_export_at,omitempty"`
+
+	// Rolling ping tallies against the target probe, reset each time the window is
+	// judged. Attempts counts every result a source uploaded; successes counts those
+	// that carried a latency back.
+	TargetWindowStart int64 `json:"target_window_start,omitempty"`
+	TargetAttempts    int64 `json:"target_attempts,omitempty"`
+	TargetSuccesses   int64 `json:"target_successes,omitempty"`
 }
 
 type SourceProbeMeta struct {
@@ -219,6 +241,61 @@ func (ms *MeasurementState) UpdateSourceProbeResponse(measurementID int, probeID
 		}
 	}
 	ms.tracker.Metadata[measurementID] = meta
+}
+
+// RecordTargetResults adds a batch of ping outcomes against a measurement's target
+// probe to the current window, starting one if none is open.
+func (ms *MeasurementState) RecordTargetResults(measurementID int, attempts, successes int64, now int64) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	meta, exists := ms.tracker.Metadata[measurementID]
+	if !exists || attempts <= 0 {
+		return
+	}
+
+	if meta.TargetWindowStart == 0 {
+		meta.TargetWindowStart = now
+	}
+	meta.TargetAttempts += attempts
+	meta.TargetSuccesses += successes
+	ms.tracker.Metadata[measurementID] = meta
+}
+
+// EvaluateTargetLoss judges a measurement's open loss window and resets it. It reports
+// whether the target dropped more than MaxTargetLossRatio of the pings aimed at it,
+// along with the tallies behind that call.
+//
+// A window is only judged once it has run for TargetLossWindow and carries at least
+// MinTargetAttemptsForLossCheck attempts; until then the window stays open and this
+// reports false. Resetting on every judged window means a probe that recovers starts
+// from a clean slate rather than carrying old loss forward.
+func (ms *MeasurementState) EvaluateTargetLoss(measurementID int, now int64) (lossy bool, attempts, successes int64) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	meta, exists := ms.tracker.Metadata[measurementID]
+	if !exists || meta.TargetWindowStart == 0 {
+		return false, 0, 0
+	}
+
+	if now-meta.TargetWindowStart < int64(TargetLossWindow.Seconds()) {
+		return false, meta.TargetAttempts, meta.TargetSuccesses
+	}
+
+	attempts, successes = meta.TargetAttempts, meta.TargetSuccesses
+
+	meta.TargetWindowStart = now
+	meta.TargetAttempts = 0
+	meta.TargetSuccesses = 0
+	ms.tracker.Metadata[measurementID] = meta
+
+	if attempts < MinTargetAttemptsForLossCheck {
+		return false, attempts, successes
+	}
+
+	lossRatio := 1 - float64(successes)/float64(attempts)
+	return lossRatio > MaxTargetLossRatio, attempts, successes
 }
 
 func (ms *MeasurementState) AddUnresponsiveProbe(probeID int) {

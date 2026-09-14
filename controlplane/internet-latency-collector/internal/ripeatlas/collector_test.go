@@ -2004,3 +2004,54 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LossCountsAsRe
 		})
 	}
 }
+
+func TestInternetLatency_RIPEAtlas_FilterValidProbes_PrefersDirectOverNAT(t *testing.T) {
+	t.Parallel()
+
+	natTag := []struct {
+		Name string `json:"name"`
+		Slug string `json:"slug"`
+	}{{Name: "NAT", Slug: "nat"}}
+
+	t.Run("NAT probes are dropped when a direct probe exists", func(t *testing.T) {
+		t.Parallel()
+
+		// Mirrors Columbus: the nearest probe is behind NAT, a direct one sits further out.
+		probes := []Probe{
+			{ID: 12651, Address: "107.192.62.177", Tags: natTag},
+			{ID: 1009793, Address: "23.151.152.243"},
+		}
+
+		result := filterValidProbes(probes)
+
+		require.Len(t, result, 1)
+		require.Equal(t, 1009793, result[0].ID)
+	})
+
+	t.Run("NAT probes are kept when they are all that is available", func(t *testing.T) {
+		t.Parallel()
+
+		probes := []Probe{
+			{ID: 12651, Address: "107.192.62.177", Tags: natTag},
+			{ID: 60453, Address: "45.24.224.61", Tags: natTag},
+		}
+
+		result := filterValidProbes(probes)
+
+		require.Len(t, result, 2, "dropping every probe would dark the location")
+	})
+
+	t.Run("unroutable probes are still excluded before the NAT preference", func(t *testing.T) {
+		t.Parallel()
+
+		probes := []Probe{
+			{ID: 1, Address: "192.168.1.1"},
+			{ID: 2, Address: "107.192.62.177", Tags: natTag},
+		}
+
+		result := filterValidProbes(probes)
+
+		require.Len(t, result, 1)
+		require.Equal(t, 2, result[0].ID)
+	})
+}

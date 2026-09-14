@@ -436,3 +436,83 @@ func TestInternetLatency_RIPEAtlas_State_TimestampTracker_Structure(t *testing.T
 
 	require.Equal(t, tracker.Metadata, tracker2.Metadata)
 }
+
+func TestInternetLatency_RIPEAtlas_State_EvaluateTargetLoss(t *testing.T) {
+	t.Parallel()
+
+	const measurementID = 42
+	windowSecs := int64(TargetLossWindow.Seconds())
+
+	newState := func() *MeasurementState {
+		ms := NewMeasurementState(filepath.Join(t.TempDir(), "state.json"))
+		ms.SetMetadata(measurementID, MeasurementMeta{TargetLocation: "cmh", TargetProbeID: 7})
+		return ms
+	}
+
+	t.Run("lossy target is flagged once the window closes", func(t *testing.T) {
+		t.Parallel()
+		ms := newState()
+		start := time.Now().Unix()
+
+		// 15% success, the rate observed against a NAT'd target probe.
+		ms.RecordTargetResults(measurementID, 100, 15, start)
+
+		lossy, _, _ := ms.EvaluateTargetLoss(measurementID, start+windowSecs-1)
+		require.False(t, lossy, "window should not be judged before it closes")
+
+		lossy, attempts, successes := ms.EvaluateTargetLoss(measurementID, start+windowSecs)
+		require.True(t, lossy)
+		require.Equal(t, int64(100), attempts)
+		require.Equal(t, int64(15), successes)
+	})
+
+	t.Run("healthy target is not flagged", func(t *testing.T) {
+		t.Parallel()
+		ms := newState()
+		start := time.Now().Unix()
+
+		ms.RecordTargetResults(measurementID, 100, 99, start)
+
+		lossy, _, _ := ms.EvaluateTargetLoss(measurementID, start+windowSecs)
+		require.False(t, lossy)
+	})
+
+	t.Run("sparse window is not judged", func(t *testing.T) {
+		t.Parallel()
+		ms := newState()
+		start := time.Now().Unix()
+
+		// Total loss, but too few attempts to tell a lossy target from a quiet one.
+		ms.RecordTargetResults(measurementID, MinTargetAttemptsForLossCheck-1, 0, start)
+
+		lossy, _, _ := ms.EvaluateTargetLoss(measurementID, start+windowSecs)
+		require.False(t, lossy)
+	})
+
+	t.Run("window resets after evaluation", func(t *testing.T) {
+		t.Parallel()
+		ms := newState()
+		start := time.Now().Unix()
+
+		ms.RecordTargetResults(measurementID, 100, 10, start)
+		lossy, _, _ := ms.EvaluateTargetLoss(measurementID, start+windowSecs)
+		require.True(t, lossy)
+
+		// A recovered probe is judged on the new window alone, not the old loss.
+		ms.RecordTargetResults(measurementID, 100, 100, start+windowSecs)
+		lossy, attempts, successes := ms.EvaluateTargetLoss(measurementID, start+2*windowSecs)
+		require.False(t, lossy)
+		require.Equal(t, int64(100), attempts)
+		require.Equal(t, int64(100), successes)
+	})
+
+	t.Run("unknown measurement is ignored", func(t *testing.T) {
+		t.Parallel()
+		ms := newState()
+
+		ms.RecordTargetResults(999, 100, 0, time.Now().Unix())
+		lossy, attempts, _ := ms.EvaluateTargetLoss(999, time.Now().Unix()+windowSecs)
+		require.False(t, lossy)
+		require.Zero(t, attempts)
+	})
+}

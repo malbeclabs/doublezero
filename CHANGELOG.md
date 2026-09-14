@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - CLI
+  - `doublezero-solana shreds validator-client-rewards claim` takes `--multisig`, so a manager held by a Squads vault can claim. The vault stands in for the wallet, no keypair is loaded, and the command prints numbered base58 payloads for import into Squads instead of sending, creating the vault's associated token account in every payload when it is missing. `--max-transactions` caps how many transactions one invocation produces, and the fixed 16-holding cap gives way to measured packing. (malbeclabs/doublezero#4185)
   - `doublezero-solana shreds payments` asks the Solana node for version 1 and reads the JsonParsed instruction list, so a v1 fund no longer fails the listing with error -32015.
 - CI
   - The testnet release pushes its component tags with a token minted from the release bot app instead of `DOUBLEZERO_PAT`. That personal token was set on 2025-09-10, a fine-grained token lives at most 366 days, and its expiry stopped the v0.40.0 release at the checkout step inside the tag job. The app credentials carry no PAT-style calendar expiry, so there is nothing left to rotate each year; each run mints its own installation token, which lives about an hour and is scoped to `contents: write`. Unlike `GITHUB_TOKEN`, a tag pushed with an app token still starts the package builds the release waits for. `DOUBLEZERO_PAT` can be deleted from the repository secrets once this is on main.

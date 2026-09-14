@@ -10,6 +10,7 @@ use solana_client::{
 use solana_commitment_config::CommitmentConfig;
 use solana_compute_budget_interface::ComputeBudgetInstruction;
 use solana_sdk::{
+    hash::Hash,
     instruction::Instruction,
     message::AddressLookupTableAccount,
     pubkey::Pubkey,
@@ -137,21 +138,7 @@ impl Wallet {
     ) -> Result<VersionedTransaction> {
         let recent_blockhash = self.connection.get_latest_blockhash().await?;
 
-        let mut signers = Vec::with_capacity(2 + additional_signers.len());
-
-        match self.fee_payer {
-            Some(ref fee_payer) => {
-                signers.push(fee_payer);
-
-                if self.signer.pubkey() != fee_payer.pubkey() {
-                    signers.push(&self.signer);
-                }
-            }
-            None => {
-                signers.push(&self.signer);
-            }
-        }
-
+        let mut signers = self.signers();
         signers.extend_from_slice(additional_signers);
 
         if address_lookup_table_keys.is_empty() {
@@ -203,6 +190,32 @@ impl Wallet {
     ) -> Result<VersionedTransaction> {
         self.new_transaction_with_additional_signers_and_lookup_tables(instructions, &[], &[])
             .await
+    }
+
+    /// Serialized size of the transaction `new_transaction` would build for
+    /// `instructions`: the same signer set, a placeholder blockhash, and no RPC.
+    pub fn try_transaction_size(&self, instructions: &[Instruction]) -> Result<usize> {
+        let transaction = try_new_transaction(instructions, &self.signers(), &[], Hash::default())?;
+
+        bincode::serialize(&transaction)
+            .map(|bytes| bytes.len())
+            .context("failed to serialize trial transaction")
+    }
+
+    // The fee payer signs first, since `try_new_transaction` takes the first signer as the
+    // payer. `try_new` refuses a fee payer equal to the signer, but the fields are public,
+    // so a directly constructed wallet can still name one key twice, and a duplicate signer
+    // fails the signing.
+    fn signers(&self) -> Vec<&Keypair> {
+        let mut signers = Vec::with_capacity(2);
+        if let Some(ref fee_payer) = self.fee_payer {
+            signers.push(fee_payer);
+            if fee_payer.pubkey() == self.signer.pubkey() {
+                return signers;
+            }
+        }
+        signers.push(&self.signer);
+        signers
     }
 
     pub async fn write_verbose_output(
@@ -430,9 +443,68 @@ fn try_load_specified_keypair(path: &PathBuf) -> Result<Keypair> {
 
 #[cfg(test)]
 mod tests {
+    use solana_sdk::instruction::AccountMeta;
+
     use spl_associated_token_account_interface::address::get_associated_token_address_and_bump_seed;
 
     use super::*;
+
+    fn wallet_with_fee_payer(fee_payer: Option<Keypair>) -> Wallet {
+        Wallet {
+            connection: SolanaConnection::new(
+                crate::rpc::NetworkEnvironment::DEFAULT_LOCALNET_URL.into(),
+            ),
+            signer: Keypair::new(),
+            compute_unit_price_ix: None,
+            verbose: false,
+            fee_payer,
+            dry_run: false,
+        }
+    }
+
+    #[test]
+    fn test_transaction_size_charges_a_distinct_fee_payer_a_signature_and_a_key() {
+        // The signer has to be named by the instructions, as a manager or an
+        // authority is, or the transaction has a signer with nothing to sign.
+        let size_for = |wallet: Wallet| {
+            let instruction = Instruction::new_with_bytes(
+                Pubkey::new_unique(),
+                &[],
+                vec![AccountMeta::new_readonly(wallet.pubkey(), true)],
+            );
+            wallet.try_transaction_size(&[instruction]).unwrap()
+        };
+        let alone = size_for(wallet_with_fee_payer(None));
+        let with_fee_payer = size_for(wallet_with_fee_payer(Some(Keypair::new())));
+
+        assert_eq!(
+            with_fee_payer - alone,
+            64 // the fee payer's signature
+                + 32 // the fee payer's key
+        );
+    }
+
+    #[test]
+    fn test_transaction_size_signs_once_when_the_fee_payer_is_the_signer() {
+        let alone = wallet_with_fee_payer(None);
+        let doubled = Wallet {
+            signer: alone.signer.insecure_clone(),
+            fee_payer: Some(alone.signer.insecure_clone()),
+            ..wallet_with_fee_payer(None)
+        };
+        let instruction = Instruction::new_with_bytes(
+            Pubkey::new_unique(),
+            &[],
+            vec![AccountMeta::new_readonly(alone.pubkey(), true)],
+        );
+
+        assert_eq!(
+            doubled
+                .try_transaction_size(std::slice::from_ref(&instruction))
+                .unwrap(),
+            alone.try_transaction_size(&[instruction]).unwrap()
+        );
+    }
 
     #[test]
     fn test_create_ata_compute_units_adds_base_to_bump_cost() {

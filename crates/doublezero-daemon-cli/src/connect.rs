@@ -183,9 +183,10 @@ enum FeedJoinUser {
 fn check_accesspass<L: LedgerClient>(
     ledger: &L,
     client_ip: Ipv4Addr,
+    user_type: UserType,
     enforce_epoch: bool,
 ) -> eyre::Result<bool> {
-    let Some(accesspass) = ledger.get_accesspass(client_ip, ledger.get_payer())? else {
+    let Some(accesspass) = ledger.get_accesspass(client_ip, ledger.get_payer(), user_type)? else {
         return Ok(false);
     };
 
@@ -203,9 +204,10 @@ fn check_accesspass<L: LedgerClient>(
 fn require_accesspass<L: LedgerClient, W: Write>(
     ledger: &L,
     client_ip: Ipv4Addr,
+    user_type: UserType,
     out: &mut W,
 ) -> eyre::Result<AccessPass> {
-    match ledger.get_accesspass(client_ip, ledger.get_payer())? {
+    match ledger.get_accesspass(client_ip, ledger.get_payer(), user_type)? {
         Some(accesspass) => Ok(accesspass),
         None => {
             writeln!(
@@ -522,13 +524,14 @@ impl Connect {
         }
 
         let parsed_mode = self.parse_dz_mode()?;
+        let user_type = proof_user_type(&parsed_mode);
         // Multicast users are not subject to epoch expiry — only verify the AccessPass exists.
         let enforce_epoch = !matches!(
             parsed_mode,
             ParsedDzMode::Multicast { .. } | ParsedDzMode::MulticastFeeds { .. }
         );
 
-        if !check_accesspass(ledger, client_ip, enforce_epoch)? {
+        if !check_accesspass(ledger, client_ip, user_type, enforce_epoch)? {
             writeln!(
                 out,
                 "❌  Unable to find a valid AccessPass for the IP: {client_ip_str} UserPayer: {}",
@@ -547,12 +550,7 @@ impl Connect {
         // bare form runs two legs and builds one per leg; it returned above.) Nothing is
         // requested here — see [`IpProofFetcher`] for why the request waits until a creation
         // path asks for it.
-        let ip_proof = IpProofFetcher::new(
-            proof_client,
-            ledger.get_payer(),
-            proof_user_type(&parsed_mode),
-            client_ip,
-        );
+        let ip_proof = IpProofFetcher::new(proof_client, ledger.get_payer(), user_type, client_ip);
         let ip_proof = &ip_proof;
 
         let provisioned = match parsed_mode {
@@ -625,7 +623,14 @@ impl Connect {
         spinner: &ProgressBar,
         out: &mut W,
     ) -> eyre::Result<()> {
-        let accesspass = require_accesspass(ledger, client_ip, out)?;
+        // Only the IBRL leg is epoch-gated (Multicast is exempt), so the preflight pass must be
+        // the one that leg would actually use.
+        let ibrl_user_type = if self.allocate_addr {
+            UserType::IBRLWithAllocatedIP
+        } else {
+            UserType::IBRL
+        };
+        let accesspass = require_accesspass(ledger, client_ip, ibrl_user_type, out)?;
 
         spinner.inc(1);
         writeln!(out, "    DoubleZero ID: {}", ledger.get_payer())?;
@@ -675,21 +680,16 @@ impl Connect {
                 accesspass.unicast_user_count, accesspass.max_unicast_users
             ))
         } else {
-            let user_type = if self.allocate_addr {
-                UserType::IBRLWithAllocatedIP
-            } else {
-                UserType::IBRL
-            };
             // A proof per leg, not per invocation: the proof binds `user_type`, and this form
             // creates a unicast user and a multicast one. A single proof would be refused
             // onchain by whichever leg it did not name.
             let ip_proof =
-                IpProofFetcher::new(proof_client, ledger.get_payer(), user_type, client_ip);
+                IpProofFetcher::new(proof_client, ledger.get_payer(), ibrl_user_type, client_ip);
             match self
                 .execute_ibrl(
                     ledger,
                     daemon,
-                    user_type,
+                    ibrl_user_type,
                     client_ip,
                     self.tenant.clone(),
                     &ip_proof,
@@ -783,7 +783,7 @@ impl Connect {
             // subscriber allowlist. The pass is guaranteed to exist (validated by
             // check_accesspass before dispatch); the ok_or_else is defensive.
             let accesspass = ledger
-                .get_accesspass(client_ip, ledger.get_payer())?
+                .get_accesspass(client_ip, ledger.get_payer(), UserType::Multicast)?
                 .ok_or_else(|| {
                     eyre::eyre!(
                         "No valid AccessPass found for IP: {} user_payer: {}",
@@ -1511,7 +1511,7 @@ impl Connect {
         // Refuse here what the program would refuse after the create: by then the bare user
         // would already exist, holding a multicast slot and a device seat for nothing.
         let accesspass = ledger
-            .get_accesspass(client_ip, ledger.get_payer())?
+            .get_accesspass(client_ip, ledger.get_payer(), UserType::Multicast)?
             .ok_or_else(|| {
                 eyre::eyre!(
                     "No valid AccessPass found for IP: {client_ip} user_payer: {}",
@@ -1837,7 +1837,7 @@ impl Connect {
                 }
 
                 let accesspass = ledger
-                    .get_accesspass(*client_ip, ledger.get_payer())?
+                    .get_accesspass(*client_ip, ledger.get_payer(), user_type)?
                     .ok_or_else(|| {
                         eyre::eyre!(
                             "No valid AccessPass found for IP: {} user_payer: {}",
@@ -3024,8 +3024,9 @@ mod tests {
                 .with(
                     predicate::eq(Ipv4Addr::new(1, 2, 3, 4)),
                     predicate::eq(payer),
+                    predicate::always(),
                 )
-                .returning_st(move |_, _| Ok(Some(accesspass.lock().unwrap().clone())));
+                .returning_st(move |_, _, _| Ok(Some(accesspass.lock().unwrap().clone())));
 
             let users = fixture.users.clone();
             fixture

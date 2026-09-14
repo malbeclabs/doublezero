@@ -100,14 +100,16 @@ impl<C: CliCommand + Sync> doublezero_daemon_cli::LedgerClient for LedgerAdapter
         &self,
         client_ip: std::net::Ipv4Addr,
         user_payer: solana_sdk::pubkey::Pubkey,
+        user_type: doublezero_sdk::UserType,
     ) -> eyre::Result<Option<doublezero_serviceability::state::accesspass::AccessPass>> {
         Ok(self
             .client
-            .get_accesspass(
+            .get_accesspass_usable(
                 doublezero_sdk::commands::accesspass::get::GetAccessPassCommand {
                     client_ip,
                     user_payer,
                 },
+                user_type,
             )?
             .map(|(_, accesspass)| accesspass))
     }

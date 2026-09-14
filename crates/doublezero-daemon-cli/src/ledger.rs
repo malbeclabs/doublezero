@@ -17,7 +17,7 @@ use doublezero_sdk::{
         },
         user::{create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand},
     },
-    Device, Exchange, Feed, GlobalState, MulticastGroup, Tenant, User,
+    Device, Exchange, Feed, GlobalState, MulticastGroup, Tenant, User, UserType,
 };
 use doublezero_serviceability::state::accesspass::AccessPass;
 use mockall::automock;
@@ -64,12 +64,15 @@ pub trait LedgerClient: Send + Sync {
     /// The current DZ ledger epoch (used for AccessPass expiry enforcement).
     fn get_epoch(&self) -> eyre::Result<u64>;
 
-    /// Fetch the AccessPass for `(client_ip, user_payer)`, or `None` if no
-    /// such pass exists.
+    /// Fetch the AccessPass for `(client_ip, user_payer)` that is actually usable for
+    /// `user_type`, or `None` if no such pass exists. Preferring the pass a subsequent
+    /// `create_user`/`create_subscribe_user` call for the same `user_type` could use keeps
+    /// this preflight from disagreeing with the transaction it gates (#4244).
     fn get_accesspass(
         &self,
         client_ip: Ipv4Addr,
         user_payer: Pubkey,
+        user_type: UserType,
     ) -> eyre::Result<Option<AccessPass>>;
 
     /// Fetch a device by pubkey or code.

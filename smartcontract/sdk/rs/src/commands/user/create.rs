@@ -34,12 +34,14 @@ pub struct CreateUserCommand {
 impl CreateUserCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
         // GetAccessPassCommand prefers a shared dynamic (UNSPECIFIED) pass and falls
-        // back to the exact client-IP pass, matching the onchain create_user path.
+        // back to the exact client-IP pass, matching the onchain create_user path. Of those,
+        // execute_usable picks whichever one actually clears the epoch check for self.user_type,
+        // so a stale dynamic pass doesn't shadow a valid exact-IP one (#4244).
         let (accesspass_pk, _) = GetAccessPassCommand {
             client_ip: self.client_ip,
             user_payer: client.get_payer(),
         }
-        .execute(client)?
+        .execute_usable(client, self.user_type)?
         .ok_or_else(|| eyre::eyre!("You have no Access Pass"))?;
 
         let program_id = client.get_program_id();

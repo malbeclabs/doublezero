@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Client / SDK
+  - `connect` and `GetAccessPassCommand`'s callers (`CreateUserCommand`, `CreateSubscribeUserCommand`) now prefer whichever of the dynamic (`0.0.0.0`) and exact-IP access passes actually clears the epoch check for the user type being created, instead of always taking the dynamic pass when one exists. A dynamic pass left over from a never-epoch-gated EdgeSeat multicast subscription could go stale while a valid exact-IP prepaid pass sat unused at the same address, so `doublezero connect ibrl` picked the stale pass and failed with "Unable to find a valid AccessPass" even though a usable one existed. New `GetAccessPassCommand::execute_usable` (only reads the epoch when both candidates exist); `execute` is unchanged for every other caller. (#4244)
+
 ## [v0.40.0](https://github.com/malbeclabs/doublezero/compare/client/v0.39.0...client/v0.40.0) - 2026-09-11
 
 ### Breaking

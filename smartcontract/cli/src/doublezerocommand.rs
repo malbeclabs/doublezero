@@ -114,7 +114,7 @@ use doublezero_sdk::{
     telemetry::LinkLatencyStats,
     DZClient, DZTransaction, Device, DoubleZeroClient, Exchange, Feed, GetGlobalConfigCommand,
     GetGlobalStateCommand, GlobalConfig, GlobalState, Link, Location, MulticastGroup,
-    ResourceExtensionOwned, TopologyInfo, User,
+    ResourceExtensionOwned, TopologyInfo, User, UserType,
 };
 use doublezero_serviceability::state::{
     accesspass::AccessPass, accountdata::AccountData, contributor::Contributor,
@@ -327,6 +327,14 @@ pub trait CliCommand {
     fn get_accesspass(
         &self,
         cmd: GetAccessPassCommand,
+    ) -> eyre::Result<Option<(Pubkey, AccessPass)>>;
+    /// Like `get_accesspass`, but for a caller about to create a `user_type` user: prefers
+    /// whichever candidate pass actually clears the access-pass epoch check for that user type
+    /// (see `GetAccessPassCommand::execute_usable`).
+    fn get_accesspass_usable(
+        &self,
+        cmd: GetAccessPassCommand,
+        user_type: UserType,
     ) -> eyre::Result<Option<(Pubkey, AccessPass)>>;
     fn list_accesspass(
         &self,
@@ -794,6 +802,13 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd: GetAccessPassCommand,
     ) -> eyre::Result<Option<(Pubkey, AccessPass)>> {
         cmd.execute(self.client)
+    }
+    fn get_accesspass_usable(
+        &self,
+        cmd: GetAccessPassCommand,
+        user_type: UserType,
+    ) -> eyre::Result<Option<(Pubkey, AccessPass)>> {
+        cmd.execute_usable(self.client, user_type)
     }
     fn list_accesspass(
         &self,

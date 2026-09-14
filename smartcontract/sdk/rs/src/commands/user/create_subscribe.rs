@@ -99,12 +99,14 @@ impl CreateSubscribeUserCommand {
         let accesspass_payer = self.owner.unwrap_or_else(|| client.get_payer());
 
         // GetAccessPassCommand prefers a shared dynamic (UNSPECIFIED) pass and falls
-        // back to the exact client-IP pass, matching the onchain create_user path.
+        // back to the exact client-IP pass, matching the onchain create_user path. Of those,
+        // execute_usable picks whichever one actually clears the epoch check for self.user_type,
+        // so a stale dynamic pass doesn't shadow a valid exact-IP one (#4244).
         let (accesspass_pk, _) = GetAccessPassCommand {
             client_ip: self.client_ip,
             user_payer: accesspass_payer,
         }
-        .execute(client)?
+        .execute_usable(client, self.user_type)?
         .ok_or_else(|| eyre::eyre!("No Access Pass found for owner"))?;
 
         let program_id = client.get_program_id();

@@ -3,7 +3,11 @@ use std::net::Ipv4Addr;
 use crate::DoubleZeroClient;
 use doublezero_serviceability::{
     pda::get_accesspass_pda,
-    state::{accesspass::AccessPass, accountdata::AccountData, user::User},
+    state::{
+        accesspass::AccessPass,
+        accountdata::AccountData,
+        user::{epoch_allows_connection, User, UserType},
+    },
 };
 use eyre::WrapErr;
 use solana_sdk::pubkey::Pubkey;
@@ -37,6 +41,75 @@ impl GetAccessPassCommand {
         match client.get(pubkey) {
             Ok(AccountData::AccessPass(accesspass)) => Ok(Some((pubkey, accesspass))),
             Ok(_) | Err(_) => Ok(None),
+        }
+    }
+
+    /// Like `execute`, but for a caller about to create a `user_type` user: prefers whichever of
+    /// the dynamic (UNSPECIFIED) and exact-IP candidates actually clears the access-pass epoch
+    /// check for that user type, instead of always taking the dynamic pass when one exists.
+    ///
+    /// A dynamic pass is not epoch-gated to begin with when it only ever backed a multicast
+    /// (EdgeSeat) subscription, so its `last_access_epoch` can go stale while an exact-IP prepaid
+    /// pass at the same address is still valid. `execute` would still return the stale dynamic
+    /// pass, and the caller's own epoch check would then reject it even though a usable pass
+    /// exists — this evaluates both candidates against the epoch check the on-chain program
+    /// actually enforces, so the pass this returns is the same one a subsequent create_user /
+    /// create_subscribe_user call would need to succeed.
+    pub fn execute_usable(
+        &self,
+        client: &dyn DoubleZeroClient,
+        user_type: UserType,
+    ) -> eyre::Result<Option<(Pubkey, AccessPass)>> {
+        let program_id = client.get_program_id();
+
+        let dynamic = if self.client_ip != Ipv4Addr::UNSPECIFIED {
+            let (dynamic_pubkey, _) =
+                get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &self.user_payer);
+            match client.get(dynamic_pubkey) {
+                Ok(AccountData::AccessPass(accesspass)) => Some((dynamic_pubkey, accesspass)),
+                _ => None,
+            }
+        } else {
+            None
+        };
+
+        // No dynamic pass (or the requested IP already is UNSPECIFIED, so the exact-IP PDA below
+        // *is* the dynamic one): nothing to arbitrate between, same as `execute`.
+        let Some(dynamic) = dynamic else {
+            let (exact_pubkey, _) =
+                get_accesspass_pda(&program_id, &self.client_ip, &self.user_payer);
+            return Ok(match client.get(exact_pubkey) {
+                Ok(AccountData::AccessPass(accesspass)) => Some((exact_pubkey, accesspass)),
+                _ => None,
+            });
+        };
+
+        let (exact_pubkey, _) = get_accesspass_pda(&program_id, &self.client_ip, &self.user_payer);
+        let exact = match client.get(exact_pubkey) {
+            Ok(AccountData::AccessPass(accesspass)) => Some((exact_pubkey, accesspass)),
+            _ => None,
+        };
+
+        // No exact-IP pass either: only one candidate exists, same as `execute`.
+        let Some(exact) = exact else {
+            return Ok(Some(dynamic));
+        };
+
+        // Both candidates exist: an epoch read is unavoidable to tell which one a subsequent
+        // create_user / create_subscribe_user call would actually be able to use.
+        let current_epoch = client.get_epoch()?;
+        let is_usable = |accesspass: &AccessPass| {
+            epoch_allows_connection(user_type, accesspass.last_access_epoch, current_epoch)
+        };
+
+        if is_usable(&dynamic.1) {
+            Ok(Some(dynamic))
+        } else if is_usable(&exact.1) {
+            Ok(Some(exact))
+        } else {
+            // Neither clears the epoch check; keep `execute`'s dynamic-first default so the
+            // resulting on-chain failure names the same pass the caller's own preflight saw.
+            Ok(Some(dynamic))
         }
     }
 }
@@ -144,7 +217,7 @@ mod tests {
             accesspass::{AccessPass, AccessPassStatus, AccessPassType},
             accountdata::AccountData,
             accounttype::AccountType,
-            user::User,
+            user::{User, UserType},
         },
     };
     use mockall::predicate;
@@ -289,6 +362,156 @@ mod tests {
             user_payer: payer,
         }
         .execute(&client)
+        .unwrap();
+
+        let (pubkey, _) = res.expect("expected a pass");
+        assert_eq!(pubkey, dynamic_pubkey);
+    }
+
+    #[test]
+    fn test_execute_usable_returns_exact_when_dynamic_is_stale() {
+        let mut client = create_test_client();
+        let program_id = client.get_program_id();
+
+        let client_ip: Ipv4Addr = [10, 0, 0, 1].into();
+        let payer = Pubkey::new_unique();
+
+        // The dynamic pass exists but its epoch has passed (e.g. left over from a
+        // never-epoch-gated EdgeSeat multicast subscription); the exact-IP pass is
+        // still within its epoch. execute_usable must prefer the exact-IP one, unlike
+        // execute (see test_get_accesspass_prefers_dynamic_pass).
+        let (dynamic_pubkey, _) = get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
+        let stale_dynamic_pass = AccessPass {
+            last_access_epoch: 5,
+            ..sample_accesspass(Ipv4Addr::UNSPECIFIED, payer)
+        };
+        let (exact_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &payer);
+        let usable_exact_pass = sample_accesspass(client_ip, payer);
+
+        client
+            .expect_get()
+            .with(predicate::eq(dynamic_pubkey))
+            .returning(move |_| Ok(AccountData::AccessPass(stale_dynamic_pass.clone())));
+        client
+            .expect_get()
+            .with(predicate::eq(exact_pubkey))
+            .returning(move |_| Ok(AccountData::AccessPass(usable_exact_pass.clone())));
+        client.expect_get_epoch().returning(|| Ok(10));
+
+        let res = GetAccessPassCommand {
+            client_ip,
+            user_payer: payer,
+        }
+        .execute_usable(&client, UserType::IBRL)
+        .unwrap();
+
+        let (pubkey, pass) = res.expect("expected a pass");
+        assert_eq!(pubkey, exact_pubkey);
+        assert_eq!(pass.client_ip, client_ip);
+    }
+
+    #[test]
+    fn test_execute_usable_prefers_dynamic_when_both_are_usable() {
+        let mut client = create_test_client();
+        let program_id = client.get_program_id();
+
+        let client_ip: Ipv4Addr = [10, 0, 0, 1].into();
+        let payer = Pubkey::new_unique();
+
+        let (dynamic_pubkey, _) = get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
+        let dynamic_pass = sample_accesspass(Ipv4Addr::UNSPECIFIED, payer);
+        let (exact_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &payer);
+        let exact_pass = sample_accesspass(client_ip, payer);
+
+        client
+            .expect_get()
+            .with(predicate::eq(dynamic_pubkey))
+            .returning(move |_| Ok(AccountData::AccessPass(dynamic_pass.clone())));
+        client
+            .expect_get()
+            .with(predicate::eq(exact_pubkey))
+            .returning(move |_| Ok(AccountData::AccessPass(exact_pass.clone())));
+        client.expect_get_epoch().returning(|| Ok(10));
+
+        let res = GetAccessPassCommand {
+            client_ip,
+            user_payer: payer,
+        }
+        .execute_usable(&client, UserType::IBRL)
+        .unwrap();
+
+        let (pubkey, _) = res.expect("expected a pass");
+        assert_eq!(pubkey, dynamic_pubkey);
+    }
+
+    #[test]
+    fn test_execute_usable_falls_back_to_dynamic_when_neither_clears_epoch_check() {
+        let mut client = create_test_client();
+        let program_id = client.get_program_id();
+
+        let client_ip: Ipv4Addr = [10, 0, 0, 1].into();
+        let payer = Pubkey::new_unique();
+
+        let (dynamic_pubkey, _) = get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
+        let stale_dynamic_pass = AccessPass {
+            last_access_epoch: 1,
+            ..sample_accesspass(Ipv4Addr::UNSPECIFIED, payer)
+        };
+        let (exact_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &payer);
+        let stale_exact_pass = AccessPass {
+            last_access_epoch: 2,
+            ..sample_accesspass(client_ip, payer)
+        };
+
+        client
+            .expect_get()
+            .with(predicate::eq(dynamic_pubkey))
+            .returning(move |_| Ok(AccountData::AccessPass(stale_dynamic_pass.clone())));
+        client
+            .expect_get()
+            .with(predicate::eq(exact_pubkey))
+            .returning(move |_| Ok(AccountData::AccessPass(stale_exact_pass.clone())));
+        client.expect_get_epoch().returning(|| Ok(10));
+
+        let res = GetAccessPassCommand {
+            client_ip,
+            user_payer: payer,
+        }
+        .execute_usable(&client, UserType::IBRL)
+        .unwrap();
+
+        let (pubkey, _) = res.expect("expected a pass");
+        assert_eq!(pubkey, dynamic_pubkey);
+    }
+
+    #[test]
+    fn test_execute_usable_skips_epoch_read_when_only_one_candidate_exists() {
+        let mut client = create_test_client();
+        let program_id = client.get_program_id();
+
+        let client_ip: Ipv4Addr = [10, 0, 0, 1].into();
+        let payer = Pubkey::new_unique();
+
+        let (dynamic_pubkey, _) = get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
+        let dynamic_pass = sample_accesspass(Ipv4Addr::UNSPECIFIED, payer);
+        let (exact_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &payer);
+
+        client
+            .expect_get()
+            .with(predicate::eq(dynamic_pubkey))
+            .returning(move |_| Ok(AccountData::AccessPass(dynamic_pass.clone())));
+        client
+            .expect_get()
+            .with(predicate::eq(exact_pubkey))
+            .returning(|_| Err(eyre::eyre!("account not found")));
+        // No expect_get_epoch() set: with only one candidate present, execute_usable
+        // must not need an epoch read to decide — a call would panic (unmocked).
+
+        let res = GetAccessPassCommand {
+            client_ip,
+            user_payer: payer,
+        }
+        .execute_usable(&client, UserType::IBRL)
         .unwrap();
 
         let (pubkey, _) = res.expect("expected a pass");

@@ -2005,7 +2005,7 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LossCountsAsRe
 	}
 }
 
-func TestInternetLatency_RIPEAtlas_FilterValidProbes_PrefersDirectOverNAT(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_PreferDirectTargets(t *testing.T) {
 	t.Parallel()
 
 	natTag := []struct {
@@ -2022,7 +2022,7 @@ func TestInternetLatency_RIPEAtlas_FilterValidProbes_PrefersDirectOverNAT(t *tes
 			{ID: 1009793, Address: "23.151.152.243"},
 		}
 
-		result := filterValidProbes(probes)
+		result := preferDirectTargets(probes)
 
 		require.Len(t, result, 1)
 		require.Equal(t, 1009793, result[0].ID)
@@ -2031,27 +2031,42 @@ func TestInternetLatency_RIPEAtlas_FilterValidProbes_PrefersDirectOverNAT(t *tes
 	t.Run("NAT probes are kept when they are all that is available", func(t *testing.T) {
 		t.Parallel()
 
+		// The Columbus fallback: the only direct probe has been blacklisted as
+		// unresponsive, so the NAT'd probe must still be selectable.
 		probes := []Probe{
 			{ID: 12651, Address: "107.192.62.177", Tags: natTag},
 			{ID: 60453, Address: "45.24.224.61", Tags: natTag},
 		}
 
-		result := filterValidProbes(probes)
+		result := preferDirectTargets(probes)
 
 		require.Len(t, result, 2, "dropping every probe would dark the location")
 	})
 
-	t.Run("unroutable probes are still excluded before the NAT preference", func(t *testing.T) {
+	t.Run("empty input stays empty", func(t *testing.T) {
 		t.Parallel()
 
-		probes := []Probe{
-			{ID: 1, Address: "192.168.1.1"},
-			{ID: 2, Address: "107.192.62.177", Tags: natTag},
-		}
-
-		result := filterValidProbes(probes)
-
-		require.Len(t, result, 1)
-		require.Equal(t, 2, result[0].ID)
+		require.Empty(t, preferDirectTargets(nil))
 	})
+}
+
+func TestInternetLatency_RIPEAtlas_FilterValidProbes_KeepsNATProbes(t *testing.T) {
+	t.Parallel()
+
+	natTag := []struct {
+		Name string `json:"name"`
+		Slug string `json:"slug"`
+	}{{Name: "NAT", Slug: "nat"}}
+
+	// Fetch-time filtering stays purely about routability. The NAT preference is
+	// applied later, once blacklisted probes are known.
+	probes := []Probe{
+		{ID: 1, Address: "192.168.1.1"},
+		{ID: 2, Address: "107.192.62.177", Tags: natTag},
+	}
+
+	result := filterValidProbes(probes)
+
+	require.Len(t, result, 1)
+	require.Equal(t, 2, result[0].ID)
 }

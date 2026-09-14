@@ -200,18 +200,22 @@ func filterValidProbes(log *slog.Logger, probes []Probe) []Probe {
 			validProbes = append(validProbes, probe)
 		}
 	}
-	return preferDirectProbes(validProbes)
+	return validProbes
 }
 
-// preferDirectProbes drops probes behind NAT when any directly reachable probe is
+// preferDirectTargets drops probes behind NAT when any directly reachable probe is
 // available. A NAT'd probe answers only a fraction of the pings aimed at it, which
 // is enough to look alive but not enough to keep a circuit inside the freshness
 // window downstream alerting expects.
 //
-// NAT'd probes are kept when they are all a location has. Dropping them outright
-// would dark the location entirely, which is worse than a lossy target — the same
-// reasoning that makes anchor selection fall back to non-anchors.
-func preferDirectProbes(probes []Probe) []Probe {
+// This applies to target selection only. Being behind NAT does not stop a probe
+// sourcing a measurement, since those pings are outbound.
+//
+// It runs after responsiveness filtering, not at fetch time, so that a location
+// whose every direct probe is blacklisted falls back to a NAT'd one rather than
+// going dark. Columbus is the case in point: its one direct probe never answers at
+// all, which is worse than the lossy NAT'd probe standing in for it.
+func preferDirectTargets(probes []Probe) []Probe {
 	var direct []Probe
 	for _, probe := range probes {
 		if !probe.BehindNAT() {
@@ -1478,7 +1482,7 @@ func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMa
 			continue
 		}
 
-		targetProbes := getNearestProbesSorted(responsiveProbes,
+		targetProbes := getNearestProbesSorted(preferDirectTargets(responsiveProbes),
 			targetLocation.Latitude, targetLocation.Longitude, probesPerLocation)
 		if len(targetProbes) == 0 {
 			continue

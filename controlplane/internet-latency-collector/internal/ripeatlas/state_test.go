@@ -164,7 +164,7 @@ func TestInternetLatency_RIPEAtlas_State_FilePermissionError(t *testing.T) {
 
 	err = ms.Save()
 	require.Error(t, err, "Expected error when saving to read-only directory")
-	require.Contains(t, err.Error(), "failed to create timestamp file")
+	require.Contains(t, err.Error(), "failed to create temp timestamp file")
 }
 
 func TestInternetLatency_RIPEAtlas_State_EmptyMetadataInFile(t *testing.T) {
@@ -816,4 +816,74 @@ func TestInternetLatency_RIPEAtlas_State_UnresponsiveTargetExpiry(t *testing.T) 
 
 	require.Equal(t, []int{freshProbe}, ms.GetUnresponsiveTargets())
 	require.True(t, ms.IsTargetUnresponsive(freshProbe), "the live mark survives the prune")
+}
+
+func TestInternetLatency_RIPEAtlas_State_SaveIsAtomic(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	filename := filepath.Join(tempDir, "timestamps.json")
+
+	ms := NewMeasurementState(filename)
+	ms.SetMetadata(100, MeasurementMeta{TargetLocation: "nyc", TargetProbeID: 1})
+	require.NoError(t, ms.Save())
+
+	// The temp file must not survive the save: a leftover .tmp in the state directory is
+	// litter that accumulates once per management cycle.
+	entries, err := os.ReadDir(tempDir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "only the state file should remain")
+	require.Equal(t, "timestamps.json", entries[0].Name())
+
+	firstStat, err := os.Stat(filename)
+	require.NoError(t, err)
+
+	// A second save over an existing file replaces it by rename rather than truncating it
+	// in place, so the target is a different inode and never observed half-written.
+	ms.SetMetadata(200, MeasurementMeta{TargetLocation: "lon", TargetProbeID: 2})
+	require.NoError(t, ms.Save())
+
+	secondStat, err := os.Stat(filename)
+	require.NoError(t, err)
+	require.False(t, os.SameFile(firstStat, secondStat), "Save should replace the state file, not truncate it in place")
+	require.Equal(t, firstStat.Mode().Perm(), secondStat.Mode().Perm(), "Save should preserve the file mode")
+
+	entries, err = os.ReadDir(tempDir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "only the state file should remain after a replacing save")
+
+	reloaded := NewMeasurementState(filename)
+	require.NoError(t, reloaded.Load(), "the saved state file should decode")
+	require.Len(t, reloaded.GetAllMetadata(), 2)
+	require.Equal(t, "nyc", reloaded.GetAllMetadata()[100].TargetLocation)
+	require.Equal(t, "lon", reloaded.GetAllMetadata()[200].TargetLocation)
+}
+
+func TestInternetLatency_RIPEAtlas_State_SaveFailureLeavesTargetIntact(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+
+	// Point the state at a non-empty directory: encoding and syncing the temp file
+	// succeed, and the rename onto the target is what fails. That is the step a kill
+	// would interrupt, and the assertion is the same either way — whatever is at the
+	// target path is untouched, and no temp file is left behind.
+	target := filepath.Join(tempDir, "timestamps.json")
+	require.NoError(t, os.Mkdir(target, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(target, "sentinel"), []byte("intact"), 0644))
+
+	ms := NewMeasurementState(target)
+	ms.SetMetadata(100, MeasurementMeta{TargetLocation: "nyc", TargetProbeID: 1})
+
+	err := ms.Save()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "failed to replace timestamp file")
+
+	sentinel, err := os.ReadFile(filepath.Join(target, "sentinel"))
+	require.NoError(t, err, "the target should be untouched by a failed save")
+	require.Equal(t, "intact", string(sentinel))
+
+	entries, err := os.ReadDir(tempDir)
+	require.NoError(t, err)
+	require.Len(t, entries, 1, "a failed save should leave no temp file behind")
 }

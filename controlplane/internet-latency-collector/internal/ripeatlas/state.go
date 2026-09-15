@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -250,20 +251,49 @@ func (ms *MeasurementState) MigratedTargetMarks() int {
 	return ms.migratedTargetMarks
 }
 
+// Save writes the tracker to disk atomically: encode into a temp file in the same
+// directory, then rename over the target. Truncating the real file in place and encoding
+// into it leaves a torn or empty file if the process is killed mid-write, and a tracker
+// that fails to decode or decodes empty makes the next management cycle treat every live
+// measurement as unaccounted for and delete it (#4131, #4169).
 func (ms *MeasurementState) Save() error {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
-	file, err := os.Create(ms.filename)
-	if err != nil {
-		return fmt.Errorf("failed to create timestamp file: %w", err)
+	// os.CreateTemp creates with 0600; keep whatever mode the state file already has so
+	// a rewrite does not tighten it, and fall back to os.Create's usual 0644.
+	mode := os.FileMode(0644)
+	if info, err := os.Stat(ms.filename); err == nil {
+		mode = info.Mode().Perm()
 	}
-	defer file.Close()
 
-	encoder := json.NewEncoder(file)
+	tmp, err := os.CreateTemp(filepath.Dir(ms.filename), filepath.Base(ms.filename)+".tmp")
+	if err != nil {
+		return fmt.Errorf("failed to create temp timestamp file: %w", err)
+	}
+	tmpName := tmp.Name()
+	defer func() {
+		// Both are no-ops on the success path: the file is already closed and renamed away.
+		tmp.Close()
+		os.Remove(tmpName)
+	}()
+
+	encoder := json.NewEncoder(tmp)
 	encoder.SetIndent("", "  ")
 	if err := encoder.Encode(ms.tracker); err != nil {
 		return fmt.Errorf("failed to encode timestamp file: %w", err)
+	}
+	if err := tmp.Sync(); err != nil {
+		return fmt.Errorf("failed to sync temp timestamp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("failed to close temp timestamp file: %w", err)
+	}
+	if err := os.Chmod(tmpName, mode); err != nil {
+		return fmt.Errorf("failed to set mode on temp timestamp file: %w", err)
+	}
+	if err := os.Rename(tmpName, ms.filename); err != nil {
+		return fmt.Errorf("failed to replace timestamp file: %w", err)
 	}
 
 	return nil

@@ -568,9 +568,11 @@ fn stake_mirror(stake_ref: Pubkey, builder: Pubkey, tier: StakeTier, bump_seed: 
     .unwrap()
 }
 
-/// Start a cluster with `allow-staked-feeds` set and one stake already mirrored. Returns the
-/// builder and the stake it posted; the mirror PDA is seeded by the stake.
-async fn init_staked(
+/// Start a cluster with `allow-staked-feeds` set and one stake already mirrored for `builder`.
+/// The returned payer is the foundation key, which is authorized; `builder` is whoever the caller
+/// named and holds nothing.
+async fn init_staked_for(
+    builder: Pubkey,
     tier: StakeTier,
 ) -> (
     BanksClient,
@@ -578,10 +580,8 @@ async fn init_staked(
     solana_sdk::signature::Keypair,
     Pubkey,
     Pubkey,
-    Pubkey,
 ) {
     let program_id = Pubkey::new_unique();
-    let builder = Pubkey::new_unique();
     let stake_ref = Pubkey::new_unique();
     let (mirror_pubkey, bump) = get_stake_mirror_pda(&program_id, &stake_ref);
 
@@ -595,6 +595,30 @@ async fn init_staked(
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
     enable_staked_feeds(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
 
+    (
+        banks_client,
+        program_id,
+        payer,
+        globalstate_pubkey,
+        stake_ref,
+    )
+}
+
+/// Start a cluster with `allow-staked-feeds` set and one stake already mirrored. Returns the
+/// builder and the stake it posted; the mirror PDA is seeded by the stake.
+async fn init_staked(
+    tier: StakeTier,
+) -> (
+    BanksClient,
+    Pubkey,
+    solana_sdk::signature::Keypair,
+    Pubkey,
+    Pubkey,
+    Pubkey,
+) {
+    let builder = Pubkey::new_unique();
+    let (banks_client, program_id, payer, globalstate_pubkey, stake_ref) =
+        init_staked_for(builder, tier).await;
     (
         banks_client,
         program_id,
@@ -1095,4 +1119,135 @@ async fn test_a_mirror_update_keeps_the_claiming_feed() {
         after.feed_key, feed_pubkey,
         "the stake is still spent on its feed"
     );
+}
+
+/// RFC-28's claim, in one test. A builder holding no permission deploys a feed because it posted a
+/// bond, and nothing grants it anything. Before A7 this failed with `NotAllowed`, because the bond
+/// bought tier coverage on top of a permission an admin still had to hand over.
+#[tokio::test]
+async fn test_a_builder_with_no_permission_deploys_against_its_own_bond() {
+    let builder = test_payer();
+    let (mut banks_client, program_id, _foundation, globalstate_pubkey, stake_ref) =
+        init_staked_for(builder.pubkey(), StakeTier::UpTo5Gbps).await;
+
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "ownbond", &exchange);
+    let (mirror_pubkey, _) = get_stake_mirror_pda(&program_id, &stake_ref);
+
+    let mut args = staked_args("ownbond", exchange);
+    args.builder = builder.pubkey();
+    args.stake_ref = stake_ref;
+    args.committed_rate_bits_per_sec = 5_000_000_000;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(args),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &builder,
+        &[AccountMeta::new(mirror_pubkey, false)],
+    )
+    .await;
+
+    let feed = get_feed(&mut banks_client, feed_pubkey).await;
+    assert_eq!(feed.builder, builder.pubkey());
+    // The builder paid, so the builder owns the feed and can halt it without an admin.
+    assert_eq!(feed.owner, builder.pubkey());
+    assert_eq!(feed.status, FeedStatus::Pending);
+}
+
+/// `builder` is a caller-supplied argument, so the stake has to authorize the key that posted it
+/// and nobody else. Without that binding, anyone could point at a funded mirror and deploy a feed
+/// on the strength of someone else's bond.
+#[tokio::test]
+async fn test_a_stake_does_not_authorize_a_builder_that_did_not_post_it() {
+    let real_builder = Pubkey::new_unique();
+    let (mut banks_client, program_id, _foundation, globalstate_pubkey, stake_ref) =
+        init_staked_for(real_builder, StakeTier::UpTo5Gbps).await;
+
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "notmine", &exchange);
+    let (mirror_pubkey, _) = get_stake_mirror_pda(&program_id, &stake_ref);
+
+    let mut args = staked_args("notmine", exchange);
+    args.builder = real_builder;
+    args.stake_ref = stake_ref;
+    args.committed_rate_bits_per_sec = 5_000_000_000;
+
+    // test_payer() is funded and holds no permission. The mirror it points at is real and covers
+    // the rate; the only thing wrong is that it belongs to someone else.
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(args),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &test_payer(),
+        &[AccountMeta::new(mirror_pubkey, false)],
+    )
+    .await;
+
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+}
+
+/// A builder that has posted no bond has nothing to authorize with, so it falls through to the
+/// permission it does not hold.
+#[tokio::test]
+async fn test_a_builder_with_no_bond_is_refused() {
+    let builder = test_payer();
+    let (mut banks_client, program_id, _foundation, globalstate_pubkey, _stake_ref) =
+        init_staked_for(builder.pubkey(), StakeTier::UpTo5Gbps).await;
+
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "nobond", &exchange);
+
+    let mut args = staked_args("nobond", exchange);
+    args.builder = builder.pubkey();
+    // A stake nobody mirrored. No mirror account rides along, so there is nothing to read.
+    args.stake_ref = Pubkey::new_unique();
+    args.committed_rate_bits_per_sec = 5_000_000_000;
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(args),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &builder,
+        &[],
+    )
+    .await;
+
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+}
+
+/// The stake check is deliberately split: whether the caller is a builder speaking about its own
+/// stake decides authorization, and whether that stake is big enough decides the feed. So a builder
+/// whose tier falls short is told that, rather than being told it is not allowed to try.
+#[tokio::test]
+async fn test_a_builder_whose_tier_falls_short_is_told_which() {
+    let builder = test_payer();
+    let (mut banks_client, program_id, _foundation, globalstate_pubkey, stake_ref) =
+        init_staked_for(builder.pubkey(), StakeTier::UpTo1Gbps).await;
+
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "toosmall", &exchange);
+    let (mirror_pubkey, _) = get_stake_mirror_pda(&program_id, &stake_ref);
+
+    let mut args = staked_args("toosmall", exchange);
+    args.builder = builder.pubkey();
+    args.stake_ref = stake_ref;
+    args.committed_rate_bits_per_sec = 5_000_000_000;
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(args),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &builder,
+        &[AccountMeta::new(mirror_pubkey, false)],
+    )
+    .await;
+
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::StakeDoesNotCoverRate));
 }

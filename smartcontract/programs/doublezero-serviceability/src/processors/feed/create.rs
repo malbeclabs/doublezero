@@ -95,17 +95,28 @@ pub fn process_create_feed(
     );
     assert!(feed_account.is_writable, "PDA Account is not writable");
 
-    // Authorize before any input validation or existence probing so an unauthorized caller gets
-    // NotAllowed rather than being able to trip validation errors or probe whether a feed exists.
-    // Catalog admin: FEED_AUTHORITY (Permission PDA) or FOUNDATION.
+    // Two things admit this call: a builder's own stake, or the catalog permission. The stake goes
+    // first, because RFC-28's claim is that a bond rather than an admin is what lets a builder
+    // deploy. The catalog path below is untouched, so an admin creating a feed on a builder's
+    // behalf works exactly as it did.
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    authorize(
-        program_id,
-        &mut authorize_iter,
+    if !stake_authorizes(
         payer_account.key,
-        &globalstate,
-        permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION,
-    )?;
+        value,
+        stake_mirror_account,
+        globalstate.feature_flags,
+    ) {
+        // Authorize before any input validation or existence probing so an unauthorized caller gets
+        // NotAllowed rather than being able to trip validation errors or probe whether a feed exists.
+        // Catalog admin: FEED_AUTHORITY (Permission PDA) or FOUNDATION.
+        authorize(
+            program_id,
+            &mut authorize_iter,
+            payer_account.key,
+            &globalstate,
+            permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION,
+        )?;
+    }
 
     validate_feed_name(&value.name)?;
     validate_feed_groups(&value.groups)?;
@@ -182,6 +193,33 @@ pub fn process_create_feed(
     msg!("Created feed: {} @ {}", code, value.exchange);
 
     Ok(())
+}
+
+/// Whether a stake, rather than a catalog permission, admits this create.
+///
+/// Deliberately the cheap half of the question. It establishes that the caller is a builder
+/// talking about its own stake, and leaves whether that stake admits the feed to
+/// `verify_stake_covers_rate`, which runs below and refuses before anything reveals whether the
+/// feed exists. So a builder whose bond is too small is told that, and a caller with no claim on
+/// any stake falls through to the permission check and sees `NotAllowed`.
+///
+/// `&value.builder == payer` is the load-bearing line. `builder` is a caller-supplied argument, so
+/// without it one builder's bond creates another builder's feed.
+///
+/// The feature-flag check is redundant today: `validate_feed_stake_terms` refuses any create
+/// naming a builder while `allow-staked-feeds` is clear, so dropping it here changes no outcome.
+/// It stays because an authorization decision that is safe only because of a validation running
+/// later is a trap for whoever edits either one next.
+fn stake_authorizes(
+    payer: &Pubkey,
+    value: &FeedCreateArgs,
+    stake_mirror_account: Option<&AccountInfo>,
+    feature_flags: u128,
+) -> bool {
+    is_feature_enabled(feature_flags, FeatureFlag::AllowStakedFeeds)
+        && value.builder != Pubkey::default()
+        && &value.builder == payer
+        && stake_mirror_account.is_some()
 }
 
 /// Validate a feed `name`, shared by create and update.

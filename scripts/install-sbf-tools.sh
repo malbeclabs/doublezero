@@ -62,7 +62,12 @@ fi
 # mkdir is the mutex because it is atomic on every filesystem this runs on,
 # unlike `flock`, which macOS does not ship.
 readonly LOCK="${CACHE_DIR}/.install-sbf-tools-${VERSION}.lock"
-readonly LOCK_TIMEOUT=900
+# Long enough that a live install cannot have its lock taken: the download alone
+# is allowed ATTEMPTS * FETCH_TIMEOUT, and extraction follows. A shorter wait
+# would declare a slow-but-working install stale and put a second writer beside
+# it, which is what the lock exists to prevent. The lock is still only advisory
+# against writers that take it, so the deadline only has to outlast this script.
+readonly LOCK_TIMEOUT=$((ATTEMPTS * FETCH_TIMEOUT + 600))
 
 mkdir -p "${CACHE_DIR}"
 waited=0
@@ -136,7 +141,18 @@ fi
 
 mkdir -p "${CACHE_DIR}/${VERSION}"
 rm -rf "${DEST}"
-mv "${staging}/tree" "${DEST}"
+
+# The lock serializes this script against itself, but cargo-build-sbf is a
+# writer that never takes it: install_if_missing creates the version directory
+# before it downloads. If it does that in the gap the delete above opens, a
+# plain `mv` lands inside the directory it created and leaves the tree at
+# platform-tools/tree/rust, which is not empty and so reads as installed. GNU
+# mv -T renames onto the destination path itself and cannot nest. BSD mv has no
+# -T; it also has no shared cache to protect, and after the delete above the
+# destination is absent, so there the plain rename is just a rename.
+if ! mv -T "${staging}/tree" "${DEST}" 2>/dev/null; then
+  mv "${staging}/tree" "${DEST}"
+fi
 
 echo "platform-tools ${VERSION} installed at ${DEST}"
 "${DEST}/rust/bin/cargo" --version

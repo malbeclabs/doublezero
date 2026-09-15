@@ -1,3 +1,4 @@
+pub mod activate;
 pub mod create;
 pub mod delete;
 pub mod guard;

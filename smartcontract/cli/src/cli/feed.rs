@@ -1,6 +1,6 @@
 use clap::{Args, Subcommand};
 
-use crate::feed::{create::*, delete::*, list::*, update::*};
+use crate::feed::{activate::*, create::*, delete::*, list::*, update::*};
 
 #[derive(Args, Debug)]
 pub struct FeedCliCommand {
@@ -13,6 +13,8 @@ pub enum FeedCommands {
     /// Create a new feed (a metro's multicast group set)
     #[clap()]
     Create(CreateFeedCliCommand),
+    /// Admit a feed that was waiting on a conformance verdict
+    Activate(ActivateFeedCliCommand),
     /// Update a feed's name or group set
     #[clap()]
     Update(UpdateFeedCliCommand),

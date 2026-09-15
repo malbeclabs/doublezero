@@ -38,9 +38,10 @@ use crate::{
             suspend::process_suspend_exchange, update::process_update_exchange,
         },
         feed::{
-            create::process_create_feed, delete::process_delete_feed,
-            finalize_retirement::process_finalize_feed_retirement, halt::process_halt_feed,
-            resume::process_resume_feed, retire::process_retire_feed, update::process_update_feed,
+            activate::process_activate_feed, create::process_create_feed,
+            delete::process_delete_feed, finalize_retirement::process_finalize_feed_retirement,
+            halt::process_halt_feed, resume::process_resume_feed, retire::process_retire_feed,
+            update::process_update_feed,
         },
         globalconfig::set::process_set_globalconfig,
         globalstate::{
@@ -432,6 +433,9 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::ResumeFeed(value) => {
             process_resume_feed(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::ActivateFeed(value) => {
+            process_activate_feed(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::UpdateFeed(value) => {
             process_update_feed(program_id, accounts, &value)?

@@ -30,7 +30,7 @@ use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{get_feed_pda, get_globalstate_pda, get_stake_mirror_pda},
     processors::feed::{
-        create::FeedCreateArgs, delete::FeedDeleteArgs,
+        activate::FeedActivateArgs, create::FeedCreateArgs, delete::FeedDeleteArgs,
         finalize_retirement::FeedFinalizeRetirementArgs, halt::FeedHaltArgs,
         resume::FeedResumeArgs, retire::FeedRetireArgs, update::FeedUpdateArgs,
     },
@@ -128,6 +128,39 @@ pub fn halt_feed(program_id: &Pubkey, payer: &Pubkey, feed: &Pubkey) -> Instruct
 
 /// `ResumeFeed` (variant 121). Accounts: `[feed, globalstate]`, then the stake mirror.
 ///
+/// `ActivateFeed` (variant 124). Accounts: `[feed, globalstate]`, plus the stake mirror for a
+/// staked feed.
+///
+/// Admits a feed that was waiting on a conformance verdict. Signed by a `FEED_AUTHORITY` or
+/// `FOUNDATION` key and by nobody else: the feed's own builder can halt and resume, but a builder
+/// that could admit its own feed would be attesting to its own conformance.
+///
+/// `stake_mirror` is required for a staked feed and must be `None` for a catalog one, as in
+/// `resume_feed`. This is the step that re-reads the mirror, so a staked feed without it is refused
+/// rather than read as having no stake to check.
+pub fn activate_feed(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    feed: &Pubkey,
+    stake_mirror: Option<&Pubkey>,
+) -> Instruction {
+    let (globalstate, _) = get_globalstate_pda(program_id);
+    let mut ix = common::build_with_permission(
+        program_id,
+        DoubleZeroInstruction::ActivateFeed(FeedActivateArgs {}),
+        vec![
+            AccountMeta::new(*feed, false),
+            AccountMeta::new(globalstate, false),
+        ],
+        payer,
+    );
+    if let Some(stake_mirror) = stake_mirror {
+        ix.accounts
+            .push(AccountMeta::new_readonly(*stake_mirror, false));
+    }
+    ix
+}
+
 /// Puts a halted feed back to publishing. Signed by the keys `halt_feed` accepts, except that an
 /// operator's halt takes an operator to lift.
 ///

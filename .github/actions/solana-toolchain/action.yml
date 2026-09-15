@@ -85,3 +85,31 @@ runs:
 
         echo "Agave ${{ inputs.version }} would not install after $ATTEMPTS attempts" >&2
         exit 1
+
+    # Cargo looks for a subcommand in $CARGO_HOME/bin before it looks at PATH, and
+    # Swatinem/rust-cache carries that directory from run to run. A cargo-build-sbf
+    # left there by an older Agave therefore shadows the one just installed, and
+    # which of the two runs comes down to whether the cache hit: on a hit the old
+    # one drives the host Cargo and tolerates any platform-tools; on a miss the new
+    # one runs the platform-tools Cargo instead. That is how a tree that builds on
+    # one run fails on the next with nothing changed, and it also means the programs
+    # were compiled by whichever rustc that coin landed on. Take the stale copies
+    # out so the version this action installed is the one that runs.
+    - name: Drop shadowed SBF build tools
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        cargo_bin="${CARGO_HOME:-$HOME/.cargo}/bin"
+        for tool in cargo-build-sbf cargo-test-sbf; do
+          stale="$cargo_bin/$tool"
+          if [ -e "$stale" ]; then
+            echo "Removing $stale, which would shadow the Agave ${{ inputs.version }} $tool"
+            rm -f "$stale"
+          else
+            echo "No $stale to remove"
+          fi
+        done
+
+        echo "cargo build-sbf now resolves to: $(command -v cargo-build-sbf)"
+        cargo build-sbf --version

@@ -1,3 +1,4 @@
+pub mod activate;
 pub mod create;
 pub mod delete;
 pub mod finalize_retirement;
@@ -9,6 +10,7 @@ pub mod update;
 use crate::{
     authorize::authorize,
     error::{DoubleZeroError, Validate},
+    pda::get_stake_mirror_pda,
     state::{
         accesspass::AccessPass,
         feed::{Feed, FeedStatus},
@@ -165,6 +167,36 @@ where
         globalstate,
         permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION,
     )
+}
+
+/// Split a staked feed's mirror out of the trailing accounts, leaving the rest for `authorize`.
+///
+/// The mirror rides after the fixed accounts and is found by its address rather than its position,
+/// so a catalog feed's caller is not forced to send one and a caller that sends only a `Permission`
+/// account still works.
+///
+/// Returns `(mirror, rest)`. `rest` filters by key rather than by identity: a caller may pass the
+/// mirror twice, and a stray copy left among the candidates would be read as the `Permission`
+/// account.
+///
+/// `builder` and `stake_ref` come from the `Feed` for an instruction acting on one that exists, and
+/// from the arguments for `CreateFeed`, which is describing a feed it has not written yet.
+pub(crate) fn split_stake_mirror<'a, 'b: 'a>(
+    program_id: &Pubkey,
+    builder: &Pubkey,
+    stake_ref: &Pubkey,
+    accounts_iter: &mut impl Iterator<Item = &'a AccountInfo<'b>>,
+) -> (Option<&'a AccountInfo<'b>>, Vec<&'a AccountInfo<'b>>) {
+    let tail: Vec<&AccountInfo> = accounts_iter.collect();
+    let mirror_key =
+        (builder != &Pubkey::default()).then(|| get_stake_mirror_pda(program_id, stake_ref).0);
+    let mirror = mirror_key.and_then(|key| tail.iter().copied().find(|a| a.key == &key));
+    let rest = tail
+        .into_iter()
+        .filter(|a| Some(*a.key) != mirror_key)
+        .collect();
+
+    (mirror, rest)
 }
 
 /// Whether the stake behind `feed` still covers the rate it publishes at.

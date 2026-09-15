@@ -28,7 +28,7 @@ use crate::processors::{
         setdevice::ExchangeSetDeviceArgs, suspend::ExchangeSuspendArgs, update::ExchangeUpdateArgs,
     },
     feed::{
-        create::FeedCreateArgs, delete::FeedDeleteArgs,
+        activate::FeedActivateArgs, create::FeedCreateArgs, delete::FeedDeleteArgs,
         finalize_retirement::FeedFinalizeRetirementArgs, halt::FeedHaltArgs,
         resume::FeedResumeArgs, retire::FeedRetireArgs, update::FeedUpdateArgs,
     },
@@ -270,6 +270,7 @@ pub enum DoubleZeroInstruction {
     ResumeFeed(FeedResumeArgs),                         // variant 121
     RetireFeed(FeedRetireArgs),                         // variant 122
     FinalizeFeedRetirement(FeedFinalizeRetirementArgs), // variant 123
+    ActivateFeed(FeedActivateArgs),                     // variant 124
 }
 
 impl DoubleZeroInstruction {
@@ -429,6 +430,9 @@ impl DoubleZeroInstruction {
             123 => Ok(Self::FinalizeFeedRetirement(
                 FeedFinalizeRetirementArgs::try_from(rest).unwrap(),
             )),
+            124 => Ok(Self::ActivateFeed(
+                FeedActivateArgs::try_from(rest).unwrap(),
+            )),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -580,6 +584,7 @@ impl DoubleZeroInstruction {
             Self::ResumeFeed(_) => "ResumeFeed".to_string(), // variant 121
             Self::RetireFeed(_) => "RetireFeed".to_string(), // variant 122
             Self::FinalizeFeedRetirement(_) => "FinalizeFeedRetirement".to_string(), // variant 123
+            Self::ActivateFeed(_) => "ActivateFeed".to_string(), // variant 124
             Self::UpdateFeed(_) => "UpdateFeed".to_string(), // variant 113
             Self::DeleteFeed(_) => "DeleteFeed".to_string(), // variant 114
             Self::SetAccessPassFeeds(_) => "SetAccessPassFeeds".to_string(), // variant 115
@@ -729,6 +734,7 @@ impl DoubleZeroInstruction {
             Self::ResumeFeed(args) => format!("{args:?}"), // variant 121
             Self::RetireFeed(args) => format!("{args:?}"), // variant 122
             Self::FinalizeFeedRetirement(args) => format!("{args:?}"), // variant 123
+            Self::ActivateFeed(args) => format!("{args:?}"), // variant 124
             Self::UpdateFeed(args) => format!("{args:?}"), // variant 113
             Self::DeleteFeed(args) => format!("{args:?}"), // variant 114
             Self::SetAccessPassFeeds(args) => format!("{args:?}"), // variant 115

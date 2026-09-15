@@ -1067,13 +1067,14 @@ func TestReconcile_FetchError(t *testing.T) {
 
 // --- HTTP handler tests ---
 
-func newTestNLMForHTTP(stateDir string) *NetlinkManager {
+func newTestNLMForHTTP(stateDir string, extra ...Option) *NetlinkManager {
 	fetcher := &mockFetcher{data: &serviceability.ProgramData{GlobalConfig: testGlobalConfig()}}
-	return newTestNLM(fetcher,
+	opts := append([]Option{
 		WithClientIP(net.IPv4(1, 2, 3, 4).To4()),
 		WithPollInterval(time.Hour),
 		WithStateDir(stateDir),
-	)
+	}, extra...)
+	return newTestNLM(fetcher, opts...)
 }
 
 func TestServeEnable(t *testing.T) {
@@ -2292,7 +2293,10 @@ func TestServeEnable_InvalidClientIPChangesNothing(t *testing.T) {
 	}
 }
 
-func TestServeDisable_ClearsPin(t *testing.T) {
+// A disable turns the reconciler off and nothing else. The pin is host configuration, and
+// dropping it from disk while the running daemon kept using it is what would make the next
+// restart tear the tunnel down.
+func TestServeDisable_KeepsPin(t *testing.T) {
 	withAssignedIPs(t, "5.6.7.8")
 	dir := t.TempDir()
 	n := newTestNLMForHTTP(dir)
@@ -2305,8 +2309,72 @@ func TestServeDisable_ClearsPin(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
-	if st := readState(t, dir); st.ReconcilerEnabled || st.ClientIP != "" {
-		t.Fatalf("expected the pin cleared, got %+v", st)
+	if st := readState(t, dir); st.ReconcilerEnabled || st.ClientIP != "5.6.7.8" {
+		t.Fatalf("expected the reconciler disabled and the pin kept, got %+v", st)
+	}
+}
+
+// The regression: an ordinary `connect` (or `doublezero enable`) sends no client_ip, and
+// must not blank the pin the daemon is still using. Persisting the request instead of the
+// pin in effect left the daemon and the state file disagreeing, which showed up only at the
+// next restart — discovery took over and the tunnel went away.
+func TestServeEnable_NoBodyKeepsPersistedPin(t *testing.T) {
+	withAssignedIPs(t, "5.6.7.8")
+	dir := t.TempDir()
+	n := newTestNLMForHTTP(dir)
+
+	n.ServeEnable(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/enable", strings.NewReader(`{"client_ip":"5.6.7.8"}`)))
+
+	w := httptest.NewRecorder()
+	n.ServeEnable(w, httptest.NewRequest(http.MethodPost, "/enable", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := n.ClientIP().String(); got != "5.6.7.8" {
+		t.Fatalf("expected the pinned address still in use, got %s", got)
+	}
+	if st := readState(t, dir); st.ClientIP != "5.6.7.8" {
+		t.Fatalf("expected the pin preserved on disk, got %q", st.ClientIP)
+	}
+}
+
+// The full cycle an operator runs: pin, disconnect, reconnect without the flag. The address
+// in use and the one on disk have to agree at every step, so that a restart at any point
+// resumes on the same address.
+func TestServeEnable_PinSurvivesDisableEnableCycle(t *testing.T) {
+	withAssignedIPs(t, "5.6.7.8")
+	dir := t.TempDir()
+	n := newTestNLMForHTTP(dir)
+
+	n.ServeEnable(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/enable", strings.NewReader(`{"client_ip":"5.6.7.8"}`)))
+	n.ServeDisable(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/disable", nil))
+	n.ServeEnable(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/enable", nil))
+
+	if got := n.ClientIP().String(); got != "5.6.7.8" {
+		t.Fatalf("expected the pinned address still in use, got %s", got)
+	}
+	st := readState(t, dir)
+	if !st.ReconcilerEnabled || st.ClientIP != "5.6.7.8" {
+		t.Fatalf("expected enabled with the pin intact, got %+v", st)
+	}
+	if got := n.PinnedClientIP(); got != st.ClientIP {
+		t.Fatalf("daemon pin %q disagrees with the state file %q", got, st.ClientIP)
+	}
+}
+
+// A pin restored from disk is the pin in effect, so a body-less enable from a fresh daemon
+// preserves it rather than blanking a file it never read back.
+func TestServeEnable_NoBodyKeepsRestoredPin(t *testing.T) {
+	dir := t.TempDir()
+	n := newTestNLMForHTTP(dir, WithPinnedClientIP("5.6.7.8"))
+
+	w := httptest.NewRecorder()
+	n.ServeEnable(w, httptest.NewRequest(http.MethodPost, "/enable", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if st := readState(t, dir); st.ClientIP != "5.6.7.8" {
+		t.Fatalf("expected the restored pin preserved, got %q", st.ClientIP)
 	}
 }
 

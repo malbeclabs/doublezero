@@ -131,6 +131,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		manager.WithPollInterval(pollInterval),
 		manager.WithFetchTimeout(fetchTimeout),
 		manager.WithEnabled(state.ReconcilerEnabled),
+		manager.WithPinnedClientIP(state.ClientIP),
 		manager.WithStateDir(stateDir),
 		manager.WithNetwork(networkConfig.Moniker),
 	}

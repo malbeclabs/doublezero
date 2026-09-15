@@ -68,6 +68,17 @@ func WithClientIP(ip net.IP) Option {
 	}
 }
 
+// WithPinnedClientIP records the pin restored from the state file, so the daemon's notion of
+// the pin in effect matches what is on disk from the moment it starts. Empty means no pin.
+//
+// It does not set the address in use — that is WithClientIP, which the caller resolves from
+// the daemon flag, this pin and discovery in that order.
+func WithPinnedClientIP(ip string) Option {
+	return func(n *NetlinkManager) {
+		n.pinnedClientIP = ip
+	}
+}
+
 // WithFetcher sets the onchain data fetcher for the reconciler.
 func WithFetcher(f Fetcher) Option {
 	return func(n *NetlinkManager) {
@@ -135,7 +146,12 @@ type NetlinkManager struct {
 	// clientIP is read by the reconciler goroutine and by the /v2/status handler, and
 	// written by /enable when an operator pins an address, so every access goes through
 	// ClientIP/setClientIP under clientIPMu.
-	clientIP       net.IP
+	clientIP net.IP
+	// pinnedClientIP is the address an operator pinned, as persisted, or empty when the
+	// daemon is using the one it discovered. Kept alongside clientIP — rather than derived
+	// from it — because the two differ: the daemon's own -client-ip flag outranks a pin at
+	// startup, leaving a pin recorded but dormant.
+	pinnedClientIP string
 	clientIPMu     sync.RWMutex
 	fetcher        Fetcher
 	pollInterval   time.Duration
@@ -425,10 +441,26 @@ func (n *NetlinkManager) ClientIP() net.IP {
 	return n.clientIP
 }
 
-// setClientIP adopts a new client IP, reporting whether it differed from the current one.
+// PinnedClientIP returns the operator-pinned address, or empty when there is none.
+//
+// Every state write persists this rather than the request being served, so what is on disk
+// stays the pin that is actually in effect. Writing the request instead let a body-less
+// /enable — an ordinary `connect` with no flag, or `doublezero enable` — clear a pin the
+// daemon was still using, which surfaced only at the next restart, as a tunnel torn down
+// because discovery had taken over.
+func (n *NetlinkManager) PinnedClientIP() string {
+	n.clientIPMu.RLock()
+	defer n.clientIPMu.RUnlock()
+	return n.pinnedClientIP
+}
+
+// setClientIP adopts a new client IP as a pin, reporting whether it differed from the
+// current one. The pin is recorded either way, so re-pinning the address already in use
+// still leaves the daemon and the state file agreeing on why it is in use.
 func (n *NetlinkManager) setClientIP(ip net.IP) bool {
 	n.clientIPMu.Lock()
 	defer n.clientIPMu.Unlock()
+	n.pinnedClientIP = ip.String()
 	if n.clientIP.Equal(ip) {
 		return false
 	}

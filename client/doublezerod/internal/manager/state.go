@@ -23,6 +23,10 @@ type State struct {
 	// daemon restores itself after a restart without the CLI being run again, so a pin that
 	// did not survive would silently revert the host to its discovered address, stop matching
 	// the onchain user, and tear the tunnel down on the next reboot.
+	//
+	// It is host configuration, not session state: only a new pin replaces it, and neither a
+	// disable nor an enable without one clears it. Returning a host to discovery means
+	// pinning a different address, or clearing this field and restarting the daemon.
 	ClientIP string `json:"client_ip,omitempty"`
 }
 

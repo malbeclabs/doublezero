@@ -151,7 +151,8 @@ func (n *NetlinkManager) ServeStatus(w http.ResponseWriter, r *http.Request) {
 type EnableRequest struct {
 	// ClientIP pins the address the reconciler matches onchain users against and uses as the
 	// IBRL tunnel source, overriding the one discovered at startup. An empty value leaves the
-	// current address in place, which is what a body-less request (every pre-pin client) does.
+	// pin in effect alone — both the address in use and the one persisted — which is what a
+	// body-less request (every pre-pin client, and every `connect` without the flag) does.
 	ClientIP string `json:"client_ip,omitempty"`
 }
 
@@ -195,9 +196,16 @@ func (n *NetlinkManager) ServeEnable(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Persist the pin as given: an absent client_ip clears a previous one, so an operator
-	// returns to auto-discovery by connecting again without the flag.
-	if err := WriteState(n.stateDir, State{ReconcilerEnabled: true, ClientIP: req.ClientIP}); err != nil {
+	// What gets persisted is the pin that will be in effect once this request is served: the
+	// new one, or the existing one when none was supplied. A body-less enable must leave it
+	// alone rather than blank it — this request does not touch the address the daemon is
+	// using, and a state file that disagreed with the running daemon would keep the tunnel up
+	// until the next restart and then tear it down, discovery having quietly taken over.
+	pinned := n.PinnedClientIP()
+	if clientIP != nil {
+		pinned = clientIP.String()
+	}
+	if err := WriteState(n.stateDir, State{ReconcilerEnabled: true, ClientIP: pinned}); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"status": "error", "description": err.Error()}) //nolint:errcheck
 		return
@@ -208,9 +216,11 @@ func (n *NetlinkManager) ServeEnable(w http.ResponseWriter, r *http.Request) {
 
 // ServeDisable handles POST /disable requests.
 func (n *NetlinkManager) ServeDisable(w http.ResponseWriter, _ *http.Request) {
-	// Disabling drops any pin too: the next enable supplies its own, and a stale pin left
-	// behind would silently outlive the connection that asked for it.
-	if err := WriteState(n.stateDir, State{}); err != nil {
+	// The pin outlives a disable, because it describes which address this host presents to
+	// DoubleZero rather than anything about one session. Dropping it here would only drop it
+	// from disk — the daemon has no discovered address to fall back to without probing for
+	// one again — and that split is what makes a later restart surprising.
+	if err := WriteState(n.stateDir, State{ClientIP: n.PinnedClientIP()}); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"status": "error", "description": err.Error()}) //nolint:errcheck

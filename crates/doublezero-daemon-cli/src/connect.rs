@@ -691,9 +691,15 @@ impl Connect {
         // `user_activated` first: a run where every leg skips must still leave the
         // daemon managing tunnels. Non-fatal, matching `user_activated` — the onchain
         // users are still worth creating if only the local daemon is uncooperative.
-        match ensure_reconciler_enabled(daemon).await {
+        match ensure_reconciler_enabled(daemon, self.client_ip).await {
             Ok(true) => {}
             Ok(false) => writeln!(out, "    Reconciler enabled")?,
+            // A rejected pin is the exception: the address *is* the connection, and the
+            // daemon refuses one this host does not hold. Stopping here means nothing is
+            // created onchain for an address the daemon was never going to serve.
+            Err(e) if self.client_ip.is_some() => {
+                return Err(e.wrap_err(format!("the daemon refused --client-ip {}", client_ip)))
+            }
             Err(e) => writeln!(
                 out,
                 "⚠️  Failed to enable the reconciler: {e}. Tunnels will not be provisioned \
@@ -2286,20 +2292,40 @@ impl Connect {
     ) -> eyre::Result<()> {
         spinner.inc(1);
 
-        // Enable the reconciler (no-op if already enabled).
+        // Enable the reconciler, pinning the address when `--client-ip` named one (an
+        // unpinned enable is a no-op if the reconciler is already on).
         if let Err(e) = daemon.enable(self.client_ip).await {
-            // Check if the reconciler is already enabled despite the enable call failing.
-            let already_enabled = daemon
-                .v2_status()
-                .await
-                .map(|s| s.reconciler_enabled)
-                .unwrap_or(false);
-            if !already_enabled {
-                writeln!(
-                    out,
-                    "    Error: failed to enable reconciler: {e}. Tunnel will not be provisioned."
-                )?;
-                return Ok(());
+            let status = daemon.v2_status().await.ok();
+            match self.client_ip {
+                // A pin cannot be written off as a redundant enable. The daemon refuses an
+                // address this host does not hold, and the user just created onchain names
+                // that address, so treating the refusal as success would leave the operator
+                // waiting on a tunnel the daemon will never build. Only a daemon already
+                // reporting that exact address makes the failure moot.
+                Some(pinned) => {
+                    let adopted = status
+                        .is_some_and(|s| s.reconciler_enabled && s.client_ip == pinned.to_string());
+                    if !adopted {
+                        eyre::bail!(
+                            "the daemon is not provisioning {pinned}: {e}. The onchain user \
+                             exists, but no tunnel will be built until the daemon adopts that \
+                             address."
+                        );
+                    }
+                }
+                // Without a pin the call only had to flip a flag, and an already-enabled
+                // reconciler means it was flipped. Anything else is reported and survived:
+                // the onchain user is still worth having.
+                None => {
+                    if !status.is_some_and(|s| s.reconciler_enabled) {
+                        writeln!(
+                            out,
+                            "    Error: failed to enable reconciler: {e}. Tunnel will not be \
+                             provisioned."
+                        )?;
+                        return Ok(());
+                    }
+                }
             }
         }
 
@@ -6805,6 +6831,47 @@ mod tests {
         });
     }
 
+    /// The counterpart with a pin: a daemon that will not take the address must stop the run
+    /// *before* anything is created onchain, because a user at an address the daemon never
+    /// adopted is an account nothing will ever provision or tear down.
+    #[test]
+    fn test_connect_bare_with_client_ip_stops_when_the_daemon_refuses_the_pin() {
+        block_on(async {
+            let _host = crate::clientip::test_support::with_host_holding_any_address();
+
+            let mut fixture = TestFixture::new_with_failing_enable();
+            fixture.add_device(DeviceType::Hybrid, 100, true);
+
+            const PINNED: Ipv4Addr = Ipv4Addr::new(5, 6, 7, 8);
+            {
+                let mut ap = fixture.accesspass.lock().unwrap();
+                ap.client_ip = PINNED;
+                ap.flags = 0;
+            }
+            let accesspass = fixture.accesspass.clone();
+            fixture
+                .ledger
+                .expect_get_accesspass_exact()
+                .returning_st(move |_, _| Ok(Some(accesspass.lock().unwrap().clone())));
+            let accesspass = fixture.accesspass.clone();
+            fixture
+                .ledger
+                .expect_get_accesspass()
+                .returning_st(move |_, _| Ok(Some(accesspass.lock().unwrap().clone())));
+
+            // No create_user expectation: reaching one would be the bug.
+            let command = Connect {
+                client_ip: Some(PINNED),
+                ..Default::default()
+            };
+            let (result, output) = run(&fixture, command).await;
+
+            let err = format!("{:#}", result.expect_err("the pin was refused"));
+            assert!(err.contains("refused --client-ip 5.6.7.8"), "{err}");
+            assert!(!output.contains("IBRL: provisioned"), "{output}");
+        });
+    }
+
     /// An EdgeSeat pass with its unicast seats full skips the IBRL leg up front rather
     /// than letting `try_add_user` reject the transaction onchain.
     #[test]
@@ -7162,6 +7229,119 @@ mod tests {
             );
         }
     }
+    /// `user_activated` runs after the onchain user exists, so what it does with a failed
+    /// enable decides whether the operator learns the daemon never took the address.
+    mod user_activated_pin {
+        use super::*;
+        use crate::client::{DoubleZeroStatus, StatusResponse};
+
+        const PINNED: Ipv4Addr = Ipv4Addr::new(5, 6, 7, 8);
+
+        fn daemon_rejecting_enable(reports: &str) -> MockDaemonClient {
+            let mut daemon = MockDaemonClient::new();
+            daemon.expect_enable().returning(|_| {
+                Err(eyre::eyre!(
+                    "client_ip 5.6.7.8 is not assigned to any interface that is up on this host"
+                ))
+            });
+            let reports = reports.to_string();
+            daemon.expect_v2_status().returning(move || {
+                Ok(V2StatusResponse {
+                    // Already on: the state the "already enabled, carry on" path keyed off.
+                    reconciler_enabled: true,
+                    client_ip: reports.clone(),
+                    network: String::new(),
+                    services: vec![],
+                })
+            });
+            daemon
+        }
+
+        async fn run_user_activated(
+            daemon: &MockDaemonClient,
+            client_ip: Option<Ipv4Addr>,
+        ) -> (eyre::Result<()>, String) {
+            let command = Connect {
+                client_ip,
+                ..Default::default()
+            };
+            let mut out = Vec::new();
+            let res = command
+                .user_activated(daemon, UserType::IBRL, &ProgressBar::hidden(), &mut out)
+                .await;
+            (res, String::from_utf8(out).unwrap())
+        }
+
+        /// The regression: a refused pin on an already-enabled daemon was treated as a
+        /// redundant enable and the connect went on to wait for a tunnel that could never be
+        /// built, for an address the daemon had not taken.
+        #[tokio::test]
+        async fn a_refused_pin_is_not_excused_by_an_enabled_reconciler() {
+            let daemon = daemon_rejecting_enable("1.2.3.4");
+            let (res, _) = run_user_activated(&daemon, Some(PINNED)).await;
+            let err = format!("{:#}", res.expect_err("the daemon never took the address"));
+            assert!(
+                err.contains("not provisioning 5.6.7.8"),
+                "unexpected error: {err}"
+            );
+            assert!(
+                err.contains("is not assigned to any interface"),
+                "the daemon's own reason belongs in the error: {err}"
+            );
+        }
+
+        /// The one case where the failure really is moot: the daemon already reports the
+        /// pinned address, so the enable had nothing left to do.
+        #[tokio::test]
+        async fn a_refused_pin_is_excused_when_the_address_is_already_adopted() {
+            let mut daemon = daemon_rejecting_enable("5.6.7.8");
+            daemon.expect_status().returning(|| {
+                Ok(vec![StatusResponse {
+                    doublezero_status: DoubleZeroStatus {
+                        session_status: "up".to_string(),
+                        last_session_update: None,
+                    },
+                    tunnel_name: Some("doublezero1".to_string()),
+                    tunnel_src: Some("5.6.7.8".to_string()),
+                    tunnel_dst: None,
+                    doublezero_ip: None,
+                    user_type: Some(UserType::IBRL.to_string()),
+                }])
+            });
+
+            let (res, output) = run_user_activated(&daemon, Some(PINNED)).await;
+            assert!(res.is_ok(), "{res:?}\n{output}");
+            assert!(output.contains("Tunnel Src: 5.6.7.8"), "{output}");
+        }
+
+        /// Without a pin the lenient path stands: the enable only had to flip a flag, and an
+        /// already-enabled reconciler means it was flipped.
+        #[tokio::test]
+        async fn an_unpinned_failure_still_carries_on_when_already_enabled() {
+            let mut daemon = daemon_rejecting_enable("1.2.3.4");
+            daemon.expect_status().returning(|| {
+                Ok(vec![StatusResponse {
+                    doublezero_status: DoubleZeroStatus {
+                        session_status: "up".to_string(),
+                        last_session_update: None,
+                    },
+                    tunnel_name: Some("doublezero1".to_string()),
+                    tunnel_src: Some("1.2.3.4".to_string()),
+                    tunnel_dst: None,
+                    doublezero_ip: None,
+                    user_type: Some(UserType::IBRL.to_string()),
+                }])
+            });
+
+            let (res, output) = run_user_activated(&daemon, None).await;
+            assert!(res.is_ok(), "{res:?}\n{output}");
+            assert!(
+                !output.contains("failed to enable reconciler"),
+                "an already-enabled reconciler is not an error: {output}"
+            );
+        }
+    }
+
     // ========================================================================
     // --client-ip and access-pass shape (issue #4333)
     //

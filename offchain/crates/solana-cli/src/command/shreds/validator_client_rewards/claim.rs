@@ -85,20 +85,6 @@ pub(crate) fn resolve_destination(
     override_destination.unwrap_or_else(|| get_associated_token_address(manager, mint))
 }
 
-/// Refuse an actor that is not the recorded manager. `actor` names what was
-/// checked, the wallet or the vault, so the message says which key fell short.
-pub(crate) fn validate_manager(
-    actor: &str,
-    actor_key: &Pubkey,
-    validator_client_rewards_manager_key: &Pubkey,
-) -> Result<()> {
-    ensure!(
-        actor_key == validator_client_rewards_manager_key,
-        "manager mismatch: {actor} is {actor_key}, validator client rewards manager is {validator_client_rewards_manager_key}"
-    );
-    Ok(())
-}
-
 /// Validate a destination token account that already exists, returning its authority.
 /// The vault path passes `vault_key`, which requires the vault to be that authority: its
 /// approvers see a base58 blob, so a destination the multisig does not control is a
@@ -242,7 +228,7 @@ impl ClaimCommand {
             })?;
         // Refusing here is what stops a payload the multisig can never execute
         // from consuming an approval round.
-        validate_manager(
+        super::validate_manager(
             actor.label(),
             &actor_key,
             &validator_client_rewards.manager_key,
@@ -925,7 +911,7 @@ async fn validate_explicit_holdings(
 
 #[cfg(test)]
 mod tests {
-    use clap::Parser;
+    use clap::{Parser, error::ErrorKind};
     use doublezero_solana_client_tools::{
         rpc::NetworkEnvironment,
         squads::{
@@ -1064,7 +1050,8 @@ mod tests {
 
     #[test]
     fn test_vault_index_requires_multisig() {
-        assert!(parse(&["--vault-index", "2"]).is_err());
+        let error = parse(&["--vault-index", "2"]).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::MissingRequiredArgument);
     }
 
     #[test]
@@ -1091,29 +1078,6 @@ mod tests {
         let mint = Pubkey::new_unique();
         let expected = get_associated_token_address(&manager, &mint);
         assert_eq!(resolve_destination(&manager, &mint, None), expected);
-    }
-
-    #[test]
-    fn test_validate_manager_matches() {
-        let wallet_key = Pubkey::new_unique();
-        assert!(validate_manager("wallet", &wallet_key, &wallet_key).is_ok());
-    }
-
-    #[test]
-    fn test_validate_manager_mismatch_names_the_actor_checked() {
-        let actor_key = Pubkey::new_unique();
-        let manager_key = Pubkey::new_unique();
-        for actor in ["wallet", "vault"] {
-            let message = validate_manager(actor, &actor_key, &manager_key)
-                .unwrap_err()
-                .to_string();
-            assert!(message.contains("manager mismatch"));
-            assert!(
-                message.contains(&format!("{actor} is {actor_key}")),
-                "{message}"
-            );
-            assert!(message.contains(&manager_key.to_string()));
-        }
     }
 
     #[test]

@@ -67,9 +67,27 @@ pub fn split_trailing_instructions_sysvar<'a, 'info>(
 /// With `FeatureFlag::RequireIpOwnershipProof` clear, a missing proof is accepted and a supplied
 /// one is still validated in full — a client that attaches a bad proof is broken whether or not
 /// enforcement has been switched on, and letting it through would mask that until the flag flips.
-/// With the flag set, a proof is required for every user creation, wildcard and specific-IP passes
-/// alike (#4192 item 3: a legacy path that skips the proof is exactly the hole the RFC exists to
-/// close) — with one exception, `payer_is_sentinel`.
+/// With the flag set, a proof is required for every user creation, with two exceptions:
+/// `payer_is_sentinel` and `accesspass_is_ip_bound`.
+///
+/// `accesspass_is_ip_bound` waives the *requirement* for a pass whose address an issuing authority
+/// pinned: one stored at its own `client_ip` PDA and not flagged `allow_multiple_ip`, which the
+/// caller has already matched against the `client_ip` being created. Such a pass is itself an
+/// attestation — `SetAccessPass` is permissioned, so a registrant cannot self-issue one, and a pass
+/// at `(client_ip, user_payer)` means a privileged party asserted that this payer may use this
+/// address. It is the same reasoning by which RFC-27 scopes its threat to wildcard passes, where
+/// the program accepts any globally-routable address and nothing names the one being claimed.
+///
+/// The exemption exists because an attested address is not always one the host can originate from.
+/// Under asymmetric routing, a verifier unreachable from that source, or NAT, no proof for it is
+/// obtainable, and the pass and the flag together left such a host unable to connect at all.
+///
+/// The trust boundary moves with it, from "the verifier observed this address" to "every
+/// `ACCESS_PASS_ADMIN` and every tenant administrator names addresses correctly". `is_tenant_admin`
+/// may issue passes, so a tenant administrator can pin a third party's address to their own payer
+/// and create a user there with no proof; that is accepted deliberately, as the price of making
+/// pinned passes usable. A per-pass waiver flag, set by a narrower authority, is the lever if this
+/// ever needs tightening.
 ///
 /// `payer_is_sentinel` waives the *requirement* only, never validation. The shred-oracle
 /// provisions multicast publishers owned by validators (`crates/sentinel`), so the proof would have
@@ -93,21 +111,26 @@ pub fn validate_ip_ownership_proof(
     user_type: u8,
     current_epoch: u64,
     payer_is_sentinel: bool,
+    accesspass_is_ip_bound: bool,
 ) -> Result<(), ProgramError> {
     let proof = match proof {
         Some(proof) => proof,
         None => {
-            return if payer_is_sentinel {
-                Ok(())
-            } else if is_feature_enabled(
+            if !is_feature_enabled(
                 globalstate.feature_flags,
                 FeatureFlag::RequireIpOwnershipProof,
             ) {
-                msg!("IP ownership proof required but none supplied");
-                Err(DoubleZeroError::IpOwnershipProofRequired.into())
-            } else {
-                Ok(())
-            };
+                return Ok(());
+            }
+            if payer_is_sentinel {
+                return Ok(());
+            }
+            if accesspass_is_ip_bound {
+                msg!("No IP ownership proof supplied; accepted on an IP-bound access pass");
+                return Ok(());
+            }
+            msg!("IP ownership proof required but none supplied");
+            return Err(DoubleZeroError::IpOwnershipProofRequired.into());
         }
     };
 

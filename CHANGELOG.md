@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Serviceability
+  - A test that drives the RFC-28 sequence in order rather than one instruction at a time: the relayer writes a `StakeMirror`, a builder holding no permission creates a feed against it, grants its own publisher the right to send, and an operator activates it. Every other test in this area covers one instruction and seeds what it needs around it, so nothing checked that the steps compose. It asserts the feed comes out owned by the builder, that the mirror's `feed_key` is claimed so one bond backs one feed, and that no `Permission` account exists for the builder at any point, which is the claim that would make the rest meaningless if it failed. What it does not cover is written in its header: `PostBond` is a different program on Solana, so the mirror is written from values rather than read from a real `BuilderStake`, and nothing in a `ProgramTest` sends multicast. It proves the ledger admits the sequence, not that the demo runs.
+
 - CLI
   - `doublezero-solana shreds validator-client-rewards set-proportion` takes `--multisig`, so a manager held by a Squads vault can set a proportion. The vault stands in for the wallet, no keypair is loaded, and the command prints a base58 payload for import into Squads instead of sending. Both paths now refuse a wallet or vault that is not the recorded manager before anything is built. (malbeclabs/doublezero#4186)
 - CI

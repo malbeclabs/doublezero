@@ -171,17 +171,10 @@ impl SetProportionCommand {
                 )?;
                 writeln!(out)?;
 
-                // The payload is the proportion instruction alone. No
-                // CheckCliVersion: it is evaluated at execute, days after this
-                // payload is stamped, so it says nothing about the version that
-                // built the payload and a floor raised while approvals are
-                // collected would only revert it. No compute budget instructions
-                // either, since Squads sets the budget on its own execute
-                // transaction and a budget instruction reached through a CPI is a
-                // no-op that only burns compute units. The checked encoder
-                // underneath refuses a payload that needs a second signer or
-                // will not fit the transaction Squads wraps around it.
-                try_write_vault_transaction(out, &connection, &vault_key, &[ix])?;
+                // The checked encoder underneath refuses a payload that needs
+                // a second signer or will not fit the transaction Squads wraps
+                // around it.
+                try_write_vault_transaction(out, &connection, &vault_key, &vault_instructions(ix))?;
             }
         }
 
@@ -205,6 +198,21 @@ fn direct_instructions(
     instructions
 }
 
+/// The payload a vault imports: the proportion instruction alone.
+///
+/// No CheckCliVersion. It is evaluated at execute, days after this payload is
+/// stamped, so it says nothing about the version that built the payload and a
+/// floor raised while approvals are collected would revert every payload
+/// outstanding. The direct path, which sends within milliseconds of building,
+/// keeps it.
+///
+/// No compute budget instructions either, since Squads sets the budget on its
+/// own execute transaction and a budget instruction reached through a CPI is a
+/// no-op that only burns compute units.
+fn vault_instructions(set_proportion_ix: Instruction) -> Vec<Instruction> {
+    vec![set_proportion_ix]
+}
+
 fn percentage_to_bps(pct: f64) -> Result<u16> {
     if !(0.0..=100.0).contains(&pct) {
         bail!("Proportion must be between 0 and 100 (got {pct})");
@@ -214,7 +222,7 @@ fn percentage_to_bps(pct: f64) -> Result<u16> {
 
 #[cfg(test)]
 mod tests {
-    use clap::Parser;
+    use clap::{Parser, error::ErrorKind};
     use doublezero_solana_client_tools::squads::{
         SQUADS_IMPORT_MEMO_RESERVE_BYTES, try_encode_vault_transaction,
         vault_transaction_payload_budget,
@@ -262,17 +270,19 @@ mod tests {
 
     #[test]
     fn test_vault_index_requires_multisig() {
-        assert!(parse(&["--vault-index", "2"]).is_err());
+        let error = parse(&["--vault-index", "2"]).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::MissingRequiredArgument);
     }
 
     #[test]
     fn test_vault_payload_encodes_through_the_checked_encoder() {
         let vault_key = Pubkey::new_unique();
-        let instructions = [set_proportion_ix(&vault_key)];
+        let instructions = vault_instructions(set_proportion_ix(&vault_key));
         try_encode_vault_transaction(&vault_key, &instructions).unwrap();
 
         let check_cli_version_ix =
             super::super::super::build_check_cli_version_instruction().unwrap();
+        assert_eq!(instructions.len(), 1);
         assert!(!instructions.contains(&check_cli_version_ix));
         assert!(
             instructions
@@ -284,7 +294,7 @@ mod tests {
     #[test]
     fn test_vault_payload_leaves_room_for_an_import_memo() {
         let vault_key = Pubkey::new_unique();
-        let instructions = [set_proportion_ix(&vault_key)];
+        let instructions = vault_instructions(set_proportion_ix(&vault_key));
         let payload = Message::new(&instructions, Some(&vault_key)).serialize();
         let budget = vault_transaction_payload_budget(instructions.len());
         assert!(
@@ -329,7 +339,13 @@ mod tests {
         assert_eq!(percentage_to_bps(0.0).unwrap(), 0);
         assert_eq!(percentage_to_bps(100.0).unwrap(), 10_000);
         assert_eq!(percentage_to_bps(12.345).unwrap(), 1_235);
-        assert!(percentage_to_bps(100.1).is_err());
-        assert!(percentage_to_bps(-0.1).is_err());
+        assert_eq!(
+            percentage_to_bps(100.1).unwrap_err().to_string(),
+            "Proportion must be between 0 and 100 (got 100.1)"
+        );
+        assert_eq!(
+            percentage_to_bps(-0.1).unwrap_err().to_string(),
+            "Proportion must be between 0 and 100 (got -0.1)"
+        );
     }
 }

@@ -78,12 +78,13 @@ mod tests {
             let message = validate_manager(actor, &actor_key, &manager_key)
                 .unwrap_err()
                 .to_string();
-            assert!(message.contains("manager mismatch"));
-            assert!(
-                message.contains(&format!("{actor} is {actor_key}")),
-                "{message}"
+            assert_eq!(
+                message,
+                format!(
+                    "manager mismatch: {actor} is {actor_key}, validator client rewards manager \
+                     is {manager_key}"
+                )
             );
-            assert!(message.contains(&manager_key.to_string()));
         }
     }
 }

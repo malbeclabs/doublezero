@@ -911,7 +911,7 @@ async fn validate_explicit_holdings(
 
 #[cfg(test)]
 mod tests {
-    use clap::Parser;
+    use clap::{Parser, error::ErrorKind};
     use doublezero_solana_client_tools::{
         rpc::NetworkEnvironment,
         squads::{
@@ -1050,7 +1050,8 @@ mod tests {
 
     #[test]
     fn test_vault_index_requires_multisig() {
-        assert!(parse(&["--vault-index", "2"]).is_err());
+        let error = parse(&["--vault-index", "2"]).unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::MissingRequiredArgument);
     }
 
     #[test]

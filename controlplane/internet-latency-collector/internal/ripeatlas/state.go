@@ -69,6 +69,11 @@ type MeasurementState struct {
 
 	// migratedTargetMarks counts what the last Load reclassified, for the caller to log.
 	migratedTargetMarks int
+
+	// loaded is true once the tracker is known to describe the file: either Load read it,
+	// or Save wrote it. Overwriting a file we never read replaces state we cannot see with
+	// state we do not have, which is the fleet-wipe path (#4131, #4169).
+	loaded bool
 }
 
 type MetadataTracker struct {
@@ -139,7 +144,9 @@ func (ms *MeasurementState) Load() error {
 
 	file, err := os.Open(ms.filename)
 	if os.IsNotExist(err) {
-		// File doesn't exist yet, keep empty tracker
+		// File doesn't exist yet, keep empty tracker. A clean empty state is a correct
+		// read of a first deploy, so it counts as loaded.
+		ms.loaded = true
 		return nil
 	}
 	if err != nil {
@@ -194,6 +201,7 @@ func (ms *MeasurementState) Load() error {
 	}
 
 	ms.tracker = &tracker
+	ms.loaded = true
 	return nil
 }
 
@@ -255,9 +263,19 @@ func (ms *MeasurementState) MigratedTargetMarks() int {
 // directory, then rename over the target. A truncate-in-place write killed mid-flight
 // leaves a torn file, which reads as "no metadata" and makes the next management cycle
 // delete every live measurement (#4131, #4169).
+//
+// Save refuses to overwrite an existing file that Load never read. A corrupt file would
+// otherwise be replaced by whatever the in-memory tracker holds, which is nothing, and the
+// next cycle reads that clean empty file as "no measurements exist".
 func (ms *MeasurementState) Save() error {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+
+	if !ms.loaded {
+		if _, err := os.Stat(ms.filename); err == nil {
+			return fmt.Errorf("refusing to overwrite a measurement state file that was never loaded: %s", ms.filename)
+		}
+	}
 
 	// os.CreateTemp creates with 0600, so carry the existing mode (or os.Create's 0644)
 	// over rather than tightening it on every rewrite.
@@ -294,6 +312,7 @@ func (ms *MeasurementState) Save() error {
 	if err := os.Rename(tmpName, ms.filename); err != nil {
 		return fmt.Errorf("failed to replace timestamp file: %w", err)
 	}
+	ms.loaded = true
 
 	return nil
 }

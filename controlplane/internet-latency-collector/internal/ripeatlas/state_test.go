@@ -862,14 +862,16 @@ func TestInternetLatency_RIPEAtlas_State_SaveFailureLeavesTargetIntact(t *testin
 
 	tempDir := t.TempDir()
 
-	// A directory at the target path fails the save at the rename, which is the step a
-	// kill would interrupt. Either way the target must survive untouched.
 	target := filepath.Join(tempDir, "timestamps.json")
-	require.NoError(t, os.Mkdir(target, 0755))
-	require.NoError(t, os.WriteFile(filepath.Join(target, "sentinel"), []byte("intact"), 0644))
-
 	ms := NewMeasurementState(target)
 	ms.SetMetadata(100, MeasurementMeta{TargetLocation: "nyc", TargetProbeID: 1})
+	require.NoError(t, ms.Save())
+
+	// A directory at the target path fails the save at the rename, which is the step a
+	// kill would interrupt. Either way the target must survive untouched.
+	require.NoError(t, os.Remove(target))
+	require.NoError(t, os.Mkdir(target, 0755))
+	require.NoError(t, os.WriteFile(filepath.Join(target, "sentinel"), []byte("intact"), 0644))
 
 	err := ms.Save()
 	require.Error(t, err)
@@ -882,4 +884,58 @@ func TestInternetLatency_RIPEAtlas_State_SaveFailureLeavesTargetIntact(t *testin
 	entries, err := os.ReadDir(tempDir)
 	require.NoError(t, err)
 	require.Len(t, entries, 1, "a failed save should leave no temp file behind")
+}
+
+func TestInternetLatency_RIPEAtlas_State_SaveRefusesUnloadedFile(t *testing.T) {
+	t.Parallel()
+
+	corrupt := []byte("{truncated")
+
+	t.Run("corrupt file that failed to load", func(t *testing.T) {
+		t.Parallel()
+
+		filename := filepath.Join(t.TempDir(), "timestamps.json")
+		require.NoError(t, os.WriteFile(filename, corrupt, 0644))
+
+		ms := NewMeasurementState(filename)
+		require.Error(t, ms.Load())
+
+		err := ms.Save()
+		require.Error(t, err, "an unread file must not be overwritten")
+		require.Contains(t, err.Error(), "never loaded")
+
+		onDisk, err := os.ReadFile(filename)
+		require.NoError(t, err)
+		require.Equal(t, corrupt, onDisk, "the unreadable file must be left for an operator to recover")
+	})
+
+	t.Run("no file on disk", func(t *testing.T) {
+		t.Parallel()
+
+		filename := filepath.Join(t.TempDir(), "timestamps.json")
+		ms := NewMeasurementState(filename)
+		require.NoError(t, ms.Load(), "a missing file is a clean empty state")
+		ms.SetMetadata(100, MeasurementMeta{TargetLocation: "nyc", TargetProbeID: 1})
+		require.NoError(t, ms.Save())
+
+		reloaded := NewMeasurementState(filename)
+		require.NoError(t, reloaded.Load())
+		require.Len(t, reloaded.GetAllMetadata(), 1)
+	})
+
+	t.Run("valid file that loaded", func(t *testing.T) {
+		t.Parallel()
+
+		filename := filepath.Join(t.TempDir(), "timestamps.json")
+		require.NoError(t, os.WriteFile(filename, []byte(`{"metadata": {"100": {"target_location": "nyc"}}}`), 0644))
+
+		ms := NewMeasurementState(filename)
+		require.NoError(t, ms.Load())
+		ms.SetMetadata(200, MeasurementMeta{TargetLocation: "lon", TargetProbeID: 2})
+		require.NoError(t, ms.Save())
+
+		reloaded := NewMeasurementState(filename)
+		require.NoError(t, reloaded.Load())
+		require.Len(t, reloaded.GetAllMetadata(), 2)
+	})
 }

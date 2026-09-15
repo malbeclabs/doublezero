@@ -436,14 +436,14 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir strin
 		return fmt.Errorf("failed to create state directory: %w", err)
 	}
 
-	measurementState := c.measurementState
-	if measurementState == nil {
-		// Fallback for standalone/test usage without Run()
-		timestampFile := filepath.Join(stateDir, TimestampFileName)
-		measurementState = NewMeasurementState(timestampFile)
-		if err := measurementState.Load(); err != nil {
-			return err
-		}
+	// Export ends by saving the state file, so it is gated on the load too: with an
+	// unloaded tracker it has no metadata, exports nothing, and its only effect is to
+	// write an empty tracker over the file the next management cycle reconciles against.
+	measurementState, err := c.ensureMeasurementStateLoaded(stateDir)
+	if err != nil {
+		c.log.Error("Refusing to export: measurement state could not be loaded",
+			slog.String("error", err.Error()))
+		return fmt.Errorf("failed to load measurement state: %w", err)
 	}
 
 	measurements, err := c.client.GetAllMeasurements(ctx, c.env)
@@ -810,9 +810,11 @@ func sourcesWithoutSamples(measurements []Measurement, state *MeasurementState, 
 // from disk, retrying on every call until a read succeeds. A missing file is a clean empty
 // state, which is what a first deploy looks like.
 //
-// Callers that reconcile the fleet must refuse to run while this returns an error. Export is
-// deliberately not gated: an empty tracker costs it a refetch rather than the fleet.
-func (c *Collector) ensureMeasurementStateLoaded(stateDir string) error {
+// Both the management and the export cycle must refuse to run while this returns an error.
+// Management would reconcile against an empty tracker and delete the fleet; export would
+// save that empty tracker over the file and hand the next management cycle the same
+// outcome one interval later.
+func (c *Collector) ensureMeasurementStateLoaded(stateDir string) (*MeasurementState, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -820,13 +822,13 @@ func (c *Collector) ensureMeasurementStateLoaded(stateDir string) error {
 		c.measurementState = NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
 	}
 	if c.measurementStateLoaded {
-		return nil
+		return c.measurementState, nil
 	}
 	if err := c.measurementState.Load(); err != nil {
-		return err
+		return nil, err
 	}
 	c.measurementStateLoaded = true
-	return nil
+	return c.measurementState, nil
 }
 
 func (c *Collector) RunRipeAtlasMeasurementCreation(ctx context.Context, dryRun bool, probesPerLocation int, stateDir string, samplingInterval time.Duration) error {
@@ -834,7 +836,7 @@ func (c *Collector) RunRipeAtlasMeasurementCreation(ctx context.Context, dryRun 
 
 	// Retried here rather than only at startup, so a state file repaired out of band
 	// resumes management without a restart.
-	if err := c.ensureMeasurementStateLoaded(stateDir); err != nil {
+	if _, err := c.ensureMeasurementStateLoaded(stateDir); err != nil {
 		c.log.Error("Refusing to manage measurements: measurement state could not be loaded",
 			slog.String("error", err.Error()))
 		return fmt.Errorf("failed to load measurement state: %w", err)
@@ -1736,10 +1738,10 @@ func (c *Collector) Run(ctx context.Context, dryRun bool, probesPerLocation int,
 		return fmt.Errorf("RIPE Atlas export interval must be positive, got %v", exportInterval)
 	}
 
-	// Shared by both goroutines. A failed load is not fatal — a corrupt state file must not
-	// take the exporter down — but it holds off measurement management.
-	if err := c.ensureMeasurementStateLoaded(stateDir); err != nil {
-		c.log.Error("Failed to load measurement state at startup, measurement management is held off until it loads",
+	// Shared by both goroutines. A failed load is not fatal to the process, but it holds
+	// off both cycles until a later load succeeds.
+	if _, err := c.ensureMeasurementStateLoaded(stateDir); err != nil {
+		c.log.Error("Failed to load measurement state at startup, measurement management and export are held off until it loads",
 			slog.String("error", err.Error()))
 	}
 	if moved := c.measurementState.MigratedTargetMarks(); moved > 0 {

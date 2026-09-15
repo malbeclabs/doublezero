@@ -3260,3 +3260,45 @@ func TestInternetLatency_RIPEAtlas_MeasurementCreation_GatedOnStateLoad(t *testi
 	require.Positive(t, apiCalls, "management should reach the API once the state file loads")
 	require.Equal(t, 1, locationLookups)
 }
+
+// TestInternetLatency_RIPEAtlas_ExportMeasurementResults_GatedOnStateLoad verifies that an
+// unreadable state file holds off export as well as management. Export ends by saving the
+// state file, so an ungated export cycle writes an empty tracker over the corrupt file and
+// the next management cycle reconciles against it — the fleet wipe this gate exists to
+// prevent, one export interval later (#4131, #4169).
+func TestInternetLatency_RIPEAtlas_ExportMeasurementResults_GatedOnStateLoad(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+	stateDir := t.TempDir()
+	stateFile := filepath.Join(stateDir, TimestampFileName)
+	corrupt := []byte("{truncated")
+	require.NoError(t, os.WriteFile(stateFile, corrupt, 0644))
+
+	var apiCalls int
+	var mu sync.Mutex
+	mockClient := &MockClient{
+		GetAllMeasurementsFunc: func(ctx context.Context, env string) ([]Measurement, error) {
+			mu.Lock()
+			apiCalls++
+			mu.Unlock()
+			return []Measurement{}, nil
+		},
+	}
+
+	c := &Collector{client: mockClient, log: log, env: "mainnet-beta", getLocationsFunc: func(ctx context.Context) []collector.LocationMatch {
+		return []collector.LocationMatch{}
+	}}
+
+	err := c.ExportMeasurementResults(t.Context(), stateDir)
+	require.Error(t, err, "a corrupt state file should hold off export")
+	require.Contains(t, err.Error(), "failed to load measurement state")
+
+	mu.Lock()
+	require.Zero(t, apiCalls, "no RIPE Atlas call should be made while the state file is unreadable")
+	mu.Unlock()
+
+	onDisk, err := os.ReadFile(stateFile)
+	require.NoError(t, err)
+	require.Equal(t, corrupt, onDisk, "export must not overwrite the unreadable state file")
+}

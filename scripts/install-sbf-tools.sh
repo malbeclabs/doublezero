@@ -29,7 +29,17 @@ readonly DEST="${CACHE_DIR}/${VERSION}/platform-tools"
 
 # cargo-build-sbf reads the tools straight out of this directory, so a complete
 # tree here is all it needs; it makes the rustup link itself.
-if [[ -x "${DEST}/rust/bin/cargo" && -x "${DEST}/rust/bin/rustc" ]]; then
+#
+# rust/lib is checked alongside the binaries because an interrupted extraction
+# leaves the tree in exactly that state: the binaries are there and the standard
+# library is not. cargo-build-sbf takes the version directory's existence as
+# proof the version is installed and would build against the wreckage, so an
+# incomplete tree has to read as absent here and be replaced below.
+installed() {
+  [[ -x "$1/rust/bin/cargo" && -x "$1/rust/bin/rustc" && -d "$1/rust/lib" ]]
+}
+
+if installed "${DEST}"; then
   echo "platform-tools ${VERSION} already installed at ${DEST}"
   exit 0
 fi
@@ -78,10 +88,12 @@ done
 mkdir -p "${staging}/tree"
 tar -C "${staging}/tree" -jxf "${staging}/platform-tools.tar.bz2"
 
-# Only a tree with the toolchain in it is worth publishing under the version
-# name, since that name is what marks the version installed.
-if [[ ! -x "${staging}/tree/rust/bin/cargo" ]]; then
-  echo "platform-tools ${VERSION} unpacked without rust/bin/cargo; refusing to install it" >&2
+# Only a complete tree is worth publishing under the version name, since that
+# name is what marks the version installed. This is the same test the cached
+# tree had to pass above; a download that fails it leaves nothing behind for the
+# next run to trust.
+if ! installed "${staging}/tree"; then
+  echo "platform-tools ${VERSION} unpacked incomplete; refusing to install it" >&2
   exit 1
 fi
 

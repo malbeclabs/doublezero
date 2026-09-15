@@ -61,6 +61,7 @@ RUN apt update -qq && \
     apt install --no-install-recommends -y \
     ca-certificates \
     curl \
+    bzip2 \
     build-essential \
     pkg-config \
     mold \
@@ -175,17 +176,14 @@ RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=
 ENV BIN_DIR=/doublezero/bin
 RUN mkdir -p ${BIN_DIR}
 
-# Validate that the cached platform-tools installation is intact. If a previous build was
-# interrupted during the platform-tools download/extraction, the cache can contain a
-# partially extracted directory where rust/lib is not a valid directory. Removing the
-# corrupted directory allows cargo build-sbf to re-download platform-tools cleanly.
+# Install the platform-tools the builds below ask for. cargo build-sbf silently
+# ignores --tools-version unless that version is already installed and would
+# otherwise build with its own v1.51, whose Cargo cannot parse this tree; see
+# scripts/install-sbf-tools.sh. This also subsumes the rust/lib check that stood
+# here: a cache left half-extracted by an interrupted build reads as absent and
+# is replaced, rather than being deleted and re-downloaded by the build itself.
 RUN --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
-    for pt_dir in /root/.cache/solana/*/platform-tools; do \
-        if [ -e "$pt_dir" ] && [ ! -d "$pt_dir/rust/lib" ]; then \
-            echo "Removing corrupted platform-tools cache: $pt_dir"; \
-            rm -rf "$pt_dir"; \
-        fi; \
-    done
+    scripts/install-sbf-tools.sh v1.54
 
 # Build the Solana programs with build-sbf (rust)
 # Note that we don't use mold here.

@@ -1,7 +1,8 @@
 use crate::{
     authorize::authorize,
     error::{DoubleZeroError, Validate},
-    pda::{get_feed_pda, get_stake_mirror_pda},
+    pda::get_feed_pda,
+    processors::feed::split_stake_mirror,
     seeds::{SEED_FEED, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
     state::{
@@ -74,19 +75,10 @@ pub fn process_create_feed(
     let system_program = next_account_info(accounts_iter)?;
 
     // The tail holds the stake's StakeMirror, the payer's Permission account, both, or neither.
-    // Each is found by matching its PDA rather than by position, so a caller that sends one is not
-    // forced to send the other, and a pre-RFC-28 caller that sends neither still works.
-    let tail: Vec<&AccountInfo> = accounts_iter.collect();
-    let stake_mirror_key = (value.builder != Pubkey::default())
-        .then(|| get_stake_mirror_pda(program_id, &value.stake_ref).0);
-    let stake_mirror_account =
-        stake_mirror_key.and_then(|expected| tail.iter().copied().find(|a| a.key == &expected));
-    // Filter by key, not by identity: a caller may pass the mirror twice, and a stray copy left in
-    // the iterator would be read as the Permission account.
-    let mut authorize_iter = tail
-        .iter()
-        .copied()
-        .filter(|a| Some(*a.key) != stake_mirror_key);
+    // `value` rather than a `Feed` here, because this is describing a feed that does not exist yet.
+    let (stake_mirror_account, authorize_candidates) =
+        split_stake_mirror(program_id, &value.builder, &value.stake_ref, accounts_iter);
+    let mut authorize_iter = authorize_candidates.into_iter();
 
     assert!(payer_account.is_signer, "Payer must be a signer");
     assert_eq!(
@@ -95,17 +87,29 @@ pub fn process_create_feed(
     );
     assert!(feed_account.is_writable, "PDA Account is not writable");
 
-    // Authorize before any input validation or existence probing so an unauthorized caller gets
-    // NotAllowed rather than being able to trip validation errors or probe whether a feed exists.
-    // Catalog admin: FEED_AUTHORITY (Permission PDA) or FOUNDATION.
+    // Two things admit this call: a builder's own stake, or the catalog permission. The stake goes
+    // first, because RFC-28's claim is that a bond rather than an admin is what lets a builder
+    // deploy. The catalog path below is untouched, so an admin creating a feed on a builder's
+    // behalf works exactly as it did.
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    authorize(
+    if !stake_authorizes(
         program_id,
-        &mut authorize_iter,
         payer_account.key,
-        &globalstate,
-        permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION,
-    )?;
+        value,
+        stake_mirror_account,
+        globalstate.feature_flags,
+    ) {
+        // Authorize before any input validation or existence probing so an unauthorized caller gets
+        // NotAllowed rather than being able to trip validation errors or probe whether a feed exists.
+        // Catalog admin: FEED_AUTHORITY (Permission PDA) or FOUNDATION.
+        authorize(
+            program_id,
+            &mut authorize_iter,
+            payer_account.key,
+            &globalstate,
+            permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION,
+        )?;
+    }
 
     validate_feed_name(&value.name)?;
     validate_feed_groups(&value.groups)?;
@@ -182,6 +186,60 @@ pub fn process_create_feed(
     msg!("Created feed: {} @ {}", code, value.exchange);
 
     Ok(())
+}
+
+/// Whether a stake, rather than a catalog permission, admits this create.
+///
+/// Reads the mirror rather than trusting that one is there, and leaves only the tier question to
+/// `verify_stake_covers_rate` below. That split is what lets a builder whose bond is too small be
+/// told which, while a caller with no claim on any stake falls through to the permission check and
+/// sees `NotAllowed`.
+///
+/// Every check here is on what the ledger holds. `builder` and `stake_ref` are both caller-supplied
+/// arguments, and an earlier version of this gate took them at their word: it admitted anyone who
+/// named themselves `builder` and attached the empty account that any `stake_ref` derives.
+///
+/// `&value.builder == payer` is the load-bearing line. `builder` is a caller-supplied argument, so
+/// without it one builder's bond creates another builder's feed.
+///
+/// The feature-flag check is redundant today: `validate_feed_stake_terms` refuses any create
+/// naming a builder while `allow-staked-feeds` is clear, so dropping it here changes no outcome.
+/// It stays because an authorization decision that is safe only because of a validation running
+/// later is a trap for whoever edits either one next.
+fn stake_authorizes(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    value: &FeedCreateArgs,
+    stake_mirror_account: Option<&AccountInfo>,
+    feature_flags: u128,
+) -> bool {
+    if !is_feature_enabled(feature_flags, FeatureFlag::AllowStakedFeeds)
+        || value.builder == Pubkey::default()
+        || &value.builder != payer
+    {
+        return false;
+    }
+
+    // An account at the right address is not a mirror. The address is derived from `stake_ref`,
+    // which is a caller-supplied argument, so anyone can name a stake nobody posted and attach the
+    // empty account its seeds derive. Reading it is what makes this a stake rather than an
+    // assertion that one exists.
+    let Some(account) = stake_mirror_account else {
+        return false;
+    };
+    if account.data_is_empty() || account.owner != program_id {
+        return false;
+    }
+    let Ok(mirror) = StakeMirror::try_from(account) else {
+        return false;
+    };
+    if mirror.validate().is_err() {
+        return false;
+    }
+
+    // The builder the mirror records, not the one the caller claimed. `value.builder` is an
+    // argument; this is what the relayer wrote.
+    &mirror.builder == payer
 }
 
 /// Validate a feed `name`, shared by create and update.

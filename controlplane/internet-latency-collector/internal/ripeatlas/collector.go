@@ -203,45 +203,41 @@ func filterValidProbes(log *slog.Logger, probes []Probe) []Probe {
 	return validProbes
 }
 
-// preferDirectTargets drops probes behind NAT when any directly reachable probe is
-// available. A NAT'd probe answers only a fraction of the pings aimed at it, which
-// is enough to look alive but not enough to keep a circuit inside the freshness
-// window downstream alerting expects.
-//
-// This applies to target selection only. Being behind NAT does not stop a probe
-// sourcing a measurement, since those pings are outbound.
-//
-// It runs after responsiveness filtering, not at fetch time, so that a location
-// whose every direct probe is blacklisted falls back to a NAT'd one rather than
-// going dark. Columbus is the case in point: its one direct probe never answers at
-// all, which is worse than the lossy NAT'd probe standing in for it.
-func preferDirectTargets(probes []Probe) []Probe {
-	var direct []Probe
-	for _, probe := range probes {
-		if !probe.BehindNAT() {
-			direct = append(direct, probe)
-		}
-	}
-	if len(direct) == 0 {
-		return probes
-	}
-	return direct
-}
-
-// filterSelectableTargets drops probes that cannot serve as a measurement target,
-// whether because they failed as a target or because they are unresponsive outright.
-//
-// Source selection uses filterResponsiveProbes instead, which consults only the latter:
-// a probe that does not answer pings may still send them perfectly well, so barring it
-// from sourcing would drop its location's circuits for no reason.
-func filterSelectableTargets(probes []Probe, measurementState *MeasurementState) []Probe {
+// filterSelectableTargets drops probes that cannot serve as a measurement target at
+// all. It deliberately ignores the unresponsive-target marks; rankTargets handles
+// those by ordering rather than exclusion.
+func filterSelectableTargets(probes []Probe) []Probe {
 	var selectable []Probe
 	for _, probe := range probes {
-		if !measurementState.IsTargetUnresponsive(probe.ID) && probe.Address != "" {
+		if probe.Address != "" {
 			selectable = append(selectable, probe)
 		}
 	}
 	return selectable
+}
+
+// rankTargets orders target candidates nearest-first, with every probe carrying an
+// unresponsive-target mark placed after every unmarked one. Callers take the first.
+//
+// Ranking rather than excluding is what keeps a location in the wanted set once all
+// of its candidates are marked. An empty candidate set makes generateWantedMeasurements
+// skip the location, and reconciliation then reads the absent target as unwanted and
+// deletes the existing measurement (#4182) — trading partial data for none until the
+// marks expire, up to 24h later. A marked target still answering a fraction of its
+// pings beats no measurement at all.
+func rankTargets(probes []Probe, latitude, longitude float64, measurementState *MeasurementState) []Probe {
+	var unmarked, marked []Probe
+	for _, probe := range probes {
+		if measurementState.IsTargetUnresponsive(probe.ID) {
+			marked = append(marked, probe)
+		} else {
+			unmarked = append(unmarked, probe)
+		}
+	}
+	return append(
+		getNearestProbesSorted(unmarked, latitude, longitude, len(unmarked)),
+		getNearestProbesSorted(marked, latitude, longitude, len(marked))...,
+	)
 }
 
 func filterResponsiveProbes(probes []Probe, measurementState *MeasurementState) []Probe {
@@ -876,16 +872,16 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		}
 	}
 
-	// Step 2: Augment locations where all known probes are unresponsive with non-anchor
-	// fallback probes, then generate the list of measurements we want.
+	// Step 2: Augment locations where all known probes are marked unresponsive with
+	// non-anchor fallback probes, then generate the list of measurements we want.
 	//
 	// fetchProbesWithErrorHandling already falls back to non-anchor probes when the
 	// RIPE Atlas API returns no anchors at all. But that covers only the "no anchors in
 	// area" case. Here we handle a different failure mode: RIPE Atlas still reports the
 	// anchor as "Connected" (so fetchProbesWithErrorHandling sees it and returns it), but
 	// the probe has stopped responding to our measurements and was marked unresponsive in
-	// the local measurement state. Without this pass, generateWantedMeasurements would log
-	// "No responsive probes found for location" and skip the location entirely.
+	// the local measurement state. Without this pass the location keeps targeting the
+	// marked anchor when a working probe is a wider fetch away.
 	locationMatches = c.fetchFallbackProbesForUnresponsiveLocations(ctx, locationMatches, measurementState)
 
 	// Step 3: Generate the list of measurements we want, skipping unresponsive probes
@@ -1441,12 +1437,15 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 }
 
 // fetchFallbackProbesForUnresponsiveLocations returns a copy of locationMatches where
-// locations that have probes but all are marked unresponsive in measurementState are
-// augmented with non-anchor Connected probes fetched from the RIPE Atlas API.
+// locations whose every known probe is marked unresponsive as a target in
+// measurementState are augmented with non-anchor Connected probes fetched from the
+// RIPE Atlas API.
 //
-// This prevents a location from going dark when its anchor probe stops responding while
+// This finds a location a working target when its anchor probe stops responding while
 // RIPE Atlas still reports it as "Connected" — a lag that means fetchProbesWithErrorHandling
-// always sees the anchor and never triggers its own fallback.
+// always sees the anchor and never triggers its own fallback. A fetch that turns up
+// nothing new leaves the marked candidates in place, which rankTargets still selects
+// from rather than letting the location fall out of the wanted set.
 func (c *Collector) fetchFallbackProbesForUnresponsiveLocations(ctx context.Context, locationMatches []LocationProbeMatch, measurementState *MeasurementState) []LocationProbeMatch {
 	result := make([]LocationProbeMatch, len(locationMatches))
 	copy(result, locationMatches)
@@ -1455,12 +1454,19 @@ func (c *Collector) fetchFallbackProbesForUnresponsiveLocations(ctx context.Cont
 		if len(match.NearbyProbes) == 0 {
 			continue
 		}
-		if len(filterSelectableTargets(match.NearbyProbes, measurementState)) > 0 {
-			continue // at least one probe is still responsive — no fallback needed
+		hasUnmarked := false
+		for _, probe := range filterSelectableTargets(match.NearbyProbes) {
+			if !measurementState.IsTargetUnresponsive(probe.ID) {
+				hasUnmarked = true
+				break
+			}
+		}
+		if hasUnmarked {
+			continue // at least one probe is still unmarked — no fallback needed
 		}
 
-		// All known probes for this location are unresponsive. Fetch non-anchor
-		// Connected probes as a fallback.
+		// Every known probe for this location is marked unresponsive as a target.
+		// Fetch non-anchor Connected probes as a fallback.
 		c.log.Info("All known probes unresponsive for location, fetching non-anchor fallback probes",
 			slog.String("location", match.LocationCode))
 
@@ -1493,10 +1499,10 @@ func (c *Collector) fetchFallbackProbesForUnresponsiveLocations(ctx context.Cont
 func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMatch, probesPerLocation int, measurementState *MeasurementState) []MeasurementSpec {
 	var wantedMeasurements []MeasurementSpec
 
-	// Get list of unresponsive probes to skip
-	unresponsiveProbes := measurementState.GetUnresponsiveProbes()
+	// Unresponsive sources are skipped outright; unresponsive targets are only ranked last.
 	c.log.Info("Generating wanted measurements",
-		slog.Int("unresponsive_probe_count", len(unresponsiveProbes)))
+		slog.Int("unresponsive_probe_count", len(measurementState.GetUnresponsiveProbes())),
+		slog.Int("unresponsive_target_count", len(measurementState.GetUnresponsiveTargets())))
 
 	// Sort locations alphabetically by location code to ensure deterministic ordering
 	sortedLocations := make([]LocationProbeMatch, len(locationMatches))
@@ -1512,19 +1518,27 @@ func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMa
 			continue
 		}
 
-		responsiveProbes := filterSelectableTargets(targetLocation.NearbyProbes, measurementState)
-		if len(responsiveProbes) == 0 {
-			c.log.Warn("No responsive probes found for location",
+		selectableTargets := filterSelectableTargets(targetLocation.NearbyProbes)
+		if len(selectableTargets) == 0 {
+			c.log.Warn("No selectable target probes found for location",
 				slog.String("location", targetLocation.LocationCode))
 			continue
 		}
 
-		targetProbes := getNearestProbesSorted(preferDirectTargets(responsiveProbes),
-			targetLocation.Latitude, targetLocation.Longitude, probesPerLocation)
+		// rankTargets orders rather than filters, so this is non-empty whenever
+		// selectableTargets is. Guarded anyway: a nil here would panic the whole cycle.
+		targetProbes := rankTargets(selectableTargets,
+			targetLocation.Latitude, targetLocation.Longitude, measurementState)
 		if len(targetProbes) == 0 {
 			continue
 		}
 		targetProbe := targetProbes[0]
+		if measurementState.IsTargetUnresponsive(targetProbe.ID) {
+			c.log.Warn("Every target candidate for location is marked unresponsive, keeping the nearest",
+				slog.String("location", targetLocation.LocationCode),
+				slog.Int("target_probe_id", targetProbe.ID),
+				slog.Int("candidate_count", len(selectableTargets)))
+		}
 
 		// Collect source probes from all other locations
 		// Since we're iterating in alphabetical order and only need to measure once between any pair,

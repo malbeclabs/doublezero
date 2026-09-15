@@ -28,7 +28,6 @@ type Probe struct {
 	Address   string  `json:"address_v4"`
 	AddressV6 string  `json:"address_v6"`
 	ASN       int     `json:"asn_v4"`
-	IsAnchor  bool    `json:"is_anchor"`
 	Latitude  float64 `json:"latitude"`
 	Longitude float64 `json:"longitude"`
 	Prefix    string  `json:"prefix_v4"`
@@ -59,22 +58,6 @@ const tagIPv4DoesntWork = "system-ipv4-doesnt-work"
 func (p Probe) hasTag(slug string) bool {
 	for _, tag := range p.Tags {
 		if tag.Slug == slug {
-			return true
-		}
-	}
-	return false
-}
-
-// natTagSlug is the RIPE Atlas tag marking a probe that sits behind NAT.
-const natTagSlug = "nat"
-
-// BehindNAT reports whether RIPE Atlas tags this probe as being behind NAT. Such a
-// probe is a poor measurement target: inbound pings reach the CPE rather than the
-// probe, so they are dropped or rate limited even while the probe itself reports
-// Connected and keeps sourcing measurements normally.
-func (p Probe) BehindNAT() bool {
-	for _, tag := range p.Tags {
-		if tag.Slug == natTagSlug {
 			return true
 		}
 	}

@@ -1194,6 +1194,50 @@ func TestInternetLatency_RIPEAtlas_FetchFallbackProbes_NoFallbackWhenResponsive(
 	require.Equal(t, anchorProbeID, result[0].NearbyProbes[0].ID, "original anchor probe should be preserved")
 }
 
+// TestInternetLatency_RIPEAtlas_FetchFallbackProbes_TriggeredByTargetMarks verifies the
+// wider fetch still runs for a location whose every candidate is marked as a target
+// only, and that a fetch turning up nothing leaves those candidates in place for
+// rankTargets rather than emptying the location.
+func TestInternetLatency_RIPEAtlas_FetchFallbackProbes_TriggeredByTargetMarks(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	const markedProbeID = 12651
+
+	var nonAnchorCalls int
+	mockClient := &MockClient{
+		GetProbesInRadiusFunc: func(_ context.Context, _, _ float64, _ int, anchorsOnly bool) ([]Probe, error) {
+			if !anchorsOnly {
+				nonAnchorCalls++
+			}
+			return []Probe{}, nil
+		},
+	}
+
+	measurementState := NewMeasurementState(filepath.Join(t.TempDir(), "state.json"))
+	measurementState.AddUnresponsiveTarget(markedProbeID)
+
+	locationMatches := []LocationProbeMatch{
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "cmh", Latitude: 40.11, Longitude: -83.00},
+			NearbyProbes: []Probe{
+				{ID: markedProbeID, Address: "107.192.62.177", Latitude: 40.11, Longitude: -83.00},
+			},
+			ProbeCount: 1,
+		},
+	}
+
+	c := &Collector{client: mockClient, log: log}
+	result := c.fetchFallbackProbesForUnresponsiveLocations(t.Context(), locationMatches, measurementState)
+
+	require.Equal(t, 1, nonAnchorCalls, "a target-only mark should still trigger the wider fetch")
+	require.Len(t, result, 1)
+	require.Len(t, result[0].NearbyProbes, 1)
+	require.Equal(t, markedProbeID, result[0].NearbyProbes[0].ID,
+		"a fetch that finds nothing must leave the marked candidate to be ranked")
+}
+
 func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_CreateNew(t *testing.T) {
 	t.Parallel()
 
@@ -2009,70 +2053,92 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LossCountsAsRe
 	}
 }
 
-func TestInternetLatency_RIPEAtlas_PreferDirectTargets(t *testing.T) {
+func TestInternetLatency_RIPEAtlas_FilterSelectableTargets(t *testing.T) {
 	t.Parallel()
 
-	natTag := []struct {
-		Name string `json:"name"`
-		Slug string `json:"slug"`
-	}{{Name: "NAT", Slug: "nat"}}
+	// Selectability is about hard invalidity only, which is why the function takes no
+	// measurement state: an unresponsive-target mark is a ranking signal for
+	// rankTargets, not an exclusion.
+	probes := []Probe{
+		{ID: 1, Address: ""},
+		{ID: 2, Address: "107.192.62.177"},
+		{ID: 3, Address: "69.58.112.238"},
+	}
 
-	t.Run("NAT probes are dropped when a direct probe exists", func(t *testing.T) {
+	result := filterSelectableTargets(probes)
+
+	require.Len(t, result, 2, "only the addressless probe is unselectable")
+	require.Equal(t, 2, result[0].ID)
+	require.Equal(t, 3, result[1].ID)
+}
+
+func TestInternetLatency_RIPEAtlas_RankTargets(t *testing.T) {
+	t.Parallel()
+
+	// cmh, the metro the loss check was written for.
+	const lat, lng = 40.11, -83.00
+
+	newState := func(t *testing.T, markedTargets ...int) *MeasurementState {
+		t.Helper()
+		ms := NewMeasurementState(filepath.Join(t.TempDir(), TimestampFileName))
+		for _, id := range markedTargets {
+			ms.AddUnresponsiveTarget(id)
+		}
+		return ms
+	}
+
+	near := Probe{ID: 12651, Address: "107.192.62.177", Latitude: 40.11, Longitude: -83.00}
+	far := Probe{ID: 55128, Address: "69.58.112.238", Latitude: 40.30, Longitude: -83.20}
+
+	ids := func(probes []Probe) []int {
+		out := make([]int, 0, len(probes))
+		for _, p := range probes {
+			out = append(out, p.ID)
+		}
+		return out
+	}
+
+	t.Run("an unmarked farther probe outranks a marked nearer one", func(t *testing.T) {
 		t.Parallel()
 
-		// Mirrors Columbus: the nearest probe is behind NAT, a direct one sits further out.
-		probes := []Probe{
-			{ID: 12651, Address: "107.192.62.177", Tags: natTag},
-			{ID: 1009793, Address: "23.151.152.243"},
-		}
+		ranked := rankTargets([]Probe{near, far}, lat, lng, newState(t, near.ID))
 
-		result := preferDirectTargets(probes)
-
-		require.Len(t, result, 1)
-		require.Equal(t, 1009793, result[0].ID)
+		require.Equal(t, []int{far.ID, near.ID}, ids(ranked))
 	})
 
-	t.Run("NAT probes are kept when they are all that is available", func(t *testing.T) {
+	t.Run("unmarked probes rank by distance", func(t *testing.T) {
 		t.Parallel()
 
-		// The Columbus fallback: the only direct probe has been blacklisted as
-		// unresponsive, so the NAT'd probe must still be selectable.
-		probes := []Probe{
-			{ID: 12651, Address: "107.192.62.177", Tags: natTag},
-			{ID: 60453, Address: "45.24.224.61", Tags: natTag},
-		}
+		ranked := rankTargets([]Probe{far, near}, lat, lng, newState(t))
 
-		result := preferDirectTargets(probes)
+		require.Equal(t, []int{near.ID, far.ID}, ids(ranked))
+	})
 
-		require.Len(t, result, 2, "dropping every probe would dark the location")
+	t.Run("marked probes rank by distance among themselves", func(t *testing.T) {
+		t.Parallel()
+
+		ranked := rankTargets([]Probe{far, near}, lat, lng, newState(t, near.ID, far.ID))
+
+		require.Equal(t, []int{near.ID, far.ID}, ids(ranked),
+			"a location with nothing but marked candidates still gets its nearest one")
+	})
+
+	t.Run("a probe unresponsive as a source is ranked last too", func(t *testing.T) {
+		t.Parallel()
+
+		ms := newState(t)
+		ms.AddUnresponsiveProbe(near.ID)
+
+		ranked := rankTargets([]Probe{near, far}, lat, lng, ms)
+
+		require.Equal(t, []int{far.ID, near.ID}, ids(ranked))
 	})
 
 	t.Run("empty input stays empty", func(t *testing.T) {
 		t.Parallel()
 
-		require.Empty(t, preferDirectTargets(nil))
+		require.Empty(t, rankTargets(nil, lat, lng, newState(t)))
 	})
-}
-
-func TestInternetLatency_RIPEAtlas_FilterValidProbes_KeepsNATProbes(t *testing.T) {
-	t.Parallel()
-
-	natTag := []struct {
-		Name string `json:"name"`
-		Slug string `json:"slug"`
-	}{{Name: "NAT", Slug: "nat"}}
-
-	// Fetch-time filtering stays purely about routability. The NAT preference is
-	// applied later, once blacklisted probes are known.
-	probes := []Probe{
-		{ID: 1, Address: "192.168.1.1"},
-		{ID: 2, Address: "107.192.62.177", Tags: natTag},
-	}
-
-	result := filterValidProbes(probes)
-
-	require.Len(t, result, 1)
-	require.Equal(t, 2, result[0].ID)
 }
 
 // failingExporter reports a write failure for every batch. The package has no mock
@@ -2322,4 +2388,117 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_LossyTargetIsRotated(t 
 	require.NotEmpty(t, cmhTargets, "a replacement measurement for cmh should be created")
 	require.Contains(t, cmhTargets, "69.58.112.238", "cmh should be retargeted at the remaining probe")
 	require.NotContains(t, cmhTargets, "107.192.62.177", "cmh should not be retargeted at the lossy probe")
+}
+
+func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_LastMarkedCandidateIsKept(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	var createdMeasurements []MeasurementRequest
+	var stoppedMeasurements []int
+	var mu sync.Mutex
+
+	const lossyTargetProbe = 12651 // the current target, nearest to the metro
+	const deadProbe = 1009793      // the only alternative, marked in an earlier cycle
+
+	existingMeasurements := []Measurement{
+		{
+			ID:          1001,
+			Description: "DoubleZero [testnet] to cmh probe 12651",
+			Target:      "107.192.62.177",
+			Status: struct {
+				Name string `json:"name"`
+				ID   int    `json:"id"`
+			}{Name: "Ongoing"},
+			Type: "ping",
+		},
+	}
+
+	mockClient := &MockClient{
+		GetAllMeasurementsFunc: func(_ context.Context, _ string) ([]Measurement, error) {
+			return existingMeasurements, nil
+		},
+		CreateMeasurementFunc: func(_ context.Context, request MeasurementRequest) (*MeasurementResponse, error) {
+			mu.Lock()
+			createdMeasurements = append(createdMeasurements, request)
+			id := 2000 + len(createdMeasurements)
+			mu.Unlock()
+			return &MeasurementResponse{Measurements: []int{id}}, nil
+		},
+		StopMeasurementFunc: func(_ context.Context, measurementID int) error {
+			mu.Lock()
+			stoppedMeasurements = append(stoppedMeasurements, measurementID)
+			mu.Unlock()
+			return nil
+		},
+		GetMeasurementResultsIncrementalFunc: func(_ context.Context, _ int, _ int64) ([]any, error) {
+			return []any{}, nil
+		},
+	}
+
+	stateDir := filepath.Join(t.TempDir(), "state")
+	require.NoError(t, os.MkdirAll(stateDir, 0o755))
+
+	c := &Collector{client: mockClient, log: log, env: "testnet", getLocationsFunc: func(_ context.Context) []collector.LocationMatch {
+		return []collector.LocationMatch{}
+	}}
+
+	windowStart := time.Now().Add(-2 * TargetLossWindow).Unix()
+	c.measurementState = NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
+
+	// The alternative was marked never_exported in an earlier cycle: it answers no
+	// pings at all, which is how cmh's nearest probe has behaved since onboarding.
+	c.measurementState.AddUnresponsiveTarget(deadProbe)
+
+	// The current target exports steadily but answers 15 of every 100 pings, so this
+	// cycle marks it for excessive loss and cmh has no unmarked candidate left.
+	c.measurementState.SetMetadata(1001, MeasurementMeta{
+		TargetLocation: "cmh",
+		TargetProbeID:  lossyTargetProbe,
+		Sources: []SourceProbeMeta{
+			{LocationCode: "nyc", ProbeID: 100, LastResponseAt: time.Now().Unix()},
+		},
+		CreatedAt:         windowStart - 3600,
+		LastExportAt:      time.Now().Unix(),
+		TargetWindowStart: windowStart,
+		TargetAttempts:    100,
+		TargetSuccesses:   15,
+	})
+
+	locationMatches := []LocationProbeMatch{
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "cmh", Latitude: 40.11, Longitude: -83.00},
+			NearbyProbes: []Probe{
+				{ID: lossyTargetProbe, Address: "107.192.62.177", Latitude: 40.11, Longitude: -83.00},
+				{ID: deadProbe, Address: "23.151.152.243", Latitude: 40.30, Longitude: -83.20},
+			},
+			ProbeCount: 2,
+		},
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "nyc", Latitude: 40.77, Longitude: -74.07},
+			NearbyProbes:  []Probe{{ID: 100, Address: "162.255.145.7", Latitude: 40.77, Longitude: -74.07}},
+			ProbeCount:    1,
+		},
+	}
+
+	err := c.configureMeasurements(t.Context(), locationMatches, false, 1, stateDir, 10*time.Minute)
+	require.NoError(t, err)
+
+	require.True(t, c.measurementState.IsTargetUnresponsive(lossyTargetProbe))
+	require.True(t, c.measurementState.IsTargetUnresponsive(deadProbe))
+
+	mu.Lock()
+	defer mu.Unlock()
+
+	// Both candidates are marked, so there is nothing better to move to. Excluding them
+	// would empty cmh's candidate set, drop it from the wanted measurements, and have
+	// reconciliation delete the measurement as unwanted (#4182) — a metro with partial
+	// data would go to none for up to 24h.
+	require.Empty(t, stoppedMeasurements, "the last measurement for cmh must not be torn down")
+	require.Empty(t, createdMeasurements, "nothing to recreate onto, so nothing is created")
+
+	meta, ok := c.measurementState.GetMetadata(1001)
+	require.True(t, ok, "the measurement keeps its metadata")
+	require.Equal(t, lossyTargetProbe, meta.TargetProbeID, "it keeps the nearest marked candidate")
 }

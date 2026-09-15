@@ -1,18 +1,24 @@
 //! The RFC-28 sequence, driven end to end through real instructions.
 //!
-//! Every other test here covers one instruction and seeds whatever it needs around it. This one
-//! covers the order: the relayer mirrors a stake, a builder holding no permission creates a feed
-//! against it, grants its own publisher the right to send, and an operator admits the feed. That
-//! is steps 2 to 5 of the demo, and the first check that they compose rather than each working
-//! alone.
+//! What is new here is the reach: this is the first test that gets to `ActivateFeed` from a real
+//! `CreateFeed` against a mirror a real `WriteStakeMirror` produced. The relayer mirrors a stake, a
+//! builder holding no permission creates a feed against it, grants its own publisher the right to
+//! send, and an operator admits the feed. That is steps 2 to 5 of the demo.
+//!
+//! Two siblings already chain instructions, so composition on its own is not the novelty:
+//! `feed_test::test_builder_grants_its_own_publish_rights` walks create plus two allowlist grants
+//! with two signers, and `feed_test::test_a_mirror_update_keeps_the_claiming_feed` drives
+//! `CreatePermission` to `WriteStakeMirror` to `CreateFeed` without seeding either.
 //!
 //! What it does not cover, and what still has to be proven elsewhere:
 //!
 //! - **The bond.** `PostBond` is a different program on Solana, so the mirror here is written from
 //!   values rather than read from a `BuilderStake`. The relayer decoding a real bond is C2.
 //! - **Datagrams.** Nothing in a `ProgramTest` sends multicast. That is G2, against a cluster.
-//!
-//! So this proves the ledger admits the sequence, not that the demo runs.
+//! - **The refusals.** Only the path that succeeds runs here. `feed_lifecycle_test` holds the
+//!   guards: `test_a_builder_cannot_activate_its_own_feed`,
+//!   `test_a_builder_in_the_foundation_allowlist_still_cannot_activate`, and
+//!   `test_a_feed_cannot_activate_beyond_its_stake`.
 
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
@@ -48,6 +54,10 @@ mod test_helpers;
 use test_helpers::*;
 
 const ONE_GBPS: u64 = 1_000_000_000;
+
+/// The tier the bond buys. Both committed rates come from its own ceiling, so the coverage check
+/// runs at the boundary rather than comfortably under it wherever that ceiling moves.
+const TIER: StakeTier = StakeTier::UpTo1Gbps;
 
 /// The whole sequence, in order, with nothing seeded that an instruction could write.
 #[tokio::test]
@@ -141,13 +151,13 @@ async fn test_a_builder_deploys_a_feed_and_an_operator_admits_it() {
         DoubleZeroInstruction::WriteStakeMirror(StakeMirrorWriteArgs {
             stake_ref,
             builder: builder.pubkey(),
-            tier: StakeTier::UpTo1Gbps,
-            committed_rate_bits_per_sec: ONE_GBPS,
+            tier: TIER,
+            committed_rate_bits_per_sec: TIER.max_rate_bits_per_sec(),
             source_slot: 1,
         }),
         vec![
             AccountMeta::new(mirror, false),
-            AccountMeta::new(globalstate, false),
+            AccountMeta::new_readonly(globalstate, false),
         ],
         &relayer,
         &[AccountMeta::new_readonly(relayer_permission, false)],
@@ -171,7 +181,7 @@ async fn test_a_builder_deploys_a_feed_and_an_operator_admits_it() {
             stake_ref,
             spec_id: "top-of-book@v1.0.0".to_string(),
             sla_hash: [9u8; 32],
-            committed_rate_bits_per_sec: ONE_GBPS,
+            committed_rate_bits_per_sec: TIER.max_rate_bits_per_sec(),
         }),
         vec![
             AccountMeta::new(feed, false),
@@ -205,7 +215,7 @@ async fn test_a_builder_deploys_a_feed_and_an_operator_admits_it() {
         .expect("the mirror should exist")
         .get_stake_mirror()
         .unwrap();
-    assert_eq!(claimed.feed_key, feed);
+    assert_eq!(claimed.feed_key, feed, "the feed spent the stake");
 
     // ---- Builder: grant its own publisher the right to send. ---------------------------------
     let client_ip = Ipv4Addr::new(10, 0, 0, 7);
@@ -223,10 +233,24 @@ async fn test_a_builder_deploys_a_feed_and_an_operator_admits_it() {
             AccountMeta::new(group, false),
             AccountMeta::new(accesspass, false),
             AccountMeta::new(globalstate, false),
+            // The optional `user_payer`, which funds connect credits. Every real caller sends it,
+            // so a sequence test that drops it drives a shape production never produces.
+            AccountMeta::new(builder.pubkey(), false),
         ],
         &builder,
     )
     .await;
+
+    let pass = get_account_data(&mut banks_client, accesspass)
+        .await
+        .expect("the access pass should exist")
+        .get_accesspass()
+        .expect("it should be an access pass");
+    assert!(
+        pass.mgroup_pub_allowlist.contains(&group),
+        "the builder granted itself nothing"
+    );
+    assert_eq!(pass.user_payer, builder.pubkey());
 
     // ---- Operator: the verdict, and the feed starts selling seats. ---------------------------
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
@@ -252,15 +276,20 @@ async fn test_a_builder_deploys_a_feed_and_an_operator_admits_it() {
     assert_eq!(admitted.status, FeedStatus::Active);
 
     // The builder was authorized by its bond and nothing else. If anything else had admitted it,
-    // the create above would prove nothing, so both routes into `authorize` are ruled out rather
-    // than one: a `Permission` account, and the legacy foundation allowlist.
+    // the create above would prove nothing, so every route into `authorize` is ruled out rather
+    // than some of them. `CreateFeed` asks for `FEED_AUTHORITY | FOUNDATION`, which three grants
+    // satisfy: a `Permission` account, the legacy foundation allowlist, and the legacy feed
+    // authority.
+    //
+    // Read through `banks_client` rather than `get_account_data`, which returns `None` both for an
+    // account that is absent and for one that stopped deserializing. This assertion is what makes
+    // the rest of the test mean anything, so it must not pass for the second reason.
     assert!(
-        get_account_data(
-            &mut banks_client,
-            get_permission_pda(&program_id, &builder.pubkey()).0
-        )
-        .await
-        .is_none(),
+        banks_client
+            .get_account(get_permission_pda(&program_id, &builder.pubkey()).0)
+            .await
+            .unwrap()
+            .is_none(),
         "the builder must have deployed on its bond, not on a permission"
     );
     let final_globalstate = get_globalstate(&mut banks_client, globalstate).await;
@@ -269,5 +298,10 @@ async fn test_a_builder_deploys_a_feed_and_an_operator_admits_it() {
             .foundation_allowlist
             .contains(&builder.pubkey()),
         "the builder must not be a foundation key, or the create above proves nothing"
+    );
+    assert_ne!(
+        final_globalstate.feed_authority_pk,
+        builder.pubkey(),
+        "the builder must not be the feed authority, or the create above proves nothing"
     );
 }

@@ -1181,6 +1181,17 @@ async fn test_a_builder_cannot_activate_its_own_feed() {
 
 /// Activation re-reads the mirror, which is the only thing that catches a stake corrected after
 /// creation accepted it. Without this the cover is checked once, at creation, and never again.
+///
+/// Both accounts are seeded rather than driven, and that is a deliberate choice rather than a
+/// shortcut. The scenario is a sequence — create, correct the mirror downward, activate — so
+/// driving it would be more faithful than seeding its end state. What it costs is a
+/// `STAKE_ORACLE` setup for `WriteStakeMirror` and a failure that says the sequence broke rather
+/// than which step did, on a test whose subject is one transition.
+///
+/// The risk seeding carries, that the fixture asserts against a shape `CreateFeed` no longer
+/// writes, is covered once by `test_a_seeded_feed_matches_what_create_feed_writes` rather than
+/// here. Driving the real sequence is still worth doing if this check ever grows past the tier,
+/// or if the relayer's write starts doing something creation does not.
 #[tokio::test]
 async fn test_a_feed_cannot_activate_beyond_its_stake() {
     let builder = test_payer();

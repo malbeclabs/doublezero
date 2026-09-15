@@ -251,7 +251,9 @@ async fn test_a_builder_deploys_a_feed_and_an_operator_admits_it() {
         .expect("it should be a feed");
     assert_eq!(admitted.status, FeedStatus::Active);
 
-    // The builder never held a permission. If it had, this sequence would prove nothing.
+    // The builder was authorized by its bond and nothing else. If anything else had admitted it,
+    // the create above would prove nothing, so both routes into `authorize` are ruled out rather
+    // than one: a `Permission` account, and the legacy foundation allowlist.
     assert!(
         get_account_data(
             &mut banks_client,
@@ -260,5 +262,12 @@ async fn test_a_builder_deploys_a_feed_and_an_operator_admits_it() {
         .await
         .is_none(),
         "the builder must have deployed on its bond, not on a permission"
+    );
+    let final_globalstate = get_globalstate(&mut banks_client, globalstate).await;
+    assert!(
+        !final_globalstate
+            .foundation_allowlist
+            .contains(&builder.pubkey()),
+        "the builder must not be a foundation key, or the create above proves nothing"
     );
 }

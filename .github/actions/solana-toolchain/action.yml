@@ -85,3 +85,56 @@ runs:
 
         echo "Agave ${{ inputs.version }} would not install after $ATTEMPTS attempts" >&2
         exit 1
+
+    # Cargo looks for a subcommand in $CARGO_HOME/bin before it looks at PATH, and
+    # Swatinem/rust-cache carries that directory from run to run, so a cargo-build-sbf
+    # left there would quietly shadow the one this action installs. No run has been
+    # observed carrying one, so this is a guard rather than a fix for anything seen;
+    # what earns its place is the last two lines, which put the resolved path and
+    # version in the log. The same build has come out both ways on this repo -- one
+    # run driving the host Cargo, the next driving the platform-tools Cargo, which
+    # fails on edition2024 -- and the logs could not say which binary ran.
+    - name: Pin and report the SBF build tools
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        cargo_bin="${CARGO_HOME:-$HOME/.cargo}/bin"
+        for tool in cargo-build-sbf cargo-test-sbf; do
+          stale="$cargo_bin/$tool"
+          if [ -e "$stale" ]; then
+            echo "Removing $stale, which would shadow the Agave ${{ inputs.version }} $tool"
+            rm -f "$stale"
+          else
+            echo "No $stale to remove"
+          fi
+        done
+
+        echo "cargo build-sbf now resolves to: $(command -v cargo-build-sbf)"
+
+        # Not `cargo build-sbf --version`. Agave formats that banner from the
+        # compile-time DEFAULT_PLATFORM_TOOLS_VERSION before it parses any
+        # argument, so it reads "platform-tools v1.51" on a run this action fixed
+        # and on a broken one alike, and its rustc line goes blank when v1.51 is
+        # not the version installed. Reporting the cache directly says what a
+        # build would actually pick up.
+        #
+        # Reading the binaries by path also keeps this step from invoking cargo at
+        # all. A composite action does not inherit a workflow's
+        # `defaults.run.working-directory`, so a `cargo` here runs at the
+        # repository root and makes rustup fetch the root toolchain for jobs that
+        # pin their own and never need it.
+        shopt -s nullglob
+        found=0
+        for tools in "$HOME"/.cache/solana/*/platform-tools; do
+          found=1
+          version="$(basename "$(dirname "$tools")")"
+          if [ -x "$tools/rust/bin/rustc" ]; then
+            echo "platform-tools $version: $("$tools/rust/bin/rustc" --version)"
+          else
+            echo "platform-tools $version: incomplete, no rust/bin/rustc"
+          fi
+        done
+        if [ "$found" -eq 0 ]; then
+          echo "no platform-tools installed under $HOME/.cache/solana"
+        fi

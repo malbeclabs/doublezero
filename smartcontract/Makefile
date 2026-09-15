@@ -7,7 +7,11 @@ env ?= localnet
 # program dependency tree pulls edition2024 crates (cpufeatures 0.3 via blake3),
 # which require Cargo >= 1.85; agave's default platform-tools (v1.51) ships Cargo
 # 1.84.1 and cannot parse them. v1.54 ships a new enough toolchain.
+#
+# Passing --tools-version is not enough on its own to get v1.54: see the sbf-tools
+# target below and the header of scripts/install-sbf-tools.sh.
 SBF_TOOLS_VERSION ?= v1.54
+ROOT_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST)))..)
 
 UNAME_S := $(shell uname -s)
 
@@ -34,6 +38,13 @@ test-programs: test-sbf
 		-p doublezero-serviceability \
 		-p doublezero-geolocation
 
+# cargo build-sbf and cargo test-sbf fall back to their built-in platform-tools,
+# whose Cargo is too old for this tree, unless the version they are asked for is
+# already installed. Install it first rather than let them choose.
+.PHONY: sbf-tools
+sbf-tools:
+	@bash $(ROOT_DIR)/scripts/install-sbf-tools.sh $(SBF_TOOLS_VERSION)
+
 .PHONY: test-sbf
 # Run from each program's directory, the way build-programs below does, rather
 # than unscoped from here. Two reasons, and only the first is new:
@@ -50,7 +61,7 @@ test-programs: test-sbf
 #
 # Serviceability runs before telemetry, whose test helper loads the
 # serviceability .so through add_program with no processor.
-test-sbf:
+test-sbf: sbf-tools
 	cd programs/doublezero-record && cargo test-sbf --tools-version $(SBF_TOOLS_VERSION)
 	cd programs/doublezero-serviceability && cargo test-sbf --tools-version $(SBF_TOOLS_VERSION)
 	cd programs/doublezero-telemetry && cargo test-sbf --tools-version $(SBF_TOOLS_VERSION)
@@ -77,7 +88,7 @@ build: build-programs
 	cargo build $(LDFLAGS) --manifest-path ./cli/Cargo.toml
 
 .PHONY: build-programs
-build-programs:
+build-programs: sbf-tools
 	cd programs/doublezero-record && cargo build-sbf --tools-version $(SBF_TOOLS_VERSION)
 	cd programs/doublezero-serviceability && cargo build-sbf --tools-version $(SBF_TOOLS_VERSION)
 	cd programs/doublezero-telemetry && cargo build-sbf --tools-version $(SBF_TOOLS_VERSION) --features $(env)

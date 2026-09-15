@@ -1,7 +1,11 @@
 pub mod activate;
 pub mod create;
 pub mod delete;
+pub mod finalize_retirement;
 pub mod guard;
+pub mod halt;
 pub mod list;
 pub mod resolve;
+pub mod resume;
+pub mod retire;
 pub mod update;

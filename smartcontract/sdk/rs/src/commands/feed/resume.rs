@@ -1,21 +1,22 @@
 use crate::{commands::common::append_payer_permission_account, DoubleZeroClient};
-use doublezero_serviceability_instruction::feed::activate_feed;
+use doublezero_serviceability_instruction::feed::resume_feed;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
+/// Put a halted feed back to publishing.
 #[derive(Debug, PartialEq, Clone)]
-pub struct ActivateFeedCommand {
+pub struct ResumeFeedCommand {
     pub pubkey: Pubkey,
     /// The feed's stake mirror, required for a staked feed and `None` for a catalog one.
     ///
-    /// Activation re-reads the mirror, so a staked feed without it is refused rather than read as
-    /// having no stake to check. The caller derives it from the feed's own `stake_ref` rather than
-    /// choosing it.
+    /// Resuming re-proves that the stake still covers the feed's rate, because a mirror can be
+    /// corrected downward while a feed sits halted. The caller derives it from the feed's own
+    /// `stake_ref` rather than choosing it.
     pub stake_mirror: Option<Pubkey>,
 }
 
-impl ActivateFeedCommand {
+impl ResumeFeedCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let mut ix = activate_feed(
+        let mut ix = resume_feed(
             &client.get_program_id(),
             &client.get_payer(),
             &self.pubkey,
@@ -30,20 +31,20 @@ impl ActivateFeedCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::feed::activate::ActivateFeedCommand, tests::utils::create_test_client,
+        commands::feed::resume::ResumeFeedCommand, tests::utils::create_test_client,
         DoubleZeroClient,
     };
     use doublezero_serviceability::pda::get_permission_pda;
-    use doublezero_serviceability_instruction::feed::activate_feed;
+    use doublezero_serviceability_instruction::feed::resume_feed;
     use mockall::predicate;
     use solana_sdk::{
         account::Account, instruction::AccountMeta, pubkey::Pubkey, signature::Signature,
     };
 
-    /// Activation re-reads the mirror the feed's `stake_ref` names. Dropping the mirror here would reach the program as a staked feed with no stake
+    /// Resuming re-proves the stake still covers the rate, so it carries the mirror. Dropping the mirror here would reach the program as a staked feed with no stake
     /// to read, which it refuses.
     #[test]
-    fn test_commands_feed_activate_forwards_the_stake_mirror() {
+    fn test_commands_feed_resume_forwards_the_stake_mirror() {
         let mut client = create_test_client();
         let program_id = client.get_program_id();
         let payer = client.get_payer();
@@ -51,7 +52,7 @@ mod tests {
         let mirror = Pubkey::new_unique();
         let signature = Signature::new_unique();
 
-        let mut expected = activate_feed(&program_id, &payer, &feed_pk, Some(&mirror));
+        let mut expected = resume_feed(&program_id, &payer, &feed_pk, Some(&mirror));
         let (permission_pda, _) = get_permission_pda(&program_id, &payer);
         expected
             .accounts
@@ -67,7 +68,7 @@ mod tests {
             .times(1)
             .returning(move |_| Ok(signature));
 
-        let res = ActivateFeedCommand {
+        let res = ResumeFeedCommand {
             pubkey: feed_pk,
             stake_mirror: Some(mirror),
         }
@@ -77,14 +78,14 @@ mod tests {
 
     /// A catalog feed sends no mirror, so the instruction carries one account fewer.
     #[test]
-    fn test_commands_feed_activate_sends_no_stake_mirror_for_a_catalog_feed() {
+    fn test_commands_feed_resume_sends_no_stake_mirror_for_a_catalog_feed() {
         let mut client = create_test_client();
         let program_id = client.get_program_id();
         let payer = client.get_payer();
         let feed_pk = Pubkey::new_unique();
         let signature = Signature::new_unique();
 
-        let mut expected = activate_feed(&program_id, &payer, &feed_pk, None);
+        let mut expected = resume_feed(&program_id, &payer, &feed_pk, None);
         let (permission_pda, _) = get_permission_pda(&program_id, &payer);
         expected
             .accounts
@@ -100,7 +101,7 @@ mod tests {
             .times(1)
             .returning(move |_| Ok(signature));
 
-        let res = ActivateFeedCommand {
+        let res = ResumeFeedCommand {
             pubkey: feed_pk,
             stake_mirror: None,
         }

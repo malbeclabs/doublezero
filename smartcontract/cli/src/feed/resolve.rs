@@ -1,6 +1,6 @@
 use crate::{doublezerocommand::CliCommand, exchange::resolve::get_exchanges};
 use doublezero_sdk::{Exchange, Feed};
-use doublezero_serviceability::state::accountdata::AccountData;
+use doublezero_serviceability::{pda::get_stake_mirror_pda, state::accountdata::AccountData};
 use solana_sdk::pubkey::Pubkey;
 use std::collections::HashMap;
 
@@ -10,6 +10,17 @@ pub(crate) fn pubkey_or_code(pubkey: Option<String>, code: Option<String>) -> ey
         (None, Some(code)) => Ok(code),
         _ => eyre::bail!("pass --pubkey <PUBKEY>, or --code <CODE> with --exchange <EXCHANGE>"),
     }
+}
+
+/// The stake mirror a feed's lifecycle instructions re-read, or `None` for a catalog feed.
+///
+/// Derived from the feed's own `stake_ref` rather than taken as a flag: the feed already records
+/// which stake backs it, so an argument would only be a way to name a different one. A catalog
+/// feed has no stake to re-read, and sending a mirror for one asks the program for an account it
+/// refuses.
+pub(crate) fn stake_mirror_of<C: CliCommand>(client: &C, feed: &Feed) -> Option<Pubkey> {
+    (feed.builder != Pubkey::default())
+        .then(|| get_stake_mirror_pda(&client.get_program_id(), &feed.stake_ref).0)
 }
 
 /// Read the named feeds in one `getMultipleAccounts` call. A pass names at most a handful of feeds,

@@ -6,20 +6,17 @@ use crate::{
 };
 use clap::{ArgGroup, Args};
 use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
-use doublezero_sdk::commands::feed::{activate::ActivateFeedCommand, get::GetFeedCommand};
+use doublezero_sdk::commands::feed::{get::GetFeedCommand, resume::ResumeFeedCommand};
 use std::io::Write;
 
-/// Admit a feed that was waiting on a conformance verdict.
-///
-/// Signed by a `FEED_AUTHORITY` or `FOUNDATION` key. The feed's own builder cannot: it may halt and
-/// resume its feed, but a builder that could admit it would be attesting to its own conformance.
+/// Put a halted feed back to publishing. An operator's halt takes an operator to lift.
 #[derive(Args, Debug)]
 #[clap(group(ArgGroup::new("target").args(&["pubkey", "code"]).required(true)))]
-pub struct ActivateFeedCliCommand {
-    /// Feed pubkey to activate
+pub struct ResumeFeedCliCommand {
+    /// Feed pubkey
     #[arg(long, value_parser = validate_pubkey, conflicts_with = "exchange")]
     pub pubkey: Option<String>,
-    /// Feed code to activate, which names one feed only together with its metro
+    /// Feed code, which names one feed only together with its metro
     #[arg(long, value_parser = validate_code, requires = "exchange")]
     pub code: Option<String>,
     /// Metro (exchange) pubkey or code carrying the feed named by --code
@@ -27,7 +24,7 @@ pub struct ActivateFeedCliCommand {
     pub exchange: Option<String>,
 }
 
-impl ActivateFeedCliCommand {
+impl ResumeFeedCliCommand {
     pub async fn execute<C: CliCommand, W: Write>(
         self,
         _ctx: &CliContext,
@@ -51,7 +48,7 @@ impl ActivateFeedCliCommand {
 
         let stake_mirror = stake_mirror_of(client, &feed);
 
-        let signature = client.activate_feed(ActivateFeedCommand {
+        let signature = client.resume_feed(ResumeFeedCommand {
             pubkey,
             stake_mirror,
         })?;
@@ -62,19 +59,19 @@ impl ActivateFeedCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        doublezerocommand::CliCommand, feed::activate::ActivateFeedCliCommand,
+        doublezerocommand::CliCommand, feed::resume::ResumeFeedCliCommand,
         tests::utils::create_test_client,
     };
     use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{
-        commands::feed::{activate::ActivateFeedCommand, get::GetFeedCommand},
+        commands::feed::{get::GetFeedCommand, resume::ResumeFeedCommand},
         AccountType, Feed,
     };
     use doublezero_serviceability::{pda::get_stake_mirror_pda, state::feed::FeedStatus};
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
-    fn pending_feed(builder: Pubkey, stake_ref: Pubkey) -> Feed {
+    fn halted_feed(builder: Pubkey, stake_ref: Pubkey) -> Feed {
         Feed {
             account_type: AccountType::Feed,
             owner: builder,
@@ -85,24 +82,23 @@ mod tests {
             groups: vec![],
             builder,
             stake_ref,
-            status: FeedStatus::Pending,
+            status: FeedStatus::Halted,
             ..Default::default()
         }
     }
 
-    /// A staked feed's mirror is derived from the feed rather than asked for, so a caller cannot
-    /// name a different stake than the one backing it.
+    /// Resuming re-proves the stake still covers the rate, so a staked feed sends its mirror, and
+    /// the address comes from the feed rather than from a flag.
     #[test]
-    fn test_cli_feed_activate_derives_the_mirror_from_the_feed() {
+    fn test_cli_feed_resume_derives_the_mirror_from_the_feed() {
         let mut client = create_test_client();
         client.expect_check_requirements().returning(|_| Ok(()));
 
         let feed_pk = Pubkey::new_unique();
         let stake_ref = Pubkey::new_unique();
-        let feed = pending_feed(Pubkey::new_unique(), stake_ref);
+        let feed = halted_feed(Pubkey::new_unique(), stake_ref);
         let signature = Signature::new_unique();
-        let program_id = client.get_program_id();
-        let (expected_mirror, _) = get_stake_mirror_pda(&program_id, &stake_ref);
+        let (expected_mirror, _) = get_stake_mirror_pda(&client.get_program_id(), &stake_ref);
 
         client
             .expect_get_feed()
@@ -113,8 +109,8 @@ mod tests {
             .times(1)
             .returning(move |_| Ok((feed_pk, feed.clone())));
         client
-            .expect_activate_feed()
-            .with(predicate::eq(ActivateFeedCommand {
+            .expect_resume_feed()
+            .with(predicate::eq(ResumeFeedCommand {
                 pubkey: feed_pk,
                 stake_mirror: Some(expected_mirror),
             }))
@@ -124,7 +120,7 @@ mod tests {
         let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
         let res = block_on(
-            ActivateFeedCliCommand {
+            ResumeFeedCliCommand {
                 pubkey: Some(feed_pk.to_string()),
                 code: None,
                 exchange: None,
@@ -138,25 +134,27 @@ mod tests {
         );
     }
 
-    /// A catalog feed has no stake to re-read, so it sends no mirror. Sending one would ask the
-    /// program for an account it refuses.
+    /// A catalog feed has no stake to re-prove, so it sends no mirror.
     #[test]
-    fn test_cli_feed_activate_sends_no_mirror_for_a_catalog_feed() {
+    fn test_cli_feed_resume_sends_no_mirror_for_a_catalog_feed() {
         let mut client = create_test_client();
         client.expect_check_requirements().returning(|_| Ok(()));
 
         let feed_pk = Pubkey::new_unique();
-        let mut feed = pending_feed(Pubkey::default(), Pubkey::default());
-        feed.owner = Pubkey::new_unique();
+        let feed = halted_feed(Pubkey::default(), Pubkey::default());
         let signature = Signature::new_unique();
 
         client
             .expect_get_feed()
+            .with(predicate::eq(GetFeedCommand {
+                pubkey_or_code: feed_pk.to_string(),
+                exchange: None,
+            }))
             .times(1)
             .returning(move |_| Ok((feed_pk, feed.clone())));
         client
-            .expect_activate_feed()
-            .with(predicate::eq(ActivateFeedCommand {
+            .expect_resume_feed()
+            .with(predicate::eq(ResumeFeedCommand {
                 pubkey: feed_pk,
                 stake_mirror: None,
             }))
@@ -166,7 +164,7 @@ mod tests {
         let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();
         let res = block_on(
-            ActivateFeedCliCommand {
+            ResumeFeedCliCommand {
                 pubkey: Some(feed_pk.to_string()),
                 code: None,
                 exchange: None,
@@ -174,5 +172,9 @@ mod tests {
             .execute(&ctx, &client, &mut output),
         );
         assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            format!("Signature: {signature}\n")
+        );
     }
 }

@@ -185,8 +185,8 @@ func getNearestProbesSorted(probes []Probe, latitude, longitude float64, maxCoun
 	return collector.GetNearestSourcesSorted(probes, latitude, longitude, maxCount)
 }
 
-// filterValidProbes drops probes the collector cannot measure with: no IPv4
-// address, a non-routable one, or RIPE's system-ipv4-doesnt-work tag.
+// filterValidProbes drops probes the collector cannot measure with: no routable
+// IPv4 address, or RIPE's system-ipv4-doesnt-work tag.
 func filterValidProbes(log *slog.Logger, probes []Probe) []Probe {
 	var validProbes []Probe
 	for _, probe := range probes {

@@ -1,7 +1,8 @@
 use crate::{
     authorize::authorize,
     error::{DoubleZeroError, Validate},
-    pda::{get_feed_pda, get_stake_mirror_pda},
+    pda::get_feed_pda,
+    processors::feed::split_stake_mirror,
     seeds::{SEED_FEED, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
     state::{
@@ -74,19 +75,10 @@ pub fn process_create_feed(
     let system_program = next_account_info(accounts_iter)?;
 
     // The tail holds the stake's StakeMirror, the payer's Permission account, both, or neither.
-    // Each is found by matching its PDA rather than by position, so a caller that sends one is not
-    // forced to send the other, and a pre-RFC-28 caller that sends neither still works.
-    let tail: Vec<&AccountInfo> = accounts_iter.collect();
-    let stake_mirror_key = (value.builder != Pubkey::default())
-        .then(|| get_stake_mirror_pda(program_id, &value.stake_ref).0);
-    let stake_mirror_account =
-        stake_mirror_key.and_then(|expected| tail.iter().copied().find(|a| a.key == &expected));
-    // Filter by key, not by identity: a caller may pass the mirror twice, and a stray copy left in
-    // the iterator would be read as the Permission account.
-    let mut authorize_iter = tail
-        .iter()
-        .copied()
-        .filter(|a| Some(*a.key) != stake_mirror_key);
+    // `value` rather than a `Feed` here, because this is describing a feed that does not exist yet.
+    let (stake_mirror_account, authorize_candidates) =
+        split_stake_mirror(program_id, &value.builder, &value.stake_ref, accounts_iter);
+    let mut authorize_iter = authorize_candidates.into_iter();
 
     assert!(payer_account.is_signer, "Payer must be a signer");
     assert_eq!(

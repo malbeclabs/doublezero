@@ -44,8 +44,8 @@ type MetadataTracker struct {
 
 	// UnresponsiveTargets holds probes that failed as a measurement target: they do
 	// not answer pings aimed at them, or answer too few. That says nothing about the
-	// probe's ability to send pings, so these are excluded from target selection only.
-	// A probe behind NAT is the motivating case — NAT breaks inbound, not outbound.
+	// probe's ability to send pings, so these still source measurements normally and
+	// are only ranked last when a target is chosen.
 	UnresponsiveTargets []UnresponsiveProbeEntry `json:"unresponsive_targets,omitempty"`
 }
 
@@ -105,10 +105,13 @@ func (ms *MeasurementState) Load() error {
 	}
 	defer file.Close()
 
-	// Decode into intermediate struct with raw unresponsive_probes for backwards compatibility
+	// Decode into intermediate struct with raw unresponsive_probes for backwards
+	// compatibility. unresponsive_targets is new in this format and has no legacy
+	// shape to fall back from, so it decodes directly.
 	var intermediate struct {
-		Metadata           map[int]MeasurementMeta `json:"metadata"`
-		UnresponsiveProbes json.RawMessage         `json:"unresponsive_probes,omitempty"`
+		Metadata            map[int]MeasurementMeta  `json:"metadata"`
+		UnresponsiveProbes  json.RawMessage          `json:"unresponsive_probes,omitempty"`
+		UnresponsiveTargets []UnresponsiveProbeEntry `json:"unresponsive_targets,omitempty"`
 	}
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&intermediate); err != nil {
@@ -117,6 +120,7 @@ func (ms *MeasurementState) Load() error {
 
 	var tracker MetadataTracker
 	tracker.Metadata = intermediate.Metadata
+	tracker.UnresponsiveTargets = intermediate.UnresponsiveTargets
 
 	// Try new format first: [{probe_id: N, marked_at: T}, ...]
 	if len(intermediate.UnresponsiveProbes) > 0 {
@@ -261,13 +265,10 @@ func (ms *MeasurementState) UpdateSourceProbeResponse(measurementID int, probeID
 }
 
 // RecordTargetResults adds a batch of ping outcomes against a measurement's target
-// probe to the current window, starting one if none is open.
-// RecordTargetResults adds a batch of ping outcomes against a measurement's target
 // probe to the current window, starting one if none is open, and advances the loss
 // cursor to newestResult so the same outcomes are not counted twice.
 //
-// The caller is responsible for counting only results newer than TargetLossCursor;
-// GetTargetLossCursor reports it.
+// The caller is responsible for counting only results newer than TargetLossCursor.
 func (ms *MeasurementState) RecordTargetResults(measurementID int, attempts, successes, newestResult, now int64) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
@@ -286,15 +287,6 @@ func (ms *MeasurementState) RecordTargetResults(measurementID int, attempts, suc
 		meta.TargetLossCursor = newestResult
 	}
 	ms.tracker.Metadata[measurementID] = meta
-}
-
-// GetTargetLossCursor reports the newest result timestamp already counted toward a
-// measurement's loss window.
-func (ms *MeasurementState) GetTargetLossCursor(measurementID int) int64 {
-	ms.mu.Lock()
-	defer ms.mu.Unlock()
-
-	return ms.tracker.Metadata[measurementID].TargetLossCursor
 }
 
 // EvaluateTargetLoss judges a measurement's open loss window and resets it. It reports
@@ -356,14 +348,16 @@ func (ms *MeasurementState) AddUnresponsiveTarget(probeID int) {
 	})
 }
 
-// IsTargetUnresponsive reports whether a probe is barred from target selection, either
-// because it failed as a target or because it is unresponsive outright.
+// IsTargetUnresponsive reports whether a probe carries a live mark against it as a
+// measurement target, either because it failed as a target or because it is
+// unresponsive outright. Target selection ranks such probes last rather than dropping
+// them, so a location whose every candidate is marked still gets one.
 func (ms *MeasurementState) IsTargetUnresponsive(probeID int) bool {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
 	expiry := time.Now().Add(-UnresponsiveProbeExpiry).Unix()
-	// A probe that cannot source cannot target either, so both lists bar a target.
+	// A probe that cannot source cannot target either, so both lists mark a target.
 	return hasLiveEntry(ms.tracker.UnresponsiveTargets, probeID, expiry) ||
 		hasLiveEntry(ms.tracker.UnresponsiveProbes, probeID, expiry)
 }
@@ -379,8 +373,8 @@ func hasLiveEntry(entries []UnresponsiveProbeEntry, probeID int, expiry int64) b
 	return false
 }
 
-// GetUnresponsiveTargets returns the probe IDs currently barred from target selection
-// by a target failure, excluding expired entries.
+// GetUnresponsiveTargets returns the probe IDs currently carrying a target-failure
+// mark, excluding expired entries.
 func (ms *MeasurementState) GetUnresponsiveTargets() []int {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()

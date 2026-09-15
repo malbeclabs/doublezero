@@ -527,3 +527,32 @@ func TestInternetLatency_RIPEAtlas_State_EvaluateTargetLoss(t *testing.T) {
 		require.Zero(t, attempts)
 	})
 }
+
+func TestInternetLatency_RIPEAtlas_State_UnresponsiveTargetsRoundTrip(t *testing.T) {
+	t.Parallel()
+
+	const targetProbeID = 12651
+	stateFile := filepath.Join(t.TempDir(), "state.json")
+
+	saved := NewMeasurementState(stateFile)
+	saved.AddUnresponsiveTarget(targetProbeID)
+	require.NoError(t, saved.Save())
+
+	// Load decodes through an intermediate struct. Omitting unresponsive_targets there
+	// left the tracker nil after every restart, and the next Save dropped the field,
+	// erasing the list roughly ten minutes into each process lifetime.
+	loaded := NewMeasurementState(stateFile)
+	require.NoError(t, loaded.Load())
+
+	require.True(t, loaded.IsTargetUnresponsive(targetProbeID))
+	require.Equal(t, []int{targetProbeID}, loaded.GetUnresponsiveTargets())
+
+	// And it survives being written back out.
+	require.NoError(t, loaded.Save())
+	reloaded := NewMeasurementState(stateFile)
+	require.NoError(t, reloaded.Load())
+	require.Equal(t, []int{targetProbeID}, reloaded.GetUnresponsiveTargets())
+
+	// A target mark must not bar the probe from sourcing measurements.
+	require.False(t, reloaded.IsProbeUnresponsive(targetProbeID))
+}

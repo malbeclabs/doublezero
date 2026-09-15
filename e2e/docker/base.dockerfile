@@ -148,6 +148,13 @@ FROM builder-base AS builder-rust-sbf
 # solana stage above.
 ARG SOLANA_VERSION=3.0.4
 
+# The platform-tools release every build-sbf in this stage asks for, and the one
+# the installer puts in the cache. One ARG because the two have to agree: bump a
+# build line and miss the install line and the version is not installed, so
+# cargo-build-sbf falls back to its built-in v1.51 and the build dies on
+# edition2024 many layers from the cause.
+ARG SBF_TOOLS_VERSION=v1.54
+
 # Hash of Cargo.lock for cache isolation (same as builder-rust stage).
 ARG CARGO_LOCK_HASH=default
 
@@ -183,7 +190,7 @@ RUN mkdir -p ${BIN_DIR}
 # here: a cache left half-extracted by an interrupted build reads as absent and
 # is replaced, rather than being deleted and re-downloaded by the build itself.
 RUN --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
-    scripts/install-sbf-tools.sh v1.54
+    scripts/install-sbf-tools.sh ${SBF_TOOLS_VERSION}
 
 # Build the Solana programs with build-sbf (rust)
 # Note that we don't use mold here.
@@ -191,21 +198,21 @@ RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=
     --mount=type=cache,id=sbf-target-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/target-sbf \
     --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-serviceability && \
-    cargo build-sbf --tools-version v1.54 && \
+    cargo build-sbf --tools-version ${SBF_TOOLS_VERSION} && \
     cp /target-sbf/deploy/doublezero_serviceability.so ${BIN_DIR}/doublezero_serviceability.so
 
 RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/cargo-sbf \
     --mount=type=cache,id=sbf-target-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/target-sbf \
     --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-telemetry && \
-    cargo build-sbf --tools-version v1.54 --features localnet && \
+    cargo build-sbf --tools-version ${SBF_TOOLS_VERSION} --features localnet && \
     cp /target-sbf/deploy/doublezero_telemetry.so ${BIN_DIR}/doublezero_telemetry.so
 
 RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/cargo-sbf \
     --mount=type=cache,id=sbf-target-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/target-sbf \
     --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-geolocation && \
-    cargo build-sbf --tools-version v1.54 && \
+    cargo build-sbf --tools-version ${SBF_TOOLS_VERSION} && \
     cp /target-sbf/deploy/doublezero_geolocation.so ${BIN_DIR}/doublezero_geolocation.so
 
 # Force COPY in later stages to always copy the programs, even if they appear to be the same.

@@ -111,4 +111,30 @@ runs:
         done
 
         echo "cargo build-sbf now resolves to: $(command -v cargo-build-sbf)"
-        cargo build-sbf --version
+
+        # Not `cargo build-sbf --version`. Agave formats that banner from the
+        # compile-time DEFAULT_PLATFORM_TOOLS_VERSION before it parses any
+        # argument, so it reads "platform-tools v1.51" on a run this action fixed
+        # and on a broken one alike, and its rustc line goes blank when v1.51 is
+        # not the version installed. Reporting the cache directly says what a
+        # build would actually pick up.
+        #
+        # Reading the binaries by path also keeps this step from invoking cargo at
+        # all. A composite action does not inherit a workflow's
+        # `defaults.run.working-directory`, so a `cargo` here runs at the
+        # repository root and makes rustup fetch the root toolchain for jobs that
+        # pin their own and never need it.
+        shopt -s nullglob
+        found=0
+        for tools in "$HOME"/.cache/solana/*/platform-tools; do
+          found=1
+          version="$(basename "$(dirname "$tools")")"
+          if [ -x "$tools/rust/bin/rustc" ]; then
+            echo "platform-tools $version: $("$tools/rust/bin/rustc" --version)"
+          else
+            echo "platform-tools $version: incomplete, no rust/bin/rustc"
+          fi
+        done
+        if [ "$found" -eq 0 ]; then
+          echo "no platform-tools installed under $HOME/.cache/solana"
+        fi

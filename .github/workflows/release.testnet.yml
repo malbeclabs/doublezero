@@ -382,14 +382,19 @@ jobs:
         with:
           version: v3.0.4
       - name: Build programs for testnet
+        # One variable for the install and the builds, because they have to
+        # agree: a build asking for a version the install did not put in the
+        # cache falls back to the built-in v1.51 and dies on edition2024.
+        env:
+          SBF_TOOLS_VERSION: v1.54
         run: |
           set -euo pipefail
           # --tools-version is silently ignored unless the version is already
           # installed, see scripts/install-sbf-tools.sh.
-          scripts/install-sbf-tools.sh v1.54
-          (cd smartcontract/programs/doublezero-serviceability && cargo build-sbf --tools-version v1.54)
-          (cd smartcontract/programs/doublezero-telemetry && cargo build-sbf --tools-version v1.54 --features testnet)
-          (cd smartcontract/programs/doublezero-geolocation && cargo build-sbf --tools-version v1.54 --features testnet)
+          scripts/install-sbf-tools.sh "$SBF_TOOLS_VERSION"
+          (cd smartcontract/programs/doublezero-serviceability && cargo build-sbf --tools-version "$SBF_TOOLS_VERSION")
+          (cd smartcontract/programs/doublezero-telemetry && cargo build-sbf --tools-version "$SBF_TOOLS_VERSION" --features testnet)
+          (cd smartcontract/programs/doublezero-geolocation && cargo build-sbf --tools-version "$SBF_TOOLS_VERSION" --features testnet)
       - name: Assemble artifact with deploy manifest
         env:
           VERSION: ${{ inputs.version }}

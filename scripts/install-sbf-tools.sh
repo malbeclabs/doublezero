@@ -35,12 +35,51 @@ readonly DEST="${CACHE_DIR}/${VERSION}/platform-tools"
 # library is not. cargo-build-sbf takes the version directory's existence as
 # proof the version is installed and would build against the wreckage, so an
 # incomplete tree has to read as absent here and be replaced below.
+#
+# llvm/bin/clang is the same case one subtree over. cargo-build-sbf exports
+# platform-tools' clang, llvm-ar, llvm-objdump and llvm-objcopy as CC, AR,
+# OBJDUMP and OBJCOPY, and this tree compiles C (blake3), so an extraction that
+# stopped between rust/ and llvm/ leaves every later build failing on a missing
+# clang with nothing to repair it.
 installed() {
-  [[ -x "$1/rust/bin/cargo" && -x "$1/rust/bin/rustc" && -d "$1/rust/lib" ]]
+  [[ -x "$1/rust/bin/cargo" && -x "$1/rust/bin/rustc" && -d "$1/rust/lib" \
+    && -x "$1/llvm/bin/clang" ]]
 }
 
 if installed "${DEST}"; then
   echo "platform-tools ${VERSION} already installed at ${DEST}"
+  exit 0
+fi
+
+# One cache, several writers. The e2e images mount `sbf-solana-<solana version>`
+# with `sharing=shared`, so two image builds on one self-hosted runner install
+# into the same ~/.cache/solana. Unserialized, run B can delete the tree run A is
+# reading; worse, if B recreates the version directory between A's `rm -rf` and
+# A's `mv`, the move lands inside it and the cache ends up holding
+# platform-tools/tree/rust/..., which is not empty and therefore reads to
+# cargo-build-sbf as an installed version.
+#
+# mkdir is the mutex because it is atomic on every filesystem this runs on,
+# unlike `flock`, which macOS does not ship.
+readonly LOCK="${CACHE_DIR}/.install-sbf-tools-${VERSION}.lock"
+readonly LOCK_TIMEOUT=900
+
+mkdir -p "${CACHE_DIR}"
+waited=0
+until mkdir "${LOCK}" 2>/dev/null; do
+  if ((waited >= LOCK_TIMEOUT)); then
+    echo "lock at ${LOCK} held for ${LOCK_TIMEOUT}s; assuming it is stale" >&2
+    rm -rf "${LOCK}"
+    continue
+  fi
+  sleep 2
+  waited=$((waited + 2))
+done
+trap 'rm -rf "${LOCK}"' EXIT
+
+# Another writer may have finished while this one waited.
+if installed "${DEST}"; then
+  echo "platform-tools ${VERSION} installed at ${DEST} while waiting"
   exit 0
 fi
 
@@ -58,14 +97,12 @@ esac
 
 readonly URL="https://github.com/anza-xyz/platform-tools/releases/download/${VERSION}/platform-tools-${os}-${arch}.tar.bz2"
 
-mkdir -p "${CACHE_DIR}"
-
 # Stage inside the cache directory so the move into place is a rename on the
 # same filesystem, and name the staging directory so it holds no
 # `platform-tools` child: cargo-build-sbf reads every directory here as an
 # installed version, and a half-extracted one would be taken at face value.
 staging="$(mktemp -d "${CACHE_DIR}/.install-sbf-tools-XXXXXX")"
-trap 'rm -rf "${staging}"' EXIT
+trap 'rm -rf "${staging}" "${LOCK}"' EXIT
 
 echo "Installing platform-tools ${VERSION} from ${URL}"
 for ((attempt = 1; attempt <= ATTEMPTS; attempt++)); do

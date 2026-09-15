@@ -43,6 +43,10 @@ jobs:
             --url https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16 \
             --ws wss://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16/whirligig
           solana balance -k id.json
+      # --tools-version is silently ignored unless the version is already
+      # installed, see scripts/install-sbf-tools.sh.
+      - name: Install platform-tools v1.54
+        run: scripts/install-sbf-tools.sh v1.54
       - name: Build ${{ matrix.program }} program
         run: |
           cargo build-sbf --tools-version v1.54 ${{ matrix.build_features }}

@@ -384,6 +384,9 @@ jobs:
       - name: Build programs for testnet
         run: |
           set -euo pipefail
+          # --tools-version is silently ignored unless the version is already
+          # installed, see scripts/install-sbf-tools.sh.
+          scripts/install-sbf-tools.sh v1.54
           (cd smartcontract/programs/doublezero-serviceability && cargo build-sbf --tools-version v1.54)
           (cd smartcontract/programs/doublezero-telemetry && cargo build-sbf --tools-version v1.54 --features testnet)
           (cd smartcontract/programs/doublezero-geolocation && cargo build-sbf --tools-version v1.54 --features testnet)

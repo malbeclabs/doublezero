@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CI
+  - Every SBF build installs the platform-tools it asks for before building, through `scripts/install-sbf-tools.sh`. `cargo build-sbf --tools-version v1.54` only honors the flag when it can prove that version exists: it looks under `~/.cache/solana` and, finding nothing, resolves the anza `releases/latest` redirect. When the requested version is newer than whatever that redirect names, it logs at a level nobody sees and falls back to its own built-in v1.51, whose Cargo is 1.84. anza published v1.51.1 after v1.54, so the redirect now names v1.51.1 and every `--tools-version v1.54` build took the fallback. The failure surfaced nowhere near the flag: Cargo 1.84 cannot parse the edition2024 crates in the solana 3.0 tree, so `rust-build`, `rust-test` and `rust-validator-test` all died on `feature \`edition2024\` is required` in `offchain/crates/contributor-rewards`, a workspace member no program depends on. Installing the requested version first takes the network lookup out of the decision, which also means the tools no longer vary with what anza tagged most recently.
+
 ## [v0.40.0](https://github.com/malbeclabs/doublezero/compare/client/v0.39.0...client/v0.40.0) - 2026-09-11
 
 ### Breaking

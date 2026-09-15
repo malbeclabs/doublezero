@@ -23,7 +23,7 @@ pub(crate) async fn ensure_reconciler_enabled<D: DaemonClient>(daemon: &D) -> ey
         }
     }
 
-    daemon.enable().await?;
+    daemon.enable(None).await?;
     Ok(false)
 }
 
@@ -81,7 +81,7 @@ mod tests {
                     services: vec![],
                 })
             });
-            daemon.expect_enable().returning(|| Ok(()));
+            daemon.expect_enable().returning(|_| Ok(()));
 
             let ctx = cli_context_default_for_tests();
             let mut out = Vec::new();
@@ -134,7 +134,7 @@ mod tests {
             });
             daemon
                 .expect_enable()
-                .returning(|| Err(eyre::eyre!("connection refused")));
+                .returning(|_| Err(eyre::eyre!("connection refused")));
 
             let ctx = cli_context_default_for_tests();
             let mut out = Vec::new();

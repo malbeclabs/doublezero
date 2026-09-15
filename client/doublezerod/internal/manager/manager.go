@@ -130,13 +130,18 @@ type NetlinkManager struct {
 	register         services.RegisterWriter
 	mu               sync.Mutex
 
-	// Reconciler fields
+	// Reconciler fields.
+	//
+	// clientIP is read by the reconciler goroutine and by the /v2/status handler, and
+	// written by /enable when an operator pins an address, so every access goes through
+	// ClientIP/setClientIP under clientIPMu.
 	clientIP       net.IP
+	clientIPMu     sync.RWMutex
 	fetcher        Fetcher
 	pollInterval   time.Duration
 	fetchTimeout   time.Duration
 	enabled        atomic.Bool
-	enableCh       chan bool
+	enableCh       chan reconcilerCmd
 	stateDir       string
 	tunnelSrcCache map[string]net.IP // cached resolved tunnel src keyed by dst IP string
 
@@ -171,7 +176,7 @@ func NewNetlinkManager(netlink routing.Netlinker, bgp BGPServer, pim services.PI
 		register:       register,
 		pollInterval:   defaultPollInterval,
 		fetchTimeout:   defaultFetchTimeout,
-		enableCh:       make(chan bool, 1),
+		enableCh:       make(chan reconcilerCmd, 1),
 		tunnelSrcCache: make(map[string]net.IP),
 	}
 	for _, o := range opts {
@@ -400,11 +405,56 @@ func (n *NetlinkManager) GetProvisionedServices() []*api.ProvisionRequest {
 	return reqs
 }
 
+// reconcilerCmd is one instruction to the reconciler loop: the enabled state to move to,
+// and whether the client IP changed on the way in.
+//
+// The address itself is not carried here. It is adopted synchronously by SetReconcilerState,
+// because /v2/status must report the pinned address as soon as /enable returns — the CLI
+// enables and then reads status back, and a pin that only landed when the loop next woke up
+// would have it provision against the old address. clientIPChanged exists so the loop still
+// learns it must drop the tunnel-src cache, which only the loop may touch.
+type reconcilerCmd struct {
+	enabled         bool
+	clientIPChanged bool
+}
+
+// ClientIP returns the address the reconciler matches onchain users against.
+func (n *NetlinkManager) ClientIP() net.IP {
+	n.clientIPMu.RLock()
+	defer n.clientIPMu.RUnlock()
+	return n.clientIP
+}
+
+// setClientIP adopts a new client IP, reporting whether it differed from the current one.
+func (n *NetlinkManager) setClientIP(ip net.IP) bool {
+	n.clientIPMu.Lock()
+	defer n.clientIPMu.Unlock()
+	if n.clientIP.Equal(ip) {
+		return false
+	}
+	n.clientIP = ip
+	return true
+}
+
 // SetEnabled sends an enable/disable signal to the reconciler loop.
 // Non-blocking: drains any pending value so back-to-back calls don't hang.
 // No-op if the reconciler is already in the requested state.
 func (n *NetlinkManager) SetEnabled(enabled bool) {
-	if n.enabled.Load() == enabled {
+	n.SetReconcilerState(enabled, nil)
+}
+
+// SetReconcilerState signals the reconciler loop, optionally pinning a client IP first.
+//
+// Unlike SetEnabled alone, a non-nil clientIP is delivered even when the reconciler is
+// already in the requested enabled state: pinning an address on an already-enabled daemon
+// is the whole point of `connect --client-ip`, and swallowing it would leave the caller
+// provisioned against the auto-discovered address with no indication why.
+func (n *NetlinkManager) SetReconcilerState(enabled bool, clientIP net.IP) {
+	changed := clientIP != nil && n.setClientIP(clientIP)
+	if changed {
+		slog.Info("reconciler: client IP pinned", "client_ip", clientIP)
+	}
+	if n.enabled.Load() == enabled && !changed {
 		return
 	}
 	// Drain any pending value so we don't block.
@@ -412,7 +462,7 @@ func (n *NetlinkManager) SetEnabled(enabled bool) {
 	case <-n.enableCh:
 	default:
 	}
-	n.enableCh <- enabled
+	n.enableCh <- reconcilerCmd{enabled: enabled, clientIPChanged: changed}
 }
 
 // Enabled returns the current reconciler enabled state.
@@ -433,12 +483,25 @@ func (n *NetlinkManager) StartReconciler(ctx context.Context) error {
 		case <-ctx.Done():
 			slog.Info("reconciler: stopping")
 			return nil
-		case enabled := <-n.enableCh:
-			n.enabled.Store(enabled)
-			if enabled {
+		case cmd := <-n.enableCh:
+			// A changed address invalidates the tunnel-src cache, whose entries were
+			// resolved for the old source. Cleared here because the cache belongs to
+			// this goroutine.
+			if cmd.clientIPChanged {
+				n.tunnelSrcCache = make(map[string]net.IP)
+			}
+			wasEnabled := n.enabled.Load()
+			n.enabled.Store(cmd.enabled)
+			switch {
+			case cmd.enabled && !wasEnabled:
 				slog.Info("reconciler: enabled")
 				n.reconcile(ctx)
-			} else {
+			case cmd.enabled && cmd.clientIPChanged:
+				// Already running: the previous address's services no longer match and
+				// are torn down by this pass, and the new one's are provisioned.
+				slog.Info("reconciler: reconciling after client IP change")
+				n.reconcile(ctx)
+			case !cmd.enabled && wasEnabled:
 				slog.Info("reconciler: disabled, tearing down services")
 				n.reconcilerTeardown()
 			}
@@ -503,10 +566,14 @@ func (n *NetlinkManager) reconcile(ctx context.Context) {
 	// Filter users matching our client IP and Activated status.
 	// Only one unicast and one multicast user should match per client IP;
 	// if multiple are found we log a warning and use the first.
+	//
+	// Read once for the whole pass so a concurrent pin cannot split it between two
+	// addresses, matching one user here and provisioning against another below.
+	clientIP := n.ClientIP()
 	var wantUnicast, wantMulticast []serviceability.User
 	for _, u := range data.Users {
 		userIP := net.IP(u.ClientIp[:])
-		if !userIP.Equal(n.clientIP) {
+		if !userIP.Equal(clientIP) {
 			continue
 		}
 		if u.Status != serviceability.UserStatusActivated {
@@ -674,7 +741,7 @@ func (n *NetlinkManager) buildProvisionRequest(
 	//
 	// The result is cached per destination IP so we don't repeat the kernel
 	// route lookup every reconcile cycle.
-	tunnelSrc := n.clientIP
+	tunnelSrc := n.ClientIP()
 	if u.UserType == serviceability.UserTypeIBRLWithAllocatedIP || u.UserType == serviceability.UserTypeMulticast {
 		dstKey := tunnelDst.String()
 		if cached, ok := n.tunnelSrcCache[dstKey]; ok {

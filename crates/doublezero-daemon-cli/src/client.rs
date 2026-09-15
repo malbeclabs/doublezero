@@ -10,7 +10,7 @@ use hyper_util::{client::legacy::Client, rt::TokioExecutor};
 use hyperlocal::{UnixConnector, Uri};
 use mockall::automock;
 use serde::{Deserialize, Serialize};
-use std::{fmt, fs::File, path::Path, sync::OnceLock};
+use std::{fmt, fs::File, net::Ipv4Addr, path::Path, sync::OnceLock};
 use tabled::{derive::display, Tabled};
 
 pub(crate) const DEFAULT_SOCKET_PATH: &str = "/var/run/doublezerod/doublezerod.sock";
@@ -224,7 +224,12 @@ pub trait DaemonClient: Send + Sync {
     async fn latency(&self) -> eyre::Result<LatencyResponse>;
     async fn status(&self) -> eyre::Result<Vec<StatusResponse>>;
     async fn v2_status(&self) -> eyre::Result<V2StatusResponse>;
-    async fn enable(&self) -> eyre::Result<()>;
+    /// Enable the reconciler, optionally pinning the address it provisions against.
+    ///
+    /// `Some(ip)` is `connect --client-ip`: the daemon adopts it in place of the address it
+    /// discovered. `None` leaves the daemon's current address alone, which is what every
+    /// caller without the flag wants.
+    async fn enable(&self, client_ip: Option<Ipv4Addr>) -> eyre::Result<()>;
     async fn disable(&self) -> eyre::Result<()>;
     async fn routes(&self) -> eyre::Result<Vec<RouteRecord>>;
 }
@@ -357,13 +362,19 @@ impl DaemonClient for DaemonClientImpl {
         parse_daemon_response::<V2StatusResponse>(&data, "/v2/status")
     }
 
-    async fn enable(&self) -> eyre::Result<()> {
+    async fn enable(&self, client_ip: Option<Ipv4Addr>) -> eyre::Result<()> {
         let client: Client<UnixConnector, Full<Bytes>> =
             Client::builder(TokioExecutor::new()).build(UnixConnector);
+        // An absent pin sends an empty body rather than `{"client_ip":""}`, so a daemon that
+        // predates the field behaves exactly as it does today.
+        let body = match client_ip {
+            Some(ip) => Bytes::from(format!(r#"{{"client_ip":"{ip}"}}"#)),
+            None => Bytes::new(),
+        };
         let req = Request::builder()
             .method(Method::POST)
             .uri(Uri::new(&self.socket_path, "/enable"))
-            .body(Full::from(Bytes::new()))?;
+            .body(Full::from(body))?;
         let res = client
             .request(req)
             .await

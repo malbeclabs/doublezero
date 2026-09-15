@@ -80,17 +80,27 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	svcClient := serviceability.New(dzrpc.NewWithRetries(networkConfig.LedgerPublicRPCURL, nil), pid)
 	cachingFetcher := onchain.NewCachingFetcher(svcClient, onchain.DefaultCacheTTL, onchainRPCTimeout)
 
-	ip, method, err := DiscoverClientIP(clientIP)
+	state, err := manager.LoadOrMigrateState(stateDir)
+	if err != nil {
+		return fmt.Errorf("error loading reconciler state: %w", err)
+	}
+	slog.Info("reconciler: loaded state", "enabled", state.ReconcilerEnabled, "client_ip", state.ClientIP)
+
+	// Precedence: the daemon's own -client-ip flag, then an address pinned by a previous
+	// `connect --client-ip`, then discovery. The flag comes from the unit file and is the
+	// operator's standing configuration for this host, so it outranks a pin left by a
+	// connection; without it, restoring the pin is what keeps a restart from reverting the
+	// host to its discovered address and tearing the tunnel down.
+	effectiveClientIP := clientIP
+	if effectiveClientIP == "" && state.ClientIP != "" {
+		effectiveClientIP = state.ClientIP
+	}
+
+	ip, method, err := DiscoverClientIP(effectiveClientIP)
 	if err != nil {
 		return fmt.Errorf("client IP discovery failed: %w", err)
 	}
 	slog.Info("reconciler: discovered client IP", "ip", ip.String(), "method", method)
-
-	reconcilerEnabled, err := manager.LoadOrMigrateState(stateDir)
-	if err != nil {
-		return fmt.Errorf("error loading reconciler state: %w", err)
-	}
-	slog.Info("reconciler: loaded state", "enabled", reconcilerEnabled)
 
 	if reconcilerPollInterval < 1 {
 		return fmt.Errorf("reconciler poll interval must be >= 1 second, got %d", reconcilerPollInterval)
@@ -120,7 +130,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		manager.WithFetcher(cachingFetcher),
 		manager.WithPollInterval(pollInterval),
 		manager.WithFetchTimeout(fetchTimeout),
-		manager.WithEnabled(reconcilerEnabled),
+		manager.WithEnabled(state.ReconcilerEnabled),
 		manager.WithStateDir(stateDir),
 		manager.WithNetwork(networkConfig.Moniker),
 	}

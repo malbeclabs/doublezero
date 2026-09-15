@@ -6,6 +6,7 @@
 
 pub mod cli;
 pub mod client;
+pub mod clientip;
 pub mod connect;
 pub mod disable;
 pub mod disconnect;

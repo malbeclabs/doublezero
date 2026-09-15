@@ -41,6 +41,38 @@ impl GetAccessPassCommand {
     }
 }
 
+/// Fetch the AccessPass stored at the exact `(client_ip, user_payer)` PDA.
+///
+/// Unlike [`GetAccessPassCommand`], this never falls back to the dynamic (0.0.0.0) pass.
+/// `connect --client-ip` needs exactly that distinction: the flag is honored only for a pass
+/// whose address an issuing authority pinned, and the wildcard-first resolution above would
+/// answer such a query with a dynamic pass — one that authorizes any address at all, which is
+/// the case the flag must refuse.
+#[derive(Debug, PartialEq, Clone)]
+pub struct GetExactAccessPassCommand {
+    pub client_ip: Ipv4Addr,
+    pub user_payer: Pubkey,
+}
+
+impl GetExactAccessPassCommand {
+    pub fn execute(
+        &self,
+        client: &dyn DoubleZeroClient,
+    ) -> eyre::Result<Option<(Pubkey, AccessPass)>> {
+        // A pass at the UNSPECIFIED PDA is the dynamic pass by construction, so an exact
+        // lookup for it would contradict the name. Refuse rather than quietly resolving it.
+        if self.client_ip == Ipv4Addr::UNSPECIFIED {
+            return Ok(None);
+        }
+        let program_id = client.get_program_id();
+        let (pubkey, _) = get_accesspass_pda(&program_id, &self.client_ip, &self.user_payer);
+        match client.get(pubkey) {
+            Ok(AccountData::AccessPass(accesspass)) => Ok(Some((pubkey, accesspass))),
+            Ok(_) | Err(_) => Ok(None),
+        }
+    }
+}
+
 pub fn resolve_user_accesspass(
     client: &dyn DoubleZeroClient,
     user_pk: Pubkey,

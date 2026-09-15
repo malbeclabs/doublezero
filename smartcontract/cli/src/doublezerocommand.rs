@@ -2,8 +2,11 @@ use doublezero_config::Environment;
 use doublezero_sdk::{
     commands::{
         accesspass::{
-            close::CloseAccessPassCommand, get::GetAccessPassCommand, list::ListAccessPassCommand,
-            set::SetAccessPassCommand, set_flags::SetAccessPassFlagsCommand,
+            close::CloseAccessPassCommand,
+            get::{GetAccessPassCommand, GetExactAccessPassCommand},
+            list::ListAccessPassCommand,
+            set::SetAccessPassCommand,
+            set_flags::SetAccessPassFlagsCommand,
         },
         allowlist::{
             foundation::{
@@ -327,6 +330,10 @@ pub trait CliCommand {
     fn get_accesspass(
         &self,
         cmd: GetAccessPassCommand,
+    ) -> eyre::Result<Option<(Pubkey, AccessPass)>>;
+    fn get_accesspass_exact(
+        &self,
+        cmd: GetExactAccessPassCommand,
     ) -> eyre::Result<Option<(Pubkey, AccessPass)>>;
     fn list_accesspass(
         &self,
@@ -792,6 +799,12 @@ impl CliCommand for CliCommandImpl<'_> {
     fn get_accesspass(
         &self,
         cmd: GetAccessPassCommand,
+    ) -> eyre::Result<Option<(Pubkey, AccessPass)>> {
+        cmd.execute(self.client)
+    }
+    fn get_accesspass_exact(
+        &self,
+        cmd: GetExactAccessPassCommand,
     ) -> eyre::Result<Option<(Pubkey, AccessPass)>> {
         cmd.execute(self.client)
     }

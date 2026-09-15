@@ -18,6 +18,12 @@ const (
 // State represents the persistent reconciler state.
 type State struct {
 	ReconcilerEnabled bool `json:"reconciler_enabled"`
+	// ClientIP is an operator-pinned address, empty when the daemon should use the one it
+	// discovers at startup. It is persisted for the same reason ReconcilerEnabled is: the
+	// daemon restores itself after a restart without the CLI being run again, so a pin that
+	// did not survive would silently revert the host to its discovered address, stop matching
+	// the onchain user, and tear the tunnel down on the next reboot.
+	ClientIP string `json:"client_ip,omitempty"`
 }
 
 // LoadOrMigrateState loads the reconciler enabled state from the state file.
@@ -25,19 +31,19 @@ type State struct {
 // (migration from pre-reconciler daemon) and enables the reconciler only if
 // the file contains actual provision entries (active tunnels).
 // If neither file exists, it's a fresh install and defaults to disabled.
-func LoadOrMigrateState(stateDir string) (bool, error) {
+func LoadOrMigrateState(stateDir string) (State, error) {
 	statePath := filepath.Join(stateDir, stateFileName)
 
 	data, err := os.ReadFile(statePath)
 	if err == nil {
 		var state State
 		if err := json.Unmarshal(data, &state); err != nil {
-			return false, fmt.Errorf("error parsing state file: %w", err)
+			return State{}, fmt.Errorf("error parsing state file: %w", err)
 		}
-		return state.ReconcilerEnabled, nil
+		return state, nil
 	}
 	if !errors.Is(err, os.ErrNotExist) {
-		return false, fmt.Errorf("error reading state file: %w", err)
+		return State{}, fmt.Errorf("error reading state file: %w", err)
 	}
 
 	// Check for old doublezerod.json (migration from pre-reconciler daemon).
@@ -52,26 +58,26 @@ func LoadOrMigrateState(stateDir string) (bool, error) {
 			enabled = true
 		}
 		if err := os.Remove(oldPath); err != nil {
-			return false, fmt.Errorf("error removing old state file: %w", err)
+			return State{}, fmt.Errorf("error removing old state file: %w", err)
 		}
-		if err := WriteState(stateDir, enabled); err != nil {
-			return false, err
+		migrated := State{ReconcilerEnabled: enabled}
+		if err := WriteState(stateDir, migrated); err != nil {
+			return State{}, err
 		}
-		return enabled, nil
+		return migrated, nil
 	}
 
 	// Fresh install
-	if err := WriteState(stateDir, false); err != nil {
-		return false, err
+	if err := WriteState(stateDir, State{}); err != nil {
+		return State{}, err
 	}
-	return false, nil
+	return State{}, nil
 }
 
 // WriteState writes the reconciler enabled state to the state file atomically.
 // It writes to a temporary file and renames it to prevent corruption on crash.
-func WriteState(stateDir string, enabled bool) error {
+func WriteState(stateDir string, state State) error {
 	statePath := filepath.Join(stateDir, stateFileName)
-	state := State{ReconcilerEnabled: enabled}
 	data, err := json.Marshal(state)
 	if err != nil {
 		return fmt.Errorf("error marshaling state: %w", err)

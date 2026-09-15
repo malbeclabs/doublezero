@@ -1,12 +1,10 @@
 use crate::{
     doublezerocommand::CliCommand,
-    feed::resolve::{pubkey_or_code, stake_mirror_of},
-    helpers::parse_or_resolve_exchange,
-    validators::{validate_code, validate_pubkey, validate_pubkey_or_code},
+    feed::resolve::{stake_mirror_of, FeedTargetArgs},
 };
-use clap::{ArgGroup, Args};
+use clap::Args;
 use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
-use doublezero_sdk::commands::feed::{activate::ActivateFeedCommand, get::GetFeedCommand};
+use doublezero_sdk::commands::feed::activate::ActivateFeedCommand;
 use std::io::Write;
 
 /// Admit a feed that was waiting on a conformance verdict.
@@ -14,17 +12,9 @@ use std::io::Write;
 /// Signed by a `FEED_AUTHORITY` or `FOUNDATION` key. The feed's own builder cannot: it may halt and
 /// resume its feed, but a builder that could admit it would be attesting to its own conformance.
 #[derive(Args, Debug)]
-#[clap(group(ArgGroup::new("target").args(&["pubkey", "code"]).required(true)))]
 pub struct ActivateFeedCliCommand {
-    /// Feed pubkey to activate
-    #[arg(long, value_parser = validate_pubkey, conflicts_with = "exchange")]
-    pub pubkey: Option<String>,
-    /// Feed code to activate, which names one feed only together with its metro
-    #[arg(long, value_parser = validate_code, requires = "exchange")]
-    pub code: Option<String>,
-    /// Metro (exchange) pubkey or code carrying the feed named by --code
-    #[arg(long, value_parser = validate_pubkey_or_code)]
-    pub exchange: Option<String>,
+    #[command(flatten)]
+    pub target: FeedTargetArgs,
 }
 
 impl ActivateFeedCliCommand {
@@ -39,15 +29,7 @@ impl ActivateFeedCliCommand {
             RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
         );
 
-        let exchange = self
-            .exchange
-            .as_deref()
-            .map(|e| parse_or_resolve_exchange(client, e))
-            .transpose()?;
-        let (pubkey, feed) = client.get_feed(GetFeedCommand {
-            pubkey_or_code: pubkey_or_code(self.pubkey, self.code)?,
-            exchange,
-        })?;
+        let (pubkey, feed) = self.target.resolve(client)?;
 
         let stake_mirror = stake_mirror_of(client, &feed);
 
@@ -62,7 +44,8 @@ impl ActivateFeedCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        doublezerocommand::CliCommand, feed::activate::ActivateFeedCliCommand,
+        doublezerocommand::CliCommand,
+        feed::{activate::ActivateFeedCliCommand, resolve::FeedTargetArgs},
         tests::utils::create_test_client,
     };
     use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
@@ -125,9 +108,11 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             ActivateFeedCliCommand {
-                pubkey: Some(feed_pk.to_string()),
-                code: None,
-                exchange: None,
+                target: FeedTargetArgs {
+                    pubkey: Some(feed_pk.to_string()),
+                    code: None,
+                    exchange: None,
+                },
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -167,9 +152,11 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             ActivateFeedCliCommand {
-                pubkey: Some(feed_pk.to_string()),
-                code: None,
-                exchange: None,
+                target: FeedTargetArgs {
+                    pubkey: Some(feed_pk.to_string()),
+                    code: None,
+                    exchange: None,
+                },
             }
             .execute(&ctx, &client, &mut output),
         );

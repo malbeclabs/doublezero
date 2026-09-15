@@ -1,27 +1,17 @@
 use crate::{
     doublezerocommand::CliCommand,
-    feed::resolve::{pubkey_or_code, stake_mirror_of},
-    helpers::parse_or_resolve_exchange,
-    validators::{validate_code, validate_pubkey, validate_pubkey_or_code},
+    feed::resolve::{stake_mirror_of, FeedTargetArgs},
 };
-use clap::{ArgGroup, Args};
+use clap::Args;
 use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
-use doublezero_sdk::commands::feed::{get::GetFeedCommand, resume::ResumeFeedCommand};
+use doublezero_sdk::commands::feed::resume::ResumeFeedCommand;
 use std::io::Write;
 
 /// Put a halted feed back to publishing. An operator's halt takes an operator to lift.
 #[derive(Args, Debug)]
-#[clap(group(ArgGroup::new("target").args(&["pubkey", "code"]).required(true)))]
 pub struct ResumeFeedCliCommand {
-    /// Feed pubkey
-    #[arg(long, value_parser = validate_pubkey, conflicts_with = "exchange")]
-    pub pubkey: Option<String>,
-    /// Feed code, which names one feed only together with its metro
-    #[arg(long, value_parser = validate_code, requires = "exchange")]
-    pub code: Option<String>,
-    /// Metro (exchange) pubkey or code carrying the feed named by --code
-    #[arg(long, value_parser = validate_pubkey_or_code)]
-    pub exchange: Option<String>,
+    #[command(flatten)]
+    pub target: FeedTargetArgs,
 }
 
 impl ResumeFeedCliCommand {
@@ -36,15 +26,7 @@ impl ResumeFeedCliCommand {
             RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
         );
 
-        let exchange = self
-            .exchange
-            .as_deref()
-            .map(|e| parse_or_resolve_exchange(client, e))
-            .transpose()?;
-        let (pubkey, feed) = client.get_feed(GetFeedCommand {
-            pubkey_or_code: pubkey_or_code(self.pubkey, self.code)?,
-            exchange,
-        })?;
+        let (pubkey, feed) = self.target.resolve(client)?;
 
         let stake_mirror = stake_mirror_of(client, &feed);
 
@@ -59,7 +41,8 @@ impl ResumeFeedCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        doublezerocommand::CliCommand, feed::resume::ResumeFeedCliCommand,
+        doublezerocommand::CliCommand,
+        feed::{resolve::FeedTargetArgs, resume::ResumeFeedCliCommand},
         tests::utils::create_test_client,
     };
     use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
@@ -121,9 +104,11 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             ResumeFeedCliCommand {
-                pubkey: Some(feed_pk.to_string()),
-                code: None,
-                exchange: None,
+                target: FeedTargetArgs {
+                    pubkey: Some(feed_pk.to_string()),
+                    code: None,
+                    exchange: None,
+                },
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -165,9 +150,11 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             ResumeFeedCliCommand {
-                pubkey: Some(feed_pk.to_string()),
-                code: None,
-                exchange: None,
+                target: FeedTargetArgs {
+                    pubkey: Some(feed_pk.to_string()),
+                    code: None,
+                    exchange: None,
+                },
             }
             .execute(&ctx, &client, &mut output),
         );

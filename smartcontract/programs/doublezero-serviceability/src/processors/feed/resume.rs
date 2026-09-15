@@ -1,8 +1,7 @@
 use crate::{
     authorize::authorize,
     error::DoubleZeroError,
-    pda::get_stake_mirror_pda,
-    processors::feed::{require_feed_writer, require_stake_still_covers},
+    processors::feed::{require_feed_writer, require_stake_still_covers, split_stake_mirror},
     serializer::try_acc_write,
     state::{
         feed::{Feed, FeedStatus},
@@ -52,11 +51,9 @@ pub fn process_resume_feed(
 
     // The stake mirror rides after the fixed accounts, found by its address rather than its
     // position, so a catalog feed's caller is not forced to send one.
-    let tail: Vec<&AccountInfo> = accounts_iter.collect();
-    let mirror_key = (feed.builder != Pubkey::default())
-        .then(|| get_stake_mirror_pda(program_id, &feed.stake_ref).0);
-    let mirror_account = mirror_key.and_then(|k| tail.iter().copied().find(|a| a.key == &k));
-    let mut authorize_iter = tail.iter().copied().filter(|a| Some(*a.key) != mirror_key);
+    let (mirror_account, authorize_candidates) =
+        split_stake_mirror(program_id, &feed.builder, &feed.stake_ref, accounts_iter);
+    let mut authorize_iter = authorize_candidates.into_iter();
 
     // An operator's halt is not the builder's to lift. Letting the builder resume it would undo
     // the halt the moment it landed, and with `Retired` unreachable and `DeleteFeed` refusing a

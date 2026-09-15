@@ -4,11 +4,13 @@
 //! the status, so a staked feed sat in `Pending` for life and no feed could stop publishing.
 
 use doublezero_serviceability::{
+    entrypoint::process_instruction,
     error::DoubleZeroError,
     instructions::DoubleZeroInstruction,
     pda::{get_feed_pda, get_globalstate_pda, get_stake_mirror_pda},
     processors::{
         feed::{
+            activate::FeedActivateArgs,
             create::FeedCreateArgs,
             delete::FeedDeleteArgs,
             finalize_retirement::FeedFinalizeRetirementArgs,
@@ -22,11 +24,13 @@ use doublezero_serviceability::{
         accounttype::AccountType,
         feature_flags::FeatureFlag,
         feed::{Feed, FeedStatus},
+        globalstate::GlobalState,
         stake_mirror::{StakeMirror, StakeTier},
     },
 };
 use solana_program_test::*;
 use solana_sdk::{
+    account::Account,
     instruction::AccountMeta,
     pubkey::Pubkey,
     signature::{Keypair, Signer},
@@ -95,7 +99,7 @@ async fn catalog_feed(code: &str) -> (BanksClient, Pubkey, Keypair, Pubkey, Pubk
 async fn staked_feed_owned_by(
     builder: &Keypair,
     code: &str,
-) -> (BanksClient, Pubkey, Keypair, Pubkey, Pubkey) {
+) -> (BanksClient, Pubkey, Keypair, Pubkey, Pubkey, Pubkey) {
     let program_id = Pubkey::new_unique();
     let stake_ref = Pubkey::new_unique();
     let (mirror, bump) = get_stake_mirror_pda(&program_id, &stake_ref);
@@ -162,7 +166,7 @@ async fn staked_feed_owned_by(
         "a staked feed waits on a conformance verdict"
     );
 
-    (banks_client, program_id, payer, globalstate, feed)
+    (banks_client, program_id, payer, globalstate, feed, mirror)
 }
 
 /// Halt stops publication and resume starts it again, both reversible and neither terminal.
@@ -264,7 +268,7 @@ async fn test_resuming_an_active_feed_is_refused() {
 #[tokio::test]
 async fn test_a_pending_feed_neither_halts_nor_resumes() {
     let builder = test_payer();
-    let (mut banks_client, program_id, payer, globalstate, feed) =
+    let (mut banks_client, program_id, payer, globalstate, feed, _mirror) =
         staked_feed_owned_by(&builder, "waiting").await;
 
     let result = try_execute_and_get_error(
@@ -298,7 +302,7 @@ async fn test_a_pending_feed_neither_halts_nor_resumes() {
 #[tokio::test]
 async fn test_the_builder_is_authorized_on_its_own_feed() {
     let builder = test_payer();
-    let (mut banks_client, program_id, _payer, globalstate, feed) =
+    let (mut banks_client, program_id, _payer, globalstate, feed, _mirror) =
         staked_feed_owned_by(&builder, "mine").await;
 
     let result = try_execute_and_get_error(
@@ -638,7 +642,7 @@ async fn test_retiring_an_active_feed_starts_the_notice() {
 #[tokio::test]
 async fn test_a_pending_feed_retires_without_waiting() {
     let builder = test_payer();
-    let (mut banks_client, program_id, payer, globalstate, feed) =
+    let (mut banks_client, program_id, payer, globalstate, feed, _mirror) =
         staked_feed_owned_by(&builder, "stillborn").await;
 
     let before = banks_client
@@ -822,7 +826,7 @@ async fn test_finalizing_a_feed_that_is_not_retiring_is_refused() {
 #[tokio::test]
 async fn test_a_pending_feed_retires_and_finalizes_end_to_end() {
     let builder = test_payer();
-    let (mut banks_client, program_id, payer, globalstate, feed) =
+    let (mut banks_client, program_id, payer, globalstate, feed, _mirror) =
         staked_feed_owned_by(&builder, "endtoend").await;
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
@@ -928,7 +932,7 @@ async fn test_a_halted_feed_retires_and_keeps_its_halter() {
 #[tokio::test]
 async fn test_a_stranger_cannot_retire_a_feed() {
     let builder = test_payer();
-    let (mut banks_client, program_id, _payer, globalstate, feed) =
+    let (mut banks_client, program_id, _payer, globalstate, feed, _mirror) =
         staked_feed_owned_by(&builder, "notyours").await;
 
     let stranger = Keypair::new();
@@ -971,7 +975,7 @@ async fn test_a_stranger_cannot_retire_a_feed() {
 #[tokio::test]
 async fn test_retired_is_terminal() {
     let builder = test_payer();
-    let (mut banks_client, program_id, payer, globalstate, feed) =
+    let (mut banks_client, program_id, payer, globalstate, feed, _mirror) =
         staked_feed_owned_by(&builder, "finished").await;
 
     for ix in [
@@ -1123,4 +1127,376 @@ async fn test_a_retired_feed_deletes() {
     )
     .await;
     assert_eq!(get_account_data(&mut banks_client, feed).await, None);
+}
+
+/// The step the demo turns on: a feed waiting on a verdict is admitted and starts selling seats.
+/// Before this instruction existed nothing left `Pending`, so a staked feed reached no subscriber.
+#[tokio::test]
+async fn test_a_pending_feed_is_activated() {
+    let builder = test_payer();
+    let (mut banks_client, program_id, payer, globalstate, feed, mirror) =
+        staked_feed_owned_by(&builder, "admitted").await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateFeed(FeedActivateArgs {}),
+        feed_accounts(feed, globalstate),
+        &payer,
+        &[AccountMeta::new_readonly(mirror, false)],
+    )
+    .await;
+
+    assert_eq!(
+        feed_status(&mut banks_client, feed).await,
+        FeedStatus::Active
+    );
+}
+
+/// The builder halts and resumes its own feed, but it does not admit it. A builder that could
+/// would be attesting to its own conformance, which is the whole of what `Pending` is for.
+#[tokio::test]
+async fn test_a_builder_cannot_activate_its_own_feed() {
+    let builder = test_payer();
+    let (mut banks_client, program_id, _payer, globalstate, feed, mirror) =
+        staked_feed_owned_by(&builder, "selfadmit").await;
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::ActivateFeed(FeedActivateArgs {}),
+        feed_accounts(feed, globalstate),
+        &builder,
+        &[AccountMeta::new_readonly(mirror, false)],
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+    assert_eq!(
+        feed_status(&mut banks_client, feed).await,
+        FeedStatus::Pending
+    );
+}
+
+/// Activation re-reads the mirror, which is the only thing that catches a stake corrected after
+/// creation accepted it. Without this the cover is checked once, at creation, and never again.
+///
+/// Both accounts are seeded rather than driven, and that is a deliberate choice rather than a
+/// shortcut. The scenario is a sequence — create, correct the mirror downward, activate — so
+/// driving it would be more faithful than seeding its end state. What it costs is a
+/// `STAKE_ORACLE` setup for `WriteStakeMirror` and a failure that says the sequence broke rather
+/// than which step did, on a test whose subject is one transition.
+///
+/// The risk seeding carries, that the fixture asserts against a shape `CreateFeed` no longer
+/// writes, is covered once by `test_a_seeded_feed_matches_what_create_feed_writes` rather than
+/// here. Driving the real sequence is still worth doing if this check ever grows past the tier,
+/// or if the relayer's write starts doing something creation does not.
+#[tokio::test]
+async fn test_a_feed_cannot_activate_beyond_its_stake() {
+    let builder = test_payer();
+    let program_id = Pubkey::new_unique();
+    let stake_ref = Pubkey::new_unique();
+    let exchange = Pubkey::new_unique();
+    let (feed_key, _) = get_feed_pda(&program_id, "shrunk2", &exchange);
+    let (mirror_key, mirror_bump) = get_stake_mirror_pda(&program_id, &stake_ref);
+
+    let feed_data = borsh::to_vec(&Feed {
+        account_type: AccountType::Feed,
+        owner: builder.pubkey(),
+        bump_seed: get_feed_pda(&program_id, "shrunk2", &exchange).1,
+        code: "shrunk2".to_string(),
+        name: "Shrunk".to_string(),
+        exchange,
+        groups: vec![Pubkey::new_unique()],
+        builder: builder.pubkey(),
+        stake_ref,
+        spec_id: "top-of-book@v1.0.0".to_string(),
+        sla_hash: [9u8; 32],
+        committed_rate_bits_per_sec: ONE_GBPS,
+        status: FeedStatus::Pending,
+        halted_by: Pubkey::default(),
+        retires_at: 0,
+    })
+    .unwrap();
+
+    // The mirror the relayer wrote after creation, corrected to a tier that covers nothing.
+    let shrunk = borsh::to_vec(&StakeMirror {
+        account_type: AccountType::StakeMirror,
+        owner: Pubkey::new_unique(),
+        bump_seed: mirror_bump,
+        stake_ref,
+        builder: builder.pubkey(),
+        tier: StakeTier::None,
+        committed_rate_bits_per_sec: 0,
+        source_slot: 2,
+        relayer: Pubkey::new_unique(),
+        feed_key,
+    })
+    .unwrap();
+
+    let (mut banks_client, payer, recent_blockhash) =
+        init_test_with_accounts(program_id, &[(feed_key, feed_data), (mirror_key, shrunk)]).await;
+    init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+    let (globalstate, _) = get_globalstate_pda(&program_id);
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::ActivateFeed(FeedActivateArgs {}),
+        feed_accounts(feed_key, globalstate),
+        &payer,
+        &[AccountMeta::new_readonly(mirror_key, false)],
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::StakeDoesNotCoverRate));
+    assert_eq!(
+        feed_status(&mut banks_client, feed_key).await,
+        FeedStatus::Pending
+    );
+}
+
+/// Only a feed with a verdict outstanding is activated. Halted has `ResumeFeed`, and nothing
+/// leaves Retired.
+#[tokio::test]
+async fn test_only_a_pending_feed_activates() {
+    let builder = test_payer();
+    let (mut banks_client, program_id, payer, globalstate, feed, mirror) =
+        staked_feed_owned_by(&builder, "twice").await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::ActivateFeed(FeedActivateArgs {}),
+        feed_accounts(feed, globalstate),
+        &payer,
+        &[AccountMeta::new_readonly(mirror, false)],
+    )
+    .await;
+
+    // Now Active, so there is no verdict outstanding to admit.
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::ActivateFeed(FeedActivateArgs {}),
+        feed_accounts(feed, globalstate),
+        &payer,
+        &[AccountMeta::new_readonly(mirror, false)],
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::FeedNotActivatable));
+}
+
+/// A builder that also holds a catalog role still cannot admit its own feed.
+///
+/// `authorize` answers on roles alone, so a builder sitting in the foundation allowlist would pass
+/// it. That is the one way a feed gets admitted by the party it exists to be checked against, so
+/// the builder is refused by name before the roles are read.
+#[tokio::test]
+async fn test_a_builder_in_the_foundation_allowlist_still_cannot_activate() {
+    let builder = test_payer();
+    let program_id = Pubkey::new_unique();
+    let stake_ref = Pubkey::new_unique();
+    let exchange = Pubkey::new_unique();
+    let (feed_key, feed_bump) = get_feed_pda(&program_id, "bothhats", &exchange);
+    let (mirror_key, mirror_bump) = get_stake_mirror_pda(&program_id, &stake_ref);
+
+    let mut program_test = ProgramTest::new(
+        "doublezero_serviceability",
+        program_id,
+        processor!(process_instruction),
+    );
+
+    // The builder is the foundation here, which is the whole point of the test.
+    let (globalstate_pubkey, globalstate_bump) = get_globalstate_pda(&program_id);
+    let globalstate = GlobalState {
+        bump_seed: globalstate_bump,
+        foundation_allowlist: vec![builder.pubkey()],
+        ..GlobalState::default()
+    };
+    program_test.add_account(
+        globalstate_pubkey,
+        serialized_account(program_id, borsh::to_vec(&globalstate).unwrap()),
+    );
+
+    let feed = Feed {
+        account_type: AccountType::Feed,
+        owner: builder.pubkey(),
+        bump_seed: feed_bump,
+        code: "bothhats".to_string(),
+        name: "Both hats".to_string(),
+        exchange,
+        groups: vec![Pubkey::new_unique()],
+        builder: builder.pubkey(),
+        stake_ref,
+        spec_id: "top-of-book@v1.0.0".to_string(),
+        sla_hash: [9u8; 32],
+        committed_rate_bits_per_sec: ONE_GBPS,
+        status: FeedStatus::Pending,
+        halted_by: Pubkey::default(),
+        retires_at: 0,
+    };
+    program_test.add_account(
+        feed_key,
+        serialized_account(program_id, borsh::to_vec(&feed).unwrap()),
+    );
+
+    let mirror = StakeMirror {
+        account_type: AccountType::StakeMirror,
+        owner: Pubkey::new_unique(),
+        bump_seed: mirror_bump,
+        stake_ref,
+        builder: builder.pubkey(),
+        tier: StakeTier::UpTo1Gbps,
+        committed_rate_bits_per_sec: ONE_GBPS,
+        source_slot: 1,
+        relayer: Pubkey::new_unique(),
+        feed_key,
+    };
+    program_test.add_account(
+        mirror_key,
+        serialized_account(program_id, borsh::to_vec(&mirror).unwrap()),
+    );
+
+    let (mut banks_client, payer, _recent_blockhash) = program_test.start().await;
+    transfer(&mut banks_client, &payer, &builder.pubkey(), 100_000_000).await;
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::ActivateFeed(FeedActivateArgs {}),
+        feed_accounts(feed_key, globalstate_pubkey),
+        &builder,
+        &[AccountMeta::new_readonly(mirror_key, false)],
+    )
+    .await;
+
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+    assert_eq!(
+        feed_status(&mut banks_client, feed_key).await,
+        FeedStatus::Pending
+    );
+}
+
+/// A program-owned account holding `data`, rented to size.
+fn serialized_account(program_id: Pubkey, data: Vec<u8>) -> Account {
+    Account {
+        lamports: solana_sdk::rent::Rent::default()
+            .minimum_balance(data.len())
+            .max(1),
+        data,
+        owner: program_id,
+        executable: false,
+        rent_epoch: 0,
+    }
+}
+
+/// Guards every hand-built `Feed` in this file against the account `CreateFeed` actually writes.
+///
+/// Several tests here seed a `Feed` directly, because what they exercise is one transition and
+/// driving three instructions to reach it would make a failure say only that the sequence broke.
+/// The cost of seeding is that the fixture asserts against a shape the test believes `CreateFeed`
+/// produces. This is the one test that checks that belief, so a field added, defaulted differently,
+/// or dropped fails here by name instead of leaving every seeded test quietly asserting against an
+/// account that no longer exists.
+#[tokio::test]
+async fn test_a_seeded_feed_matches_what_create_feed_writes() {
+    let builder = Pubkey::new_unique();
+    let program_id = Pubkey::new_unique();
+    let stake_ref = Pubkey::new_unique();
+    let (mirror, mirror_bump) = get_stake_mirror_pda(&program_id, &stake_ref);
+
+    let mirror_data = borsh::to_vec(&StakeMirror {
+        account_type: AccountType::StakeMirror,
+        owner: Pubkey::new_unique(),
+        bump_seed: mirror_bump,
+        stake_ref,
+        builder,
+        tier: StakeTier::UpTo1Gbps,
+        committed_rate_bits_per_sec: ONE_GBPS,
+        source_slot: 1,
+        relayer: Pubkey::new_unique(),
+        feed_key: Pubkey::default(),
+    })
+    .unwrap();
+
+    let (mut banks_client, payer, recent_blockhash) =
+        init_test_with_accounts(program_id, &[(mirror, mirror_data)]).await;
+    init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+    let (globalstate, _) = get_globalstate_pda(&program_id);
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::AllowStakedFeeds.to_mask(),
+        }),
+        vec![AccountMeta::new(globalstate, false)],
+        &payer,
+    )
+    .await;
+
+    // Every input named here rather than generated, so the expected account below is written out
+    // in full and a reader can see exactly what is being claimed.
+    let exchange = Pubkey::new_unique();
+    let group = Pubkey::new_unique();
+    let (feed_key, feed_bump) = get_feed_pda(&program_id, "shapechk", &exchange);
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
+            code: "shapechk".to_string(),
+            name: "Shape check".to_string(),
+            exchange,
+            groups: vec![group],
+            builder,
+            stake_ref,
+            spec_id: "top-of-book@v1.0.0".to_string(),
+            sla_hash: [9u8; 32],
+            committed_rate_bits_per_sec: ONE_GBPS,
+        }),
+        feed_accounts(feed_key, globalstate),
+        &payer,
+        &[AccountMeta::new(mirror, false)],
+    )
+    .await;
+
+    let written = get_account_data(&mut banks_client, feed_key)
+        .await
+        .expect("the feed should exist")
+        .get_feed()
+        .expect("it should be a feed");
+
+    // The shape the seeded fixtures in this file build by hand. `Feed` derives `PartialEq`, so this
+    // compares every field rather than the few a transition happens to read.
+    let expected = Feed {
+        account_type: AccountType::Feed,
+        owner: payer.pubkey(),
+        bump_seed: feed_bump,
+        code: "shapechk".to_string(),
+        name: "Shape check".to_string(),
+        exchange,
+        groups: vec![group],
+        builder,
+        stake_ref,
+        spec_id: "top-of-book@v1.0.0".to_string(),
+        sla_hash: [9u8; 32],
+        committed_rate_bits_per_sec: ONE_GBPS,
+        status: FeedStatus::Pending,
+        halted_by: Pubkey::default(),
+        retires_at: 0,
+    };
+
+    assert_eq!(
+        written, expected,
+        "a seeded Feed no longer matches what CreateFeed writes, so the fixtures in this file are \
+         stale"
+    );
 }

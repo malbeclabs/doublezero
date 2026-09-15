@@ -30,7 +30,7 @@ use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{get_feed_pda, get_globalstate_pda, get_stake_mirror_pda},
     processors::feed::{
-        create::FeedCreateArgs, delete::FeedDeleteArgs,
+        activate::FeedActivateArgs, create::FeedCreateArgs, delete::FeedDeleteArgs,
         finalize_retirement::FeedFinalizeRetirementArgs, halt::FeedHaltArgs,
         resume::FeedResumeArgs, retire::FeedRetireArgs, update::FeedUpdateArgs,
     },
@@ -124,6 +124,39 @@ pub fn halt_feed(program_id: &Pubkey, payer: &Pubkey, feed: &Pubkey) -> Instruct
         ],
         payer,
     )
+}
+
+/// `ActivateFeed` (variant 124). Accounts: `[feed, globalstate]`, plus the stake mirror for a
+/// staked feed.
+///
+/// Admits a feed that was waiting on a conformance verdict. Signed by a `FEED_AUTHORITY` or
+/// `FOUNDATION` key and by nobody else: the feed's own builder can halt and resume, but a builder
+/// that could admit its own feed would be attesting to its own conformance.
+///
+/// `stake_mirror` is required for a staked feed and must be `None` for a catalog one, as in
+/// `resume_feed`. This is the step that re-reads the mirror, so a staked feed without it is refused
+/// rather than read as having no stake to check.
+pub fn activate_feed(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    feed: &Pubkey,
+    stake_mirror: Option<&Pubkey>,
+) -> Instruction {
+    let (globalstate, _) = get_globalstate_pda(program_id);
+    let mut ix = common::build_with_permission(
+        program_id,
+        DoubleZeroInstruction::ActivateFeed(FeedActivateArgs {}),
+        vec![
+            AccountMeta::new(*feed, false),
+            AccountMeta::new(globalstate, false),
+        ],
+        payer,
+    );
+    if let Some(stake_mirror) = stake_mirror {
+        ix.accounts
+            .push(AccountMeta::new_readonly(*stake_mirror, false));
+    }
+    ix
 }
 
 /// `ResumeFeed` (variant 121). Accounts: `[feed, globalstate]`, then the stake mirror.
@@ -315,6 +348,26 @@ mod tests {
         let resume = resume_feed(&pid, &payer, &feed, None);
         assert_eq!(resume.data[0], 121);
         assert_eq!(resume.accounts, expected);
+
+        let activate = activate_feed(&pid, &payer, &feed, None);
+        assert_eq!(activate.data[0], 124);
+        assert_eq!(activate.accounts, expected);
+
+        // A staked feed's mirror rides after the payer and system program, read-only, because the
+        // step reads it rather than claiming it. `resume_feed` places it the same way, and the
+        // processor finds it by address rather than position, so its place in the list is the
+        // caller-side half of that contract.
+        let mirror = Pubkey::new_unique();
+        let staked_expected = [
+            expected.clone(),
+            vec![AccountMeta::new_readonly(mirror, false)],
+        ]
+        .concat();
+        let staked_activate = activate_feed(&pid, &payer, &feed, Some(&mirror));
+        assert_eq!(staked_activate.data[0], 124);
+        assert_eq!(staked_activate.accounts, staked_expected);
+        let staked_resume = resume_feed(&pid, &payer, &feed, Some(&mirror));
+        assert_eq!(staked_resume.accounts, staked_expected);
 
         let retire = retire_feed(&pid, &payer, &feed);
         assert_eq!(retire.data[0], 122);

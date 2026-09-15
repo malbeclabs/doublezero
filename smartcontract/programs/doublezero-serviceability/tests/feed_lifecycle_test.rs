@@ -1381,3 +1381,111 @@ fn serialized_account(program_id: Pubkey, data: Vec<u8>) -> Account {
         rent_epoch: 0,
     }
 }
+
+/// Guards every hand-built `Feed` in this file against the account `CreateFeed` actually writes.
+///
+/// Several tests here seed a `Feed` directly, because what they exercise is one transition and
+/// driving three instructions to reach it would make a failure say only that the sequence broke.
+/// The cost of seeding is that the fixture asserts against a shape the test believes `CreateFeed`
+/// produces. This is the one test that checks that belief, so a field added, defaulted differently,
+/// or dropped fails here by name instead of leaving every seeded test quietly asserting against an
+/// account that no longer exists.
+#[tokio::test]
+async fn test_a_seeded_feed_matches_what_create_feed_writes() {
+    let builder = Pubkey::new_unique();
+    let program_id = Pubkey::new_unique();
+    let stake_ref = Pubkey::new_unique();
+    let (mirror, mirror_bump) = get_stake_mirror_pda(&program_id, &stake_ref);
+
+    let mirror_data = borsh::to_vec(&StakeMirror {
+        account_type: AccountType::StakeMirror,
+        owner: Pubkey::new_unique(),
+        bump_seed: mirror_bump,
+        stake_ref,
+        builder,
+        tier: StakeTier::UpTo1Gbps,
+        committed_rate_bits_per_sec: ONE_GBPS,
+        source_slot: 1,
+        relayer: Pubkey::new_unique(),
+        feed_key: Pubkey::default(),
+    })
+    .unwrap();
+
+    let (mut banks_client, payer, recent_blockhash) =
+        init_test_with_accounts(program_id, &[(mirror, mirror_data)]).await;
+    init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+    let (globalstate, _) = get_globalstate_pda(&program_id);
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::AllowStakedFeeds.to_mask(),
+        }),
+        vec![AccountMeta::new(globalstate, false)],
+        &payer,
+    )
+    .await;
+
+    // Every input named here rather than generated, so the expected account below is written out
+    // in full and a reader can see exactly what is being claimed.
+    let exchange = Pubkey::new_unique();
+    let group = Pubkey::new_unique();
+    let (feed_key, feed_bump) = get_feed_pda(&program_id, "shapechk", &exchange);
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
+            code: "shapechk".to_string(),
+            name: "Shape check".to_string(),
+            exchange,
+            groups: vec![group],
+            builder,
+            stake_ref,
+            spec_id: "top-of-book@v1.0.0".to_string(),
+            sla_hash: [9u8; 32],
+            committed_rate_bits_per_sec: ONE_GBPS,
+        }),
+        feed_accounts(feed_key, globalstate),
+        &payer,
+        &[AccountMeta::new(mirror, false)],
+    )
+    .await;
+
+    let written = get_account_data(&mut banks_client, feed_key)
+        .await
+        .expect("the feed should exist")
+        .get_feed()
+        .expect("it should be a feed");
+
+    // The shape the seeded fixtures in this file build by hand. `Feed` derives `PartialEq`, so this
+    // compares every field rather than the few a transition happens to read.
+    let expected = Feed {
+        account_type: AccountType::Feed,
+        owner: payer.pubkey(),
+        bump_seed: feed_bump,
+        code: "shapechk".to_string(),
+        name: "Shape check".to_string(),
+        exchange,
+        groups: vec![group],
+        builder,
+        stake_ref,
+        spec_id: "top-of-book@v1.0.0".to_string(),
+        sla_hash: [9u8; 32],
+        committed_rate_bits_per_sec: ONE_GBPS,
+        status: FeedStatus::Pending,
+        halted_by: Pubkey::default(),
+        retires_at: 0,
+    };
+
+    assert_eq!(
+        written, expected,
+        "a seeded Feed no longer matches what CreateFeed writes, so the fixtures in this file are \
+         stale"
+    );
+}

@@ -173,27 +173,6 @@ pub fn create_user_core(
     // Read once and reuse for the epoch gate further down; Clock::get() is a syscall.
     let clock = Clock::get()?;
 
-    // RFC-27. Placed here because the PDA check above has just established that user_account.key
-    // is a legitimate User PDA — under either derivation — so the (client_ip, user_type) pair the
-    // proof binds is the pair this account is derived from. Placed before the already_exists
-    // return below so a rerun is covered too.
-    //
-    // Bound to `effective_owner`, not the transaction payer: the owner-override path lets the
-    // sentinel or a USER_ADMIN holder create a user owned by somebody else, and it is that owner
-    // who must have demonstrated control of `client_ip` — which is also the identity the AccessPass
-    // is keyed on (`accesspass.user_payer` below). On the ordinary path the two are the same
-    // account.
-    validate_ip_ownership_proof(
-        core.instructions_sysvar_account,
-        ip_proof,
-        &globalstate,
-        &effective_owner,
-        &client_ip,
-        user_type as u8,
-        clock.epoch,
-        is_sentinel,
-    )?;
-
     // Check account Types
     if core.device_account.data_is_empty()
         || core.device_account.data.borrow()[0] != AccountType::Device as u8
@@ -237,6 +216,37 @@ pub fn create_user_core(
         );
         return Err(DoubleZeroError::Unauthorized.into());
     }
+
+    // RFC-27. The PDA check further up established that user_account.key is a legitimate User PDA
+    // — under either derivation — so the (client_ip, user_type) pair the proof binds is the pair
+    // this account is derived from. Placed after the access-pass checks directly above, because
+    // whether a proof is *required* depends on the pass: an authority that pinned this exact
+    // address has already attested it, and the checks above are what establish that this pass
+    // names this address and this owner. Still before the already_exists return below, so a rerun
+    // is covered too.
+    //
+    // Bound to `effective_owner`, not the transaction payer: the owner-override path lets the
+    // sentinel or a USER_ADMIN holder create a user owned by somebody else, and it is that owner
+    // who must have demonstrated control of `client_ip` — which is also the identity the AccessPass
+    // is keyed on (`accesspass.user_payer` above). On the ordinary path the two are the same
+    // account.
+    //
+    // A pass at the UNSPECIFIED PDA authorizes any address, and `allow_multiple_ip` says the same
+    // of a pass stored at one, so neither attests the address being claimed and neither waives the
+    // proof. The remaining shape is a pass pinned to exactly this address.
+    let accesspass_is_ip_bound =
+        accesspass.client_ip != Ipv4Addr::UNSPECIFIED && !accesspass.allow_multiple_ip();
+    validate_ip_ownership_proof(
+        core.instructions_sysvar_account,
+        ip_proof,
+        &globalstate,
+        &effective_owner,
+        &client_ip,
+        user_type as u8,
+        clock.epoch,
+        is_sentinel,
+        accesspass_is_ip_bound,
+    )?;
 
     // Idempotent create: an existing user matching the request is a no-op, so a caller can retry
     // safely. Checked after the pass identity checks (PDA, user_payer, client_ip) so a no-op still

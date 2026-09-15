@@ -227,6 +227,69 @@ impl Fixture {
         .await;
     }
 
+    /// Re-issues the fixture's pass with `allow_multiple_ip` set, which is what makes a pass
+    /// stored at a specific address authorize any address instead — the shape that still requires
+    /// a proof once the flag is on. Same PDA, so the accounts every test builds are unchanged, and
+    /// `SetAccessPass` preserves the multicast allowlists it does not own.
+    async fn allow_multiple_ip(&mut self) {
+        let payer = self.payer.insecure_clone();
+        let (program_id, globalstate, accesspass) =
+            (self.program_id, self.globalstate, self.accesspass);
+        let blockhash = wait_for_new_blockhash(self.banks()).await;
+        execute_transaction(
+            self.banks(),
+            blockhash,
+            program_id,
+            DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+                accesspass_type: AccessPassType::Prepaid,
+                client_ip: CLIENT_IP,
+                last_access_epoch: 9999,
+                allow_multiple_ip: true,
+                max_unicast_users: 4,
+                max_multicast_users: 4,
+            }),
+            vec![
+                AccountMeta::new(accesspass, false),
+                AccountMeta::new(globalstate, false),
+                AccountMeta::new(payer.pubkey(), false),
+            ],
+            &payer,
+        )
+        .await;
+    }
+
+    /// Issues a pass at the wildcard `0.0.0.0` PDA and points the fixture at it, the other shape
+    /// that authorizes any address. The pass the fixture created in `setup` stays where it is;
+    /// nothing reads it once `self.accesspass` moves.
+    async fn use_wildcard_accesspass(&mut self) {
+        let payer = self.payer.insecure_clone();
+        let (program_id, globalstate) = (self.program_id, self.globalstate);
+        let (wildcard, _) =
+            get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer.pubkey());
+        let blockhash = wait_for_new_blockhash(self.banks()).await;
+        execute_transaction(
+            self.banks(),
+            blockhash,
+            program_id,
+            DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+                accesspass_type: AccessPassType::Prepaid,
+                client_ip: Ipv4Addr::UNSPECIFIED,
+                last_access_epoch: 9999,
+                allow_multiple_ip: false,
+                max_unicast_users: 4,
+                max_multicast_users: 4,
+            }),
+            vec![
+                AccountMeta::new(wildcard, false),
+                AccountMeta::new(globalstate, false),
+                AccountMeta::new(payer.pubkey(), false),
+            ],
+            &payer,
+        )
+        .await;
+        self.accesspass = wildcard;
+    }
+
     /// Points `ip_verifier_authority_pk` at `pubkey` — including `Pubkey::default()`, to model an
     /// environment where no verifier has been configured yet.
     async fn set_verifier(&mut self, pubkey: Pubkey) {
@@ -270,6 +333,17 @@ impl Fixture {
     /// shred-oracle flow does before it creates a validator-owned user. Returns the AccessPass PDA,
     /// which is keyed on the owner rather than the payer.
     async fn provision_owner(&mut self, owner: Pubkey, client_ip: Ipv4Addr) -> Pubkey {
+        self.provision_owner_pass(owner, client_ip, false).await
+    }
+
+    /// As `provision_owner`, with the pass shape chosen by the caller: `allow_multiple_ip` makes
+    /// it a wildcard pass, which still requires a proof once the flag is on.
+    async fn provision_owner_pass(
+        &mut self,
+        owner: Pubkey,
+        client_ip: Ipv4Addr,
+        allow_multiple_ip: bool,
+    ) -> Pubkey {
         let program_id = self.program_id;
         let globalstate = self.globalstate;
         let mgroup = self.mgroup;
@@ -285,7 +359,7 @@ impl Fixture {
                 accesspass_type: AccessPassType::Prepaid,
                 client_ip,
                 last_access_epoch: 9999,
-                allow_multiple_ip: false,
+                allow_multiple_ip,
                 max_unicast_users: 4,
                 max_multicast_users: 4,
             }),
@@ -700,9 +774,56 @@ async fn test_valid_proof_is_accepted_for_create_subscribe_user() {
     assert!(f.user_exists(CLIENT_IP, UserType::Multicast).await);
 }
 
+/// The IP-bound waiver on the subscribe path. Both user-creation instructions share
+/// `create_user_core`, so the exemption reaches this one by construction — asserted rather than
+/// assumed, because a pass shape that admits an IBRL user and refuses a multicast one would be a
+/// silent asymmetry between the two.
+#[tokio::test]
+async fn test_create_subscribe_user_without_proof_is_accepted_on_an_ip_bound_pass() {
+    let mut f = setup().await;
+    f.require_proof().await;
+
+    let user = f.user_pda(CLIENT_IP, UserType::Multicast);
+    let mut accounts = f.create_subscribe_accounts(user);
+    accounts.push(AccountMeta::new(f.payer.pubkey(), true));
+    accounts.push(AccountMeta::new(
+        solana_system_interface::program::ID,
+        false,
+    ));
+
+    let payer = f.payer.insecure_clone();
+    let program_id = f.program_id;
+    process_transaction_with_prelude(
+        f.banks(),
+        program_id,
+        &DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: CLIENT_IP,
+            publisher: false,
+            subscriber: true,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+            owner: Pubkey::default(),
+            ip_proof: None,
+            extra_group_count: 0,
+        }),
+        &accounts,
+        &payer,
+        &[],
+    )
+    .await
+    .expect("an IP-bound pass waives the proof requirement on CreateSubscribeUser too");
+
+    assert!(f.user_exists(CLIENT_IP, UserType::Multicast).await);
+}
+
 #[tokio::test]
 async fn test_create_subscribe_user_without_proof_is_rejected() {
     let mut f = setup().await;
+    // A wildcard pass, so this is the requirement biting on the subscribe path rather than the
+    // IP-bound waiver applying.
+    f.allow_multiple_ip().await;
     f.require_proof().await;
 
     let user = f.user_pda(CLIENT_IP, UserType::Multicast);
@@ -742,11 +863,43 @@ async fn test_create_subscribe_user_without_proof_is_rejected() {
 #[tokio::test]
 async fn test_missing_proof_is_rejected() {
     let mut f = setup().await;
+    // A wildcard pass: nothing names the address being claimed, which is the case the proof is
+    // the only evidence for.
+    f.allow_multiple_ip().await;
     f.require_proof().await;
 
     let result = f.create_user(None, &[], false).await;
     assert_rejected(result, DoubleZeroError::IpOwnershipProofRequired);
     assert!(!f.user_exists(CLIENT_IP, UserType::IBRL).await);
+}
+
+#[tokio::test]
+async fn test_missing_proof_is_rejected_for_a_pass_at_the_wildcard_pda() {
+    let mut f = setup().await;
+    // The other wildcard shape: stored at 0.0.0.0 rather than flagged. Both authorize any
+    // globally-routable address, so neither attests the one being claimed.
+    f.use_wildcard_accesspass().await;
+    f.require_proof().await;
+
+    let result = f.create_user(None, &[], false).await;
+    assert_rejected(result, DoubleZeroError::IpOwnershipProofRequired);
+    assert!(!f.user_exists(CLIENT_IP, UserType::IBRL).await);
+}
+
+/// The waiver: a pass pinned to exactly this address is an attestation by a privileged issuer, so
+/// a creation carrying no proof is accepted even with the flag on. Without this, a host that
+/// cannot originate from its pinned address — asymmetric routing, NAT, a verifier unreachable
+/// from that source — could not connect at all.
+#[tokio::test]
+async fn test_missing_proof_is_accepted_on_an_ip_bound_pass() {
+    let mut f = setup().await;
+    // The fixture's pass is issued for CLIENT_IP with allow_multiple_ip clear.
+    f.require_proof().await;
+
+    f.create_user(None, &[], false)
+        .await
+        .expect("an IP-bound pass waives the proof requirement");
+    assert!(f.user_exists(CLIENT_IP, UserType::IBRL).await);
 }
 
 #[tokio::test]
@@ -781,6 +934,9 @@ async fn test_proof_for_a_different_payer_is_rejected() {
     assert_rejected(result, DoubleZeroError::IpProofPayerMismatch);
 }
 
+/// Also the boundary of the IP-bound waiver: the fixture's pass is pinned to `CLIENT_IP`, so a
+/// creation carrying *no* proof would be accepted here. A proof naming another address is not —
+/// the waiver covers absence, never a proof that fails validation.
 #[tokio::test]
 async fn test_proof_for_a_different_client_ip_is_rejected() {
     let mut f = setup().await;
@@ -910,9 +1066,10 @@ async fn test_non_sentinel_payer_is_not_exempt() {
 
     // The mirror of the exemption test: the fixture's sentinel authority is somebody else, so the
     // same creation from the same payer is rejected. Without this, "sentinel is exempt" could be
-    // passing because the check is vacuous.
+    // passing because the check is vacuous. The owner's pass is a wildcard one, so the rejection
+    // is about the payer not being the sentinel rather than about the pass shape waiving it.
     let owner = Pubkey::new_unique();
-    let accesspass = f.provision_owner(owner, CLIENT_IP).await;
+    let accesspass = f.provision_owner_pass(owner, CLIENT_IP, true).await;
 
     let result = f
         .create_subscribe_with_owner(owner, accesspass, CLIENT_IP, None)
@@ -1311,6 +1468,10 @@ async fn test_rerun_without_a_proof_is_rejected() {
     f.create_user_with_valid_proof()
         .await
         .expect("initial creation");
+
+    // A wildcard pass from here on, which is the shape that still requires a proof. Flipped after
+    // the first creation so the valid proof above is still the thing that admitted it.
+    f.allow_multiple_ip().await;
 
     // create_user_core returns early for an existing, matching user. Validating the proof before
     // that return is what stops an account squatted earlier from absorbing every later call

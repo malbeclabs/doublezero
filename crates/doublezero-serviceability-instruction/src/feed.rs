@@ -126,8 +126,6 @@ pub fn halt_feed(program_id: &Pubkey, payer: &Pubkey, feed: &Pubkey) -> Instruct
     )
 }
 
-/// `ResumeFeed` (variant 121). Accounts: `[feed, globalstate]`, then the stake mirror.
-///
 /// `ActivateFeed` (variant 124). Accounts: `[feed, globalstate]`, plus the stake mirror for a
 /// staked feed.
 ///
@@ -161,6 +159,8 @@ pub fn activate_feed(
     ix
 }
 
+/// `ResumeFeed` (variant 121). Accounts: `[feed, globalstate]`, then the stake mirror.
+///
 /// Puts a halted feed back to publishing. Signed by the keys `halt_feed` accepts, except that an
 /// operator's halt takes an operator to lift.
 ///
@@ -348,6 +348,26 @@ mod tests {
         let resume = resume_feed(&pid, &payer, &feed, None);
         assert_eq!(resume.data[0], 121);
         assert_eq!(resume.accounts, expected);
+
+        let activate = activate_feed(&pid, &payer, &feed, None);
+        assert_eq!(activate.data[0], 124);
+        assert_eq!(activate.accounts, expected);
+
+        // A staked feed's mirror rides after the payer and system program, read-only, because the
+        // step reads it rather than claiming it. `resume_feed` places it the same way, and the
+        // processor finds it by address rather than position, so its place in the list is the
+        // caller-side half of that contract.
+        let mirror = Pubkey::new_unique();
+        let staked_expected = [
+            expected.clone(),
+            vec![AccountMeta::new_readonly(mirror, false)],
+        ]
+        .concat();
+        let staked_activate = activate_feed(&pid, &payer, &feed, Some(&mirror));
+        assert_eq!(staked_activate.data[0], 124);
+        assert_eq!(staked_activate.accounts, staked_expected);
+        let staked_resume = resume_feed(&pid, &payer, &feed, Some(&mirror));
+        assert_eq!(staked_resume.accounts, staked_expected);
 
         let retire = retire_feed(&pid, &payer, &feed);
         assert_eq!(retire.data[0], 122);

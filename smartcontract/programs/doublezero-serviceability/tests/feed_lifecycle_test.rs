@@ -4,6 +4,7 @@
 //! the status, so a staked feed sat in `Pending` for life and no feed could stop publishing.
 
 use doublezero_serviceability::{
+    entrypoint::process_instruction,
     error::DoubleZeroError,
     instructions::DoubleZeroInstruction,
     pda::{get_feed_pda, get_globalstate_pda, get_stake_mirror_pda},
@@ -23,11 +24,13 @@ use doublezero_serviceability::{
         accounttype::AccountType,
         feature_flags::FeatureFlag,
         feed::{Feed, FeedStatus},
+        globalstate::GlobalState,
         stake_mirror::{StakeMirror, StakeTier},
     },
 };
 use solana_program_test::*;
 use solana_sdk::{
+    account::Account,
     instruction::AccountMeta,
     pubkey::Pubkey,
     signature::{Keypair, Signer},
@@ -1273,4 +1276,108 @@ async fn test_only_a_pending_feed_activates() {
     )
     .await;
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::FeedNotActivatable));
+}
+
+/// A builder that also holds a catalog role still cannot admit its own feed.
+///
+/// `authorize` answers on roles alone, so a builder sitting in the foundation allowlist would pass
+/// it. That is the one way a feed gets admitted by the party it exists to be checked against, so
+/// the builder is refused by name before the roles are read.
+#[tokio::test]
+async fn test_a_builder_in_the_foundation_allowlist_still_cannot_activate() {
+    let builder = test_payer();
+    let program_id = Pubkey::new_unique();
+    let stake_ref = Pubkey::new_unique();
+    let exchange = Pubkey::new_unique();
+    let (feed_key, feed_bump) = get_feed_pda(&program_id, "bothhats", &exchange);
+    let (mirror_key, mirror_bump) = get_stake_mirror_pda(&program_id, &stake_ref);
+
+    let mut program_test = ProgramTest::new(
+        "doublezero_serviceability",
+        program_id,
+        processor!(process_instruction),
+    );
+
+    // The builder is the foundation here, which is the whole point of the test.
+    let (globalstate_pubkey, globalstate_bump) = get_globalstate_pda(&program_id);
+    let globalstate = GlobalState {
+        bump_seed: globalstate_bump,
+        foundation_allowlist: vec![builder.pubkey()],
+        ..GlobalState::default()
+    };
+    program_test.add_account(
+        globalstate_pubkey,
+        serialized_account(program_id, borsh::to_vec(&globalstate).unwrap()),
+    );
+
+    let feed = Feed {
+        account_type: AccountType::Feed,
+        owner: builder.pubkey(),
+        bump_seed: feed_bump,
+        code: "bothhats".to_string(),
+        name: "Both hats".to_string(),
+        exchange,
+        groups: vec![Pubkey::new_unique()],
+        builder: builder.pubkey(),
+        stake_ref,
+        spec_id: "top-of-book@v1.0.0".to_string(),
+        sla_hash: [9u8; 32],
+        committed_rate_bits_per_sec: ONE_GBPS,
+        status: FeedStatus::Pending,
+        halted_by: Pubkey::default(),
+        retires_at: 0,
+    };
+    program_test.add_account(
+        feed_key,
+        serialized_account(program_id, borsh::to_vec(&feed).unwrap()),
+    );
+
+    let mirror = StakeMirror {
+        account_type: AccountType::StakeMirror,
+        owner: Pubkey::new_unique(),
+        bump_seed: mirror_bump,
+        stake_ref,
+        builder: builder.pubkey(),
+        tier: StakeTier::UpTo1Gbps,
+        committed_rate_bits_per_sec: ONE_GBPS,
+        source_slot: 1,
+        relayer: Pubkey::new_unique(),
+        feed_key,
+    };
+    program_test.add_account(
+        mirror_key,
+        serialized_account(program_id, borsh::to_vec(&mirror).unwrap()),
+    );
+
+    let (mut banks_client, payer, _recent_blockhash) = program_test.start().await;
+    transfer(&mut banks_client, &payer, &builder.pubkey(), 100_000_000).await;
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::ActivateFeed(FeedActivateArgs {}),
+        feed_accounts(feed_key, globalstate_pubkey),
+        &builder,
+        &[AccountMeta::new_readonly(mirror_key, false)],
+    )
+    .await;
+
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+    assert_eq!(
+        feed_status(&mut banks_client, feed_key).await,
+        FeedStatus::Pending
+    );
+}
+
+/// A program-owned account holding `data`, rented to size.
+fn serialized_account(program_id: Pubkey, data: Vec<u8>) -> Account {
+    Account {
+        lamports: solana_sdk::rent::Rent::default()
+            .minimum_balance(data.len())
+            .max(1),
+        data,
+        owner: program_id,
+        executable: false,
+        rent_epoch: 0,
+    }
 }

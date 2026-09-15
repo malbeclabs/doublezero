@@ -1,8 +1,7 @@
 use crate::{
     authorize::authorize,
     error::DoubleZeroError,
-    pda::get_stake_mirror_pda,
-    processors::feed::require_stake_still_covers,
+    processors::feed::{require_stake_still_covers, split_stake_mirror},
     serializer::try_acc_write,
     state::{
         feed::{Feed, FeedStatus},
@@ -35,7 +34,9 @@ pub struct FeedActivateArgs {}
 ///
 /// The builder cannot sign this, unlike halt and resume, which RFC-28 makes its own levers. A
 /// builder that could admit its own feed would be attesting to its own conformance, which is the
-/// one thing the Pending state exists to prevent.
+/// one thing the Pending state exists to prevent. It is refused by name before the permission
+/// check rather than left to it, because a builder may also hold `FEED_AUTHORITY` or sit in the
+/// foundation allowlist, and `authorize` would let it through on that strength.
 pub fn process_activate_feed(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -61,11 +62,21 @@ pub fn process_activate_feed(
 
     // The stake mirror rides after the fixed accounts, found by its address rather than its
     // position, so a catalog feed's caller is not forced to send one.
-    let tail: Vec<&AccountInfo> = accounts_iter.collect();
-    let mirror_key = (feed.builder != Pubkey::default())
-        .then(|| get_stake_mirror_pda(program_id, &feed.stake_ref).0);
-    let mirror_account = mirror_key.and_then(|k| tail.iter().copied().find(|a| a.key == &k));
-    let mut authorize_iter = tail.iter().copied().filter(|a| Some(*a.key) != mirror_key);
+    let (mirror_account, authorize_candidates) =
+        split_stake_mirror(program_id, &feed.builder, &feed.stake_ref, accounts_iter);
+    let mut authorize_iter = authorize_candidates.into_iter();
+
+    // Refused before the roles are read, not instead of reading them. A builder can also hold
+    // `FEED_AUTHORITY` or sit in the foundation allowlist, and `authorize` would admit it on that
+    // strength, which is the one way a feed gets admitted by the party it is meant to be checked
+    // against. Whether the key wears another hat is beside the point: it is this feed's builder.
+    if feed.builder != Pubkey::default() && &feed.builder == payer_account.key {
+        msg!(
+            "Feed {} cannot be activated by its own builder",
+            feed_account.key
+        );
+        return Err(DoubleZeroError::NotAllowed.into());
+    }
 
     authorize(
         program_id,

@@ -90,10 +90,8 @@ type Collector struct {
 	mu               sync.RWMutex      // Protects probeToLocation, measurementState and measurementStateLoaded
 	measurementState *MeasurementState // Shared state; initialized in Run()
 
-	// measurementStateLoaded records whether the state file has been read successfully.
-	// Reconciliation deletes every measurement it has no metadata for, so a tracker we
-	// failed to read from disk would take the whole fleet down with it; management is
-	// refused until a Load succeeds (#4131, #4169).
+	// Reconciliation deletes every measurement it has no metadata for, so management is
+	// refused until the state file has been read successfully (#4131, #4169).
 	measurementStateLoaded bool
 }
 
@@ -808,13 +806,12 @@ func sourcesWithoutSamples(measurements []Measurement, state *MeasurementState, 
 	return byLocation, total, sample
 }
 
-// ensureMeasurementStateLoaded creates the shared measurement state if needed and reads
-// it from disk, retrying on every call until a read succeeds. A missing file is a clean
-// empty state and counts as loaded, which is what a first deploy looks like.
+// ensureMeasurementStateLoaded creates the shared measurement state if needed and reads it
+// from disk, retrying on every call until a read succeeds. A missing file is a clean empty
+// state, which is what a first deploy looks like.
 //
-// Callers that reconcile the fleet must refuse to run while this returns an error. Export
-// is deliberately not gated: it only reads per-measurement cursors, so an empty tracker
-// costs it a refetch rather than the fleet.
+// Callers that reconcile the fleet must refuse to run while this returns an error. Export is
+// deliberately not gated: an empty tracker costs it a refetch rather than the fleet.
 func (c *Collector) ensureMeasurementStateLoaded(stateDir string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -835,9 +832,8 @@ func (c *Collector) ensureMeasurementStateLoaded(stateDir string) error {
 func (c *Collector) RunRipeAtlasMeasurementCreation(ctx context.Context, dryRun bool, probesPerLocation int, stateDir string, samplingInterval time.Duration) error {
 	c.log.Info("Running RIPE Atlas measurement creation")
 
-	// Reconcile only against state we have actually read. Retried here rather than only
-	// at startup so a state file repaired out of band resumes management without a
-	// restart.
+	// Retried here rather than only at startup, so a state file repaired out of band
+	// resumes management without a restart.
 	if err := c.ensureMeasurementStateLoaded(stateDir); err != nil {
 		c.log.Error("Refusing to manage measurements: measurement state could not be loaded",
 			slog.String("error", err.Error()))
@@ -907,10 +903,9 @@ func (c *Collector) RunRipeAtlasMeasurementCreation(ctx context.Context, dryRun 
 }
 
 func (c *Collector) configureMeasurements(ctx context.Context, locationMatches []LocationProbeMatch, dryRun bool, probesPerLocation int, stateDir string, samplingInterval time.Duration) error {
-	// Step 1: Get measurement state (shared instance from callers that went through
-	// RunRipeAtlasMeasurementCreation, or fallback for standalone/test usage). Either way
-	// a state file we cannot read fails the cycle rather than reconciling against an
-	// empty tracker, which deletes every measurement it finds no metadata for.
+	// Step 1: Get measurement state (shared instance from RunRipeAtlasMeasurementCreation,
+	// or fallback for standalone/test usage). An unreadable file fails the cycle rather
+	// than reconciling against an empty tracker.
 	measurementState := c.measurementState
 	if measurementState == nil {
 		timestampFile := filepath.Join(stateDir, TimestampFileName)
@@ -937,11 +932,10 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 	wantedMeasurements := c.generateWantedMeasurements(locationMatches, probesPerLocation, measurementState)
 
 	// Step 4: Get all existing measurements
-	//
-	// A failed fetch is not an empty fleet. Substituting an empty list made every wanted
-	// measurement look missing and every tracked one look orphaned, so a single API blip
-	// deleted and recreated the entire fleet (#4169). Skipping the cycle costs one
-	// interval without reconciliation, which is the cheaper of the two outcomes.
+	// A failed fetch is not an empty fleet: substituting an empty list made every wanted
+	// measurement look missing and every tracked one orphaned, so one API blip deleted and
+	// recreated the entire fleet (#4169). Losing an interval of reconciliation is the
+	// cheaper failure.
 	existingMeasurements, err := c.client.GetAllMeasurements(ctx, c.env)
 	if err != nil {
 		c.log.Error("Failed to get existing measurements, skipping this measurement management cycle",
@@ -1742,9 +1736,8 @@ func (c *Collector) Run(ctx context.Context, dryRun bool, probesPerLocation int,
 		return fmt.Errorf("RIPE Atlas export interval must be positive, got %v", exportInterval)
 	}
 
-	// Initialize shared measurement state once, used by both goroutines. A failed load is
-	// not fatal — a corrupt state file must not take the exporter down — but it holds off
-	// measurement management, which retries the load each cycle.
+	// Shared by both goroutines. A failed load is not fatal — a corrupt state file must not
+	// take the exporter down — but it holds off measurement management.
 	if err := c.ensureMeasurementStateLoaded(stateDir); err != nil {
 		c.log.Error("Failed to load measurement state at startup, measurement management is held off until it loads",
 			slog.String("error", err.Error()))

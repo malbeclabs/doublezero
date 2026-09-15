@@ -828,8 +828,7 @@ func TestInternetLatency_RIPEAtlas_State_SaveIsAtomic(t *testing.T) {
 	ms.SetMetadata(100, MeasurementMeta{TargetLocation: "nyc", TargetProbeID: 1})
 	require.NoError(t, ms.Save())
 
-	// The temp file must not survive the save: a leftover .tmp in the state directory is
-	// litter that accumulates once per management cycle.
+	// A leftover .tmp would accumulate once per management cycle.
 	entries, err := os.ReadDir(tempDir)
 	require.NoError(t, err)
 	require.Len(t, entries, 1, "only the state file should remain")
@@ -838,8 +837,7 @@ func TestInternetLatency_RIPEAtlas_State_SaveIsAtomic(t *testing.T) {
 	firstStat, err := os.Stat(filename)
 	require.NoError(t, err)
 
-	// A second save over an existing file replaces it by rename rather than truncating it
-	// in place, so the target is a different inode and never observed half-written.
+	// A rename leaves a different inode; a truncate-in-place would keep the same one.
 	ms.SetMetadata(200, MeasurementMeta{TargetLocation: "lon", TargetProbeID: 2})
 	require.NoError(t, ms.Save())
 
@@ -864,10 +862,8 @@ func TestInternetLatency_RIPEAtlas_State_SaveFailureLeavesTargetIntact(t *testin
 
 	tempDir := t.TempDir()
 
-	// Point the state at a non-empty directory: encoding and syncing the temp file
-	// succeed, and the rename onto the target is what fails. That is the step a kill
-	// would interrupt, and the assertion is the same either way — whatever is at the
-	// target path is untouched, and no temp file is left behind.
+	// A directory at the target path fails the save at the rename, which is the step a
+	// kill would interrupt. Either way the target must survive untouched.
 	target := filepath.Join(tempDir, "timestamps.json")
 	require.NoError(t, os.Mkdir(target, 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(target, "sentinel"), []byte("intact"), 0644))

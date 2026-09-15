@@ -252,16 +252,15 @@ func (ms *MeasurementState) MigratedTargetMarks() int {
 }
 
 // Save writes the tracker to disk atomically: encode into a temp file in the same
-// directory, then rename over the target. Truncating the real file in place and encoding
-// into it leaves a torn or empty file if the process is killed mid-write, and a tracker
-// that fails to decode or decodes empty makes the next management cycle treat every live
-// measurement as unaccounted for and delete it (#4131, #4169).
+// directory, then rename over the target. A truncate-in-place write killed mid-flight
+// leaves a torn file, which reads as "no metadata" and makes the next management cycle
+// delete every live measurement (#4131, #4169).
 func (ms *MeasurementState) Save() error {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
-	// os.CreateTemp creates with 0600; keep whatever mode the state file already has so
-	// a rewrite does not tighten it, and fall back to os.Create's usual 0644.
+	// os.CreateTemp creates with 0600, so carry the existing mode (or os.Create's 0644)
+	// over rather than tightening it on every rewrite.
 	mode := os.FileMode(0644)
 	if info, err := os.Stat(ms.filename); err == nil {
 		mode = info.Mode().Perm()

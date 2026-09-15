@@ -3096,16 +3096,14 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_DryRunDoesNotPersistMar
 }
 
 // TestInternetLatency_RIPEAtlas_ConfigureMeasurements_GetAllMeasurementsError verifies that a
-// failed measurement fetch skips the cycle instead of reconciling against an empty fleet.
-// Treating the failure as "no measurements exist" recreated every wanted measurement and
-// deleted every tracked one, so one API blip rebuilt the whole fleet (#4169).
+// failed measurement fetch skips the cycle. Read as "no measurements exist", it recreated
+// every wanted measurement and deleted every tracked one (#4169).
 func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_GetAllMeasurementsError(t *testing.T) {
 	t.Parallel()
 
 	log := logger.With("test", t.Name())
 	stateDir := t.TempDir()
 
-	// State describing a live fleet, as it would look after a normal cycle.
 	state := NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
 	state.SetMetadata(1001, MeasurementMeta{
 		TargetLocation: "lon",
@@ -3168,8 +3166,7 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_GetAllMeasurementsError
 	require.Zero(t, created, "no measurement should be created when the existing fleet is unknown")
 	require.Zero(t, stopped, "no measurement should be removed when the existing fleet is unknown")
 
-	// Metadata must survive, in memory and on disk: losing it is what made the next cycle
-	// delete the fleet for missing metadata.
+	// Losing metadata is what made the next cycle delete the fleet for missing metadata.
 	require.Len(t, state.GetAllMetadata(), 1)
 	require.Equal(t, "lon", state.GetAllMetadata()[1001].TargetLocation)
 
@@ -3179,10 +3176,9 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_GetAllMeasurementsError
 	require.Equal(t, "lon", reloaded.GetAllMetadata()[1001].TargetLocation)
 }
 
-// TestInternetLatency_RIPEAtlas_MeasurementCreation_GatedOnStateLoad verifies that a state
-// file that cannot be read holds off measurement management entirely, and that a repaired
-// file resumes it without a restart. Running with an empty tracker marked every live
-// measurement as missing metadata and deleted it (#4131).
+// TestInternetLatency_RIPEAtlas_MeasurementCreation_GatedOnStateLoad verifies that an
+// unreadable state file holds off measurement management entirely, and that a repaired file
+// resumes it without a restart. An empty tracker deleted the whole fleet (#4131).
 func TestInternetLatency_RIPEAtlas_MeasurementCreation_GatedOnStateLoad(t *testing.T) {
 	t.Parallel()
 
@@ -3255,7 +3251,6 @@ func TestInternetLatency_RIPEAtlas_MeasurementCreation_GatedOnStateLoad(t *testi
 	require.Zero(t, locationLookups, "management should stop before it enumerates locations")
 	mu.Unlock()
 
-	// Repairing the file out of band resumes management on the next cycle.
 	require.NoError(t, os.WriteFile(stateFile, []byte(`{"metadata": {}}`), 0644))
 
 	require.NoError(t, c.RunRipeAtlasMeasurementCreation(t.Context(), false, 1, stateDir, 1*time.Minute))

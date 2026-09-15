@@ -87,15 +87,14 @@ runs:
         exit 1
 
     # Cargo looks for a subcommand in $CARGO_HOME/bin before it looks at PATH, and
-    # Swatinem/rust-cache carries that directory from run to run. A cargo-build-sbf
-    # left there by an older Agave therefore shadows the one just installed, and
-    # which of the two runs comes down to whether the cache hit: on a hit the old
-    # one drives the host Cargo and tolerates any platform-tools; on a miss the new
-    # one runs the platform-tools Cargo instead. That is how a tree that builds on
-    # one run fails on the next with nothing changed, and it also means the programs
-    # were compiled by whichever rustc that coin landed on. Take the stale copies
-    # out so the version this action installed is the one that runs.
-    - name: Drop shadowed SBF build tools
+    # Swatinem/rust-cache carries that directory from run to run, so a cargo-build-sbf
+    # left there would quietly shadow the one this action installs. No run has been
+    # observed carrying one, so this is a guard rather than a fix for anything seen;
+    # what earns its place is the last two lines, which put the resolved path and
+    # version in the log. The same build has come out both ways on this repo -- one
+    # run driving the host Cargo, the next driving the platform-tools Cargo, which
+    # fails on edition2024 -- and the logs could not say which binary ran.
+    - name: Pin and report the SBF build tools
       shell: bash
       run: |
         set -euo pipefail

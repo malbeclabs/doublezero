@@ -4,18 +4,35 @@ GENESIS_DZ_EPOCH=31
 
 set -eu
 
-# Wait for Solana fork to start. Only try for 60 seconds.
-for i in {1..60}; do
+# Wait for the Solana fork to become reachable. The caller starts the loader in
+# the background; it clones accounts from mainnet-beta, so it is slower to serve
+# than a bare validator boot.
+FORK_WAIT_SECONDS=180
+FORK_LOG=solana-fork.log
+FORK_PID_FILE=solana-fork.pid
+
+for _ in $(seq 1 $((FORK_WAIT_SECONDS / 2))); do
     if solana cluster-version -u l > /dev/null 2>&1; then
         echo "Solana fork is ready."
         break
     fi
-        sleep 2
+    # A loader that died is reported now rather than after the whole window: the
+    # timeout alone cannot distinguish a crash from a slow start.
+    if [ -f "$FORK_PID_FILE" ] && ! kill -0 "$(cat "$FORK_PID_FILE")" 2>/dev/null; then
+        echo "Solana fork loader exited before becoming ready." >&2
+        if [ -f "$FORK_LOG" ]; then
+            tail -50 "$FORK_LOG" >&2
+        fi
+        exit 1
+    fi
+    sleep 2
 done
 
-# If not ready after 60 seconds, bail out.
 if ! solana cluster-version -u l > /dev/null 2>&1; then
-    echo "Solana fork did not start within 60 seconds." >&2
+    echo "Solana fork did not start within ${FORK_WAIT_SECONDS} seconds." >&2
+    if [ -f "$FORK_LOG" ]; then
+        tail -50 "$FORK_LOG" >&2
+    fi
     exit 1
 fi
 

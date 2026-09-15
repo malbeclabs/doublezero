@@ -35,3 +35,7 @@ dev/.deploy/
 # Ignore the directory used for checking out the monitor tool in CI
 /doublezero_monitor/
 .claude/settings.local.json
+
+# Output of the backgrounded fork loader in the offchain fork tests.
+/solana-fork.log
+/solana-fork.pid

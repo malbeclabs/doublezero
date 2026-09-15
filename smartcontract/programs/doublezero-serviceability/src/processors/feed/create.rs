@@ -101,6 +101,7 @@ pub fn process_create_feed(
     // behalf works exactly as it did.
     let globalstate = GlobalState::try_from(globalstate_account)?;
     if !stake_authorizes(
+        program_id,
         payer_account.key,
         value,
         stake_mirror_account,
@@ -197,11 +198,14 @@ pub fn process_create_feed(
 
 /// Whether a stake, rather than a catalog permission, admits this create.
 ///
-/// Deliberately the cheap half of the question. It establishes that the caller is a builder
-/// talking about its own stake, and leaves whether that stake admits the feed to
-/// `verify_stake_covers_rate`, which runs below and refuses before anything reveals whether the
-/// feed exists. So a builder whose bond is too small is told that, and a caller with no claim on
-/// any stake falls through to the permission check and sees `NotAllowed`.
+/// Reads the mirror rather than trusting that one is there, and leaves only the tier question to
+/// `verify_stake_covers_rate` below. That split is what lets a builder whose bond is too small be
+/// told which, while a caller with no claim on any stake falls through to the permission check and
+/// sees `NotAllowed`.
+///
+/// Every check here is on what the ledger holds. `builder` and `stake_ref` are both caller-supplied
+/// arguments, and an earlier version of this gate took them at their word: it admitted anyone who
+/// named themselves `builder` and attached the empty account that any `stake_ref` derives.
 ///
 /// `&value.builder == payer` is the load-bearing line. `builder` is a caller-supplied argument, so
 /// without it one builder's bond creates another builder's feed.
@@ -211,15 +215,39 @@ pub fn process_create_feed(
 /// It stays because an authorization decision that is safe only because of a validation running
 /// later is a trap for whoever edits either one next.
 fn stake_authorizes(
+    program_id: &Pubkey,
     payer: &Pubkey,
     value: &FeedCreateArgs,
     stake_mirror_account: Option<&AccountInfo>,
     feature_flags: u128,
 ) -> bool {
-    is_feature_enabled(feature_flags, FeatureFlag::AllowStakedFeeds)
-        && value.builder != Pubkey::default()
-        && &value.builder == payer
-        && stake_mirror_account.is_some()
+    if !is_feature_enabled(feature_flags, FeatureFlag::AllowStakedFeeds)
+        || value.builder == Pubkey::default()
+        || &value.builder != payer
+    {
+        return false;
+    }
+
+    // An account at the right address is not a mirror. The address is derived from `stake_ref`,
+    // which is a caller-supplied argument, so anyone can name a stake nobody posted and attach the
+    // empty account its seeds derive. Reading it is what makes this a stake rather than an
+    // assertion that one exists.
+    let Some(account) = stake_mirror_account else {
+        return false;
+    };
+    if account.data_is_empty() || account.owner != program_id {
+        return false;
+    }
+    let Ok(mirror) = StakeMirror::try_from(account) else {
+        return false;
+    };
+    if mirror.validate().is_err() {
+        return false;
+    }
+
+    // The builder the mirror records, not the one the caller claimed. `value.builder` is an
+    // argument; this is what the relayer wrote.
+    &mirror.builder == payer
 }
 
 /// Validate a feed `name`, shared by create and update.

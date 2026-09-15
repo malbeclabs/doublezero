@@ -1251,3 +1251,74 @@ async fn test_a_builder_whose_tier_falls_short_is_told_which() {
 
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::StakeDoesNotCoverRate));
 }
+
+/// The gate reads the mirror rather than trusting one is there.
+///
+/// The address is derived from `stake_ref`, a caller-supplied argument, so anyone can name a stake
+/// nobody posted and attach the empty account its seeds derive. An earlier version of this gate
+/// took that for a stake: it skipped `authorize` and answered with a stake error, which told an
+/// unauthorized caller apart from an authorized one.
+#[tokio::test]
+async fn test_an_empty_account_at_the_mirror_address_authorizes_nothing() {
+    let builder = test_payer();
+    let (mut banks_client, program_id, _foundation, globalstate_pubkey, _stake_ref) =
+        init_staked_for(builder.pubkey(), StakeTier::UpTo5Gbps).await;
+
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "hollow", &exchange);
+
+    // A stake nobody posted, and the empty account its seeds derive.
+    let invented_stake = Pubkey::new_unique();
+    let (hollow_mirror, _) = get_stake_mirror_pda(&program_id, &invented_stake);
+
+    let mut args = staked_args("hollow", exchange);
+    args.builder = builder.pubkey();
+    args.stake_ref = invented_stake;
+    args.committed_rate_bits_per_sec = 5_000_000_000;
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(args),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &builder,
+        &[AccountMeta::new(hollow_mirror, false)],
+    )
+    .await;
+
+    // NotAllowed, not a stake error: the caller has no permission and no stake, and must not be
+    // able to tell those apart from a caller who has one.
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+}
+
+/// A real mirror belonging to someone else authorizes nothing either, even when the caller names
+/// itself as the builder. The mirror's own record is what counts, not the argument.
+#[tokio::test]
+async fn test_another_builders_mirror_does_not_authorize_the_payer() {
+    let other_builder = Pubkey::new_unique();
+    let (mut banks_client, program_id, _foundation, globalstate_pubkey, stake_ref) =
+        init_staked_for(other_builder, StakeTier::UpTo5Gbps).await;
+
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "notmine2", &exchange);
+    let (mirror_pubkey, _) = get_stake_mirror_pda(&program_id, &stake_ref);
+
+    // The caller names itself, which is what makes `value.builder == payer` true, while the mirror
+    // records somebody else.
+    let mut args = staked_args("notmine2", exchange);
+    args.builder = test_payer().pubkey();
+    args.stake_ref = stake_ref;
+    args.committed_rate_bits_per_sec = 5_000_000_000;
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(args),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &test_payer(),
+        &[AccountMeta::new(mirror_pubkey, false)],
+    )
+    .await;
+
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+}

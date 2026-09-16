@@ -203,9 +203,8 @@ func filterValidProbes(log *slog.Logger, probes []Probe) []Probe {
 	return validProbes
 }
 
-// filterSelectableTargets drops probes that cannot serve as a measurement target at
-// all. It deliberately ignores the unresponsive-target marks; rankTargets handles
-// those by ordering rather than exclusion.
+// filterSelectableTargets ignores the unresponsive-target marks by design; rankTargets
+// handles those by ordering instead.
 func filterSelectableTargets(probes []Probe) []Probe {
 	var selectable []Probe
 	for _, probe := range probes {
@@ -216,15 +215,8 @@ func filterSelectableTargets(probes []Probe) []Probe {
 	return selectable
 }
 
-// rankTargets orders target candidates nearest-first, with every probe carrying an
-// unresponsive-target mark placed after every unmarked one. Callers take the first.
-//
-// Ranking rather than excluding is what keeps a location in the wanted set once all
-// of its candidates are marked. An empty candidate set makes generateWantedMeasurements
-// skip the location, and reconciliation then reads the absent target as unwanted and
-// deletes the existing measurement (#4182) — trading partial data for none until the
-// marks expire, up to 24h later. A marked target still answering a fraction of its
-// pings beats no measurement at all.
+// rankTargets ranks marked probes last rather than excluding them, so a location whose
+// every candidate is marked keeps a target instead of losing its measurement (#4182).
 func rankTargets(probes []Probe, latitude, longitude float64, measurementState *MeasurementState) []Probe {
 	var unmarked, marked []Probe
 	for _, probe := range probes {
@@ -1443,9 +1435,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 //
 // This finds a location a working target when its anchor probe stops responding while
 // RIPE Atlas still reports it as "Connected" — a lag that means fetchProbesWithErrorHandling
-// always sees the anchor and never triggers its own fallback. A fetch that turns up
-// nothing new leaves the marked candidates in place, which rankTargets still selects
-// from rather than letting the location fall out of the wanted set.
+// always sees the anchor and never triggers its own fallback.
 func (c *Collector) fetchFallbackProbesForUnresponsiveLocations(ctx context.Context, locationMatches []LocationProbeMatch, measurementState *MeasurementState) []LocationProbeMatch {
 	result := make([]LocationProbeMatch, len(locationMatches))
 	copy(result, locationMatches)
@@ -1462,11 +1452,9 @@ func (c *Collector) fetchFallbackProbesForUnresponsiveLocations(ctx context.Cont
 			}
 		}
 		if hasUnmarked {
-			continue // at least one probe is still unmarked — no fallback needed
+			continue
 		}
 
-		// Every known probe for this location is marked unresponsive as a target.
-		// Fetch non-anchor Connected probes as a fallback.
 		c.log.Info("All known probes unresponsive for location, fetching non-anchor fallback probes",
 			slog.String("location", match.LocationCode))
 
@@ -1499,7 +1487,6 @@ func (c *Collector) fetchFallbackProbesForUnresponsiveLocations(ctx context.Cont
 func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMatch, probesPerLocation int, measurementState *MeasurementState) []MeasurementSpec {
 	var wantedMeasurements []MeasurementSpec
 
-	// Unresponsive sources are skipped outright; unresponsive targets are only ranked last.
 	c.log.Info("Generating wanted measurements",
 		slog.Int("unresponsive_probe_count", len(measurementState.GetUnresponsiveProbes())),
 		slog.Int("unresponsive_target_count", len(measurementState.GetUnresponsiveTargets())))
@@ -1525,8 +1512,6 @@ func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMa
 			continue
 		}
 
-		// rankTargets orders rather than filters, so this is non-empty whenever
-		// selectableTargets is. Guarded anyway: a nil here would panic the whole cycle.
 		targetProbes := rankTargets(selectableTargets,
 			targetLocation.Latitude, targetLocation.Longitude, measurementState)
 		if len(targetProbes) == 0 {

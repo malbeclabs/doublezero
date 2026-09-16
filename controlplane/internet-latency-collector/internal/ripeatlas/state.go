@@ -348,10 +348,6 @@ func (ms *MeasurementState) AddUnresponsiveTarget(probeID int) {
 	})
 }
 
-// IsTargetUnresponsive reports whether a probe carries a live mark against it as a
-// measurement target, either because it failed as a target or because it is
-// unresponsive outright. Target selection ranks such probes last rather than dropping
-// them, so a location whose every candidate is marked still gets one.
 func (ms *MeasurementState) IsTargetUnresponsive(probeID int) bool {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
@@ -373,8 +369,6 @@ func hasLiveEntry(entries []UnresponsiveProbeEntry, probeID int, expiry int64) b
 	return false
 }
 
-// GetUnresponsiveTargets returns the probe IDs currently carrying a target-failure
-// mark, excluding expired entries.
 func (ms *MeasurementState) GetUnresponsiveTargets() []int {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()

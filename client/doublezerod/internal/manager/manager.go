@@ -637,8 +637,8 @@ func (n *NetlinkManager) reconcile(ctx context.Context) {
 	metricMatchedUsers.WithLabelValues(serviceMulticast).Set(float64(len(wantMulticast)))
 
 	// Reconcile unicast and multicast services
-	n.reconcileService(wantUnicast, n.HasUnicastService(), serviceUnicast, api.UserTypeIBRL, devicesByPK, mcastGroupsByPK, allPrefixes, *data.GlobalConfig)
-	n.reconcileService(wantMulticast, n.HasMulticastService(), serviceMulticast, api.UserTypeMulticast, devicesByPK, mcastGroupsByPK, allPrefixes, *data.GlobalConfig)
+	n.reconcileService(wantUnicast, n.HasUnicastService(), serviceUnicast, api.UserTypeIBRL, clientIP, devicesByPK, mcastGroupsByPK, allPrefixes, *data.GlobalConfig)
+	n.reconcileService(wantMulticast, n.HasMulticastService(), serviceMulticast, api.UserTypeMulticast, clientIP, devicesByPK, mcastGroupsByPK, allPrefixes, *data.GlobalConfig)
 
 	n.updateConnectionInfoMetric()
 }
@@ -648,6 +648,7 @@ func (n *NetlinkManager) reconcileService(
 	hasService bool,
 	serviceType string,
 	removeAsType api.UserType,
+	clientIP net.IP,
 	devicesByPK map[[32]byte]serviceability.Device,
 	mcastGroupsByPK map[[32]byte]serviceability.MulticastGroup,
 	allPrefixes []*net.IPNet,
@@ -655,7 +656,7 @@ func (n *NetlinkManager) reconcileService(
 ) {
 	if len(wantUsers) > 0 {
 		u := wantUsers[0]
-		pr, err := n.buildProvisionRequest(u, devicesByPK, mcastGroupsByPK, allPrefixes, cfg)
+		pr, err := n.buildProvisionRequest(u, clientIP, devicesByPK, mcastGroupsByPK, allPrefixes, cfg)
 		if err != nil {
 			slog.Error("reconciler: error building provision request", "service", serviceType, "error", err)
 			metricProvisionsTotal.WithLabelValues(serviceType, statusError).Inc()
@@ -740,8 +741,12 @@ func (n *NetlinkManager) currentService(serviceType string) Provisioner {
 	return nil
 }
 
+// clientIP is the address `reconcile` matched this user against, passed down rather than re-read:
+// a concurrent pin between the match and here would source the tunnel from one address for a user
+// the ledger and the device both bind to another.
 func (n *NetlinkManager) buildProvisionRequest(
 	u serviceability.User,
+	clientIP net.IP,
 	devicesByPK map[[32]byte]serviceability.Device,
 	mcastGroupsByPK map[[32]byte]serviceability.MulticastGroup,
 	allPrefixes []*net.IPNet,
@@ -773,7 +778,7 @@ func (n *NetlinkManager) buildProvisionRequest(
 	//
 	// The result is cached per destination IP so we don't repeat the kernel
 	// route lookup every reconcile cycle.
-	tunnelSrc := n.ClientIP()
+	tunnelSrc := clientIP
 	if u.UserType == serviceability.UserTypeIBRLWithAllocatedIP || u.UserType == serviceability.UserTypeMulticast {
 		dstKey := tunnelDst.String()
 		if cached, ok := n.tunnelSrcCache[dstKey]; ok {

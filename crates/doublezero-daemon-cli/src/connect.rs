@@ -188,6 +188,11 @@ enum FeedJoinUser {
 ///    one against it would let the caller bind an address no authority ever vouched for — the
 ///    squatting RFC-27 exists to close. The lookup therefore goes to the exact PDA rather than
 ///    through `get_accesspass`, which prefers the dynamic pass and would mask the distinction.
+///    A pass at the exact PDA flagged `allow_multiple_ip` says the same thing as a dynamic one
+///    — any address will do — so it is refused too. This is the predicate `create_user` applies
+///    to decide whether an RFC-27 proof is still required (`accesspass_is_ip_bound`); matching
+///    it here is what turns a late `IpOwnershipProofRequired` into an up-front diagnostic for
+///    the case the flag exists to serve, a host with no obtainable proof.
 async fn resolve_connect_client_ip<D: DaemonClient, L: LedgerClient, W: Write>(
     explicit: Option<Ipv4Addr>,
     daemon: &D,
@@ -218,19 +223,20 @@ async fn resolve_connect_client_ip_with<D: DaemonClient, L: LedgerClient, W: Wri
         return Err(eyre::eyre!("--client-ip {client_ip} cannot be used here"));
     }
 
-    if ledger
+    let pinned = ledger
         .get_accesspass_exact(client_ip, ledger.get_payer())?
-        .is_none()
-    {
+        .filter(|accesspass| !accesspass.allow_multiple_ip());
+    if pinned.is_none() {
         writeln!(
             out,
             "❌  No AccessPass is pinned to {client_ip} for UserPayer: {}",
             ledger.get_payer()
         )?;
         return Err(eyre::eyre!(
-            "--client-ip requires an AccessPass issued for that exact address. A dynamic \
-             access pass does not authorize a caller-chosen IP; connect without --client-ip to \
-             use the address the daemon discovered."
+            "--client-ip requires an AccessPass issued for that exact address and not flagged \
+             allow_multiple_ip. A pass that authorizes any address does not authorize a \
+             caller-chosen one; connect without --client-ip to use the address the daemon \
+             discovered."
         ));
     }
 
@@ -2717,7 +2723,7 @@ mod tests {
     use doublezero_config::Environment;
     use doublezero_sdk::{tests::utils::create_temp_config, utils::parse_pubkey};
     use doublezero_serviceability::state::{
-        accesspass::{AccessPass, AccessPassStatus, AccessPassType, FeedSeat},
+        accesspass::{AccessPass, AccessPassStatus, AccessPassType, FeedSeat, ALLOW_MULTIPLE_IP},
         accounttype::AccountType,
         device::{Device, DeviceStatus, DeviceType},
         exchange::{Exchange, ExchangeStatus},
@@ -7221,6 +7227,32 @@ mod tests {
             let err = res.unwrap_err().to_string();
             assert!(
                 err.contains("AccessPass issued for that exact address"),
+                "unexpected error: {err}"
+            );
+            assert!(
+                out.contains("No AccessPass is pinned to"),
+                "unexpected output: {out}"
+            );
+        }
+
+        /// A pass stored at the exact PDA but flagged `allow_multiple_ip` authorizes any
+        /// address, exactly as a dynamic one does, so it does not pin this one. It is also
+        /// the predicate `create_user` uses to decide whether an RFC-27 proof is still
+        /// required: admitting it here would push the failure to `IpOwnershipProofRequired`
+        /// after the enable, instead of naming the problem now.
+        #[tokio::test]
+        async fn refuses_an_exact_pass_flagged_allow_multiple_ip() {
+            let mut ledger = MockLedgerClient::new();
+            ledger.expect_get_payer().returning(Pubkey::new_unique);
+            ledger.expect_get_accesspass_exact().returning(|_, _| {
+                let mut accesspass = pinned_accesspass();
+                accesspass.flags = ALLOW_MULTIPLE_IP;
+                Ok(Some(accesspass))
+            });
+            let (res, out) = resolve(Some(PINNED), ledger, held_by_host).await;
+            let err = res.unwrap_err().to_string();
+            assert!(
+                err.contains("not flagged allow_multiple_ip"),
                 "unexpected error: {err}"
             );
             assert!(

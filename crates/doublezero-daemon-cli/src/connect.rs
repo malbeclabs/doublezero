@@ -240,6 +240,31 @@ async fn resolve_connect_client_ip_with<D: DaemonClient, L: LedgerClient, W: Wri
         ));
     }
 
+    // The gate has to predict what `create_user` will evaluate, and what it evaluates is the
+    // pass the *transaction* attaches — which `CreateUserCommand` resolves with
+    // `GetAccessPassCommand`, preferring the dynamic (0.0.0.0) PDA whenever one exists. A payer
+    // holding both passes would clear the check above on the exact one and then have the dynamic
+    // one sent, where `accesspass_is_ip_bound` is false and the proof is required after all:
+    // precisely the late `IpOwnershipProofRequired` this gate exists to turn into an early,
+    // legible refusal. Saying so here is the honest half of the fix; letting the pin choose which
+    // pass is charged for the seat is a larger change than this flag should make.
+    if ledger
+        .get_accesspass(Ipv4Addr::UNSPECIFIED, ledger.get_payer())?
+        .is_some()
+    {
+        writeln!(
+            out,
+            "❌  UserPayer {} also holds a dynamic (0.0.0.0) AccessPass, which takes precedence",
+            ledger.get_payer()
+        )?;
+        return Err(eyre::eyre!(
+            "--client-ip cannot be honored while a dynamic AccessPass exists for this payer: \
+             user creation attaches the dynamic pass, which authorizes any address and so does \
+             not attest {client_ip}. Connect without --client-ip, or have the dynamic pass \
+             removed to use the one pinned to {client_ip}."
+        ));
+    }
+
     writeln!(out, "    Using --client-ip {client_ip}")?;
     Ok(client_ip)
 }
@@ -3114,6 +3139,15 @@ mod tests {
                     predicate::eq(payer),
                 )
                 .returning_st(move |_, _| Ok(Some(accesspass.lock().unwrap().clone())));
+
+            // No pass at the dynamic PDA: `--client-ip` asks this to find out whether a dynamic
+            // pass would outrank the pinned one in the transaction, and the fixture's payer holds
+            // only the one keyed on its own address.
+            fixture
+                .ledger
+                .expect_get_accesspass()
+                .with(predicate::eq(Ipv4Addr::UNSPECIFIED), predicate::eq(payer))
+                .returning(|_, _| Ok(None));
 
             let users = fixture.users.clone();
             fixture
@@ -7205,6 +7239,8 @@ mod tests {
             ledger
                 .expect_get_accesspass_exact()
                 .returning(|_, _| Ok(Some(pinned_accesspass())));
+            // No dynamic pass, so the pinned one is what the transaction will attach.
+            ledger.expect_get_accesspass().returning(|_, _| Ok(None));
             let (res, out) = resolve(Some(PINNED), ledger, held_by_host).await;
             assert_eq!(res.unwrap(), PINNED);
             assert!(
@@ -7233,6 +7269,29 @@ mod tests {
                 out.contains("No AccessPass is pinned to"),
                 "unexpected output: {out}"
             );
+        }
+
+        /// Holding both passes is the case where the gate's predicate and the transaction's
+        /// disagree: `CreateUserCommand` resolves the account with `GetAccessPassCommand`, which
+        /// prefers the dynamic PDA, so admitting this would fail onchain with
+        /// `IpOwnershipProofRequired` after the user was already created.
+        #[tokio::test]
+        async fn refuses_when_a_dynamic_pass_would_take_precedence() {
+            let mut ledger = MockLedgerClient::new();
+            ledger.expect_get_payer().returning(Pubkey::new_unique);
+            ledger
+                .expect_get_accesspass_exact()
+                .returning(|_, _| Ok(Some(pinned_accesspass())));
+            ledger
+                .expect_get_accesspass()
+                .returning(|_, _| Ok(Some(pinned_accesspass())));
+            let (res, out) = resolve(Some(PINNED), ledger, held_by_host).await;
+            let err = res.unwrap_err().to_string();
+            assert!(
+                err.contains("while a dynamic AccessPass exists"),
+                "unexpected error: {err}"
+            );
+            assert!(out.contains("takes precedence"), "unexpected output: {out}");
         }
 
         /// A pass stored at the exact PDA but flagged `allow_multiple_ip` authorizes any

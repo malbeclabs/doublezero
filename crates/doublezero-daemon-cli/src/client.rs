@@ -139,6 +139,29 @@ pub struct ErrorResponse {
     pub description: String,
 }
 
+/// Render a non-200 from an endpoint that answers with no body of its own.
+///
+/// The daemon describes *why* it refused in an `ErrorResponse`, and for `/enable` that is the
+/// only place the reason exists: a pin can be refused as malformed, non-IPv4, unverifiable, or
+/// not held by this host, and a bare status code collapses all four into "400 Bad Request".
+async fn daemon_status_error<B>(res: hyper::Response<B>, action: &str) -> eyre::Report
+where
+    B: hyper::body::Body,
+    B::Error: fmt::Display,
+{
+    let status = res.status();
+    let body = match res.into_body().collect().await {
+        Ok(collected) => collected.to_bytes(),
+        Err(e) => return eyre!("Failed to {action}: {status} (unreadable response body: {e})"),
+    };
+    match serde_json::from_slice::<ErrorResponse>(&body) {
+        Ok(err) if err.status == "error" && !err.description.is_empty() => {
+            eyre!("Failed to {action}: {}", err.description)
+        }
+        _ => eyre!("Failed to {action}: {status}"),
+    }
+}
+
 /// Parse a daemon response, falling back to ErrorResponse if the primary type fails.
 fn parse_daemon_response<T: serde::de::DeserializeOwned>(
     data: &[u8],
@@ -380,7 +403,7 @@ impl DaemonClient for DaemonClientImpl {
             .await
             .map_err(|e| eyre!("Unable to connect to doublezero daemon: {e}"))?;
         if res.status() != 200 {
-            eyre::bail!("Failed to enable reconciler: {}", res.status());
+            return Err(daemon_status_error(res, "enable reconciler").await);
         }
         Ok(())
     }
@@ -397,7 +420,7 @@ impl DaemonClient for DaemonClientImpl {
             .await
             .map_err(|e| eyre!("Unable to connect to doublezero daemon: {e}"))?;
         if res.status() != 200 {
-            eyre::bail!("Failed to disable reconciler: {}", res.status());
+            return Err(daemon_status_error(res, "disable reconciler").await);
         }
         Ok(())
     }

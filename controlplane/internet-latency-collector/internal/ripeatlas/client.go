@@ -48,12 +48,10 @@ type Probe struct {
 }
 
 // tagIPv4DoesntWork is RIPE's system tag for a probe that cannot measure over IPv4.
-// The collector only ever measures IPv4 (Probe.Address is address_v4), so the probe
-// is unusable as target, source and fallback alike.
+// The collector only ever measures IPv4, so a tagged probe is unusable everywhere.
 //
 // The mirror tag system-ipv4-works is deliberately not required: RIPE leaves working
-// probes untagged (1012487 near cmh answers pings and carries neither), so only the
-// explicit negative is a safe exclusion.
+// probes untagged, so only the explicit negative is a safe exclusion.
 const tagIPv4DoesntWork = "system-ipv4-doesnt-work"
 
 // hasTag reports whether the probe carries the given RIPE tag slug.

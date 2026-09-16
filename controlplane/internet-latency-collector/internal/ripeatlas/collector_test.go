@@ -210,7 +210,6 @@ func TestInternetLatency_RIPEAtlas_FilterValidProbes(t *testing.T) {
 	}
 }
 
-// probeWithTags builds a probe carrying the given RIPE tag slugs.
 func probeWithTags(id int, address string, slugs ...string) Probe {
 	p := Probe{ID: id, Address: address}
 	for _, slug := range slugs {

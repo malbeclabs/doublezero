@@ -71,8 +71,7 @@ type MeasurementState struct {
 	migratedTargetMarks int
 
 	// loaded is true once the tracker is known to describe the file: either Load read it,
-	// or Save wrote it. Overwriting a file we never read replaces state we cannot see with
-	// state we do not have, which is the fleet-wipe path (#4131, #4169).
+	// or Save wrote it.
 	loaded bool
 }
 
@@ -260,12 +259,11 @@ func (ms *MeasurementState) MigratedTargetMarks() int {
 
 // Save writes the tracker to disk atomically: encode into a temp file in the same
 // directory, then rename over the target. A truncate-in-place write killed mid-flight
-// leaves a torn file, which reads as "no metadata" and makes the next management cycle
-// delete every live measurement (#4131, #4169).
+// leaves a torn file, which the next management cycle reads as "no metadata" and acts on by
+// deleting every live measurement (#4131, #4169).
 //
-// Save refuses to overwrite an existing file that Load never read. A corrupt file would
-// otherwise be replaced by whatever the in-memory tracker holds, which is nothing, and the
-// next cycle reads that clean empty file as "no measurements exist".
+// Save also refuses to overwrite an existing file that Load never read, which would replace
+// a file we cannot see with an empty tracker and reach that same outcome.
 func (ms *MeasurementState) Save() error {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()

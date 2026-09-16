@@ -436,7 +436,6 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir strin
 		return fmt.Errorf("failed to create state directory: %w", err)
 	}
 
-	// Gated on the load because export ends by saving the state file.
 	measurementState, err := c.ensureMeasurementStateLoaded(stateDir)
 	if err != nil {
 		c.log.Error("Refusing to export: measurement state could not be loaded",
@@ -805,8 +804,9 @@ func sourcesWithoutSamples(measurements []Measurement, state *MeasurementState, 
 }
 
 // ensureMeasurementStateLoaded creates the shared measurement state if needed and reads it
-// from disk, retrying on every call until a read succeeds. A missing file is a clean empty
-// state, which is what a first deploy looks like.
+// from disk, retrying on every call until a read succeeds, so a state file repaired out of
+// band resumes the collector without a restart. A missing file is a clean empty state,
+// which is what a first deploy looks like.
 //
 // Both the management and the export cycle must refuse to run while this returns an error.
 // Management would reconcile against an empty tracker and delete the fleet; export would
@@ -832,8 +832,6 @@ func (c *Collector) ensureMeasurementStateLoaded(stateDir string) (*MeasurementS
 func (c *Collector) RunRipeAtlasMeasurementCreation(ctx context.Context, dryRun bool, probesPerLocation int, stateDir string, samplingInterval time.Duration) error {
 	c.log.Info("Running RIPE Atlas measurement creation")
 
-	// Retried here rather than only at startup, so a state file repaired out of band
-	// resumes management without a restart.
 	if _, err := c.ensureMeasurementStateLoaded(stateDir); err != nil {
 		c.log.Error("Refusing to manage measurements: measurement state could not be loaded",
 			slog.String("error", err.Error()))
@@ -904,8 +902,7 @@ func (c *Collector) RunRipeAtlasMeasurementCreation(ctx context.Context, dryRun 
 
 func (c *Collector) configureMeasurements(ctx context.Context, locationMatches []LocationProbeMatch, dryRun bool, probesPerLocation int, stateDir string, samplingInterval time.Duration) error {
 	// Step 1: Get measurement state (shared instance from RunRipeAtlasMeasurementCreation,
-	// or fallback for standalone/test usage). An unreadable file fails the cycle rather
-	// than reconciling against an empty tracker.
+	// or fallback for standalone/test usage).
 	measurementState := c.measurementState
 	if measurementState == nil {
 		timestampFile := filepath.Join(stateDir, TimestampFileName)
@@ -1736,8 +1733,8 @@ func (c *Collector) Run(ctx context.Context, dryRun bool, probesPerLocation int,
 		return fmt.Errorf("RIPE Atlas export interval must be positive, got %v", exportInterval)
 	}
 
-	// Shared by both goroutines. A failed load is not fatal to the process, but it holds
-	// off both cycles until a later load succeeds.
+	// Seeds the state both goroutines share. A load failure holds off the cycles, not the
+	// process, so it is logged rather than returned.
 	if _, err := c.ensureMeasurementStateLoaded(stateDir); err != nil {
 		c.log.Error("Failed to load measurement state at startup, measurement management and export are held off until it loads",
 			slog.String("error", err.Error()))

@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Solana
+  - `doublezero-builder-stake-admin`, a CLI for `builder-stake`. Nothing outside the program could call it: `initialize_builder_stake`, `post_bond`, `withdraw` and the admin instructions existed only as Rust instruction builders used by the program's own tests, so posting a bond meant writing Rust. It carries `initialize`, `post-bond` and `show` for a builder, and `initialize-program`, `set-tier-parameters`, `show-config` and `set-paused` for an admin. Amounts are taken in 2Z and converted using the mint's own decimals rather than taken in base units, because the development mint has eight of them and a bond a hundred million times too small is refused by the coverage check with nothing naming the amount as the cause. The 2Z mint comes from the compiled-in constant, feature-gated the way the program is, so `--features development` talks to the devnet deployment and a `--mint-2z` that disagrees is refused with the reason rather than sent.
+
 ## [v0.41.0](https://github.com/malbeclabs/doublezero/compare/client/v0.40.0...client/v0.41.0) - 2026-09-16
 
 ### Breaking

@@ -23,6 +23,7 @@ members = [
     "offchain/crates/scheduled-command",
     "offchain/crates/sentinel",
     "offchain/crates/slack-notifier",
+    "offchain/crates/solana-admin-cli/builder-stake",
     "offchain/crates/solana-admin-cli/passport",
     "offchain/crates/solana-admin-cli/revenue-distribution",
     "offchain/crates/solana-admin-cli/sol-conversion",
@@ -252,6 +253,9 @@ features = ["offchain"]
 
 [workspace.dependencies.doublezero-program-tools]
 path = "solana/crates/program-tools"
+
+[workspace.dependencies.doublezero-builder-stake]
+path = "solana/programs/builder-stake"
 
 [workspace.dependencies.doublezero-revenue-distribution]
 path = "solana/programs/revenue-distribution"

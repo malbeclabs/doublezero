@@ -2769,6 +2769,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "doublezero-builder-stake"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "bytemuck",
+ "doublezero-program-tools",
+ "ruint",
+ "solana-account-info",
+ "solana-cpi",
+ "solana-instruction",
+ "solana-msg",
+ "solana-program-entrypoint",
+ "solana-program-error",
+ "solana-program-pack",
+ "solana-pubkey 3.0.0",
+ "solana-system-interface 2.0.0",
+ "solana-sysvar",
+ "spl-token-interface",
+]
+
+[[package]]
+name = "doublezero-builder-stake-admin-cli"
+version = "0.0.1"
+dependencies = [
+ "anyhow",
+ "clap",
+ "doublezero-builder-stake",
+ "doublezero-program-tools",
+ "doublezero-solana-client-tools",
+ "solana-sdk",
+ "tokio",
+]
+
+[[package]]
 name = "doublezero-cli-core"
 version = "0.41.0"
 dependencies = [

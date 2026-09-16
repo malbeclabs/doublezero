@@ -144,8 +144,7 @@ func (ms *MeasurementState) Load() error {
 
 	file, err := os.Open(ms.filename)
 	if os.IsNotExist(err) {
-		// File doesn't exist yet, keep empty tracker. A clean empty state is a correct
-		// read of a first deploy, so it counts as loaded.
+		// A clean empty state is a correct read of a first deploy, so it counts as loaded.
 		ms.loaded = true
 		return nil
 	}

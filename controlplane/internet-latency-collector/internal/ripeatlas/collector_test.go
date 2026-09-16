@@ -3262,10 +3262,8 @@ func TestInternetLatency_RIPEAtlas_MeasurementCreation_GatedOnStateLoad(t *testi
 }
 
 // TestInternetLatency_RIPEAtlas_ExportMeasurementResults_GatedOnStateLoad verifies that an
-// unreadable state file holds off export as well as management. Export ends by saving the
-// state file, so an ungated export cycle writes an empty tracker over the corrupt file and
-// the next management cycle reconciles against it — the fleet wipe this gate exists to
-// prevent, one export interval later (#4131, #4169).
+// unreadable state file holds off export as well as management, so an ungated export cannot
+// write an empty tracker over it and cause the fleet wipe one interval later (#4131, #4169).
 func TestInternetLatency_RIPEAtlas_ExportMeasurementResults_GatedOnStateLoad(t *testing.T) {
 	t.Parallel()
 

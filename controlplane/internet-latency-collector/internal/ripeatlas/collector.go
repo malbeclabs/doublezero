@@ -436,9 +436,7 @@ func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir strin
 		return fmt.Errorf("failed to create state directory: %w", err)
 	}
 
-	// Export ends by saving the state file, so it is gated on the load too: with an
-	// unloaded tracker it has no metadata, exports nothing, and its only effect is to
-	// write an empty tracker over the file the next management cycle reconciles against.
+	// Gated on the load because export ends by saving the state file.
 	measurementState, err := c.ensureMeasurementStateLoaded(stateDir)
 	if err != nil {
 		c.log.Error("Refusing to export: measurement state could not be loaded",

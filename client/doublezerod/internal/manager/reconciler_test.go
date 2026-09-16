@@ -2456,6 +2456,35 @@ func TestServeEnable_RejectsClientIPNotOnThisHost(t *testing.T) {
 	}
 }
 
+// A private address can be genuinely held by this host and still be useless as a pin: no
+// Activated user can exist at one, because create_user rejects a non-global client_ip. Accepting
+// it would tear down the host's services, persist, and survive every restart.
+func TestServeEnable_RejectsNonGlobalClientIP(t *testing.T) {
+	withAssignedIPs(t, "1.2.3.4", "192.168.1.50")
+	dir := t.TempDir()
+	n := newTestNLMForHTTP(dir)
+
+	req := httptest.NewRequest(http.MethodPost, "/enable", strings.NewReader(`{"client_ip":"192.168.1.50"}`))
+	w := httptest.NewRecorder()
+	n.ServeEnable(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "globally routable") {
+		t.Fatalf("expected the reason to name routability, got %s", w.Body.String())
+	}
+	if got := n.ClientIP().String(); got != "1.2.3.4" {
+		t.Fatalf("expected client IP unchanged, got %s", got)
+	}
+	if _, err := os.ReadFile(filepath.Join(dir, stateFileName)); !os.IsNotExist(err) {
+		t.Fatalf("expected no state file written, got err %v", err)
+	}
+	if n.Enabled() {
+		t.Fatal("expected the reconciler to stay disabled")
+	}
+}
+
 // Enumeration failing is not the same as the address being absent: the daemon cannot verify,
 // so it refuses rather than provisioning against an unverified address.
 func TestServeEnable_EnumerationFailureIsFatal(t *testing.T) {

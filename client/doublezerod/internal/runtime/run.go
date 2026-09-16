@@ -39,10 +39,14 @@ const (
 // match no onchain user and build no tunnel, and there is no un-pin path short of editing the
 // state file — so the check is repeated here rather than trusted from whenever it last ran.
 //
-// A rejected pin is not erased. It stays in the state file, so it takes effect again on the
-// next restart once the address is back, and an interface that is merely late coming up does
-// not cost the operator their configuration. An enumeration failure keeps the pin for the same
-// reason: it is a failure to check, not a failed check.
+// A rejected pin is dropped rather than kept dormant. Holding an address the daemon is not using
+// is the worse failure: it would be reported as the pin in effect, written back by the next state
+// write, and applied again on some later restart once the address happened to return — a silent
+// address migration triggered by nothing the operator did, and a state file that disagrees with
+// the running daemon in the meantime. The warning says so, and re-pinning is one `connect
+// --client-ip` away.
+//
+// An enumeration failure keeps the pin: that is a failure to check, not a failed check.
 func restoreClientIPPin(pinned string, isAssigned func(net.IP) (bool, error)) string {
 	ip := net.ParseIP(pinned)
 	if ip == nil || ip.To4() == nil {
@@ -55,7 +59,7 @@ func restoreClientIPPin(pinned string, isAssigned func(net.IP) (bool, error)) st
 		return pinned
 	}
 	if !assigned {
-		slog.Warn("reconciler: pinned client IP is not assigned to any interface that is up on this host, falling back to discovery; the pin is kept and applies again once the address returns", "pinned", pinned)
+		slog.Warn("reconciler: pinned client IP is not assigned to any interface that is up on this host, falling back to discovery; the pin is dropped, re-pin with `doublezero connect --client-ip` once the address is back", "pinned", pinned)
 		return ""
 	}
 	return pinned
@@ -123,8 +127,12 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	// connection; without it, restoring the pin is what keeps a restart from reverting the
 	// host to its discovered address and tearing the tunnel down.
 	effectiveClientIP := clientIP
-	if effectiveClientIP == "" && state.ClientIP != "" {
-		effectiveClientIP = restoreClientIPPin(state.ClientIP, manager.IsLocallyAssigned)
+	pinnedClientIP := state.ClientIP
+	if clientIP == "" && state.ClientIP != "" {
+		// One value for both: a pin this host cannot use is not the pin in effect either, so it
+		// is neither used nor reported nor written back.
+		pinnedClientIP = restoreClientIPPin(state.ClientIP, manager.IsLocallyAssigned)
+		effectiveClientIP = pinnedClientIP
 	}
 
 	ip, method, err := DiscoverClientIP(effectiveClientIP)
@@ -162,7 +170,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		manager.WithPollInterval(pollInterval),
 		manager.WithFetchTimeout(fetchTimeout),
 		manager.WithEnabled(state.ReconcilerEnabled),
-		manager.WithPinnedClientIP(state.ClientIP),
+		manager.WithPinnedClientIP(pinnedClientIP),
 		manager.WithStateDir(stateDir),
 		manager.WithNetwork(networkConfig.Moniker),
 	}

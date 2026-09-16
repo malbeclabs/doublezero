@@ -244,8 +244,11 @@ path = "offchain/crates/slack-notifier"
 
 ### The Solana L1 programs, which keep their own workspace and lockfile per D2 of
 ### docs/superpowers/specs/2026-08-27-monorepo-migration-design.md. A path
-### dependency may point into an excluded tree, so these three compile once per
+### dependency may point into an excluded tree, so these four compile once per
 ### lockfile, exactly as they did when the trees were separate repositories.
+
+[workspace.dependencies.doublezero-builder-stake]
+path = "solana/programs/builder-stake"
 
 [workspace.dependencies.doublezero-passport]
 path = "solana/programs/passport"
@@ -253,9 +256,6 @@ features = ["offchain"]
 
 [workspace.dependencies.doublezero-program-tools]
 path = "solana/crates/program-tools"
-
-[workspace.dependencies.doublezero-builder-stake]
-path = "solana/programs/builder-stake"
 
 [workspace.dependencies.doublezero-revenue-distribution]
 path = "solana/programs/revenue-distribution"

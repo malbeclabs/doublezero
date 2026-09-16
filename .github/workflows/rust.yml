@@ -50,39 +50,62 @@ jobs:
   # Every released CLI ships as a static musl binary so it loads on any Linux
   # regardless of the host glibc version. Build each package on its own, the way
   # goreleaser does so feature unification matches the release, and assert the
-  # result is fully static.
-  rust-cli-static:
+  # result is fully static. One leg per package: the builds share almost no
+  # compiled output, because per-package feature resolution recompiles the
+  # common crates anyway, so splitting them is close to a linear speedup.
+  rust-cli-static-build:
     runs-on: ubuntu-24.04
+    strategy:
+      # Report every package that regressed, not just the first one.
+      fail-fast: false
+      matrix:
+        include:
+          - package: doublezero
+            bin: doublezero
+          - package: doublezero-solana-cli
+            bin: doublezero-solana
+          - package: doublezero-contributor-rewards
+            bin: doublezero-contributor-rewards
+          - package: doublezero-ledger-sentinel
+            bin: doublezero-sentinel
+          - package: doublezero-solana-validator-debt
+            bin: doublezero-solana-validator-debt
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.97.1
         with:
           targets: x86_64-unknown-linux-musl
       - uses: Swatinem/rust-cache@v2
+        with:
+          # Five legs means five cache entries where there used to be one.
+          # Only main writes them, so PR runs read a main-primed cache
+          # without each branch adding its own and evicting the other Rust
+          # jobs' caches under the repo-wide limit.
+          save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Install musl toolchain
         run: sudo apt-get update && sudo apt-get install -y musl-tools cmake
-      - name: Build the release CLIs for musl and assert they are statically linked
+      - name: Build ${{ matrix.bin }} for musl and assert it is statically linked
         env:
           CC_x86_64_unknown_linux_musl: musl-gcc
           CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER: musl-gcc
         run: |
-          for entry in \
-            doublezero:doublezero \
-            doublezero-solana-cli:doublezero-solana \
-            doublezero-contributor-rewards:doublezero-contributor-rewards \
-            doublezero-ledger-sentinel:doublezero-sentinel \
-            doublezero-solana-validator-debt:doublezero-solana-validator-debt
-          do
-            package="${entry%%:*}"
-            bin="target/x86_64-unknown-linux-musl/release/${entry##*:}"
-            cargo build --release --package "$package" --target x86_64-unknown-linux-musl
-            file "$bin"
-            if ! file "$bin" | grep -qE "statically linked|static-pie linked"; then
-              echo "::error::$bin is not statically linked"
-              exit 1
-            fi
-            echo "OK: $bin is statically linked"
-          done
+          bin="target/x86_64-unknown-linux-musl/release/${{ matrix.bin }}"
+          cargo build --release --package ${{ matrix.package }} --target x86_64-unknown-linux-musl
+          file "$bin"
+          if ! file "$bin" | grep -qE "statically linked|static-pie linked"; then
+            echo "::error::$bin is not statically linked"
+            exit 1
+          fi
+          echo "OK: $bin is statically linked"
+  # Keeps a single stable check name now that the work fans out across the
+  # matrix, so branch protection needs no change. The matrix legs still report
+  # individually, so a failure names the package.
+  rust-cli-static:
+    runs-on: ubuntu-24.04
+    needs: rust-cli-static-build
+    if: always()
+    steps:
+      - run: '[ "${{ needs.rust-cli-static-build.result }}" = "success" ]'
   # The release bump runs `cargo update --workspace`, which can silently rebind
   # members onto a different locked minor.
   release-bump-dry-run:

@@ -234,8 +234,17 @@ pub fn create_user_core(
     // A pass at the UNSPECIFIED PDA authorizes any address, and `allow_multiple_ip` says the same
     // of a pass stored at one, so neither attests the address being claimed and neither waives the
     // proof. The remaining shape is a pass pinned to exactly this address.
-    let accesspass_is_ip_bound =
-        accesspass.client_ip != Ipv4Addr::UNSPECIFIED && !accesspass.allow_multiple_ip();
+    //
+    // The seed is what an issuing authority chose, so the PDA is the attestation; the stored
+    // `client_ip` field is not, on its own. Between #1608 and #3859 `create_user` wrote the first
+    // address a dynamic pass connected from into that field and serialized it back, and #3859
+    // removed the lock-in without migrating those accounts. Such a pass still sits at the
+    // UNSPECIFIED PDA while its field names an address the *user* picked, which no authority ever
+    // vouched for — precisely the squatting RFC-27 exists to close. Requiring the exact PDA keeps
+    // the waiver keyed on the seed, so a legacy self-bound field cannot buy it.
+    let accesspass_is_ip_bound = core.accesspass_account.key == &accesspass_pda
+        && accesspass.client_ip != Ipv4Addr::UNSPECIFIED
+        && !accesspass.allow_multiple_ip();
     validate_ip_ownership_proof(
         core.instructions_sysvar_account,
         ip_proof,

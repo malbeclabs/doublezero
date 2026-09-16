@@ -13,6 +13,7 @@
 //!   verified is not what the program reads. That second family is where a naive implementation
 //!   is exploitable, so the offsets get their own tests.
 
+use borsh::BorshSerialize;
 use doublezero_ip_proof::{
     sign, sign_version, signed_message_for, IpOwnershipProof, IP_PROOF_VERSION,
 };
@@ -40,7 +41,7 @@ use doublezero_serviceability::{
     },
     resource::ResourceType,
     state::{
-        accesspass::AccessPassType,
+        accesspass::{AccessPass, AccessPassType},
         accountdata::AccountData,
         device::DeviceType,
         feature_flags::FeatureFlag,
@@ -50,7 +51,12 @@ use doublezero_serviceability::{
 use solana_compute_budget_interface::ComputeBudgetInstruction;
 use solana_keypair::Keypair;
 use solana_program_test::*;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signer};
+use solana_sdk::{
+    account::{Account, AccountSharedData},
+    instruction::AccountMeta,
+    pubkey::Pubkey,
+    signature::Signer,
+};
 use std::net::Ipv4Addr;
 
 mod test_helpers;
@@ -288,6 +294,49 @@ impl Fixture {
         )
         .await;
         self.accesspass = wildcard;
+    }
+
+    /// Fabricates the one AccessPass shape no instruction can produce today: a pass at the
+    /// *wildcard* PDA whose stored `client_ip` names a specific address.
+    ///
+    /// `SetAccessPass` derives the PDA from `value.client_ip`, so the two cannot disagree for a
+    /// pass issued now. They can for one issued between #1608 and #3859, when `create_user` wrote
+    /// the first address a dynamic pass connected from into the field and serialized it back, and
+    /// #3859 removed the lock-in without migrating the accounts. The address in that field is one
+    /// the *user* chose, so it attests nothing, and the account is written directly here because
+    /// that is the only way to reach the state a live ledger may still hold.
+    async fn legacy_self_bound_wildcard_accesspass(&mut self, locked_to: Ipv4Addr) {
+        self.use_wildcard_accesspass().await;
+        let pda = self.accesspass;
+        let account = self
+            .banks()
+            .get_account(pda)
+            .await
+            .expect("fetching the wildcard access pass")
+            .expect("the wildcard access pass must exist");
+        let mut accesspass =
+            AccessPass::try_from(&account.data[..]).expect("deserializing the access pass");
+        assert_eq!(
+            accesspass.client_ip,
+            Ipv4Addr::UNSPECIFIED,
+            "the pass must start dynamic for this to model the legacy lock-in"
+        );
+        accesspass.client_ip = locked_to;
+        let mut data = Vec::new();
+        accesspass
+            .serialize(&mut data)
+            .expect("serializing the access pass");
+        data.resize(account.data.len(), 0);
+        self.context.set_account(
+            &pda,
+            &AccountSharedData::from(Account {
+                lamports: account.lamports,
+                data,
+                owner: account.owner,
+                executable: account.executable,
+                rent_epoch: account.rent_epoch,
+            }),
+        );
     }
 
     /// Points `ip_verifier_authority_pk` at `pubkey` — including `Pubkey::default()`, to model an
@@ -873,6 +922,35 @@ async fn test_missing_proof_is_rejected() {
     assert!(!f.user_exists(CLIENT_IP, UserType::IBRL).await);
 }
 
+/// The waiver is keyed on the PDA an authority chose, not on the stored `client_ip` field. A
+/// legacy pass at the wildcard PDA can carry a field naming the first address its holder connected
+/// from, which no authority ever vouched for; waiving the proof on that would hand the squatting
+/// case back to exactly the passes RFC-27 names as its threat.
+#[tokio::test]
+async fn test_missing_proof_is_rejected_for_a_legacy_self_bound_wildcard_pass() {
+    let mut f = setup().await;
+    f.legacy_self_bound_wildcard_accesspass(CLIENT_IP).await;
+    f.require_proof().await;
+
+    let result = f.create_user(None, &[], false).await;
+    assert_rejected(result, DoubleZeroError::IpOwnershipProofRequired);
+    assert!(!f.user_exists(CLIENT_IP, UserType::IBRL).await);
+}
+
+/// The same account still *authorizes* the creation — the waiver is the only thing it loses, so
+/// the fix does not lock legacy holders out once they can supply a proof.
+#[tokio::test]
+async fn test_a_legacy_self_bound_wildcard_pass_still_works_with_a_proof() {
+    let mut f = setup().await;
+    f.legacy_self_bound_wildcard_accesspass(CLIENT_IP).await;
+    f.require_proof().await;
+
+    f.create_user_with_valid_proof()
+        .await
+        .expect("a legacy pass carrying a valid proof must still create the user");
+    assert!(f.user_exists(CLIENT_IP, UserType::IBRL).await);
+}
+
 #[tokio::test]
 async fn test_missing_proof_is_rejected_for_a_pass_at_the_wildcard_pda() {
     let mut f = setup().await;
@@ -1026,8 +1104,11 @@ async fn test_sentinel_payer_may_create_without_a_proof_while_the_flag_is_set() 
     let sentinel = f.payer.pubkey();
     f.set_sentinel_authority(sentinel).await;
 
+    // `allow_multiple_ip`, so the pass does not attest the address and the IP-bound waiver does
+    // not apply. Without that the creation would succeed on the pass alone and this test would
+    // pass with the sentinel exemption deleted.
     let owner = Pubkey::new_unique();
-    let accesspass = f.provision_owner(owner, CLIENT_IP).await;
+    let accesspass = f.provision_owner_pass(owner, CLIENT_IP, true).await;
 
     f.create_subscribe_with_owner(owner, accesspass, CLIENT_IP, None)
         .await

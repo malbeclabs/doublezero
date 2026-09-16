@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.41.0](https://github.com/malbeclabs/doublezero/compare/client/v0.40.0...client/v0.41.0) - 2026-09-16
+
+### Breaking
+
+### Changes
+
 - CLI
   - `doublezero feed activate`, `halt`, `resume`, `retire` and `finalize-retirement`. Every feed instruction added since the catalog verbs was unreachable from the CLI: `feed` offered create, update, list and delete, so moving a feed to `Active`, stopping it publishing, or starting its retirement notice all meant building a transaction by hand. No test caught that, because tests call instructions directly, which is the blind spot a missing command sits in. `activate` and `resume` re-read the feed's stake mirror, and each derives that address from the feed's own `stake_ref` rather than taking it as a flag: the feed already records which stake backs it, so an argument would only be a way to name a different one, and a catalog feed sends no mirror because there is no stake to re-read.
   - `doublezero feed list` shows `status`, `halted_by` and `retires_at`. Five verbs move a feed through a lifecycle no CLI surface reported, so an operator ran `halt` or `retire` and had no way to see it land, or to know the date `finalize-retirement` stops failing on. `halted_by` is the one that changes what an operator can do: an operator's halt is not the builder's to lift.

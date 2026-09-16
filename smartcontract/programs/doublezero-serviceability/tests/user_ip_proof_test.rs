@@ -888,8 +888,8 @@ async fn test_missing_proof_is_rejected_for_a_pass_at_the_wildcard_pda() {
 
 /// The waiver: a pass pinned to exactly this address is an attestation by a privileged issuer, so
 /// a creation carrying no proof is accepted even with the flag on. Without this, a host that
-/// cannot originate from its pinned address — asymmetric routing, NAT, a verifier unreachable
-/// from that source — could not connect at all.
+/// cannot obtain a proof for its pinned address — because it reaches the service from some other
+/// address, or cannot reach it from that source at all — could not connect.
 #[tokio::test]
 async fn test_missing_proof_is_accepted_on_an_ip_bound_pass() {
     let mut f = setup().await;

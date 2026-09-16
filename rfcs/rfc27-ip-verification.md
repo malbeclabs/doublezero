@@ -334,7 +334,10 @@ set per environment through the existing `SetFeatureFlags` instruction.
 - **Flag set.** A user creation requires a valid proof, on the idempotent rerun path as well as on
   first creation. Two creations may omit one: a creation paid for by
   `globalstate.sentinel_authority_pk`, and a creation whose AccessPass is bound to the address being
-  claimed — stored at that `client_ip` and not flagged `allow_multiple_ip`.
+  claimed — stored at *that address's* PDA and not flagged `allow_multiple_ip`. The PDA seed is
+  what an issuing authority chose, so it is the attestation; the stored `client_ip` field is not,
+  on its own, because a pass predating this RFC may carry an address its own holder first
+  connected from.
 
 **The sentinel exemption.** The shred-oracle provisions multicast publishers owned by validators, so
 the proof would have to name the validator for an address the verification service never sees a

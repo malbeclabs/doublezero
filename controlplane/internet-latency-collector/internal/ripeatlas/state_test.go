@@ -868,7 +868,7 @@ func TestInternetLatency_RIPEAtlas_State_SaveFailureLeavesTargetIntact(t *testin
 	require.NoError(t, ms.Save())
 
 	// A directory at the target path fails the save at the rename, which is the step a
-	// kill would interrupt. Either way the target must survive untouched.
+	// kill would interrupt.
 	require.NoError(t, os.Remove(target))
 	require.NoError(t, os.Mkdir(target, 0755))
 	require.NoError(t, os.WriteFile(filepath.Join(target, "sentinel"), []byte("intact"), 0644))

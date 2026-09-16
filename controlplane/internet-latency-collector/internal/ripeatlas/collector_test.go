@@ -3166,7 +3166,7 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_GetAllMeasurementsError
 	require.Zero(t, created, "no measurement should be created when the existing fleet is unknown")
 	require.Zero(t, stopped, "no measurement should be removed when the existing fleet is unknown")
 
-	// Losing metadata is what made the next cycle delete the fleet for missing metadata.
+	// Metadata must survive the failed cycle; losing it is what armed the next wipe.
 	require.Len(t, state.GetAllMetadata(), 1)
 	require.Equal(t, "lon", state.GetAllMetadata()[1001].TargetLocation)
 

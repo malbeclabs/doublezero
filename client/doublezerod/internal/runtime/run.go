@@ -30,6 +30,37 @@ const (
 	updateInstalledRoutesGaugeInterval = 10 * time.Second
 )
 
+// restoreClientIPPin decides whether a pin loaded from the state file may be used as this
+// run's client IP, returning it when it may and "" to fall back to discovery.
+//
+// `/enable` checks local assignment before accepting a pin, but that says nothing about now:
+// an address can leave with a DHCP lease, a NIC swap or a re-addressing while the daemon is
+// down. Coming back up pinned to an address the kernel no longer holds, the reconciler would
+// match no onchain user and build no tunnel, and there is no un-pin path short of editing the
+// state file — so the check is repeated here rather than trusted from whenever it last ran.
+//
+// A rejected pin is not erased. It stays in the state file, so it takes effect again on the
+// next restart once the address is back, and an interface that is merely late coming up does
+// not cost the operator their configuration. An enumeration failure keeps the pin for the same
+// reason: it is a failure to check, not a failed check.
+func restoreClientIPPin(pinned string, isAssigned func(net.IP) (bool, error)) string {
+	ip := net.ParseIP(pinned)
+	if ip == nil || ip.To4() == nil {
+		slog.Warn("reconciler: ignoring unusable pinned client IP, falling back to discovery", "pinned", pinned)
+		return ""
+	}
+	assigned, err := isAssigned(ip.To4())
+	if err != nil {
+		slog.Warn("reconciler: could not verify pinned client IP, using it anyway", "pinned", pinned, "error", err)
+		return pinned
+	}
+	if !assigned {
+		slog.Warn("reconciler: pinned client IP is not assigned to any interface that is up on this host, falling back to discovery; the pin is kept and applies again once the address returns", "pinned", pinned)
+		return ""
+	}
+	return pinned
+}
+
 func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics, latencyProbeTunnelEndpoints, latencySingleSocket bool, networkConfig *config.NetworkConfig, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig, clientIP string, reconcilerPollInterval int, reconcilerFetchTimeout int, stateDir string, onchainRPCTimeout time.Duration) error {
 	nlr := routing.Netlink{}
 	var crw bgp.RouteReaderWriter
@@ -93,7 +124,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	// host to its discovered address and tearing the tunnel down.
 	effectiveClientIP := clientIP
 	if effectiveClientIP == "" && state.ClientIP != "" {
-		effectiveClientIP = state.ClientIP
+		effectiveClientIP = restoreClientIPPin(state.ClientIP, manager.IsLocallyAssigned)
 	}
 
 	ip, method, err := DiscoverClientIP(effectiveClientIP)

@@ -82,6 +82,7 @@ jobs:
           # without each branch adding its own and evicting the other Rust
           # jobs' caches under the repo-wide limit.
           save-if: ${{ github.ref == 'refs/heads/main' }}
+          shared-key: ${{ matrix.package }}
       - name: Install musl toolchain
         run: sudo apt-get update && sudo apt-get install -y musl-tools cmake
       - name: Build ${{ matrix.bin }} for musl and assert it is statically linked

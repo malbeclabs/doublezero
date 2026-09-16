@@ -178,11 +178,16 @@ func (n *NetlinkManager) ServeEnable(w http.ResponseWriter, r *http.Request) {
 		}
 		clientIP = parsed.To4()
 
-		// The daemon is the last gate before local configuration, so it repeats the check the
-		// CLI already made rather than trusting it: for plain IBRL this address becomes the GRE
-		// tunnel source verbatim, and one the kernel does not hold cannot carry a tunnel. An
-		// enumeration failure is fatal here — unlike in the CLI, there is nothing downstream
-		// left to catch it.
+		// The daemon is the last gate before local configuration, so it repeats the CLI's
+		// local-assignment check rather than trusting it: for plain IBRL this address becomes
+		// the GRE tunnel source verbatim, and one the kernel does not hold cannot carry a
+		// tunnel. An enumeration failure is fatal here — unlike in the CLI, there is nothing
+		// downstream left to catch it.
+		//
+		// Possession is all that is checked. The CLI's other check, that the address is
+		// globally routable, is not repeated: it is a property of the address rather than of
+		// this host, so it cannot change between the two, and `create_user` enforces it onchain
+		// for every path into the daemon.
 		assigned, err := isLocallyAssigned(clientIP)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)

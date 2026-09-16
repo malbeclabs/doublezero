@@ -78,9 +78,11 @@ pub fn split_trailing_instructions_sysvar<'a, 'info>(
 /// address. It is the same reasoning by which RFC-27 scopes its threat to wildcard passes, where
 /// the program accepts any globally-routable address and nothing names the one being claimed.
 ///
-/// The exemption exists because an attested address is not always one the host can originate from.
-/// Under asymmetric routing, a verifier unreachable from that source, or NAT, no proof for it is
-/// obtainable, and the pass and the flag together left such a host unable to connect at all.
+/// The exemption exists because an attested address is not always one a proof can be obtained for.
+/// The service signs the source it observes, so a host that reaches it from some other address —
+/// multi-homed, asymmetrically routed, or egressing through a NAT other than the one the pass
+/// names — gets a proof for an address it cannot use, and one that cannot reach the service from
+/// that source at all gets none. The pass and the flag together left such a host unable to connect.
 ///
 /// The trust boundary moves with it, from "the verifier observed this address" to "every
 /// `ACCESS_PASS_ADMIN` and every tenant administrator names addresses correctly". `is_tenant_admin`

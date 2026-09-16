@@ -349,13 +349,23 @@ is tracked in issue #4215.
 
 **The IP-bound pass exemption.** A pass that names the address is already an attestation of it:
 `SetAccessPass` is permissioned, so a privileged party asserted that this payer may use this
-address. The exemption exists because such an address is not always one the host can originate
-from — under asymmetric routing, behind NAT, or with the service unreachable from that source no
-proof is obtainable, and the pass and the flag together left the host unable to connect at all. It
-waives the *requirement* only; a supplied proof is still validated in full. It also moves the trust
-boundary onto issuance: a tenant administrator may issue passes, so one could pin a third party's
-address to their own payer and create a user there with no proof. That is accepted deliberately; a
-per-pass waiver flag, set by a narrower authority, is the lever if it needs tightening.
+address. The exemption exists because an attested address is not always one a proof can be
+obtained for: the verification service signs the source it observes, so a host that reaches it
+from some other address — multi-homed, asymmetrically routed, or egressing through a NAT other
+than the one the pass names — gets a proof for an address it cannot use, and a host that cannot
+reach the service from that source at all gets none. The pass and the flag together left such a
+host unable to connect. It waives the *requirement* only; a supplied proof is still validated in
+full.
+
+This exemption is reached through the address the client daemon is configured with or discovers,
+not through a caller-chosen one: `connect --client-ip` independently requires that the host hold
+the address on a local interface, so the flag cannot claim an attested address this host does not
+carry.
+
+The exemption also moves the trust boundary onto issuance: a tenant administrator may issue
+passes, so one could pin a third party's address to their own payer and create a user there with
+no proof. That is accepted deliberately; a per-pass waiver flag, set by a narrower authority, is
+the lever if it needs tightening.
 
 The proof is optional on the wire rather than on the instruction: `BorshDeserializeIncremental`
 decodes an older client's shorter payload as `None`, and whether `None` is acceptable is the flag's

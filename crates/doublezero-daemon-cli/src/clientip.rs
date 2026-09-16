@@ -169,16 +169,30 @@ mod tests {
         );
     }
 
-    // Whatever the host's own interfaces are, enumeration must agree with itself: every
-    // address it reports has to pass the assignment half of the check.
+    // Whatever the host's own interfaces are, enumeration must agree with itself: every address
+    // it reports has to pass the assignment half of the check.
+    //
+    // Deliberately not filtered to globally routable addresses. CI and developer machines are
+    // NAT'd, so every address they enumerate is private and the filtered loop had no iterations
+    // at all — a test structurally incapable of failing where it runs. The assignment half is
+    // what this guards, so a non-global address must be rejected for *that* reason and no other.
     #[test]
     fn accepts_addresses_this_host_actually_holds() {
         let addrs = local_ipv4_addrs().expect("enumerating local interfaces");
-        for ip in addrs.into_iter().filter(|ip| is_global(*ip)) {
+        assert!(
+            !addrs.is_empty(),
+            "a host with no enumerable IPv4 address cannot exercise this"
+        );
+        for ip in addrs {
+            let expected = if is_global(ip) {
+                Ok(())
+            } else {
+                Err(ClientIpRejection::NotGlobal)
+            };
             assert_eq!(
                 validate_client_ip(ip),
-                Ok(()),
-                "expected the locally assigned {ip} to be accepted"
+                expected,
+                "the locally assigned {ip} must never be rejected as unassigned"
             );
         }
     }

@@ -1085,9 +1085,18 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 			slog.Any("sample", silentSample))
 	}
 
-	// Save state if we detected any new unresponsive probes
+	// Save state if we detected any new unresponsive probes.
+	//
+	// Not under --dry-run. The flag promises to log what would be created without
+	// changing anything, and create-measurements builds the collector with a nil state,
+	// so configureMeasurements loads the running daemon's own file from --state-dir.
+	// Persisting here would let an operator inspecting intent blacklist probes and write
+	// the windows EvaluateTargetLoss just zeroed back over the file the daemon shares.
 	if newUnresponsiveProbes > 0 {
-		if err := measurementState.Save(); err != nil {
+		if dryRun {
+			c.log.Info("Would save unresponsive probe state (dry run), marks not persisted",
+				slog.Int("new_unresponsive_probes", newUnresponsiveProbes))
+		} else if err := measurementState.Save(); err != nil {
 			c.log.Warn("Failed to save measurement state after detecting unresponsive probes", slog.String("error", err.Error()))
 		} else {
 			c.log.Info("Saved unresponsive probe state",

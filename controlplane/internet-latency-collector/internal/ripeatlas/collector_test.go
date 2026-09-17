@@ -2961,3 +2961,65 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_SingleSourceTargetNotMa
 	require.False(t, c.measurementState.IsTargetUnresponsive(target),
 		"one source's broken path must not be charged to the target")
 }
+
+// TestInternetLatency_RIPEAtlas_ConfigureMeasurements_DryRunDoesNotPersistMarks pins the
+// promise --dry-run makes. create-measurements builds the collector with a nil state, so
+// configureMeasurements loads the running daemon's own file and a save here would reach it.
+func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_DryRunDoesNotPersistMarks(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	const deadTarget = 1009793
+
+	mockClient := &MockClient{
+		GetAllMeasurementsFunc: func(_ context.Context, _ string) ([]Measurement, error) {
+			return []Measurement{{
+				ID:          1001,
+				Description: "DoubleZero [testnet] to cmh probe 1009793",
+				Target:      "23.151.152.243",
+				Status: struct {
+					Name string `json:"name"`
+					ID   int    `json:"id"`
+				}{Name: "Ongoing"},
+				Type: "ping",
+			}}, nil
+		},
+		GetMeasurementResultsIncrementalFunc: func(_ context.Context, _ int, _ int64) ([]any, error) {
+			return []any{}, nil
+		},
+	}
+
+	stateDir := t.TempDir()
+	stateFile := filepath.Join(stateDir, TimestampFileName)
+
+	c := &Collector{client: mockClient, log: log, env: "testnet", getLocationsFunc: func(_ context.Context) []collector.LocationMatch {
+		return []collector.LocationMatch{}
+	}}
+
+	// Created 3h ago and never exported, so this cycle marks its target.
+	c.measurementState = NewMeasurementState(stateFile)
+	c.measurementState.SetMetadata(1001, MeasurementMeta{
+		TargetLocation: "cmh",
+		TargetProbeID:  deadTarget,
+		Sources:        []SourceProbeMeta{{LocationCode: "nyc", ProbeID: 100}},
+		CreatedAt:      time.Now().Unix() - 3*3600,
+	})
+
+	locationMatches := []LocationProbeMatch{
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "cmh", Latitude: 40.11, Longitude: -83.00},
+			NearbyProbes:  []Probe{{ID: deadTarget, Address: "23.151.152.243", Latitude: 40.11, Longitude: -83.00}},
+			ProbeCount:    1,
+		},
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "nyc", Latitude: 40.77, Longitude: -74.07},
+			NearbyProbes:  []Probe{{ID: 100, Address: "162.255.145.7", Latitude: 40.77, Longitude: -74.07}},
+			ProbeCount:    1,
+		},
+	}
+
+	require.NoError(t, c.configureMeasurements(t.Context(), locationMatches, true, 1, stateDir, 10*time.Minute))
+
+	require.NoFileExists(t, stateFile, "--dry-run must not write the daemon's state file")
+}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -528,15 +529,7 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 	processedCount := 0
 	failedCount := 0
 	inProgressCount := 0
-	supersededCount := 0
 	var completedJobIDs []string
-
-	// One sample per circuit per pass: downstream derives each sample's timestamp from its
-	// position in the account (telemetry/internal/data/internet/latencies.go), so a second
-	// sample shifts every later one in that epoch. Several batches for a circuit can complete
-	// in the same pass once the vendor recovers from a stall; newest-first order above makes
-	// the first record the freshest.
-	actualCircuits := make(map[string]bool)
 
 	records := make([]exporter.Record, 0, len(jobIDs))
 	for _, jobID := range jobIDs {
@@ -621,16 +614,6 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 
 		completedJobIDs = append(completedJobIDs, jobID)
 
-		circuit := circuitLabel(sourceLocation, targetLocation)
-		if actualCircuits[circuit] {
-			c.log.Debug("Wheresitup - Superseded by a newer sample for the same circuit, discarding",
-				slog.String("job_id", jobID),
-				slog.String("circuit", circuit))
-			supersededCount++
-			continue
-		}
-		actualCircuits[circuit] = true
-
 		records = append(records, exporter.Record{
 			DataProvider:       exporter.DataProviderNameWheresitup,
 			SourceExchangeCode: sourceLocation,
@@ -645,18 +628,30 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 		time.Sleep(CallDelay)
 	}
 
+	// Oldest sample first. Jobs are polled newest-first and the exporter preserves insertion
+	// order, while the ledger reconstructs each sample's timestamp from its position in the
+	// account, so the records have to be back in time order before they are written.
+	slices.SortStableFunc(records, func(a, b exporter.Record) int {
+		return a.Timestamp.Compare(b.Timestamp)
+	})
+
+	circuitActualSamples := make(map[string]int)
+	for _, record := range records {
+		circuitActualSamples[circuitLabel(record.SourceExchangeCode, record.TargetExchangeCode)]++
+	}
+
 	// Write the batch of records with the exporter.
 	if len(records) > 0 {
 		if err := c.exporter.WriteRecords(ctx, records); err != nil {
 			c.log.Warn("Wheresitup failed to write records", "error", err.Error(), "records", len(records))
 			return fmt.Errorf("failed to write records: %w", err)
 		}
-		for circuit := range actualCircuits {
-			metrics.LatencySamplesPerCollectionIntervalActual.WithLabelValues("wheresitup", circuit).Add(1)
+		for circuit, count := range circuitActualSamples {
+			metrics.LatencySamplesPerCollectionIntervalActual.WithLabelValues("wheresitup", circuit).Add(float64(count))
 		}
 		c.log.Info("Wheresitup - Added actual samples metrics",
 			slog.Int("actual_samples", len(records)),
-			slog.Int("circuits", len(actualCircuits)))
+			slog.Int("circuits", len(circuitActualSamples)))
 	}
 
 	// Outside the record-count guard, as in ripeatlas: job creation already incremented the
@@ -664,7 +659,7 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 	// one that has to report them missing.
 	missingSamples := 0
 	for circuit := range circuitExpectedSamples {
-		if !actualCircuits[circuit] {
+		if _, exists := circuitActualSamples[circuit]; !exists {
 			metrics.LatencySamplesPerCollectionIntervalMissing.WithLabelValues(c.env, circuit, "wheresitup").Add(1)
 			missingSamples++
 		}
@@ -673,7 +668,7 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 		c.log.Info("Wheresitup - Tracked missing samples",
 			slog.Int("missing_samples", missingSamples),
 			slog.Int("expected_circuits", len(circuitExpectedSamples)),
-			slog.Int("actual_circuits", len(actualCircuits)))
+			slog.Int("actual_circuits", len(circuitActualSamples)))
 	}
 
 	if len(completedJobIDs) > 0 {
@@ -704,7 +699,6 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 			slog.Int("failed_count", failedCount),
 			slog.Int("in_progress_count", inProgressCount),
 			slog.Int("expired_count", len(expiredJobIDs)),
-			slog.Int("superseded_count", supersededCount),
 			slog.Int("pending_jobs", pendingJobs),
 			slog.Int("total_jobs", totalJobs),
 			slog.Int("removed_job_count", len(completedJobIDs)),
@@ -716,7 +710,6 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 			slog.Int("failed_count", failedCount),
 			slog.Int("in_progress_count", inProgressCount),
 			slog.Int("expired_count", len(expiredJobIDs)),
-			slog.Int("superseded_count", supersededCount),
 			slog.Int("pending_jobs", pendingJobs),
 			slog.Int("removed_job_count", len(completedJobIDs)),
 			slog.Int("total_jobs", totalJobs),

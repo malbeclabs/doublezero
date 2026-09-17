@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"testing"
 	"time"
@@ -1456,9 +1457,10 @@ func TestInternetLatency_Wheresitup_ExportJobResults_AllExpiredReportsMissingSam
 	require.Empty(t, state.GetJobIDs())
 }
 
-// Several batches for one circuit can complete in the same pass once the vendor recovers
-// from a stall, and a second sample for a circuit shifts every later sample in the epoch.
-func TestInternetLatency_Wheresitup_ExportJobResults_OneSamplePerCircuitPerPass(t *testing.T) {
+// A stall leaves a run of intervals empty and the vendor then completes several of a
+// circuit's jobs in one pass. Each one stands for the interval it was created in, so all of
+// them are exported, in time order: the ledger derives a sample's timestamp from its position.
+func TestInternetLatency_Wheresitup_ExportJobResults_ExportsEveryCompletedJobInTimeOrder(t *testing.T) {
 	t.Parallel()
 
 	handler := newTestLogHandler()
@@ -1467,17 +1469,21 @@ func TestInternetLatency_Wheresitup_ExportJobResults_OneSamplePerCircuitPerPass(
 	jobIDsFile := filepath.Join(t.TempDir(), "jobs.json")
 	now := time.Now()
 	writeJobState(t, jobIDsFile, []JobEntry{
-		{JobID: "job-old", CreatedAt: now.Add(-20 * time.Minute)},
-		{JobID: "job-new", CreatedAt: now.Add(-2 * time.Minute)},
+		{JobID: "job-18m", CreatedAt: now.Add(-18 * time.Minute)},
+		{JobID: "job-12m", CreatedAt: now.Add(-12 * time.Minute)},
+		{JobID: "job-6m", CreatedAt: now.Add(-6 * time.Minute)},
 	}, []string{"lax → nyc"})
+
+	startTimes := map[string]time.Time{
+		"job-18m": now.Add(-18 * time.Minute),
+		"job-12m": now.Add(-12 * time.Minute),
+		"job-6m":  now.Add(-6 * time.Minute),
+	}
 
 	var mu sync.Mutex
 	var written []exporter.Record
 	client := exportTestClient(func(ctx context.Context, jobID string) (*JobResultResponse, error) {
-		if jobID == "job-old" {
-			return completedResults("new_york", now.Add(-20*time.Minute).Unix(), "99.0"), nil
-		}
-		return completedResults("new_york", now.Add(-2*time.Minute).Unix(), "12.5"), nil
+		return completedResults("new_york", startTimes[jobID].Unix(), "12.5"), nil
 	})
 	exp := &MockExporter{WriteRecordsFunc: func(ctx context.Context, records []exporter.Record) error {
 		mu.Lock()
@@ -1489,15 +1495,15 @@ func TestInternetLatency_Wheresitup_ExportJobResults_OneSamplePerCircuitPerPass(
 	c := exportTestCollector(log, client, exp)
 	require.NoError(t, c.ExportJobResults(t.Context(), jobIDsFile))
 
-	require.Len(t, written, 1, "only one sample per circuit may be exported in a pass")
-	require.Equal(t, 12500*time.Microsecond, written[0].RTT, "the newest job's sample must win")
+	require.Len(t, written, 3, "every completed job stands for one interval and must be exported")
+	require.True(t, sort.SliceIsSorted(written, func(i, j int) bool {
+		return written[i].Timestamp.Before(written[j].Timestamp)
+	}), "records must reach the exporter oldest first, got %v", written)
+	require.Equal(t, startTimes["job-18m"].Unix(), written[0].Timestamp.Unix())
+	require.Equal(t, startTimes["job-6m"].Unix(), written[2].Timestamp.Unix())
 
 	summary, _ := handler.only(t, "Operation completed: Wheresitup export_job_results")
-	require.Equal(t, int64(1), attr(t, summary, "superseded_count").Int64())
-
-	state := NewState(jobIDsFile)
-	require.NoError(t, state.Load())
-	require.Empty(t, state.GetJobIDs())
+	require.Equal(t, int64(3), attr(t, summary, "processed_count").Int64())
 }
 
 // A cancelled context must stop the pass rather than walk the remaining jobs issuing calls

@@ -536,15 +536,68 @@ func TestInternetLatency_RIPEAtlas_State_EvaluateTargetLoss(t *testing.T) {
 		ms.RecordTargetResults(measurementID, 12, 1, start+windowSecs, start+windowSecs)
 		lossy, attempts, _ = ms.EvaluateTargetLoss(measurementID, start+2*windowSecs)
 		require.False(t, lossy)
-		require.Equal(t, int64(24), attempts, "the aged-out window still reports what it held")
+		require.Equal(t, int64(24), attempts, "two short windows are still inside the cap")
 
-		// Hour 3: the target answers everything. The dropped tallies mean there is no
-		// stale evidence left to convict it with.
+		// Hour 3: the target answers everything, and the window is now past the cap.
+		// Pooled it would read 36/14, 61% loss, and mark a probe that has just answered
+		// every ping; instead the evidence is dropped and the window starts over.
 		ms.RecordTargetResults(measurementID, 12, 12, start+2*windowSecs, start+2*windowSecs)
 		lossy, attempts, successes := ms.EvaluateTargetLoss(measurementID, start+3*windowSecs)
 		require.False(t, lossy, "a recovered target must not be marked on evidence from an old outage")
-		require.Equal(t, int64(12), attempts, "only the recovered hour is still counted")
-		require.Equal(t, int64(12), successes)
+		require.Equal(t, int64(36), attempts, "the dropped window reports what it held")
+		require.Equal(t, int64(14), successes)
+
+		meta, ok := ms.GetMetadata(measurementID)
+		require.True(t, ok)
+		require.Zero(t, meta.TargetAttempts, "the aged-out tallies are cleared")
+		require.Equal(t, start+3*windowSecs, meta.TargetWindowStart)
+	})
+
+	t.Run("a window ready to judge just under the cap is judged", func(t *testing.T) {
+		t.Parallel()
+		ms := newState()
+		capSecs := int64(MaxTargetLossWindowAge.Seconds())
+		start := time.Now().Unix()
+
+		// A 3- or 4-source measurement reaches the minimum in its second window, so it
+		// arrives here at an age of about two windows. Without the grace on the cap,
+		// cycle drift of a few seconds either side would decide between this verdict
+		// and discarding the evidence.
+		ms.RecordTargetResults(measurementID, 36, 6, start, start)
+
+		lossy, attempts, successes := ms.EvaluateTargetLoss(measurementID, start+capSecs-30)
+		require.True(t, lossy, "evidence sitting right on the cap must still be judged")
+		require.Equal(t, int64(36), attempts)
+		require.Equal(t, int64(6), successes)
+
+		// And a few seconds the other side of the bare cap, which is the half of the
+		// coin flip a capless bound got wrong.
+		late := newState()
+		lateStart := time.Now().Unix()
+		late.RecordTargetResults(measurementID, 36, 6, lateStart, lateStart)
+
+		lossy, _, _ = late.EvaluateTargetLoss(measurementID, lateStart+capSecs+10)
+		require.True(t, lossy, "a cycle landing just past two windows must judge, not discard")
+	})
+
+	t.Run("a window past the cap and its grace is dropped even when judgeable", func(t *testing.T) {
+		t.Parallel()
+		ms := newState()
+		capSecs := int64(MaxTargetLossWindowAge.Seconds())
+		start := time.Now().Unix()
+
+		ms.RecordTargetResults(measurementID, 36, 6, start, start)
+
+		now := start + capSecs + graceSecs + 30
+		lossy, attempts, _ := ms.EvaluateTargetLoss(measurementID, now)
+		require.False(t, lossy, "past the cap the evidence is too old to convict on")
+		require.Equal(t, int64(36), attempts, "the dropped window still reports what it held")
+
+		meta, ok := ms.GetMetadata(measurementID)
+		require.True(t, ok)
+		require.Zero(t, meta.TargetAttempts)
+		require.Zero(t, meta.TargetSuccesses)
+		require.Equal(t, now, meta.TargetWindowStart, "the window restarts from now")
 	})
 
 	t.Run("window resets after evaluation", func(t *testing.T) {

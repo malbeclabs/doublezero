@@ -40,6 +40,15 @@ const (
 	// cost is that a measurement with too few sources to reach the minimum inside two
 	// windows is never judged at all, which is the safe direction: its pooled ratio is
 	// one or two circuits' reachability rather than the target's.
+	//
+	// The cap itself is this plus TargetLossWindowGrace, for the same drift reason the
+	// grace exists at all. A measurement with 3 or 4 sources reaches the minimum in its
+	// second window, so it is judged at an age of about two windows — right where a bare
+	// two-window cap sits. Whether the cycle landed a few seconds either side of the
+	// boundary would then decide between a verdict and dropping the evidence, which is
+	// the coin flip the grace removes on the young side. Allowing the cap a grace too
+	// puts the boundary clear of that, and a 2-source window still ends up dropped: it
+	// holds 24 attempts at two windows, under the minimum, and is past the cap by three.
 	MaxTargetLossWindowAge = 2 * TargetLossWindow
 
 	// TargetLossWindowGrace is how early a window may be judged. TargetLossWindow
@@ -405,11 +414,16 @@ func (ms *MeasurementState) EvaluateTargetLoss(measurementID int, now int64) (lo
 	attempts, successes = meta.TargetAttempts, meta.TargetSuccesses
 
 	// An aged-out window is dropped unjudged whatever it holds, so no verdict is ever
-	// rendered over more than MaxTargetLossWindowAge of evidence. Checked ahead of the
-	// attempt count deliberately: a cycle that drifts past the cap still accumulates,
+	// rendered over much more than MaxTargetLossWindowAge of evidence. Checked ahead of
+	// the attempt count deliberately: a cycle that drifts past the cap still accumulates,
 	// so by the next cycle a thin-fan-in window can hold enough attempts to be judged
 	// and would convict a target on an outage it has already recovered from.
-	if windowAge >= int64(MaxTargetLossWindowAge.Seconds()) {
+	//
+	// The bound carries TargetLossWindowGrace, like the young gate above and for the
+	// same reason: a 3- or 4-source window is ready to judge at an age of about two
+	// windows, so a bare cap would let cycle drift decide between a verdict and
+	// discarding the evidence.
+	if windowAge >= int64((MaxTargetLossWindowAge + TargetLossWindowGrace).Seconds()) {
 		meta.TargetWindowStart = now
 		meta.TargetAttempts = 0
 		meta.TargetSuccesses = 0

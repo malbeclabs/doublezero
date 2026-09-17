@@ -1,3 +1,5 @@
+// TODO: Remove after migration is complete
+
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};

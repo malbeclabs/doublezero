@@ -1,3 +1,5 @@
+// TODO: Remove after migration is complete
+
 use crate::{commands::common::append_payer_permission_account, DoubleZeroClient};
 use doublezero_serviceability::{
     processors::feed::migrate::FeedMigrateArgs, state::feed::FeedChain,

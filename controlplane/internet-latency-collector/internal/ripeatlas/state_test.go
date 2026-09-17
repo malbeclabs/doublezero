@@ -733,3 +733,34 @@ func TestInternetLatency_RIPEAtlas_State_MigratesLegacyTargetMarks(t *testing.T)
 	require.Zero(t, reloaded.MigratedTargetMarks(), "the migration must not run twice")
 	require.True(t, reloaded.IsProbeUnresponsive(targetProbe))
 }
+
+func TestInternetLatency_RIPEAtlas_State_UnresponsiveTargetExpiry(t *testing.T) {
+	t.Parallel()
+
+	const freshProbe = 55128
+	const staleProbe = 12651
+
+	ms := NewMeasurementState(filepath.Join(t.TempDir(), "state.json"))
+	ms.AddUnresponsiveTarget(freshProbe)
+	ms.AddUnresponsiveTarget(staleProbe)
+
+	// Backdate one mark past the expiry. Under rank-last a mark that never expires pins
+	// a metro to a dead probe rather than retrying it, which is the opposite of intended.
+	ms.mu.Lock()
+	for i := range ms.tracker.UnresponsiveTargets {
+		if ms.tracker.UnresponsiveTargets[i].ProbeID == staleProbe {
+			ms.tracker.UnresponsiveTargets[i].MarkedAt = time.Now().Add(-25 * time.Hour).Unix()
+		}
+	}
+	ms.mu.Unlock()
+
+	require.False(t, ms.IsTargetUnresponsive(staleProbe), "an expired mark should not demote the probe")
+	require.True(t, ms.IsTargetUnresponsive(freshProbe))
+	require.Equal(t, []int{freshProbe}, ms.GetUnresponsiveTargets(), "expired entries are not reported")
+
+	require.Equal(t, 1, ms.PruneExpiredUnresponsiveTargets(), "the expired entry should be pruned")
+	require.Equal(t, 0, ms.PruneExpiredUnresponsiveTargets(), "and pruning is idempotent")
+
+	require.Equal(t, []int{freshProbe}, ms.GetUnresponsiveTargets())
+	require.True(t, ms.IsTargetUnresponsive(freshProbe), "the live mark survives the prune")
+}

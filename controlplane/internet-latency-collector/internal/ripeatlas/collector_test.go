@@ -1976,6 +1976,13 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_UnresponsiveTargetDoesN
 
 	// The measurement with the dead target should be stopped
 	require.Contains(t, stoppedMeasurements, 1002, "Measurement with unresponsive target should be stopped")
+
+	// Measurement 1001 targets xams and sources from xsin's probe 6726. The point of the
+	// split is that marking 6726 as a failed target leaves its sourcing alone, so 1001
+	// must survive: a regression that re-barred it for sourcing would swap xsin's source
+	// probe and tear this measurement down.
+	require.NotContains(t, stoppedMeasurements, 1001,
+		"a target failure must not tear down a measurement the probe merely sources")
 }
 
 func TestInternetLatency_RIPEAtlas_Run_ErrorHandling(t *testing.T) {
@@ -2652,6 +2659,24 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_LossyTargetIsRotated(t 
 	const lossyTargetProbe = 12651   // stands in for the NAT'd Columbus probe
 	const replacementProbe = 1012487 // a directly reachable probe further out
 
+	// 36 pings across two sources, 6 answered: the 13-26% success cmh's target ran at.
+	// Enough attempts to clear MinTargetAttemptsForLossCheck.
+	var resultsFetched int
+	var lossyResults []any
+	for i := range 36 {
+		at := time.Now().Add(-time.Duration(40-i) * time.Minute).Unix()
+		probeID := 100 + i%2
+		result := map[string]any{
+			"prb_id":    float64(probeID),
+			"timestamp": float64(at),
+			"result":    []any{map[string]any{"x": "*"}},
+		}
+		if i%6 == 0 {
+			result["result"] = []any{map[string]any{"rtt": float64(26.0)}}
+		}
+		lossyResults = append(lossyResults, result)
+	}
+
 	existingMeasurements := []Measurement{
 		{
 			ID:          1001,
@@ -2683,20 +2708,27 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_LossyTargetIsRotated(t 
 			return nil
 		},
 		GetMeasurementResultsIncrementalFunc: func(_ context.Context, _ int, _ int64) ([]any, error) {
-			return []any{}, nil
+			mu.Lock()
+			resultsFetched++
+			mu.Unlock()
+			return lossyResults, nil
 		},
 	}
 
 	stateDir := filepath.Join(t.TempDir(), "state")
 	require.NoError(t, os.MkdirAll(stateDir, 0o755))
 
-	c := &Collector{client: mockClient, log: log, env: "testnet", getLocationsFunc: func(_ context.Context) []collector.LocationMatch {
+	outputDir := t.TempDir()
+	csvExporter, err := exporter.NewCSVExporter(log, "ripe_atlas_measurements", outputDir)
+	require.NoError(t, err)
+
+	c := &Collector{client: mockClient, log: log, env: "testnet", exporter: csvExporter, getLocationsFunc: func(_ context.Context) []collector.LocationMatch {
 		return []collector.LocationMatch{}
 	}}
 
 	// The target is exporting steadily, so the staleness check is satisfied and only the
-	// loss ratio can catch it: 15 of 100 pings answered, in a window that has closed.
-	windowStart := time.Now().Add(-TargetLossWindow).Unix()
+	// loss ratio can catch it.
+	createdAt := time.Now().Add(-3 * time.Hour).Unix()
 	c.measurementState = NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
 	c.measurementState.SetMetadata(1001, MeasurementMeta{
 		TargetLocation: "cmh",
@@ -2705,12 +2737,29 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_LossyTargetIsRotated(t 
 			{LocationCode: "nyc", ProbeID: 100, LastResponseAt: time.Now().Unix()},
 			{LocationCode: "sea", ProbeID: 101, LastResponseAt: time.Now().Unix()},
 		},
-		CreatedAt:         windowStart - 3600,
-		LastExportAt:      time.Now().Unix(),
-		TargetWindowStart: windowStart,
-		TargetAttempts:    100,
-		TargetSuccesses:   15,
+		CreatedAt:    createdAt,
+		LastExportAt: time.Now().Unix(),
 	})
+
+	// Fill the window through the real export path rather than by hand, so the cursor
+	// gating and the counting in exportSingleMeasurementResults are exercised too.
+	_, _, err = c.exportSingleMeasurementResults(t.Context(), existingMeasurements[0], c.measurementState)
+	require.NoError(t, err)
+
+	seeded, ok := c.measurementState.GetMetadata(1001)
+	require.True(t, ok)
+	require.Equal(t, int64(36), seeded.TargetAttempts, "the export path should have counted every result")
+	require.Equal(t, int64(6), seeded.TargetSuccesses)
+
+	// Only the window's start is moved back. RecordTargetResults opens it at the time of
+	// the export, and nothing here can wait an hour for it to close.
+	seeded.TargetWindowStart = time.Now().Add(-TargetLossWindow).Unix()
+	c.measurementState.SetMetadata(1001, seeded)
+
+	mu.Lock()
+	fetchedBeforeReconcile := resultsFetched
+	mu.Unlock()
+	require.Equal(t, 1, fetchedBeforeReconcile)
 
 	locationMatches := []LocationProbeMatch{
 		{
@@ -2733,8 +2782,12 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_LossyTargetIsRotated(t 
 		},
 	}
 
-	err := c.configureMeasurements(t.Context(), locationMatches, false, 1, stateDir, 10*time.Minute)
-	require.NoError(t, err)
+	require.NoError(t, c.configureMeasurements(t.Context(), locationMatches, false, 1, stateDir, 10*time.Minute))
+
+	mu.Lock()
+	require.Greater(t, resultsFetched, fetchedBeforeReconcile,
+		"reconciliation should export the measurement before removing it, so the mock is really called")
+	mu.Unlock()
 
 	// The lossy target is barred from targeting...
 	require.True(t, c.measurementState.IsTargetUnresponsive(lossyTargetProbe),

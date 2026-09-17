@@ -26,6 +26,19 @@ const (
 	// unresponsive. A healthy anchor sits near zero; a probe behind NAT runs far above
 	// this while still replying often enough to keep the staleness check satisfied.
 	MaxTargetLossRatio = 0.5
+
+	// MaxTargetLossWindowAge bounds how long a window that closed short may keep
+	// accumulating. Without a bound the duration gate stays satisfied forever and the
+	// verdict is eventually rendered over an arbitrarily long span, so an old outage
+	// can mark a target that has since answered every ping: two hours of 12 attempts at
+	// 1 success, then a fully recovered hour, pools to 36/14 and reads as 61% loss.
+	//
+	// Two windows rather than more, because the tallies have to be dropped before they
+	// cross MinTargetAttemptsForLossCheck or the stale evidence is judged anyway. The
+	// cost is that a measurement with too few sources to reach the minimum inside two
+	// windows is never judged at all, which is the safe direction: its pooled ratio is
+	// one or two circuits' reachability rather than the target's.
+	MaxTargetLossWindowAge = 2 * TargetLossWindow
 )
 
 type MeasurementState struct {
@@ -317,7 +330,17 @@ func (ms *MeasurementState) EvaluateTargetLoss(measurementID int, now int64) (lo
 	// with few enough sources never reaches the minimum within one window: at the
 	// 10 minute sampling interval a source contributes 6 attempts an hour, so fewer
 	// than 5 sources could never be judged at all.
+	//
+	// It does not accumulate indefinitely, though. Past MaxTargetLossWindowAge the
+	// tallies are dropped unjudged, so a recovered target is not marked on evidence
+	// from an outage it has already come back from.
 	if attempts < MinTargetAttemptsForLossCheck {
+		if now-meta.TargetWindowStart >= int64(MaxTargetLossWindowAge.Seconds()) {
+			meta.TargetWindowStart = now
+			meta.TargetAttempts = 0
+			meta.TargetSuccesses = 0
+			ms.tracker.Metadata[measurementID] = meta
+		}
 		return false, attempts, successes
 	}
 

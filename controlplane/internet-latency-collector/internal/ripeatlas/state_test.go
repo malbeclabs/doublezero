@@ -500,6 +500,34 @@ func TestInternetLatency_RIPEAtlas_State_EvaluateTargetLoss(t *testing.T) {
 		require.Zero(t, successes)
 	})
 
+	t.Run("a short window is dropped rather than judged once it ages out", func(t *testing.T) {
+		t.Parallel()
+		ms := newState()
+		start := time.Now().Unix()
+
+		// Two sources at the 10 minute sampling interval give 12 attempts an hour, so
+		// the window never reaches the minimum inside one hour. Left to accumulate it
+		// would pool two lossy hours with one recovered one (36 attempts, 14 successes,
+		// 61% loss) and mark a target that has answered every recent ping.
+		ms.RecordTargetResults(measurementID, 12, 1, start, start)
+		lossy, attempts, _ := ms.EvaluateTargetLoss(measurementID, start+windowSecs)
+		require.False(t, lossy)
+		require.Equal(t, int64(12), attempts, "one short window keeps its evidence")
+
+		ms.RecordTargetResults(measurementID, 12, 1, start+windowSecs, start+windowSecs)
+		lossy, attempts, _ = ms.EvaluateTargetLoss(measurementID, start+2*windowSecs)
+		require.False(t, lossy)
+		require.Equal(t, int64(24), attempts, "the aged-out window still reports what it held")
+
+		// Hour 3: the target answers everything. The dropped tallies mean there is no
+		// stale evidence left to convict it with.
+		ms.RecordTargetResults(measurementID, 12, 12, start+2*windowSecs, start+2*windowSecs)
+		lossy, attempts, successes := ms.EvaluateTargetLoss(measurementID, start+3*windowSecs)
+		require.False(t, lossy, "a recovered target must not be marked on evidence from an old outage")
+		require.Equal(t, int64(12), attempts, "only the recovered hour is still counted")
+		require.Equal(t, int64(12), successes)
+	})
+
 	t.Run("window resets after evaluation", func(t *testing.T) {
 		t.Parallel()
 		ms := newState()

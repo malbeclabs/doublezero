@@ -1231,6 +1231,18 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		slog.Int("to_create", len(toCreate)),
 		slog.Int("to_remove", len(toRemove)))
 
+	// A recreation writes fresh metadata under a new measurement ID, so the loss window
+	// would be lost. Snapshot it per target location before the removals so Step 8 can
+	// carry it over. Step 5 recreates on any source-set change, not only a target
+	// change, so without this one unrelated metro's probe flapping resets windows
+	// fleet-wide and the loss check silently never fires in a churning deployment.
+	windowsByTargetLocation := make(map[string]MeasurementMeta, len(toRemove))
+	for _, measurement := range toRemove {
+		if meta, hasMeta := measurementState.GetMetadata(measurement.ID); hasMeta {
+			windowsByTargetLocation[meta.TargetLocation] = meta
+		}
+	}
+
 	// Step 7: Remove unwanted measurements
 	if len(toRemove) > 0 {
 
@@ -1384,6 +1396,16 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 					TargetProbeID:  spec.TargetProbe.ID,
 					Sources:        sources,
 					CreatedAt:      time.Now().Unix(),
+				}
+
+				// Only when the target probe is unchanged. A new target starts clean:
+				// the old one's loss says nothing about it.
+				if old, ok := windowsByTargetLocation[spec.TargetLocationCode]; ok &&
+					old.TargetProbeID == spec.TargetProbe.ID {
+					meta.TargetWindowStart = old.TargetWindowStart
+					meta.TargetAttempts = old.TargetAttempts
+					meta.TargetSuccesses = old.TargetSuccesses
+					meta.TargetLossCursor = old.TargetLossCursor
 				}
 
 				measurementState.SetMetadata(measurementID, meta)

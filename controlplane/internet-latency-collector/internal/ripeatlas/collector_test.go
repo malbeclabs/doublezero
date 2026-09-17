@@ -1566,6 +1566,118 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_UnresponsiveSourceProbe
 	}
 }
 
+// TestInternetLatency_RIPEAtlas_ConfigureMeasurements_WindowSurvivesSourceChurn pins the
+// loss window across a recreation caused by something other than the target. Step 5
+// recreates on any source-set change, so without the carry-over an unrelated metro's
+// probe flapping would reset every window it touches and the loss check would never
+// accumulate enough to fire.
+func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_WindowSurvivesSourceChurn(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	const target = 6626
+	const staleSource = 6726
+	const replacementSource = 1033
+
+	// xams is recreated onto the new source; xsin gets a first measurement of its own,
+	// since it sorts after xams. Only the xams one is under test here.
+	createdByTarget := map[string]int{}
+	var created int
+	var mu sync.Mutex
+
+	mockClient := &MockClient{
+		GetAllMeasurementsFunc: func(_ context.Context, _ string) ([]Measurement, error) {
+			return []Measurement{{
+				ID:          1001,
+				Description: "DoubleZero [testnet] to xams probe 6626",
+				Target:      "84.38.236.1",
+				Status: struct {
+					Name string `json:"name"`
+					ID   int    `json:"id"`
+				}{Name: "Ongoing"},
+				Type: "ping",
+			}}, nil
+		},
+		CreateMeasurementFunc: func(_ context.Context, request MeasurementRequest) (*MeasurementResponse, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			created++
+			id := 2000 + created
+			for _, def := range request.Definitions {
+				if strings.Contains(def.Description, "to xams") {
+					createdByTarget["xams"] = id
+				}
+			}
+			return &MeasurementResponse{Measurements: []int{id}}, nil
+		},
+		StopMeasurementFunc: func(_ context.Context, _ int) error { return nil },
+		GetMeasurementResultsIncrementalFunc: func(_ context.Context, _ int, _ int64) ([]any, error) {
+			return []any{}, nil
+		},
+	}
+
+	stateDir := filepath.Join(t.TempDir(), "state")
+	c := &Collector{client: mockClient, log: log, env: "testnet", getLocationsFunc: func(_ context.Context) []collector.LocationMatch {
+		return []collector.LocationMatch{}
+	}}
+
+	// A window 40 minutes in, short of a verdict. The target is healthy; only the
+	// source set is about to change.
+	windowStart := time.Now().Add(-40 * time.Minute).Unix()
+	c.measurementState = NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
+	c.measurementState.SetMetadata(1001, MeasurementMeta{
+		TargetLocation: "xams",
+		TargetProbeID:  target,
+		Sources: []SourceProbeMeta{
+			{LocationCode: "xsin", ProbeID: staleSource, LastResponseAt: time.Now().Unix() - 7200},
+			{LocationCode: "xtyo", ProbeID: 7080, LastResponseAt: time.Now().Unix()},
+		},
+		CreatedAt:         time.Now().Unix() - 3*3600,
+		LastExportAt:      time.Now().Unix(),
+		TargetWindowStart: windowStart,
+		TargetAttempts:    25,
+		TargetSuccesses:   4,
+		TargetLossCursor:  windowStart + 60,
+	})
+
+	locationMatches := []LocationProbeMatch{
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "xams", Latitude: 52.3, Longitude: 4.7},
+			NearbyProbes:  []Probe{{ID: target, Address: "84.38.236.1", Latitude: 52.3, Longitude: 4.7}},
+			ProbeCount:    1,
+		},
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "xsin", Latitude: 1.3, Longitude: 103.8},
+			NearbyProbes: []Probe{
+				{ID: staleSource, Address: "139.99.78.22", Latitude: 1.3, Longitude: 103.8},
+				{ID: replacementSource, Address: "138.75.38.177", Latitude: 1.3, Longitude: 103.9},
+			},
+			ProbeCount: 2,
+		},
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "xtyo", Latitude: 35.6, Longitude: 139.6},
+			NearbyProbes:  []Probe{{ID: 7080, Address: "63.222.190.5", Latitude: 35.6, Longitude: 139.6}},
+			ProbeCount:    1,
+		},
+	}
+
+	require.NoError(t, c.configureMeasurements(t.Context(), locationMatches, false, 1, stateDir, 10*time.Minute))
+
+	mu.Lock()
+	newID, recreated := createdByTarget["xams"]
+	mu.Unlock()
+	require.True(t, recreated, "xams should be recreated onto the replacement source")
+
+	meta, ok := c.measurementState.GetMetadata(newID)
+	require.True(t, ok)
+	require.Equal(t, target, meta.TargetProbeID, "the target did not change")
+	require.Equal(t, windowStart, meta.TargetWindowStart, "the window must survive source churn")
+	require.Equal(t, int64(25), meta.TargetAttempts)
+	require.Equal(t, int64(4), meta.TargetSuccesses)
+	require.Equal(t, windowStart+60, meta.TargetLossCursor)
+}
+
 // TestInternetLatency_RIPEAtlas_ConfigureMeasurements_KeptMarkedTargetStillChecksSources
 // pins the per-cycle skip. A target kept by rank-last carries its mark every cycle, so
 // keying the Step 4b exemption off the standing mark would exempt this measurement's

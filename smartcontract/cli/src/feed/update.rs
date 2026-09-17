@@ -101,7 +101,8 @@ mod tests {
                 get::GetMulticastGroupCommand, subscribe::UpdateMulticastGroupRolesCommand,
             },
         },
-        AccountType, Exchange, ExchangeStatus, Feed, MulticastGroup, MulticastGroupStatus,
+        AccountType, Exchange, ExchangeStatus, Feed, FeedChain, MulticastGroup,
+        MulticastGroupStatus,
     };
     use doublezero_serviceability::state::accesspass::AccessPassType;
     use mockall::predicate;
@@ -569,6 +570,48 @@ mod tests {
                 name: Some("Feed v2".to_string()),
                 groups: vec!["mg01".to_string()],
                 chain: None,
+                force_unsubscribe: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            format!("Signature: {signature}\n")
+        );
+    }
+
+    #[test]
+    fn test_cli_feed_update_sends_the_supplied_chain() {
+        let mut client = create_test_client();
+        client.expect_check_requirements().returning(|_| Ok(()));
+
+        let f = GuardFixture::new(1);
+        let signature = Signature::new_unique();
+        f.expect_get_feed(&mut client, vec![f.groups[0]]);
+        client
+            .expect_update_feed()
+            .with(predicate::eq(UpdateFeedCommand {
+                pubkey: f.feed_pk,
+                name: None,
+                groups: None,
+                feed_chain: Some(FeedChain::Hyperliquid),
+            }))
+            .times(1)
+            .returning(move |_| Ok(signature));
+
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(
+            UpdateFeedCliCommand {
+                target: FeedTargetArgs {
+                    pubkey: Some(f.feed_pk.to_string()),
+                    code: None,
+                    exchange: None,
+                },
+                name: None,
+                groups: vec![],
+                chain: Some(FeedChain::Hyperliquid),
                 force_unsubscribe: false,
             }
             .execute(&ctx, &client, &mut output),

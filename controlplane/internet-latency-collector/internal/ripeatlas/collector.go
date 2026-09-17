@@ -55,6 +55,13 @@ type LocationProbeMatch struct {
 	collector.LocationMatch
 	NearbyProbes []Probe
 	ProbeCount   int
+
+	// FallbackTargetProbes holds the wider non-anchor fetch made when every known probe
+	// for the location is marked unresponsive as a target. Only target selection reads
+	// it. Merging these into NearbyProbes instead would feed source selection too, so a
+	// target-only mark could still swap the metro's source probe and tear down every
+	// measurement it feeds, which is the cascade the role split exists to stop.
+	FallbackTargetProbes []Probe
 }
 
 type ProbeDistance struct {
@@ -1430,8 +1437,8 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 
 // fetchFallbackProbesForUnresponsiveLocations returns a copy of locationMatches where
 // locations whose every known probe is marked unresponsive as a target in
-// measurementState are augmented with non-anchor Connected probes fetched from the
-// RIPE Atlas API.
+// measurementState carry non-anchor Connected probes fetched from the RIPE Atlas API
+// in FallbackTargetProbes. NearbyProbes is left alone so source selection is unaffected.
 //
 // This finds a location a working target when its anchor probe stops responding while
 // RIPE Atlas still reports it as "Connected" — a lag that means fetchProbesWithErrorHandling
@@ -1471,8 +1478,7 @@ func (c *Collector) fetchFallbackProbesForUnresponsiveLocations(ctx context.Cont
 			c.log.Info("Using non-anchor fallback probes for location",
 				slog.String("location", match.LocationCode),
 				slog.Int("count", len(fallbackProbes)))
-			result[i].NearbyProbes = fallbackProbes
-			result[i].ProbeCount = len(fallbackProbes)
+			result[i].FallbackTargetProbes = fallbackProbes
 		} else {
 			c.log.Warn("No non-anchor fallback probes found for location",
 				slog.String("location", match.LocationCode))
@@ -1505,7 +1511,13 @@ func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMa
 			continue
 		}
 
-		selectableTargets := filterSelectableTargets(targetLocation.NearbyProbes)
+		targetCandidates := targetLocation.NearbyProbes
+		if len(targetLocation.FallbackTargetProbes) > 0 {
+			targetCandidates = append(append([]Probe{}, targetCandidates...),
+				targetLocation.FallbackTargetProbes...)
+		}
+
+		selectableTargets := filterSelectableTargets(targetCandidates)
 		if len(selectableTargets) == 0 {
 			c.log.Warn("No selectable target probes found for location",
 				slog.String("location", targetLocation.LocationCode))

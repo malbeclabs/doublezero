@@ -1144,8 +1144,10 @@ func TestInternetLatency_RIPEAtlas_FetchFallbackProbes_TriggeredWhenAllUnrespons
 
 	require.Len(t, result, 1)
 	require.Equal(t, 1, nonAnchorCalls, "should have fetched non-anchor fallback probes")
-	require.Len(t, result[0].NearbyProbes, 1)
-	require.Equal(t, fallbackProbeID, result[0].NearbyProbes[0].ID, "should use the fallback probe")
+	require.Equal(t, []int{fallbackProbeID}, probeIDs(result[0].FallbackTargetProbes),
+		"the fallback probe should be offered to target selection")
+	require.Equal(t, []int{anchorProbeID}, probeIDs(result[0].NearbyProbes),
+		"source selection keeps reading the location's own probes")
 }
 
 // TestInternetLatency_RIPEAtlas_FetchFallbackProbes_NoFallbackWhenResponsive verifies that
@@ -1196,46 +1198,100 @@ func TestInternetLatency_RIPEAtlas_FetchFallbackProbes_NoFallbackWhenResponsive(
 
 // TestInternetLatency_RIPEAtlas_FetchFallbackProbes_TriggeredByTargetMarks verifies the
 // wider fetch still runs for a location whose every candidate is marked as a target
-// only, and that a fetch turning up nothing leaves those candidates in place for
-// rankTargets rather than emptying the location.
+// only, that a fetch turning up nothing leaves those candidates in place for
+// rankTargets, and that whatever it does find never reaches source selection.
 func TestInternetLatency_RIPEAtlas_FetchFallbackProbes_TriggeredByTargetMarks(t *testing.T) {
 	t.Parallel()
 
 	log := logger.With("test", t.Name())
 
 	const markedProbeID = 12651
+	const fallbackProbeID = 55128
 
-	var nonAnchorCalls int
-	mockClient := &MockClient{
-		GetProbesInRadiusFunc: func(_ context.Context, _, _ float64, _ int, anchorsOnly bool) ([]Probe, error) {
-			if !anchorsOnly {
-				nonAnchorCalls++
-			}
-			return []Probe{}, nil
-		},
-	}
+	newCase := func(t *testing.T, fetched []Probe) ([]LocationProbeMatch, *MeasurementState, *int) {
+		t.Helper()
 
-	measurementState := NewMeasurementState(filepath.Join(t.TempDir(), "state.json"))
-	measurementState.AddUnresponsiveTarget(markedProbeID)
-
-	locationMatches := []LocationProbeMatch{
-		{
-			LocationMatch: collector.LocationMatch{LocationCode: "cmh", Latitude: 40.11, Longitude: -83.00},
-			NearbyProbes: []Probe{
-				{ID: markedProbeID, Address: "107.192.62.177", Latitude: 40.11, Longitude: -83.00},
+		nonAnchorCalls := 0
+		mockClient := &MockClient{
+			GetProbesInRadiusFunc: func(_ context.Context, _, _ float64, _ int, anchorsOnly bool) ([]Probe, error) {
+				if !anchorsOnly {
+					nonAnchorCalls++
+				}
+				return fetched, nil
 			},
-			ProbeCount: 1,
-		},
+		}
+
+		measurementState := NewMeasurementState(filepath.Join(t.TempDir(), "state.json"))
+		measurementState.AddUnresponsiveTarget(markedProbeID)
+
+		locationMatches := []LocationProbeMatch{
+			{
+				LocationMatch: collector.LocationMatch{LocationCode: "cmh", Latitude: 40.11, Longitude: -83.00},
+				NearbyProbes: []Probe{
+					{ID: markedProbeID, Address: "107.192.62.177", Latitude: 40.11, Longitude: -83.00},
+				},
+				ProbeCount: 1,
+			},
+			{
+				LocationMatch: collector.LocationMatch{LocationCode: "nyc", Latitude: 40.77, Longitude: -74.07},
+				NearbyProbes:  []Probe{{ID: 100, Address: "162.255.145.7", Latitude: 40.77, Longitude: -74.07}},
+				ProbeCount:    1,
+			},
+		}
+
+		c := &Collector{client: mockClient, log: log}
+		return c.fetchFallbackProbesForUnresponsiveLocations(t.Context(), locationMatches, measurementState),
+			measurementState, &nonAnchorCalls
 	}
 
-	c := &Collector{client: mockClient, log: log}
-	result := c.fetchFallbackProbesForUnresponsiveLocations(t.Context(), locationMatches, measurementState)
+	t.Run("a fetch that finds nothing leaves the marked candidate to be ranked", func(t *testing.T) {
+		t.Parallel()
 
-	require.Equal(t, 1, nonAnchorCalls, "a target-only mark should still trigger the wider fetch")
-	require.Len(t, result, 1)
-	require.Len(t, result[0].NearbyProbes, 1)
-	require.Equal(t, markedProbeID, result[0].NearbyProbes[0].ID,
-		"a fetch that finds nothing must leave the marked candidate to be ranked")
+		result, _, nonAnchorCalls := newCase(t, []Probe{})
+
+		require.Equal(t, 1, *nonAnchorCalls, "a target-only mark should still trigger the wider fetch")
+		require.Len(t, result[0].NearbyProbes, 1)
+		require.Equal(t, markedProbeID, result[0].NearbyProbes[0].ID)
+		require.Empty(t, result[0].FallbackTargetProbes)
+	})
+
+	t.Run("fallback probes are kept out of source selection", func(t *testing.T) {
+		t.Parallel()
+
+		// The reviewer's xsin scenario: the wider fetch returns a nearer non-anchor probe.
+		// Merged into NearbyProbes it would become the metro's source probe as well, and
+		// every measurement sourcing from cmh would compare as outdated and be torn down.
+		result, measurementState, _ := newCase(t, []Probe{
+			{ID: fallbackProbeID, Address: "69.58.112.238", Latitude: 40.11, Longitude: -83.00},
+		})
+
+		require.Equal(t, []int{markedProbeID}, probeIDs(result[0].NearbyProbes),
+			"the fallback must not displace the probes source selection reads")
+		require.Equal(t, []int{fallbackProbeID}, probeIDs(result[0].FallbackTargetProbes))
+
+		c := &Collector{client: &MockClient{}, log: log}
+		wanted := c.generateWantedMeasurements(result, 1, measurementState)
+
+		require.Len(t, wanted, 1, "cmh sorts first, so it is the only target")
+		require.Equal(t, "cmh", wanted[0].TargetLocationCode)
+		require.Equal(t, fallbackProbeID, wanted[0].TargetProbe.ID,
+			"the unmarked fallback outranks the marked known probe as a target")
+
+		// cmh is a source for no measurement here (nothing sorts before it), so assert
+		// the converse directly: the fallback is not selectable as a source at all.
+		require.Equal(t, []int{markedProbeID},
+			probeIDs(filterResponsiveProbes(result[0].NearbyProbes, measurementState)),
+			"a target-only mark leaves the original probe as cmh's source")
+	})
+}
+
+// probeIDs lists probe IDs in order, for comparing selections.
+func probeIDs(probes []Probe) []int {
+	out := make([]int, 0, len(probes))
+	for _, p := range probes {
+		out = append(out, p.ID)
+	}
+	return out
 }
 
 func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_CreateNew(t *testing.T) {

@@ -655,6 +655,7 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	// success arrives; counting those repeats would inflate the ratio.
 	var targetAttempts, targetSuccesses, newestResult int64
 	lossCursor := meta.TargetLossCursor
+	countedUpTo := time.Now().Unix()
 
 	// Process results - use slice to preserve all samples
 	var records []exporter.Record
@@ -665,7 +666,13 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 		// Results are counted at one second granularity, so a result sharing the
 		// cursor's second is skipped. Undercounting biases away from blacklisting a
 		// usable target, which is the safe direction to err in.
-		if resultAt := timestamp.Unix(); resultAt > lossCursor {
+		//
+		// A future-dated result is skipped outright rather than counted. The timestamp
+		// is probe-reported, and only a latency advances the export cursor, so one
+		// timeout from a clock-skewed probe would otherwise park TargetLossCursor ahead
+		// of wall clock and every later result would fail the comparison, disabling
+		// loss counting for the life of the measurement.
+		if resultAt := timestamp.Unix(); resultAt > lossCursor && resultAt <= countedUpTo {
 			targetAttempts++
 			if latency > 0 {
 				targetSuccesses++
@@ -716,7 +723,7 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	// Counted only once the batch is durable. A failed write leaves both cursors where
 	// they were, so the same results come back next time and are counted then; counting
 	// before the write would tally them on every failed attempt.
-	measurementState.RecordTargetResults(measurement.ID, targetAttempts, targetSuccesses, newestResult, time.Now().Unix())
+	measurementState.RecordTargetResults(measurement.ID, targetAttempts, targetSuccesses, newestResult, countedUpTo)
 
 	// Update the timestamp tracker with the newest timestamp seen
 	if maxTimestamp.After(lastTimestamp) {

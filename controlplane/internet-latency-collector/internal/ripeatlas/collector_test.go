@@ -2479,6 +2479,35 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_RecordsTargetL
 		require.Equal(t, int64(1), meta.TargetSuccesses)
 	})
 
+	t.Run("a future-dated result does not park the cursor", func(t *testing.T) {
+		t.Parallel()
+
+		// A single clock-skewed timeout, then a real result behind it. Counting the
+		// skewed one would push TargetLossCursor past wall clock and every later
+		// result would be dropped for the life of the measurement.
+		batches := [][]any{
+			{timedOut(101, time.Now().Add(48*time.Hour))},
+			{answered(100, base.Add(3*time.Second))},
+		}
+		c, ms := newCollector(t, nil, &batches)
+
+		_, _, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.NoError(t, err)
+
+		meta, ok := ms.GetMetadata(1)
+		require.True(t, ok)
+		require.Zero(t, meta.TargetAttempts, "a future-dated result is not an attempt")
+		require.Zero(t, meta.TargetLossCursor, "the cursor must not move ahead of wall clock")
+
+		_, _, err = c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.NoError(t, err)
+
+		meta, ok = ms.GetMetadata(1)
+		require.True(t, ok)
+		require.Equal(t, int64(1), meta.TargetAttempts, "later results are still counted")
+		require.Equal(t, int64(1), meta.TargetSuccesses)
+	})
+
 	t.Run("a failed export counts nothing", func(t *testing.T) {
 		t.Parallel()
 

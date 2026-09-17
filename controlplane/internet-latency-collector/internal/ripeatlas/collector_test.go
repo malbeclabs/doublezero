@@ -1754,97 +1754,115 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_KeptMarkedTargetStillCh
 		"a standing target mark must not exempt the measurement's sources from inspection")
 }
 
-// TestInternetLatency_RIPEAtlas_ConfigureMeasurements_SourceThatNeverResponded covers
-// the probe that is offline while RIPE still reports it Connected. Its LastResponseAt
-// never leaves zero, and since the staleness path marks only UnresponsiveTargets this
-// is the only route that takes it out of the source pool.
-func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_SourceThatNeverResponded(t *testing.T) {
+// TestInternetLatency_RIPEAtlas_ConfigureMeasurements_StaleTargetListsBySeverity covers
+// the two staleness reasons. A measurement that has produced nothing at all in its first
+// hour has an offline target, and an offline probe cannot source either, so it leaves
+// both pools. One that used to export and stopped is the NAT-like case, where the probe
+// still sources normally.
+func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_StaleTargetListsBySeverity(t *testing.T) {
 	t.Parallel()
 
-	log := logger.With("test", t.Name())
+	const cmhProbe = 1009793
+	const nycProbe = 100
+	const seaProbe = 101
 
-	const offlineSource = 6726
-	const replacementSource = 1033
+	for _, tc := range []struct {
+		name         string
+		lastExportAt int64
+		wantSource   bool
+	}{
+		{
+			name:         "never exported leaves both pools",
+			lastExportAt: 0,
+			wantSource:   false,
+		},
+		{
+			name:         "stopped exporting leaves the target pool only",
+			lastExportAt: time.Now().Unix() - 2*3600,
+			wantSource:   true,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-	var stoppedMeasurements []int
-	var mu sync.Mutex
+			log := logger.With("test", t.Name())
 
-	mockClient := &MockClient{
-		GetAllMeasurementsFunc: func(_ context.Context, _ string) ([]Measurement, error) {
-			return []Measurement{{
-				ID:          1001,
-				Description: "DoubleZero [testnet] to xams probe 6626",
-				Target:      "84.38.236.1",
-				Status: struct {
-					Name string `json:"name"`
-					ID   int    `json:"id"`
-				}{Name: "Ongoing"},
-				Type: "ping",
-			}}, nil
-		},
-		CreateMeasurementFunc: func(_ context.Context, _ MeasurementRequest) (*MeasurementResponse, error) {
-			return &MeasurementResponse{Measurements: []int{2001}}, nil
-		},
-		StopMeasurementFunc: func(_ context.Context, measurementID int) error {
-			mu.Lock()
-			stoppedMeasurements = append(stoppedMeasurements, measurementID)
-			mu.Unlock()
-			return nil
-		},
-		GetMeasurementResultsIncrementalFunc: func(_ context.Context, _ int, _ int64) ([]any, error) {
-			return []any{}, nil
-		},
+			mockClient := &MockClient{
+				GetAllMeasurementsFunc: func(_ context.Context, _ string) ([]Measurement, error) {
+					return []Measurement{{
+						ID:          1001,
+						Description: "DoubleZero [testnet] to cmh probe 1009793",
+						Target:      "23.151.152.243",
+						Status: struct {
+							Name string `json:"name"`
+							ID   int    `json:"id"`
+						}{Name: "Ongoing"},
+						Type: "ping",
+					}}, nil
+				},
+				CreateMeasurementFunc: func(_ context.Context, _ MeasurementRequest) (*MeasurementResponse, error) {
+					return &MeasurementResponse{Measurements: []int{2001}}, nil
+				},
+				StopMeasurementFunc: func(_ context.Context, _ int) error { return nil },
+				GetMeasurementResultsIncrementalFunc: func(_ context.Context, _ int, _ int64) ([]any, error) {
+					return []any{}, nil
+				},
+			}
+
+			stateDir := filepath.Join(t.TempDir(), "state")
+			require.NoError(t, os.MkdirAll(stateDir, 0o755))
+
+			c := &Collector{client: mockClient, log: log, env: "testnet", getLocationsFunc: func(_ context.Context) []collector.LocationMatch {
+				return []collector.LocationMatch{}
+			}}
+
+			c.measurementState = NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
+			c.measurementState.SetMetadata(1001, MeasurementMeta{
+				TargetLocation: "cmh",
+				TargetProbeID:  cmhProbe,
+				Sources: []SourceProbeMeta{
+					{LocationCode: "nyc", ProbeID: nycProbe, LastResponseAt: time.Now().Unix()},
+					{LocationCode: "sea", ProbeID: seaProbe, LastResponseAt: time.Now().Unix()},
+				},
+				CreatedAt:    time.Now().Unix() - 3*3600,
+				LastExportAt: tc.lastExportAt,
+			})
+
+			locationMatches := []LocationProbeMatch{
+				{
+					LocationMatch: collector.LocationMatch{LocationCode: "cmh", Latitude: 40.11, Longitude: -83.00},
+					NearbyProbes:  []Probe{{ID: cmhProbe, Address: "23.151.152.243", Latitude: 40.11, Longitude: -83.00}},
+					ProbeCount:    1,
+				},
+				{
+					LocationMatch: collector.LocationMatch{LocationCode: "nyc", Latitude: 40.77, Longitude: -74.07},
+					NearbyProbes:  []Probe{{ID: nycProbe, Address: "162.255.145.7", Latitude: 40.77, Longitude: -74.07}},
+					ProbeCount:    1,
+				},
+				{
+					LocationMatch: collector.LocationMatch{LocationCode: "sea", Latitude: 47.61, Longitude: -122.33},
+					NearbyProbes:  []Probe{{ID: seaProbe, Address: "198.48.19.2", Latitude: 47.61, Longitude: -122.33}},
+					ProbeCount:    1,
+				},
+			}
+
+			require.NoError(t, c.configureMeasurements(t.Context(), locationMatches, false, 1, stateDir, 10*time.Minute))
+
+			require.True(t, c.measurementState.IsTargetUnresponsive(cmhProbe),
+				"a stale target is barred from targeting either way")
+			require.Equal(t, !tc.wantSource, c.measurementState.IsProbeUnresponsive(cmhProbe))
+
+			// And source selection agrees. cmh sorts first, so its probe is a source
+			// candidate for no measurement in this set; check the filter directly.
+			selectable := probeIDs(filterResponsiveProbes(locationMatches[0].NearbyProbes, c.measurementState))
+			if tc.wantSource {
+				require.Equal(t, []int{cmhProbe}, selectable,
+					"a probe that merely stopped answering pings still sources")
+			} else {
+				require.Empty(t, selectable, "an offline probe must not be enlisted as a source")
+			}
+		})
 	}
-
-	stateDir := filepath.Join(t.TempDir(), "state")
-	c := &Collector{client: mockClient, log: log, env: "testnet", getLocationsFunc: func(_ context.Context) []collector.LocationMatch {
-		return []collector.LocationMatch{}
-	}}
-
-	// The target is exporting, so the measurement is not stale and Step 4b runs. One
-	// source has uploaded nothing at all since the measurement was created 3h ago.
-	c.measurementState = NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
-	c.measurementState.SetMetadata(1001, MeasurementMeta{
-		TargetLocation: "xams",
-		TargetProbeID:  6626,
-		Sources: []SourceProbeMeta{
-			{LocationCode: "xsin", ProbeID: offlineSource, LastResponseAt: 0},
-			{LocationCode: "xtyo", ProbeID: 7080, LastResponseAt: time.Now().Unix()},
-		},
-		CreatedAt:    time.Now().Unix() - 3*3600,
-		LastExportAt: time.Now().Unix(),
-	})
-
-	locationMatches := []LocationProbeMatch{
-		{
-			LocationMatch: collector.LocationMatch{LocationCode: "xams", Latitude: 52.3, Longitude: 4.7},
-			NearbyProbes:  []Probe{{ID: 6626, Address: "84.38.236.1", Latitude: 52.3, Longitude: 4.7}},
-			ProbeCount:    1,
-		},
-		{
-			LocationMatch: collector.LocationMatch{LocationCode: "xsin", Latitude: 1.3, Longitude: 103.8},
-			NearbyProbes: []Probe{
-				{ID: offlineSource, Address: "139.99.78.22", Latitude: 1.3, Longitude: 103.8},
-				{ID: replacementSource, Address: "138.75.38.177", Latitude: 1.3, Longitude: 103.9},
-			},
-			ProbeCount: 2,
-		},
-		{
-			LocationMatch: collector.LocationMatch{LocationCode: "xtyo", Latitude: 35.6, Longitude: 139.6},
-			NearbyProbes:  []Probe{{ID: 7080, Address: "63.222.190.5", Latitude: 35.6, Longitude: 139.6}},
-			ProbeCount:    1,
-		},
-	}
-
-	require.NoError(t, c.configureMeasurements(t.Context(), locationMatches, false, 1, stateDir, 10*time.Minute))
-
-	require.True(t, c.measurementState.IsProbeUnresponsive(offlineSource),
-		"a source that has uploaded nothing in the measurement's first hour is offline, not merely unpopulated")
-	require.False(t, c.measurementState.IsProbeUnresponsive(7080))
-
-	mu.Lock()
-	defer mu.Unlock()
-	require.Contains(t, stoppedMeasurements, 1001, "the measurement is recreated onto the replacement source")
 }
 
 func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_UnresponsiveTargetDoesNotBlacklistSources(t *testing.T) {

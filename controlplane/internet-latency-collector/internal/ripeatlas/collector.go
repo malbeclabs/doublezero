@@ -960,14 +960,31 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 			}
 
 			if isStale {
+				// never_exported is the offline case: the measurement has produced
+				// nothing at all in its first hour, and a probe that is offline while
+				// RIPE still reports it Connected cannot source either, so it leaves
+				// both pools. no_recent_exports is the NAT-like case — a probe that
+				// used to answer and stopped — where the target list alone is right.
+				//
+				// This is the only route out of the source pool for such a probe, since
+				// its LastResponseAt never leaves zero and Step 4b deliberately skips
+				// that. It misses a probe that is nobody's target, which is just the
+				// alphabetically last metro; that one is covered by no_recent_responses
+				// once it has uploaded anything at all.
+				markedSource := reason == "never_exported"
+				measurementState.AddUnresponsiveTarget(meta.TargetProbeID)
+				if markedSource {
+					measurementState.AddUnresponsiveProbe(meta.TargetProbeID)
+				}
 				c.log.Warn("Marking probe as unresponsive - no exports after 1 hour",
 					slog.Int("measurement_id", measurement.ID),
 					slog.Int("probe_id", meta.TargetProbeID),
 					slog.String("target_location", meta.TargetLocation),
 					slog.String("reason", reason),
+					slog.Bool("marked_target_list", true),
+					slog.Bool("marked_source_list", markedSource),
 					slog.Time("created_at", time.Unix(meta.CreatedAt, 0)),
 					slog.Time("last_export_at", time.Unix(meta.LastExportAt, 0)))
-				measurementState.AddUnresponsiveTarget(meta.TargetProbeID)
 				targetFailedThisCycle[measurement.ID] = true
 				newUnresponsiveProbes++
 				continue
@@ -1030,19 +1047,20 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 				if meta.CreatedAt == 0 || meta.CreatedAt >= probeTimeout {
 					continue
 				}
-				// A zero LastResponseAt is the offline case, not a missing field.
-				// UpdateSourceProbeResponse advances it for any result the probe
-				// uploaded, a timeout included, so a source that has uploaded
-				// nothing in the measurement's whole first hour is not running the
-				// measurement at all. Since the staleness path above now marks only
-				// UnresponsiveTargets, this is the sole route by which a probe that
-				// is offline while RIPE still reports it Connected leaves the source
-				// pool; treating zero as "not populated yet" left it enlisted forever.
+				// A source that has uploaded nothing at all is Step 4c's population,
+				// which is observed and not rotated on purpose: per #4153 those drops
+				// have recovered unaided, and rotating one is expensive because the
+				// probe is a source in every measurement whose target sorts before it,
+				// all of which would be stopped and recreated. Rotating here would also
+				// zero LastResponseAt for the other sources in those measurements and
+				// restart their clocks. An offline target leaves the source pool through
+				// the never_exported branch in Step 4 instead.
+				if source.LastResponseAt == 0 {
+					continue
+				}
+				// Last response was > 1 hour ago
 				if source.LastResponseAt < probeTimeout {
 					reason := "no_recent_responses"
-					if source.LastResponseAt == 0 {
-						reason = "no_responses_since_created"
-					}
 					c.log.Warn("Marking source probe as unresponsive - no results after 1 hour",
 						slog.Int("measurement_id", measurement.ID),
 						slog.Int("probe_id", source.ProbeID),

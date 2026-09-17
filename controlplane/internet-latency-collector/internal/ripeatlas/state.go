@@ -206,6 +206,10 @@ func (ms *MeasurementState) Load() error {
 // A marked probe that is some measurement's target probe was marked by that path. The
 // heuristic is not airtight — Step 4b could have marked the same probe as a source — so
 // Load runs it once and records that in the file rather than re-deciding on every start.
+//
+// Moving to the target list only is safe even for a probe that is offline: its
+// measurement exports nothing, and the next never_exported cycle marks it in both lists
+// again, so the source bar is recovered rather than lost.
 func migrateTargetMarks(tracker *MetadataTracker) int {
 	targetProbes := make(map[int]bool, len(tracker.Metadata))
 	for _, meta := range tracker.Metadata {
@@ -450,8 +454,11 @@ func (ms *MeasurementState) EvaluateTargetLoss(measurementID int, now int64) (lo
 }
 
 // AddUnresponsiveTarget records that a probe failed as a measurement target. Unlike
-// AddUnresponsiveProbe this does not bar the probe from sourcing measurements, since
-// failing to answer pings says nothing about sending them.
+// AddUnresponsiveProbe this does not bar the probe from sourcing measurements: for a
+// probe that has answered before and stopped, failing to answer pings says nothing
+// about sending them. That does not hold for a probe whose measurement never produced
+// a single result, which is offline rather than unreachable inbound; the caller marks
+// that one in both lists.
 func (ms *MeasurementState) AddUnresponsiveTarget(probeID int) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()

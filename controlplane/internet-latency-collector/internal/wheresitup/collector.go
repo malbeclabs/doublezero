@@ -490,7 +490,7 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 
 	// Polling an expired job can only ever return in_progress, and the time it costs is what
 	// pushes the next batch past their own expiry, so dropping them stops that loop forming.
-	expiryCutoff := time.Now().Add(-(JobExpireAfter + ExpiryGrace))
+	expiryCutoff := time.Now().Add(-MaxJobAge)
 	var jobIDs []string
 	var expiredJobIDs []string
 	for _, job := range state.Jobs {

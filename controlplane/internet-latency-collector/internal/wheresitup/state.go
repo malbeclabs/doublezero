@@ -11,7 +11,9 @@ import (
 	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/collector"
 )
 
-const MaxJobAge = 2 * time.Hour
+// MaxJobAge bounds how long a job stays in the state file. It is the cutoff
+// ExportJobResults polls by, so a job cannot outlive the results it is tracking.
+const MaxJobAge = JobExpireAfter + ExpiryGrace
 
 type JobEntry struct {
 	JobID     string    `json:"job_id"`

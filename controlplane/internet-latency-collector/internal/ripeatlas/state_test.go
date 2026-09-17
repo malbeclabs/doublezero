@@ -444,6 +444,7 @@ func TestInternetLatency_RIPEAtlas_State_EvaluateTargetLoss(t *testing.T) {
 
 	const measurementID = 42
 	windowSecs := int64(TargetLossWindow.Seconds())
+	graceSecs := int64(TargetLossWindowGrace.Seconds())
 
 	newState := func() *MeasurementState {
 		ms := NewMeasurementState(filepath.Join(t.TempDir(), "state.json"))
@@ -459,13 +460,28 @@ func TestInternetLatency_RIPEAtlas_State_EvaluateTargetLoss(t *testing.T) {
 		// 15% success, the rate observed against a NAT'd target probe.
 		ms.RecordTargetResults(measurementID, 100, 15, start, start)
 
-		lossy, _, _ := ms.EvaluateTargetLoss(measurementID, start+windowSecs-1)
-		require.False(t, lossy, "window should not be judged before it closes")
+		lossy, _, _ := ms.EvaluateTargetLoss(measurementID, start+windowSecs-graceSecs-1)
+		require.False(t, lossy, "window should not be judged before its grace begins")
 
 		lossy, attempts, successes := ms.EvaluateTargetLoss(measurementID, start+windowSecs)
 		require.True(t, lossy)
 		require.Equal(t, int64(100), attempts)
 		require.Equal(t, int64(15), successes)
+	})
+
+	t.Run("a window a little short of the hour is still judged", func(t *testing.T) {
+		t.Parallel()
+		ms := newState()
+		start := time.Now().Unix()
+
+		ms.RecordTargetResults(measurementID, 100, 15, start, start)
+
+		// The management cycle fires an hour apart but judges against a clock that
+		// includes its own pre-work, so a faster cycle lands seconds short. Without the
+		// grace that slips the verdict a whole further hour, at random.
+		lossy, attempts, _ := ms.EvaluateTargetLoss(measurementID, start+windowSecs-30)
+		require.True(t, lossy, "a cycle arriving 30s early must still render a verdict")
+		require.Equal(t, int64(100), attempts)
 	})
 
 	t.Run("healthy target is not flagged", func(t *testing.T) {
@@ -493,10 +509,11 @@ func TestInternetLatency_RIPEAtlas_State_EvaluateTargetLoss(t *testing.T) {
 
 		// The short window stays open rather than discarding its evidence, so a
 		// measurement with too few sources to reach the minimum in one hour is still
-		// judged once enough attempts accumulate.
+		// judged once enough attempts accumulate — provided it gets there inside
+		// MaxTargetLossWindowAge, past which the tallies are dropped unjudged.
 		ms.RecordTargetResults(measurementID, 1, 0, start+windowSecs, start+windowSecs)
 
-		lossy, attempts, successes := ms.EvaluateTargetLoss(measurementID, start+2*windowSecs)
+		lossy, attempts, successes := ms.EvaluateTargetLoss(measurementID, start+2*windowSecs-graceSecs-60)
 		require.True(t, lossy, "accumulated window should be judged once it reaches the minimum")
 		require.Equal(t, int64(MinTargetAttemptsForLossCheck), attempts)
 		require.Zero(t, successes)

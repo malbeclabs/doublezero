@@ -2696,7 +2696,7 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_LossyTargetIsRotated(t 
 
 	// The target is exporting steadily, so the staleness check is satisfied and only the
 	// loss ratio can catch it: 15 of 100 pings answered, in a window that has closed.
-	windowStart := time.Now().Add(-2 * TargetLossWindow).Unix()
+	windowStart := time.Now().Add(-TargetLossWindow).Unix()
 	c.measurementState = NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
 	c.measurementState.SetMetadata(1001, MeasurementMeta{
 		TargetLocation: "cmh",
@@ -2810,7 +2810,7 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_LastMarkedCandidateIsKe
 		return []collector.LocationMatch{}
 	}}
 
-	windowStart := time.Now().Add(-2 * TargetLossWindow).Unix()
+	windowStart := time.Now().Add(-TargetLossWindow).Unix()
 	c.measurementState = NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
 
 	// The alternative was marked never_exported in an earlier cycle: it answers no

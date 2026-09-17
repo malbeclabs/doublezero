@@ -39,6 +39,15 @@ const (
 	// windows is never judged at all, which is the safe direction: its pooled ratio is
 	// one or two circuits' reachability rather than the target's.
 	MaxTargetLossWindowAge = 2 * TargetLossWindow
+
+	// TargetLossWindowGrace is how early a window may be judged. TargetLossWindow
+	// equals the default management interval, and the clock a cycle judges against is
+	// its start plus that cycle's pre-work: location and probe fetches, each with its
+	// own CallDelay sleeps, varying by seconds to tens of seconds. Judging only at the
+	// full hour means any cycle faster than the one that last reset the window lands a
+	// few seconds short and slips the verdict by another full hour, so detection
+	// latency is one hour or two at random.
+	TargetLossWindowGrace = 5 * time.Minute
 )
 
 type MeasurementState struct {
@@ -306,10 +315,11 @@ func (ms *MeasurementState) RecordTargetResults(measurementID int, attempts, suc
 // whether the target dropped more than MaxTargetLossRatio of the pings aimed at it,
 // along with the tallies behind that call.
 //
-// A window is only judged once it has run for TargetLossWindow and carries at least
-// MinTargetAttemptsForLossCheck attempts; until then the window stays open and this
-// reports false. Resetting on every judged window means a probe that recovers starts
-// from a clean slate rather than carrying old loss forward.
+// A window is only judged once it has run for TargetLossWindow, less
+// TargetLossWindowGrace, and carries at least MinTargetAttemptsForLossCheck attempts;
+// until then the window stays open and this reports false. Resetting on every judged
+// window means a probe that recovers starts from a clean slate rather than carrying old
+// loss forward.
 func (ms *MeasurementState) EvaluateTargetLoss(measurementID int, now int64) (lossy bool, attempts, successes int64) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
@@ -319,28 +329,32 @@ func (ms *MeasurementState) EvaluateTargetLoss(measurementID int, now int64) (lo
 		return false, 0, 0
 	}
 
-	if now-meta.TargetWindowStart < int64(TargetLossWindow.Seconds()) {
+	windowAge := now - meta.TargetWindowStart
+	if windowAge < int64((TargetLossWindow - TargetLossWindowGrace).Seconds()) {
 		return false, meta.TargetAttempts, meta.TargetSuccesses
 	}
 
 	attempts, successes = meta.TargetAttempts, meta.TargetSuccesses
+
+	// An aged-out window is dropped unjudged whatever it holds, so no verdict is ever
+	// rendered over more than MaxTargetLossWindowAge of evidence. Checked ahead of the
+	// attempt count deliberately: a cycle that drifts past the cap still accumulates,
+	// so by the next cycle a thin-fan-in window can hold enough attempts to be judged
+	// and would convict a target on an outage it has already recovered from.
+	if windowAge >= int64(MaxTargetLossWindowAge.Seconds()) {
+		meta.TargetWindowStart = now
+		meta.TargetAttempts = 0
+		meta.TargetSuccesses = 0
+		ms.tracker.Metadata[measurementID] = meta
+		return false, attempts, successes
+	}
 
 	// A window that closes short stays open and keeps accumulating rather than being
 	// reset. Resetting here would discard the evidence every hour, and a measurement
 	// with few enough sources never reaches the minimum within one window: at the
 	// 10 minute sampling interval a source contributes 6 attempts an hour, so fewer
 	// than 5 sources could never be judged at all.
-	//
-	// It does not accumulate indefinitely, though. Past MaxTargetLossWindowAge the
-	// tallies are dropped unjudged, so a recovered target is not marked on evidence
-	// from an outage it has already come back from.
 	if attempts < MinTargetAttemptsForLossCheck {
-		if now-meta.TargetWindowStart >= int64(MaxTargetLossWindowAge.Seconds()) {
-			meta.TargetWindowStart = now
-			meta.TargetAttempts = 0
-			meta.TargetSuccesses = 0
-			ms.tracker.Metadata[measurementID] = meta
-		}
 		return false, attempts, successes
 	}
 

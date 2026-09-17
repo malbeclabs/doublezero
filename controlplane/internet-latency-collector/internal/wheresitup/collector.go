@@ -18,8 +18,31 @@ import (
 const (
 	RequestTimeout         = 30 * time.Second // Timeout for job requests
 	CreditWarningThreshold = 10000
-	ExpireAfter            = "10 minutes" // Relative time like "1 hour" - https://wheresitup.com/docs/?shell#creating-jobs
+
+	// JobExpireAfter is how long WheresItUp is asked to retain a job's results. Once it
+	// lapses the API discards the results and reports the job with an empty "complete" and
+	// a populated "in_progress" - an expired job is indistinguishable from a running one.
+	// It must therefore comfortably exceed one collection cycle, so results are still there
+	// when the next cycle polls them.
+	JobExpireAfter = time.Hour
+
+	// ExpiryGrace pads the local age cutoff so a job is only dropped from tracking once its
+	// results are certainly gone.
+	ExpiryGrace = time.Minute
 )
+
+// expireAfterParam renders a duration as the relative time string the job API accepts,
+// e.g. "1 hour" - https://wheresitup.com/docs/?shell#creating-jobs
+func expireAfterParam(d time.Duration) string {
+	unit, n := "hour", int64(d/time.Hour)
+	if d%time.Hour != 0 {
+		unit, n = "minute", int64(d/time.Minute)
+	}
+	if n == 1 {
+		return fmt.Sprintf("1 %s", unit)
+	}
+	return fmt.Sprintf("%d %ss", n, unit)
+}
 
 type Collector struct {
 	client           clientInterface
@@ -141,7 +164,6 @@ func (c *Collector) RunJobCreation(ctx context.Context, locations []collector.Lo
 		}
 	}
 
-	expireAfter := "1 hour"
 	if len(locations) == 0 {
 		c.log.Warn("No locations found")
 		return nil
@@ -182,7 +204,7 @@ func (c *Collector) RunJobCreation(ctx context.Context, locations []collector.Lo
 	c.log.Info(
 		"Wheresitup creating ping jobs between locations",
 		slog.Int("location_count", len(locationsWithSources)),
-		slog.String("expire_after", expireAfter))
+		slog.String("expire_after", expireAfterParam(JobExpireAfter)))
 
 	jobCreationStart := time.Now()
 	jobResponses, err := c.CreateJobsBetweenLocations(ctx, locationsWithSources, dryRun, false)
@@ -304,7 +326,7 @@ func (c *Collector) CreateJobsBetweenLocations(ctx context.Context, locations []
 				"tests":   []string{"ping"},
 				"sources": []string{sourceName},
 				"options": map[string]any{
-					"expire_after": ExpireAfter,
+					"expire_after": expireAfterParam(JobExpireAfter),
 					"label":        fmt.Sprintf("DoubleZero: %s to %s", sourceLocation.LocationCode, targetLocation.LocationCode),
 					"timeout":      int(RequestTimeout.Seconds()),
 				},
@@ -466,7 +488,26 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 	if err := state.Load(); err != nil {
 		return err
 	}
-	jobIDs := state.GetJobIDs()
+
+	// A job past its expiry can never yield results again: WheresItUp has discarded them and
+	// now reports the job as in progress, so polling it only lengthens the pass. A long pass
+	// is what pushes the next batch of jobs past their own expiry, so dropping these keeps
+	// the poll set to roughly one cycle's worth of jobs and stops that loop forming.
+	expiryCutoff := time.Now().Add(-(JobExpireAfter + ExpiryGrace))
+	var jobIDs []string
+	var expiredJobIDs []string
+	for _, job := range state.Jobs {
+		if job.CreatedAt.Before(expiryCutoff) {
+			expiredJobIDs = append(expiredJobIDs, job.JobID)
+			continue
+		}
+		jobIDs = append(jobIDs, job.JobID)
+	}
+	if len(expiredJobIDs) > 0 {
+		c.log.Info("Wheresitup - Dropping expired jobs from tracking without polling",
+			slog.Int("expired_count", len(expiredJobIDs)),
+			slog.Duration("expire_after", JobExpireAfter))
+	}
 
 	// Build expected circuits map from stored circuits
 	circuitExpectedSamples := make(map[string]bool)
@@ -477,7 +518,7 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 		slog.Int("circuit_count", len(circuitExpectedSamples)),
 		slog.Any("circuits", state.Circuits))
 
-	if len(jobIDs) == 0 {
+	if len(jobIDs) == 0 && len(expiredJobIDs) == 0 {
 		c.log.Info("No tracked jobs found to export")
 		return nil
 	}
@@ -618,11 +659,14 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 		}
 	}
 
-	if len(completedJobIDs) > 0 {
-		if err := state.RemoveJobIDs(completedJobIDs); err != nil {
+	removedJobIDs := make([]string, 0, len(completedJobIDs)+len(expiredJobIDs))
+	removedJobIDs = append(removedJobIDs, completedJobIDs...)
+	removedJobIDs = append(removedJobIDs, expiredJobIDs...)
+	if len(removedJobIDs) > 0 {
+		if err := state.RemoveJobIDs(removedJobIDs); err != nil {
 			c.log.Warn("Wheresitup failed to remove completed job IDs",
 				slog.String("file", jobIDsFile),
-				slog.Int("job_count", len(completedJobIDs)),
+				slog.Int("job_count", len(removedJobIDs)),
 				slog.String("error", err.Error()))
 		}
 	}
@@ -630,7 +674,10 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 	// Calculate failure rate and log appropriately
 	totalJobs := len(jobIDs)
 	pendingJobs := totalJobs - len(completedJobIDs) - failedCount
-	failureRate := float64(failedCount) / float64(totalJobs)
+	var failureRate float64
+	if totalJobs > 0 {
+		failureRate = float64(failedCount) / float64(totalJobs)
+	}
 
 	// Update pending jobs gauge for Prometheus
 	metrics.WheresitupPendingJobs.Set(float64(pendingJobs))
@@ -641,9 +688,10 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 			slog.Int("processed_count", processedCount),
 			slog.Int("failed_count", failedCount),
 			slog.Int("in_progress_count", inProgressCount),
+			slog.Int("expired_count", len(expiredJobIDs)),
 			slog.Int("pending_jobs", pendingJobs),
 			slog.Int("total_jobs", totalJobs),
-			slog.Int("removed_job_count", len(completedJobIDs)),
+			slog.Int("removed_job_count", len(removedJobIDs)),
 			slog.Float64("failure_rate", failureRate))
 	} else {
 		// Normal info log when failure rate is acceptable
@@ -651,8 +699,9 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 			slog.Int("processed_count", processedCount),
 			slog.Int("failed_count", failedCount),
 			slog.Int("in_progress_count", inProgressCount),
+			slog.Int("expired_count", len(expiredJobIDs)),
 			slog.Int("pending_jobs", pendingJobs),
-			slog.Int("removed_job_count", len(completedJobIDs)),
+			slog.Int("removed_job_count", len(removedJobIDs)),
 			slog.Int("total_jobs", totalJobs),
 			slog.Float64("failure_rate", failureRate))
 	}

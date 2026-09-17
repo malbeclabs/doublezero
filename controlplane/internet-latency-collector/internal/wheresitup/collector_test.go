@@ -2,6 +2,7 @@ package wheresitup
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -1186,4 +1187,176 @@ func TestInitializeCreditBalance(t *testing.T) {
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "failed to get Wheresitup credit balance")
 	})
+}
+
+// recordingHandler captures full log records so tests can assert on attributes.
+type recordingHandler struct {
+	mu      sync.Mutex
+	records []slog.Record
+}
+
+func (h *recordingHandler) Enabled(ctx context.Context, level slog.Level) bool { return true }
+
+func (h *recordingHandler) Handle(ctx context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.records = append(h.records, r.Clone())
+	return nil
+}
+
+func (h *recordingHandler) WithAttrs(attrs []slog.Attr) slog.Handler { return h }
+func (h *recordingHandler) WithGroup(name string) slog.Handler       { return h }
+
+// attr returns the value of the named attribute on the first record with the given message.
+func (h *recordingHandler) attr(message, key string) (slog.Value, bool) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	for _, r := range h.records {
+		if r.Message != message {
+			continue
+		}
+		var value slog.Value
+		var found bool
+		r.Attrs(func(a slog.Attr) bool {
+			if a.Key == key {
+				value, found = a.Value, true
+				return false
+			}
+			return true
+		})
+		if found {
+			return value, true
+		}
+	}
+	return slog.Value{}, false
+}
+
+// writeJobState writes a state file directly so tests can control job ages, which
+// State.Save() cannot express (it prunes old entries on write).
+func writeJobState(t *testing.T, filename string, jobs []JobEntry) {
+	t.Helper()
+	data, err := json.Marshal(struct {
+		Jobs []JobEntry `json:"jobs"`
+	}{Jobs: jobs})
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(filename, data, 0o600))
+}
+
+func TestInternetLatency_Wheresitup_ExportJobResults_DropsExpiredJobs(t *testing.T) {
+	t.Parallel()
+
+	handler := &recordingHandler{}
+	log := slog.New(handler)
+
+	jobIDsFile := filepath.Join(t.TempDir(), "jobs.json")
+	now := time.Now()
+	writeJobState(t, jobIDsFile, []JobEntry{
+		{JobID: "job-1m", CreatedAt: now.Add(-1 * time.Minute)},
+		{JobID: "job-30m", CreatedAt: now.Add(-30 * time.Minute)},
+		{JobID: "job-90m", CreatedAt: now.Add(-90 * time.Minute)},
+		{JobID: "job-3h", CreatedAt: now.Add(-3 * time.Hour)},
+	})
+
+	var mu sync.Mutex
+	var polled []string
+	c := &Collector{
+		client: &MockWheresitupClient{
+			GetJobResultsFunc: func(ctx context.Context, jobID string) (*JobResultResponse, error) {
+				mu.Lock()
+				polled = append(polled, jobID)
+				mu.Unlock()
+				// Still running: no completed results yet, so the job stays tracked.
+				results := &JobResultResponse{}
+				results.Response.InProgress = []any{"in progress"}
+				return results, nil
+			},
+		},
+		log:              log,
+		getLocationsFunc: mockLocationsFetcher([]collector.LocationMatch{}),
+	}
+
+	require.NoError(t, c.ExportJobResults(t.Context(), jobIDsFile))
+
+	// Jobs within the expiry window are polled; expired ones never are.
+	require.ElementsMatch(t, []string{"job-1m", "job-30m"}, polled)
+
+	state := NewState(jobIDsFile)
+	require.NoError(t, state.Load())
+	require.ElementsMatch(t, []string{"job-1m", "job-30m"}, state.GetJobIDs())
+
+	expired, ok := handler.attr("Wheresitup - Dropping expired jobs from tracking without polling", "expired_count")
+	require.True(t, ok, "expected one summary log line for expired jobs")
+	require.Equal(t, int64(2), expired.Int64())
+
+	summary, ok := handler.attr("Operation completed: Wheresitup export_job_results", "expired_count")
+	require.True(t, ok, "expected expired_count in the cycle summary")
+	require.Equal(t, int64(2), summary.Int64())
+}
+
+func TestInternetLatency_Wheresitup_JobCreation_ExpireAfterIsConsistent(t *testing.T) {
+	t.Parallel()
+
+	handler := &recordingHandler{}
+	log := slog.New(handler)
+
+	jobIDsFile := filepath.Join(t.TempDir(), "jobs.json")
+
+	var mu sync.Mutex
+	var requests []map[string]any
+	c := &Collector{
+		client: &MockWheresitupClient{
+			GetNearestSourcesForLocationsFunc: func(ctx context.Context, locations []collector.LocationMatch) ([]LocationSourceMatch, error) {
+				return []LocationSourceMatch{
+					{
+						LocationMatch:  collector.LocationMatch{LocationCode: "US-LAX"},
+						NearestSources: []Source{{Name: "los_angeles"}},
+						SourceCount:    1,
+					},
+					{
+						LocationMatch:  collector.LocationMatch{LocationCode: "US-NYC"},
+						NearestSources: []Source{{Name: "new_york"}},
+						SourceCount:    1,
+					},
+				}, nil
+			},
+			CreateJobWithRequestFunc: func(ctx context.Context, request any, debug bool) (*JobResponse, error) {
+				mu.Lock()
+				requests = append(requests, request.(map[string]any))
+				mu.Unlock()
+				return &JobResponse{ID: "job-123", Status: "pending"}, nil
+			},
+		},
+		log: log,
+	}
+
+	locations := []collector.LocationMatch{
+		{LocationCode: "US-LAX"},
+		{LocationCode: "US-NYC"},
+	}
+	require.NoError(t, c.RunJobCreation(t.Context(), locations, false, jobIDsFile))
+
+	require.Len(t, requests, 1)
+	options := requests[0]["options"].(map[string]any)
+	require.Equal(t, "1 hour", expireAfterParam(JobExpireAfter), "expiry must render in the relative form the API accepts")
+	require.Equal(t, expireAfterParam(JobExpireAfter), options["expire_after"])
+
+	logged, ok := handler.attr("Wheresitup creating ping jobs between locations", "expire_after")
+	require.True(t, ok, "expected the job creation log to report the expiry")
+	require.Equal(t, expireAfterParam(JobExpireAfter), logged.String())
+}
+
+func TestInternetLatency_Wheresitup_ExpireAfterParam(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		duration time.Duration
+		want     string
+	}{
+		{time.Hour, "1 hour"},
+		{2 * time.Hour, "2 hours"},
+		{time.Minute, "1 minute"},
+		{90 * time.Minute, "90 minutes"},
+	} {
+		require.Equal(t, tc.want, expireAfterParam(tc.duration))
+	}
 }

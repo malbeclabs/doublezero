@@ -432,10 +432,6 @@ func (c *Collector) ListAtlasProbes(ctx context.Context, locations []collector.L
 }
 
 func (c *Collector) ExportMeasurementResults(ctx context.Context, stateDir string) error {
-	if err := os.MkdirAll(stateDir, 0755); err != nil {
-		return fmt.Errorf("failed to create state directory: %w", err)
-	}
-
 	measurementState, err := c.ensureMeasurementStateLoaded(stateDir)
 	if err != nil {
 		c.log.Error("Refusing to export: measurement state could not be loaded",
@@ -815,6 +811,14 @@ func sourcesWithoutSamples(measurements []Measurement, state *MeasurementState, 
 func (c *Collector) ensureMeasurementStateLoaded(stateDir string) (*MeasurementState, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+
+	// Create the directory before reading, so a state dir that does not exist yet is a first
+	// deploy rather than an unreadable path. Without this a typo'd or not-yet-mounted
+	// --state-dir reads as a clean empty state and reconciliation deletes the live fleet,
+	// while a genuinely unavailable parent now fails the load and holds both cycles off.
+	if err := os.MkdirAll(stateDir, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create state directory: %w", err)
+	}
 
 	if c.measurementState == nil {
 		c.measurementState = NewMeasurementState(filepath.Join(stateDir, TimestampFileName))

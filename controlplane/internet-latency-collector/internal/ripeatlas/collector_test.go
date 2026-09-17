@@ -1375,6 +1375,8 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_RemoveUnwanted(t *testi
 
 	tempDir := t.TempDir()
 	stateDir := filepath.Join(tempDir, "state")
+	// configureMeasurements is called directly here, bypassing the load gate that creates this.
+	require.NoError(t, os.MkdirAll(stateDir, 0755))
 	outputDir := filepath.Join(tempDir, "output")
 
 	// Track what gets removed and exported
@@ -1502,6 +1504,8 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_UnresponsiveSourceProbe
 	}
 
 	stateDir := filepath.Join(t.TempDir(), "state")
+	// configureMeasurements is called directly here, bypassing the load gate that creates this.
+	require.NoError(t, os.MkdirAll(stateDir, 0755))
 
 	c := &Collector{client: mockClient, log: log, env: "testnet", getLocationsFunc: func(ctx context.Context) []collector.LocationMatch {
 		return []collector.LocationMatch{}
@@ -1923,6 +1927,8 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_UnresponsiveTargetDoesN
 	}
 
 	stateDir := filepath.Join(t.TempDir(), "state")
+	// configureMeasurements is called directly here, bypassing the load gate that creates this.
+	require.NoError(t, os.MkdirAll(stateDir, 0755))
 
 	c := &Collector{client: mockClient, log: log, env: "testnet", getLocationsFunc: func(ctx context.Context) []collector.LocationMatch {
 		return []collector.LocationMatch{}
@@ -3115,9 +3121,10 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_GetAllMeasurementsError
 
 	var created, stopped int
 	var mu sync.Mutex
+	apiErr := errors.New("failed to get measurements (endpoint: /measurements/my/?status=Ongoing,Scheduled&tags=mainnet-beta): 401")
 	mockClient := &MockClient{
 		GetAllMeasurementsFunc: func(ctx context.Context, env string) ([]Measurement, error) {
-			return nil, errors.New("failed to get measurements (endpoint: /measurements/my/?status=Ongoing,Scheduled&tags=mainnet-beta): 401")
+			return nil, apiErr
 		},
 		CreateMeasurementFunc: func(ctx context.Context, request MeasurementRequest) (*MeasurementResponse, error) {
 			mu.Lock()
@@ -3159,7 +3166,9 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_GetAllMeasurementsError
 
 	err := c.configureMeasurements(t.Context(), locationMatches, false, 1, stateDir, 1*time.Minute)
 	require.Error(t, err, "a failed measurement fetch should fail the cycle")
-	require.Contains(t, err.Error(), "failed to get existing measurements")
+	require.EqualError(t, err, "failed to get existing measurements: "+apiErr.Error(),
+		"the cycle must fail at the fetch, not later with a message that merely mentions it")
+	require.ErrorIs(t, err, apiErr)
 
 	mu.Lock()
 	defer mu.Unlock()
@@ -3244,7 +3253,8 @@ func TestInternetLatency_RIPEAtlas_MeasurementCreation_GatedOnStateLoad(t *testi
 
 	err := c.RunRipeAtlasMeasurementCreation(t.Context(), false, 1, stateDir, 1*time.Minute)
 	require.Error(t, err, "a corrupt state file should hold off measurement management")
-	require.Contains(t, err.Error(), "failed to load measurement state")
+	require.ErrorContains(t, err, "failed to load measurement state: failed to decode timestamp file:",
+		"management must stop at the state load, not later with a message that merely mentions it")
 
 	mu.Lock()
 	require.Zero(t, apiCalls, "no RIPE Atlas call should be made while the state file is unreadable")
@@ -3290,7 +3300,8 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults_GatedOnStateLoad(t *
 
 	err := c.ExportMeasurementResults(t.Context(), stateDir)
 	require.Error(t, err, "a corrupt state file should hold off export")
-	require.Contains(t, err.Error(), "failed to load measurement state")
+	require.ErrorContains(t, err, "failed to load measurement state: failed to decode timestamp file:",
+		"export must stop at the state load, not later with a message that merely mentions it")
 
 	mu.Lock()
 	require.Zero(t, apiCalls, "no RIPE Atlas call should be made while the state file is unreadable")

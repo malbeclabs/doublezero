@@ -2,7 +2,9 @@ package ripeatlas
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"sync"
@@ -60,6 +62,14 @@ const (
 	// few seconds short and slips the verdict by another full hour, so detection
 	// latency is one hour or two at random.
 	TargetLossWindowGrace = 5 * time.Minute
+
+	// staleTempFileAge is how old an abandoned Save temp file must be before Load prunes it.
+	// The floor keeps the sweep from deleting a temp file another process has in flight.
+	staleTempFileAge = time.Hour
+
+	// tempFileSuffix prefixes the random string os.CreateTemp appends, so Save's temp files
+	// are recognizable to the sweep in removeStaleTempFiles.
+	tempFileSuffix = ".tmp"
 )
 
 type MeasurementState struct {
@@ -141,13 +151,21 @@ func (ms *MeasurementState) Load() error {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
+	// Clear first. A reload that fails after an earlier success must not leave the flag set,
+	// or Save would treat the stale in-memory tracker as a trusted description of the file
+	// now on disk and overwrite the replacement it could not read.
+	ms.loaded = false
+
 	file, err := os.Open(ms.filename)
-	if os.IsNotExist(err) {
-		// A clean empty state is a correct read of a first deploy, so it counts as loaded.
-		ms.loaded = true
-		return nil
-	}
 	if err != nil {
+		// Only a path with nothing at it is a clean first deploy. A dangling symlink and a
+		// missing or unmounted parent directory also surface as ENOENT here, and neither is
+		// safe to read as an empty fleet: Save would then replace the link, or the file it
+		// could not see, with an empty tracker and hand reconciliation a fleet to delete.
+		if errors.Is(err, fs.ErrNotExist) && ms.pathIsAbsent() {
+			ms.loaded = true
+			return nil
+		}
 		return fmt.Errorf("failed to open timestamp file: %w", err)
 	}
 	defer file.Close()
@@ -200,6 +218,7 @@ func (ms *MeasurementState) Load() error {
 
 	ms.tracker = &tracker
 	ms.loaded = true
+	ms.removeStaleTempFiles()
 	return nil
 }
 
@@ -257,6 +276,45 @@ func (ms *MeasurementState) MigratedTargetMarks() int {
 	return ms.migratedTargetMarks
 }
 
+// pathIsAbsent reports whether nothing at all sits at the state path and its parent is a
+// real directory, which is the only shape a legitimate first deploy can take.
+func (ms *MeasurementState) pathIsAbsent() bool {
+	if _, err := os.Lstat(ms.filename); !errors.Is(err, fs.ErrNotExist) {
+		return false
+	}
+	info, err := os.Stat(filepath.Dir(ms.filename))
+	return err == nil && info.IsDir()
+}
+
+// removeStaleTempFiles prunes temp files an interrupted Save could not clean up: its deferred
+// remove cannot run on SIGKILL, and Save runs once per created measurement, so a crash-looping
+// rebuild can strand a full copy of the state each time.
+func (ms *MeasurementState) removeStaleTempFiles() {
+	matches, err := filepath.Glob(ms.resolvedPath() + tempFileSuffix + "*")
+	if err != nil {
+		return
+	}
+	cutoff := time.Now().Add(-staleTempFileAge)
+	for _, name := range matches {
+		info, err := os.Lstat(name)
+		if err != nil || !info.Mode().IsRegular() || info.ModTime().After(cutoff) {
+			continue
+		}
+		_ = os.Remove(name)
+	}
+}
+
+// resolvedPath follows a symlink at the state path to the file it points at. Save renames over
+// whatever sits at the path, so a state file symlinked into a persistent volume would otherwise
+// be replaced by a regular file on the first write, orphaning the real target and stranding
+// every measurement recorded since. A path that does not resolve is returned unchanged.
+func (ms *MeasurementState) resolvedPath() string {
+	if resolved, err := filepath.EvalSymlinks(ms.filename); err == nil {
+		return resolved
+	}
+	return ms.filename
+}
+
 // Save writes the tracker to disk atomically: encode into a temp file in the same
 // directory, then rename over the target. A truncate-in-place write killed mid-flight
 // leaves a torn file, which the next management cycle reads as "no metadata" and acts on by
@@ -268,20 +326,29 @@ func (ms *MeasurementState) Save() error {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
+	// Refuse unless absence is positively established. Any stat error other than "not
+	// found" — EACCES on a path component, ELOOP, ENOTDIR, EIO, a dangling symlink — means
+	// a file may be there and unreadable, which is precisely the case this guard exists to
+	// catch, so a nil-error-only check would bypass it exactly when it matters. Lstat
+	// rather than Stat, because Stat reports a dangling symlink as absent.
 	if !ms.loaded {
-		if _, err := os.Stat(ms.filename); err == nil {
+		if _, err := os.Lstat(ms.filename); err == nil || !errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("refusing to overwrite a measurement state file that was never loaded: %s", ms.filename)
 		}
 	}
 
-	// os.CreateTemp creates with 0600, so carry the existing mode (or os.Create's 0644)
-	// over rather than tightening it on every rewrite.
-	mode := os.FileMode(0644)
-	if info, err := os.Stat(ms.filename); err == nil {
+	target := ms.resolvedPath()
+
+	// os.CreateTemp creates with 0600. Carry the mode over from an existing regular file so a
+	// state file deliberately widened for an out-of-band reader keeps its permissions, but
+	// default to 0600 rather than os.Create's umask-dependent 0666: measurement metadata
+	// should not become world-readable merely because the file was recreated.
+	mode := os.FileMode(0600)
+	if info, err := os.Lstat(target); err == nil && info.Mode().IsRegular() {
 		mode = info.Mode().Perm()
 	}
 
-	tmp, err := os.CreateTemp(filepath.Dir(ms.filename), filepath.Base(ms.filename)+".tmp")
+	tmp, err := os.CreateTemp(filepath.Dir(target), filepath.Base(target)+tempFileSuffix)
 	if err != nil {
 		return fmt.Errorf("failed to create temp timestamp file: %w", err)
 	}
@@ -306,12 +373,27 @@ func (ms *MeasurementState) Save() error {
 	if err := os.Chmod(tmpName, mode); err != nil {
 		return fmt.Errorf("failed to set mode on temp timestamp file: %w", err)
 	}
-	if err := os.Rename(tmpName, ms.filename); err != nil {
+	if err := os.Rename(tmpName, target); err != nil {
 		return fmt.Errorf("failed to replace timestamp file: %w", err)
+	}
+	// A rename is not durable until the directory entry reaches disk, so without this the
+	// file's own Sync above still leaves the previous version exposed after a power loss —
+	// the "killed during a restart" case in #4131.
+	if err := syncDir(filepath.Dir(target)); err != nil {
+		return fmt.Errorf("failed to sync timestamp file directory: %w", err)
 	}
 	ms.loaded = true
 
 	return nil
+}
+
+func syncDir(dir string) error {
+	d, err := os.Open(dir)
+	if err != nil {
+		return err
+	}
+	defer d.Close()
+	return d.Sync()
 }
 
 func (ms *MeasurementState) GetLastTimestamp(measurementID int) (int64, bool) {

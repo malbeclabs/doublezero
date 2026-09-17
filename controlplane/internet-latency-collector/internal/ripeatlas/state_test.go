@@ -939,3 +939,158 @@ func TestInternetLatency_RIPEAtlas_State_SaveRefusesUnloadedFile(t *testing.T) {
 		require.Len(t, reloaded.GetAllMetadata(), 2)
 	})
 }
+
+// TestInternetLatency_RIPEAtlas_State_LoadClearsLoadedOnFailure verifies that a failed reload
+// drops the trust established by an earlier success. Leaving the flag set let Save overwrite
+// the unreadable replacement with the stale in-memory tracker, bypassing its own guard.
+func TestInternetLatency_RIPEAtlas_State_LoadClearsLoadedOnFailure(t *testing.T) {
+	t.Parallel()
+
+	filename := filepath.Join(t.TempDir(), "timestamps.json")
+	ms := NewMeasurementState(filename)
+	ms.SetMetadata(100, MeasurementMeta{TargetLocation: "nyc", TargetProbeID: 1})
+	require.NoError(t, ms.Save())
+	require.NoError(t, ms.Load())
+
+	corrupt := []byte("{truncated")
+	require.NoError(t, os.WriteFile(filename, corrupt, 0644))
+	require.Error(t, ms.Load(), "a truncated replacement must not load")
+
+	err := ms.Save()
+	require.Error(t, err, "the earlier successful load must not still authorize a save")
+	require.Contains(t, err.Error(), "never loaded")
+
+	onDisk, err := os.ReadFile(filename)
+	require.NoError(t, err)
+	require.Equal(t, corrupt, onDisk, "the unreadable file must be left for an operator to recover")
+}
+
+// TestInternetLatency_RIPEAtlas_State_LoadRejectsUnreadablePaths verifies that only a path with
+// nothing at it reads as a clean first deploy. A dangling symlink and a missing parent directory
+// both surface as ENOENT, and treating either as an empty fleet is what reconciliation acts on
+// by deleting every live measurement.
+func TestInternetLatency_RIPEAtlas_State_LoadRejectsUnreadablePaths(t *testing.T) {
+	t.Parallel()
+
+	t.Run("dangling symlink", func(t *testing.T) {
+		t.Parallel()
+
+		tempDir := t.TempDir()
+		link := filepath.Join(tempDir, "timestamps.json")
+		require.NoError(t, os.Symlink(filepath.Join(tempDir, "absent-target.json"), link))
+
+		ms := NewMeasurementState(link)
+		require.Error(t, ms.Load(), "a broken link is not a clean empty state")
+
+		require.Error(t, ms.Save(), "an unloaded state must not replace the link")
+		info, err := os.Lstat(link)
+		require.NoError(t, err)
+		require.NotZero(t, info.Mode()&os.ModeSymlink, "the link must survive for an operator to repair")
+	})
+
+	t.Run("missing parent directory", func(t *testing.T) {
+		t.Parallel()
+
+		ms := NewMeasurementState(filepath.Join(t.TempDir(), "absent-dir", "timestamps.json"))
+		require.Error(t, ms.Load(), "an unavailable directory is not a clean empty state")
+	})
+
+	t.Run("absent file in a real directory", func(t *testing.T) {
+		t.Parallel()
+
+		ms := NewMeasurementState(filepath.Join(t.TempDir(), "timestamps.json"))
+		require.NoError(t, ms.Load(), "a first deploy must still load cleanly")
+	})
+}
+
+// TestInternetLatency_RIPEAtlas_State_SaveWritesThroughSymlink verifies that Save renames onto a
+// symlink's target rather than over the link. Replacing the link detaches the state file from a
+// persistent volume, so every measurement recorded afterwards is lost at the next redeploy.
+func TestInternetLatency_RIPEAtlas_State_SaveWritesThroughSymlink(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	realDir := filepath.Join(tempDir, "persistent")
+	require.NoError(t, os.Mkdir(realDir, 0755))
+	realTarget := filepath.Join(realDir, "timestamps.json")
+	require.NoError(t, os.WriteFile(realTarget, []byte(`{"metadata": {}}`), 0644))
+
+	link := filepath.Join(tempDir, "timestamps.json")
+	require.NoError(t, os.Symlink(realTarget, link))
+
+	ms := NewMeasurementState(link)
+	require.NoError(t, ms.Load())
+	ms.SetMetadata(100, MeasurementMeta{TargetLocation: "nyc", TargetProbeID: 1})
+	require.NoError(t, ms.Save())
+
+	info, err := os.Lstat(link)
+	require.NoError(t, err)
+	require.NotZero(t, info.Mode()&os.ModeSymlink, "the save must not convert the link into a regular file")
+
+	reloaded := NewMeasurementState(realTarget)
+	require.NoError(t, reloaded.Load())
+	require.Len(t, reloaded.GetAllMetadata(), 1, "the write must land on the link's target")
+}
+
+// TestInternetLatency_RIPEAtlas_State_SavePermissions verifies that a recreated state file does
+// not widen to os.Create's umask-dependent default, and that a deliberately widened existing
+// file keeps its mode.
+func TestInternetLatency_RIPEAtlas_State_SavePermissions(t *testing.T) {
+	t.Parallel()
+
+	t.Run("new file is owner-only", func(t *testing.T) {
+		t.Parallel()
+
+		filename := filepath.Join(t.TempDir(), "timestamps.json")
+		ms := NewMeasurementState(filename)
+		require.NoError(t, ms.Load())
+		require.NoError(t, ms.Save())
+
+		info, err := os.Stat(filename)
+		require.NoError(t, err)
+		require.Equal(t, os.FileMode(0600), info.Mode().Perm(),
+			"measurement metadata must not be world-readable just because the file was recreated")
+	})
+
+	t.Run("existing mode is preserved", func(t *testing.T) {
+		t.Parallel()
+
+		filename := filepath.Join(t.TempDir(), "timestamps.json")
+		require.NoError(t, os.WriteFile(filename, []byte(`{"metadata": {}}`), 0644))
+		require.NoError(t, os.Chmod(filename, 0644))
+
+		ms := NewMeasurementState(filename)
+		require.NoError(t, ms.Load())
+		require.NoError(t, ms.Save())
+
+		info, err := os.Stat(filename)
+		require.NoError(t, err)
+		require.Equal(t, os.FileMode(0644), info.Mode().Perm())
+	})
+}
+
+// TestInternetLatency_RIPEAtlas_State_LoadPrunesStaleTempFiles verifies the sweep for temp files
+// Save's deferred cleanup could not remove. Save runs once per created measurement, so a
+// crash-looping rebuild strands a full copy of the state each time.
+func TestInternetLatency_RIPEAtlas_State_LoadPrunesStaleTempFiles(t *testing.T) {
+	t.Parallel()
+
+	tempDir := t.TempDir()
+	filename := filepath.Join(tempDir, "timestamps.json")
+	require.NoError(t, os.WriteFile(filename, []byte(`{"metadata": {}}`), 0644))
+
+	stale := filename + tempFileSuffix + "123456"
+	require.NoError(t, os.WriteFile(stale, []byte("abandoned"), 0600))
+	old := time.Now().Add(-2 * staleTempFileAge)
+	require.NoError(t, os.Chtimes(stale, old, old))
+
+	// A temp file another process may still be writing must survive the sweep.
+	fresh := filename + tempFileSuffix + "999999"
+	require.NoError(t, os.WriteFile(fresh, []byte("in flight"), 0600))
+
+	require.NoError(t, NewMeasurementState(filename).Load())
+
+	require.NoFileExists(t, stale, "an abandoned temp file should be pruned")
+	require.FileExists(t, fresh, "a recent temp file may belong to an in-flight save")
+	require.FileExists(t, filename)
+}

@@ -67,8 +67,8 @@ const (
 	// The floor keeps the sweep from deleting a temp file another process has in flight.
 	staleTempFileAge = time.Hour
 
-	// tempFileSuffix prefixes the random string os.CreateTemp appends, so Save's temp files
-	// are recognizable to the sweep in removeStaleTempFiles.
+	// tempFileSuffix prefixes the random string os.CreateTemp appends, so removeStaleTempFiles
+	// can recognize Save's temp files.
 	tempFileSuffix = ".tmp"
 )
 
@@ -151,9 +151,8 @@ func (ms *MeasurementState) Load() error {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
-	// Clear first. A reload that fails after an earlier success must not leave the flag set,
-	// or Save would treat the stale in-memory tracker as a trusted description of the file
-	// now on disk and overwrite the replacement it could not read.
+	// Clear first: a reload that fails after an earlier success must not leave the flag set,
+	// or Save would overwrite the replacement it could not read with the stale tracker.
 	ms.loaded = false
 
 	file, err := os.Open(ms.filename)
@@ -307,7 +306,7 @@ func (ms *MeasurementState) removeStaleTempFiles() {
 // resolvedPath follows a symlink at the state path to the file it points at. Save renames over
 // whatever sits at the path, so a state file symlinked into a persistent volume would otherwise
 // be replaced by a regular file on the first write, orphaning the real target and stranding
-// every measurement recorded since. A path that does not resolve is returned unchanged.
+// every measurement recorded since.
 func (ms *MeasurementState) resolvedPath() string {
 	if resolved, err := filepath.EvalSymlinks(ms.filename); err == nil {
 		return resolved
@@ -326,11 +325,10 @@ func (ms *MeasurementState) Save() error {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
-	// Refuse unless absence is positively established. Any stat error other than "not
-	// found" — EACCES on a path component, ELOOP, ENOTDIR, EIO, a dangling symlink — means
-	// a file may be there and unreadable, which is precisely the case this guard exists to
-	// catch, so a nil-error-only check would bypass it exactly when it matters. Lstat
-	// rather than Stat, because Stat reports a dangling symlink as absent.
+	// Refuse unless absence is positively established. EACCES, ELOOP, ENOTDIR, EIO and a
+	// dangling symlink all mean a file may be there and unreadable, so a nil-error-only
+	// check would bypass this guard exactly when it matters. Lstat rather than Stat,
+	// because Stat reports a dangling symlink as absent.
 	if !ms.loaded {
 		if _, err := os.Lstat(ms.filename); err == nil || !errors.Is(err, fs.ErrNotExist) {
 			return fmt.Errorf("refusing to overwrite a measurement state file that was never loaded: %s", ms.filename)
@@ -339,10 +337,10 @@ func (ms *MeasurementState) Save() error {
 
 	target := ms.resolvedPath()
 
-	// os.CreateTemp creates with 0600. Carry the mode over from an existing regular file so a
-	// state file deliberately widened for an out-of-band reader keeps its permissions, but
-	// default to 0600 rather than os.Create's umask-dependent 0666: measurement metadata
-	// should not become world-readable merely because the file was recreated.
+	// Carry the mode over from an existing regular file so a state file deliberately widened
+	// for an out-of-band reader keeps its permissions, but default to os.CreateTemp's 0600
+	// rather than os.Create's umask-dependent 0666: measurement metadata should not become
+	// world-readable merely because the file was recreated.
 	mode := os.FileMode(0600)
 	if info, err := os.Lstat(target); err == nil && info.Mode().IsRegular() {
 		mode = info.Mode().Perm()

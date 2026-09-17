@@ -799,10 +799,9 @@ func sourcesWithoutSamples(measurements []Measurement, state *MeasurementState, 
 	return byLocation, total, sample
 }
 
-// ensureMeasurementStateLoaded creates the shared measurement state if needed and reads it
-// from disk, retrying on every call until a read succeeds, so a state file repaired out of
-// band resumes the collector without a restart. A missing file is a clean empty state,
-// which is what a first deploy looks like.
+// ensureMeasurementStateLoaded reads the shared measurement state, retrying on every call
+// until a read succeeds, so a state file repaired out of band resumes the collector without
+// a restart.
 //
 // Both the management and the export cycle must refuse to run while this returns an error.
 // Management would reconcile against an empty tracker and delete the fleet; export would
@@ -813,9 +812,8 @@ func (c *Collector) ensureMeasurementStateLoaded(stateDir string) (*MeasurementS
 	defer c.mu.Unlock()
 
 	// Create the directory before reading, so a state dir that does not exist yet is a first
-	// deploy rather than an unreadable path. Without this a typo'd or not-yet-mounted
-	// --state-dir reads as a clean empty state and reconciliation deletes the live fleet,
-	// while a genuinely unavailable parent now fails the load and holds both cycles off.
+	// deploy rather than an unreadable path: a typo'd or not-yet-mounted --state-dir
+	// otherwise reads as a clean empty state and reconciliation deletes the live fleet.
 	if err := os.MkdirAll(stateDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create state directory: %w", err)
 	}

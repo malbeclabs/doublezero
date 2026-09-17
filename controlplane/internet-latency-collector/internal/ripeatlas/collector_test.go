@@ -2703,6 +2703,7 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_LossyTargetIsRotated(t 
 		TargetProbeID:  lossyTargetProbe,
 		Sources: []SourceProbeMeta{
 			{LocationCode: "nyc", ProbeID: 100, LastResponseAt: time.Now().Unix()},
+			{LocationCode: "sea", ProbeID: 101, LastResponseAt: time.Now().Unix()},
 		},
 		CreatedAt:         windowStart - 3600,
 		LastExportAt:      time.Now().Unix(),
@@ -2723,6 +2724,11 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_LossyTargetIsRotated(t 
 		{
 			LocationMatch: collector.LocationMatch{LocationCode: "nyc", Latitude: 40.77, Longitude: -74.07},
 			NearbyProbes:  []Probe{{ID: 100, Address: "162.255.145.7", Latitude: 40.77, Longitude: -74.07}},
+			ProbeCount:    1,
+		},
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "sea", Latitude: 47.61, Longitude: -122.33},
+			NearbyProbes:  []Probe{{ID: 101, Address: "198.48.19.2", Latitude: 47.61, Longitude: -122.33}},
 			ProbeCount:    1,
 		},
 	}
@@ -2824,6 +2830,7 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_LastMarkedCandidateIsKe
 		TargetProbeID:  lossyTargetProbe,
 		Sources: []SourceProbeMeta{
 			{LocationCode: "nyc", ProbeID: 100, LastResponseAt: time.Now().Unix()},
+			{LocationCode: "sea", ProbeID: 101, LastResponseAt: time.Now().Unix()},
 		},
 		CreatedAt:         windowStart - 3600,
 		LastExportAt:      time.Now().Unix(),
@@ -2846,6 +2853,11 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_LastMarkedCandidateIsKe
 			NearbyProbes:  []Probe{{ID: 100, Address: "162.255.145.7", Latitude: 40.77, Longitude: -74.07}},
 			ProbeCount:    1,
 		},
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "sea", Latitude: 47.61, Longitude: -122.33},
+			NearbyProbes:  []Probe{{ID: 101, Address: "198.48.19.2", Latitude: 47.61, Longitude: -122.33}},
+			ProbeCount:    1,
+		},
 	}
 
 	err := c.configureMeasurements(t.Context(), locationMatches, false, 1, stateDir, 10*time.Minute)
@@ -2862,9 +2874,90 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_LastMarkedCandidateIsKe
 	// reconciliation delete the measurement as unwanted (#4182) — a metro with partial
 	// data would go to none for up to 24h.
 	require.Empty(t, stoppedMeasurements, "the last measurement for cmh must not be torn down")
-	require.Empty(t, createdMeasurements, "nothing to recreate onto, so nothing is created")
+	for _, req := range createdMeasurements {
+		for _, def := range req.Definitions {
+			require.NotContains(t, def.Description, "to cmh",
+				"nothing to recreate onto, so cmh is not recreated")
+		}
+	}
 
 	meta, ok := c.measurementState.GetMetadata(1001)
 	require.True(t, ok, "the measurement keeps its metadata")
 	require.Equal(t, lossyTargetProbe, meta.TargetProbeID, "it keeps the nearest marked candidate")
+}
+
+// TestInternetLatency_RIPEAtlas_ConfigureMeasurements_SingleSourceTargetNotMarked covers
+// the thinnest fan-in. Sources come only from locations sorting after the target, so the
+// alphabetically penultimate metro's measurement has exactly one, and the pooled ratio
+// then is that one circuit's reachability rather than anything about the target.
+func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_SingleSourceTargetNotMarked(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	const target = 12651
+
+	mockClient := &MockClient{
+		GetAllMeasurementsFunc: func(_ context.Context, _ string) ([]Measurement, error) {
+			return []Measurement{{
+				ID:          1001,
+				Description: "DoubleZero [testnet] to cmh probe 12651",
+				Target:      "107.192.62.177",
+				Status: struct {
+					Name string `json:"name"`
+					ID   int    `json:"id"`
+				}{Name: "Ongoing"},
+				Type: "ping",
+			}}, nil
+		},
+		CreateMeasurementFunc: func(_ context.Context, _ MeasurementRequest) (*MeasurementResponse, error) {
+			return &MeasurementResponse{Measurements: []int{2001}}, nil
+		},
+		StopMeasurementFunc: func(_ context.Context, _ int) error { return nil },
+		GetMeasurementResultsIncrementalFunc: func(_ context.Context, _ int, _ int64) ([]any, error) {
+			return []any{}, nil
+		},
+	}
+
+	stateDir := filepath.Join(t.TempDir(), "state")
+	c := &Collector{client: mockClient, log: log, env: "testnet", getLocationsFunc: func(_ context.Context) []collector.LocationMatch {
+		return []collector.LocationMatch{}
+	}}
+
+	// A closed window well past the threshold, but carried by a single source.
+	windowStart := time.Now().Add(-TargetLossWindow).Unix()
+	c.measurementState = NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
+	c.measurementState.SetMetadata(1001, MeasurementMeta{
+		TargetLocation: "cmh",
+		TargetProbeID:  target,
+		Sources: []SourceProbeMeta{
+			{LocationCode: "nyc", ProbeID: 100, LastResponseAt: time.Now().Unix()},
+		},
+		CreatedAt:         windowStart - 3600,
+		LastExportAt:      time.Now().Unix(),
+		TargetWindowStart: windowStart,
+		TargetAttempts:    100,
+		TargetSuccesses:   5,
+	})
+
+	locationMatches := []LocationProbeMatch{
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "cmh", Latitude: 40.11, Longitude: -83.00},
+			NearbyProbes: []Probe{
+				{ID: target, Address: "107.192.62.177", Latitude: 40.11, Longitude: -83.00},
+				{ID: 55128, Address: "69.58.112.238", Latitude: 40.12, Longitude: -83.01},
+			},
+			ProbeCount: 2,
+		},
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "nyc", Latitude: 40.77, Longitude: -74.07},
+			NearbyProbes:  []Probe{{ID: 100, Address: "162.255.145.7", Latitude: 40.77, Longitude: -74.07}},
+			ProbeCount:    1,
+		},
+	}
+
+	require.NoError(t, c.configureMeasurements(t.Context(), locationMatches, false, 1, stateDir, 10*time.Minute))
+
+	require.False(t, c.measurementState.IsTargetUnresponsive(target),
+		"one source's broken path must not be charged to the target")
 }

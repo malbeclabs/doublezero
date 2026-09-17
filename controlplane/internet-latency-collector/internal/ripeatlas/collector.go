@@ -973,6 +973,22 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 				continue
 			}
 
+			// The ratio pools every source's outcomes but charges the verdict to the
+			// target, with no per-source attribution. With one source it is that single
+			// circuit's reachability, so a broken path would rotate a target that
+			// answered everything which reached it. Two sources contributing equally cap
+			// one dead path at exactly 0.5, which does not clear MaxTargetLossRatio.
+			// Sources come only from locations sorting after the target, so the
+			// alphabetically penultimate metro has exactly one. Per-source tallying
+			// would do better and is left to its own change.
+			if len(meta.Sources) < 2 {
+				c.log.Debug("Skipping target loss check, too few sources to attribute loss to the target",
+					slog.Int("measurement_id", measurement.ID),
+					slog.String("target_location", meta.TargetLocation),
+					slog.Int("source_count", len(meta.Sources)))
+				continue
+			}
+
 			// A target can reply often enough to clear the staleness check above and
 			// still drop most of what is aimed at it. The surviving samples arrive too
 			// sparsely to keep every circuit fresh, so circuits take turns falling out

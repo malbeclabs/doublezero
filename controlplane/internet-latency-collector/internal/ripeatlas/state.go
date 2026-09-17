@@ -19,7 +19,9 @@ const (
 
 	// MinTargetAttemptsForLossCheck is the number of pings that must land in a window
 	// before its loss ratio means anything. Below this a quiet window is indistinguishable
-	// from a lossy one.
+	// from a lossy one. It assumes the 10 minute sampling interval production runs, at
+	// which a source contributes 6 attempts an hour; a much longer interval would leave
+	// most measurements unjudged and a much shorter one would judge on minutes of data.
 	MinTargetAttemptsForLossCheck = 30
 
 	// MaxTargetLossRatio is the share of pings a target may drop before it is treated as

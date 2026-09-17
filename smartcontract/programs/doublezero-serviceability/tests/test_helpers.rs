@@ -19,7 +19,6 @@ use doublezero_serviceability::{
         topology::TopologyConstraint,
     },
 };
-use solana_program::program_error::ProgramError;
 use solana_program_test::*;
 use solana_sdk::{
     instruction::{AccountMeta, Instruction, InstructionError},

@@ -11,8 +11,8 @@ import (
 	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/collector"
 )
 
-// MaxJobAge bounds how long a job stays in the state file. It is the cutoff
-// ExportJobResults polls by, so a job cannot outlive the results it is tracking.
+// MaxJobAge bounds how long a job stays in the state file. It matches ExportJobResults'
+// poll cutoff on purpose: an independent value here could never fire.
 const MaxJobAge = JobExpireAfter + ExpiryGrace
 
 type JobEntry struct {

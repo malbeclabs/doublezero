@@ -2,8 +2,10 @@ package ripeatlas
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -583,4 +585,75 @@ func TestInternetLatency_RIPEAtlas_State_UnresponsiveTargetsRoundTrip(t *testing
 
 	// A target mark must not bar the probe from sourcing measurements.
 	require.False(t, reloaded.IsProbeUnresponsive(targetProbeID))
+}
+
+func TestInternetLatency_RIPEAtlas_State_RepeatMarkRefreshesMarkedAt(t *testing.T) {
+	t.Parallel()
+
+	const probeID = 12651
+
+	// markedAt reads a probe's timestamp back out of the persisted file, which is the
+	// only place it is observable.
+	markedAt := func(t *testing.T, file string, pick func(MetadataTracker) []UnresponsiveProbeEntry) int64 {
+		t.Helper()
+		raw, err := os.ReadFile(file)
+		require.NoError(t, err)
+		var tracker MetadataTracker
+		require.NoError(t, json.Unmarshal(raw, &tracker))
+		for _, entry := range pick(tracker) {
+			if entry.ProbeID == probeID {
+				return entry.MarkedAt
+			}
+		}
+		t.Fatalf("probe %d absent from the list under test", probeID)
+		return 0
+	}
+
+	for _, tc := range []struct {
+		name string
+		pick func(MetadataTracker) []UnresponsiveProbeEntry
+		mark func(*MeasurementState)
+	}{
+		{
+			"targets",
+			func(t MetadataTracker) []UnresponsiveProbeEntry { return t.UnresponsiveTargets },
+			func(ms *MeasurementState) { ms.AddUnresponsiveTarget(probeID) },
+		},
+		{
+			"sources",
+			func(t MetadataTracker) []UnresponsiveProbeEntry { return t.UnresponsiveProbes },
+			func(ms *MeasurementState) { ms.AddUnresponsiveProbe(probeID) },
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			stateFile := filepath.Join(t.TempDir(), "state.json")
+
+			// A mark made 23h ago: still live, but an hour from expiring.
+			stale := time.Now().Add(-23 * time.Hour).Unix()
+			seeded := NewMeasurementState(stateFile)
+			tc.mark(seeded)
+			require.NoError(t, seeded.Save())
+			raw, err := os.ReadFile(stateFile)
+			require.NoError(t, err)
+			require.NoError(t, os.WriteFile(stateFile,
+				[]byte(strings.Replace(string(raw),
+					fmt.Sprintf("%d", markedAt(t, stateFile, tc.pick)),
+					fmt.Sprintf("%d", stale), 1)), 0o600))
+
+			ms := NewMeasurementState(stateFile)
+			require.NoError(t, ms.Load())
+			require.NoError(t, ms.Save())
+			require.Equal(t, stale, markedAt(t, stateFile, tc.pick), "the seeded mark should load unchanged")
+
+			// The collector judges the probe bad again. Discarding that as a duplicate
+			// would let the mark lapse an hour later and the probe be re-adopted.
+			tc.mark(ms)
+			require.NoError(t, ms.Save())
+
+			require.Greater(t, markedAt(t, stateFile, tc.pick), stale,
+				"fresh failure evidence must extend the mark")
+		})
+	}
 }

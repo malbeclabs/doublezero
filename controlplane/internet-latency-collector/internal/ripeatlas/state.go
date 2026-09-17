@@ -360,15 +360,7 @@ func (ms *MeasurementState) AddUnresponsiveTarget(probeID int) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
-	for _, entry := range ms.tracker.UnresponsiveTargets {
-		if entry.ProbeID == probeID {
-			return
-		}
-	}
-	ms.tracker.UnresponsiveTargets = append(ms.tracker.UnresponsiveTargets, UnresponsiveProbeEntry{
-		ProbeID:  probeID,
-		MarkedAt: time.Now().Unix(),
-	})
+	ms.tracker.UnresponsiveTargets = refreshOrAppendMark(ms.tracker.UnresponsiveTargets, probeID)
 }
 
 func (ms *MeasurementState) IsTargetUnresponsive(probeID int) bool {
@@ -429,16 +421,29 @@ func (ms *MeasurementState) AddUnresponsiveProbe(probeID int) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
-	// Check if probe is already in the list
-	for _, entry := range ms.tracker.UnresponsiveProbes {
-		if entry.ProbeID == probeID {
-			return
+	ms.tracker.UnresponsiveProbes = refreshOrAppendMark(ms.tracker.UnresponsiveProbes, probeID)
+}
+
+// refreshOrAppendMark stamps probeID's entry with the current time, adding one if it is
+// absent. A repeat mark extends the existing entry rather than being discarded: the
+// collector re-judges a bad probe every cycle, and keeping the first timestamp meant the
+// mark expired 24h after that first judgement no matter how recent the evidence. The
+// probe was then ranked first again on distance, its metro torn down to retarget at it,
+// and a full window of bad data had to accumulate before it could be re-marked — a
+// second teardown to move back off it, every 24h, indefinitely.
+//
+// Refreshing also removes the dependency on PruneExpiredUnresponsiveProbes having run
+// first: an expired entry is restamped rather than left to read as expired.
+// Callers hold ms.mu.
+func refreshOrAppendMark(entries []UnresponsiveProbeEntry, probeID int) []UnresponsiveProbeEntry {
+	now := time.Now().Unix()
+	for i := range entries {
+		if entries[i].ProbeID == probeID {
+			entries[i].MarkedAt = now
+			return entries
 		}
 	}
-	ms.tracker.UnresponsiveProbes = append(ms.tracker.UnresponsiveProbes, UnresponsiveProbeEntry{
-		ProbeID:  probeID,
-		MarkedAt: time.Now().Unix(),
-	})
+	return append(entries, UnresponsiveProbeEntry{ProbeID: probeID, MarkedAt: now})
 }
 
 func (ms *MeasurementState) IsProbeUnresponsive(probeID int) bool {

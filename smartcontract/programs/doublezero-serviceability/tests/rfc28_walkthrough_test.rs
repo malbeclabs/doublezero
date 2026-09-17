@@ -182,6 +182,7 @@ async fn test_a_builder_deploys_a_feed_and_an_operator_admits_it() {
             spec_id: "top-of-book@v1.0.0".to_string(),
             sla_hash: [9u8; 32],
             committed_rate_bits_per_sec: TIER.max_rate_bits_per_sec(),
+            ..Default::default()
         }),
         vec![
             AccountMeta::new(feed, false),

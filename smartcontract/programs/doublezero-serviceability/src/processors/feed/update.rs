@@ -3,7 +3,11 @@ use crate::{
     error::DoubleZeroError,
     processors::feed::create::{validate_feed_groups, validate_feed_name},
     serializer::try_acc_write,
-    state::{feed::Feed, globalstate::GlobalState, permission::permission_flags},
+    state::{
+        feed::{Feed, FeedChain},
+        globalstate::GlobalState,
+        permission::permission_flags,
+    },
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -14,12 +18,14 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-/// `code` and `exchange` are the PDA seeds and therefore immutable; only `name` and the group set
-/// are mutable.
+/// `code` and `exchange` are the PDA seeds and therefore immutable; `name`, the group set, and
+/// the chain are mutable.
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Debug, Clone, Default)]
 pub struct FeedUpdateArgs {
     pub name: Option<String>,
     pub groups: Option<Vec<Pubkey>>,
+    #[incremental(default = None)]
+    pub feed_chain: Option<FeedChain>,
 }
 
 pub fn process_update_feed(
@@ -69,6 +75,9 @@ pub fn process_update_feed(
     }
     if let Some(ref groups) = value.groups {
         feed.groups = groups.clone();
+    }
+    if let Some(feed_chain) = value.feed_chain {
+        feed.feed_chain = feed_chain;
     }
 
     try_acc_write(&feed, feed_account, payer_account, accounts)?;

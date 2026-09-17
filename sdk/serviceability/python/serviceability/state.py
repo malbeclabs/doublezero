@@ -1256,6 +1256,10 @@ FEED_STATUS_HALTED = 2
 FEED_STATUS_RETIRED = 3
 FEED_STATUS_RETIRING = 4
 
+FEED_CHAIN_UNSPECIFIED = 0
+FEED_CHAIN_SOLANA = 1
+FEED_CHAIN_HYPERLIQUID = 2
+
 
 @dataclass
 class Feed:
@@ -1284,6 +1288,7 @@ class Feed:
     # When the retirement notice elapses, zero when the feed is not retiring. Appended after
     # halted_by, so a feed written before it reads as not retiring, which is right.
     retires_at: int = 0
+    feed_chain: int = 0
     pub_key: Pubkey = Pubkey.default()  # set from account address after deserialization
 
     @classmethod
@@ -1312,4 +1317,5 @@ class Feed:
         f.status = r.read_u8() if has_rfc28_tail else FEED_STATUS_ACTIVE
         f.halted_by = _read_pubkey(r)
         f.retires_at = _read_i64(r)
+        f.feed_chain = r.read_u8()
         return f

@@ -240,6 +240,9 @@ func TestFixtureFeed(t *testing.T) {
 	require.Len(t, feed.Groups, 2)
 	assert.Equal(t, byte(0xE2), feed.Groups[0][0])
 	assert.Equal(t, byte(0xE3), feed.Groups[1][0])
+	assert.Equal(t, serviceability.FeedStatusRetiring, feed.Status)
+	assert.Equal(t, int64(-1_764_547_200), feed.RetiresAt)
+	assert.Equal(t, serviceability.FeedChainHyperliquid, feed.FeedChain)
 }
 
 func fixtureFieldValue(t *testing.T, meta fixtureMeta, name string) string {

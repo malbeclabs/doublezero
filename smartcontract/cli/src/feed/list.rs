@@ -38,6 +38,7 @@ pub struct FeedDisplay {
     pub account: Pubkey,
     pub code: String,
     pub name: String,
+    pub chain: String,
     pub exchange: String,
     pub groups: usize,
     pub group_codes: String,
@@ -103,6 +104,7 @@ impl ListFeedCliCommand {
                 account: pubkey,
                 code: feed.code,
                 name: feed.name,
+                chain: feed.feed_chain.to_string(),
                 exchange: exchanges
                     .get(&feed.exchange)
                     .map_or_else(|| feed.exchange.to_string(), |ex| ex.code.clone()),
@@ -231,7 +233,7 @@ mod tests {
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
             output_str,
-            " account                                   | code        | name        | exchange | groups | group_codes                                     | owner                                     | status  | halted_by | retires_at \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | qa-payments | QA Payments | xams     | 2      | mg01, 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo4 | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | pending |           |            \n"
+            " account                                   | code        | name        | chain       | exchange | groups | group_codes                                     | owner                                     | status  | halted_by | retires_at \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | qa-payments | QA Payments | unspecified | xams     | 2      | mg01, 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo4 | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | pending |           |            \n"
         );
     }
 

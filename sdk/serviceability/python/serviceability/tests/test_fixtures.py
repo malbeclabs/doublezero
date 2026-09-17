@@ -12,6 +12,8 @@ from serviceability.state import (
     Contributor,
     Device,
     Exchange,
+    FEED_CHAIN_HYPERLIQUID,
+    FEED_CHAIN_UNSPECIFIED,
     FEED_STATUS_ACTIVE,
     FEED_STATUS_PENDING,
     FEED_STATUS_RETIRING,
@@ -630,6 +632,7 @@ class TestFixtureFeed:
                 "Status": feed.status,
                 "HaltedBy": feed.halted_by,
                 "RetiresAt": feed.retires_at,
+                "FeedChain": feed.feed_chain,
             },
         )
         assert feed.account_type == 18
@@ -638,6 +641,7 @@ class TestFixtureFeed:
         assert feed.name == "Shreds"
         assert len(feed.groups) == 2
         assert feed.status == FEED_STATUS_RETIRING
+        assert feed.feed_chain == FEED_CHAIN_HYPERLIQUID
         # Negative on purpose: retires_at is an i64, and a positive value cannot tell a signed
         # read from an unsigned one.
         assert feed.retires_at == -1_764_547_200
@@ -663,6 +667,7 @@ class TestFixtureFeed:
         assert feed.spec_id == ""
         assert feed.sla_hash == b"\x00" * 32
         assert feed.committed_rate_bits_per_sec == 0
+        assert feed.feed_chain == FEED_CHAIN_UNSPECIFIED
 
 
 class TestFixtureAccessPassLegacyCapDefaults:

@@ -86,6 +86,11 @@
       "name": "RetiresAt",
       "value": "-1764547200",
       "typ": "i64"
+    },
+    {
+      "name": "FeedChain",
+      "value": "2",
+      "typ": "u8"
     }
   ]
 }

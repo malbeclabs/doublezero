@@ -1549,6 +1549,7 @@ mod tests {
             DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
                 name: Some("Shreds".to_string()),
                 groups: Some(vec![Pubkey::new_unique()]),
+                feed_chain: None,
             }),
             "UpdateFeed",
         );

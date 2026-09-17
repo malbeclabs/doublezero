@@ -180,6 +180,7 @@ impl ServiceabilityCommand {
             Self::Feed(cmd) => match cmd.command {
                 FeedCommands::Create(args) => args.execute(ctx, client, out).await,
                 FeedCommands::Update(args) => args.execute(ctx, client, out).await,
+                FeedCommands::Migrate(args) => args.execute(ctx, client, out).await,
                 FeedCommands::List(args) => args.execute(ctx, client, out).await,
                 FeedCommands::Delete(args) => args.execute(ctx, client, out).await,
                 FeedCommands::Activate(args) => args.execute(ctx, client, out).await,

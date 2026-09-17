@@ -1,8 +1,8 @@
 use clap::{Args, Subcommand};
 
 use crate::feed::{
-    activate::*, create::*, delete::*, finalize_retirement::*, halt::*, list::*, resume::*,
-    retire::*, update::*,
+    activate::*, create::*, delete::*, finalize_retirement::*, halt::*, list::*, migrate::*,
+    resume::*, retire::*, update::*,
 };
 
 #[derive(Args, Debug)]
@@ -26,6 +26,8 @@ pub enum FeedCommands {
     Retire(RetireFeedCliCommand),
     /// End a retirement once its notice has elapsed
     FinalizeRetirement(FinalizeFeedRetirementCliCommand),
+    /// Write the chain on feeds that still have none
+    Migrate(MigrateFeedCliCommand),
     /// Update a feed's name, group set, or chain
     #[clap()]
     Update(UpdateFeedCliCommand),

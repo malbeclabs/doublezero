@@ -7,7 +7,10 @@ use doublezero_serviceability::{
         get_stake_mirror_pda,
     },
     processors::{
-        feed::{create::FeedCreateArgs, delete::FeedDeleteArgs, update::FeedUpdateArgs},
+        feed::{
+            create::FeedCreateArgs, delete::FeedDeleteArgs, migrate::FeedMigrateArgs,
+            update::FeedUpdateArgs,
+        },
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
         multicastgroup::{
             allowlist::publisher::add::AddMulticastGroupPubAllowlistArgs,
@@ -223,6 +226,112 @@ async fn test_feed_create_and_update_persist_chain() {
     let feed = get_feed(&mut banks_client, feed_pubkey).await;
     assert_eq!(feed.feed_chain, FeedChain::Hyperliquid);
     assert_eq!(feed.code, "shreds");
+}
+
+#[tokio::test]
+async fn test_feed_migrate_writes_chain_once() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "shreds", &exchange);
+    let accounts = vec![
+        AccountMeta::new(feed_pubkey, false),
+        AccountMeta::new(globalstate_pubkey, false),
+    ];
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
+            code: "shreds".to_string(),
+            name: "Shreds NY".to_string(),
+            exchange,
+            groups: vec![Pubkey::new_unique()],
+            ..Default::default()
+        }),
+        accounts.clone(),
+        &payer,
+    )
+    .await;
+
+    let feed = get_feed(&mut banks_client, feed_pubkey).await;
+    assert_eq!(feed.feed_chain, FeedChain::Unspecified);
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::MigrateFeed(FeedMigrateArgs {
+            feed_chain: FeedChain::Solana,
+        }),
+        accounts.clone(),
+        &payer,
+    )
+    .await;
+
+    let feed = get_feed(&mut banks_client, feed_pubkey).await;
+    assert_eq!(feed.feed_chain, FeedChain::Solana);
+    assert_eq!(feed.name, "Shreds NY");
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::MigrateFeed(FeedMigrateArgs {
+            feed_chain: FeedChain::Hyperliquid,
+        }),
+        accounts,
+        &payer,
+        &[],
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::FeedAlreadyMigrated));
+}
+
+#[tokio::test]
+async fn test_feed_migrate_refuses_unspecified() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "shreds", &exchange);
+    let accounts = vec![
+        AccountMeta::new(feed_pubkey, false),
+        AccountMeta::new(globalstate_pubkey, false),
+    ];
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
+            code: "shreds".to_string(),
+            name: "Shreds".to_string(),
+            exchange,
+            groups: vec![Pubkey::new_unique()],
+            ..Default::default()
+        }),
+        accounts.clone(),
+        &payer,
+    )
+    .await;
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::MigrateFeed(FeedMigrateArgs {
+            feed_chain: FeedChain::Unspecified,
+        }),
+        accounts,
+        &payer,
+        &[],
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::InvalidFeedChain));
 }
 
 #[tokio::test]

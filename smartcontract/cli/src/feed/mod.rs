@@ -5,6 +5,7 @@ pub mod finalize_retirement;
 pub mod guard;
 pub mod halt;
 pub mod list;
+pub mod migrate;
 pub mod resolve;
 pub mod resume;
 pub mod retire;

@@ -271,6 +271,10 @@ pub enum DoubleZeroError {
     RetiringFeedCannotBeDeleted, // variant 129
     #[error("This feed has no conformance verdict outstanding")]
     FeedNotActivatable, // variant 130
+    #[error("This feed already has a chain; migrate runs once")]
+    FeedAlreadyMigrated, // variant 131
+    #[error("Migrate requires solana or hyperliquid")]
+    InvalidFeedChain, // variant 132
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -407,6 +411,8 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::RetirementNoticeNotElapsed => ProgramError::Custom(128),
             DoubleZeroError::RetiringFeedCannotBeDeleted => ProgramError::Custom(129),
             DoubleZeroError::FeedNotActivatable => ProgramError::Custom(130),
+            DoubleZeroError::FeedAlreadyMigrated => ProgramError::Custom(131),
+            DoubleZeroError::InvalidFeedChain => ProgramError::Custom(132),
         }
     }
 }
@@ -544,6 +550,8 @@ impl From<u32> for DoubleZeroError {
             128 => DoubleZeroError::RetirementNoticeNotElapsed,
             129 => DoubleZeroError::RetiringFeedCannotBeDeleted,
             130 => DoubleZeroError::FeedNotActivatable,
+            131 => DoubleZeroError::FeedAlreadyMigrated,
+            132 => DoubleZeroError::InvalidFeedChain,
             _ => DoubleZeroError::Custom(e),
         }
     }

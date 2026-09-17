@@ -30,7 +30,8 @@ use crate::processors::{
     feed::{
         activate::FeedActivateArgs, create::FeedCreateArgs, delete::FeedDeleteArgs,
         finalize_retirement::FeedFinalizeRetirementArgs, halt::FeedHaltArgs,
-        resume::FeedResumeArgs, retire::FeedRetireArgs, update::FeedUpdateArgs,
+        migrate::FeedMigrateArgs, resume::FeedResumeArgs, retire::FeedRetireArgs,
+        update::FeedUpdateArgs,
     },
     globalconfig::set::SetGlobalConfigArgs,
     globalstate::{
@@ -271,6 +272,7 @@ pub enum DoubleZeroInstruction {
     RetireFeed(FeedRetireArgs),                         // variant 122
     FinalizeFeedRetirement(FeedFinalizeRetirementArgs), // variant 123
     ActivateFeed(FeedActivateArgs),                     // variant 124
+    MigrateFeed(FeedMigrateArgs),                       // variant 125
 }
 
 impl DoubleZeroInstruction {
@@ -433,6 +435,7 @@ impl DoubleZeroInstruction {
             124 => Ok(Self::ActivateFeed(
                 FeedActivateArgs::try_from(rest).unwrap(),
             )),
+            125 => Ok(Self::MigrateFeed(FeedMigrateArgs::try_from(rest).unwrap())),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -585,6 +588,7 @@ impl DoubleZeroInstruction {
             Self::RetireFeed(_) => "RetireFeed".to_string(), // variant 122
             Self::FinalizeFeedRetirement(_) => "FinalizeFeedRetirement".to_string(), // variant 123
             Self::ActivateFeed(_) => "ActivateFeed".to_string(), // variant 124
+            Self::MigrateFeed(_) => "MigrateFeed".to_string(), // variant 125
             Self::UpdateFeed(_) => "UpdateFeed".to_string(), // variant 113
             Self::DeleteFeed(_) => "DeleteFeed".to_string(), // variant 114
             Self::SetAccessPassFeeds(_) => "SetAccessPassFeeds".to_string(), // variant 115
@@ -735,6 +739,7 @@ impl DoubleZeroInstruction {
             Self::RetireFeed(args) => format!("{args:?}"), // variant 122
             Self::FinalizeFeedRetirement(args) => format!("{args:?}"), // variant 123
             Self::ActivateFeed(args) => format!("{args:?}"), // variant 124
+            Self::MigrateFeed(args) => format!("{args:?}"), // variant 125
             Self::UpdateFeed(args) => format!("{args:?}"), // variant 113
             Self::DeleteFeed(args) => format!("{args:?}"), // variant 114
             Self::SetAccessPassFeeds(args) => format!("{args:?}"), // variant 115
@@ -1438,6 +1443,12 @@ mod tests {
                 feed_chain: None,
             }),
             "UpdateFeed",
+        );
+        test_instruction(
+            DoubleZeroInstruction::MigrateFeed(FeedMigrateArgs {
+                feed_chain: crate::state::feed::FeedChain::Solana,
+            }),
+            "MigrateFeed",
         );
         test_instruction(
             DoubleZeroInstruction::DeleteFeed(FeedDeleteArgs {}),

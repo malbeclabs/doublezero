@@ -41,8 +41,8 @@ use doublezero_sdk::{
         feed::{
             activate::ActivateFeedCommand, create::CreateFeedCommand, delete::DeleteFeedCommand,
             finalize_retirement::FinalizeFeedRetirementCommand, get::GetFeedCommand,
-            halt::HaltFeedCommand, list::ListFeedCommand, resume::ResumeFeedCommand,
-            retire::RetireFeedCommand, update::UpdateFeedCommand,
+            halt::HaltFeedCommand, list::ListFeedCommand, migrate::MigrateFeedCommand,
+            resume::ResumeFeedCommand, retire::RetireFeedCommand, update::UpdateFeedCommand,
         },
         globalconfig::set::SetGlobalConfigCommand,
         globalstate::{
@@ -193,6 +193,7 @@ pub trait CliCommand {
     fn get_feed(&self, cmd: GetFeedCommand) -> eyre::Result<(Pubkey, Feed)>;
     fn list_feed(&self, cmd: ListFeedCommand) -> eyre::Result<HashMap<Pubkey, Feed>>;
     fn update_feed(&self, cmd: UpdateFeedCommand) -> eyre::Result<Signature>;
+    fn migrate_feed(&self, cmd: MigrateFeedCommand) -> eyre::Result<Signature>;
     fn delete_feed(&self, cmd: DeleteFeedCommand) -> eyre::Result<Signature>;
     fn activate_feed(&self, cmd: ActivateFeedCommand) -> eyre::Result<Signature>;
     fn halt_feed(&self, cmd: HaltFeedCommand) -> eyre::Result<Signature>;
@@ -531,6 +532,9 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn update_feed(&self, cmd: UpdateFeedCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn migrate_feed(&self, cmd: MigrateFeedCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn delete_feed(&self, cmd: DeleteFeedCommand) -> eyre::Result<Signature> {

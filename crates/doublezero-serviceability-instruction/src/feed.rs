@@ -32,7 +32,8 @@ use doublezero_serviceability::{
     processors::feed::{
         activate::FeedActivateArgs, create::FeedCreateArgs, delete::FeedDeleteArgs,
         finalize_retirement::FeedFinalizeRetirementArgs, halt::FeedHaltArgs,
-        resume::FeedResumeArgs, retire::FeedRetireArgs, update::FeedUpdateArgs,
+        migrate::FeedMigrateArgs, resume::FeedResumeArgs, retire::FeedRetireArgs,
+        update::FeedUpdateArgs,
     },
 };
 use solana_program::{
@@ -99,6 +100,25 @@ pub fn delete_feed(
     common::build_with_permission(
         program_id,
         DoubleZeroInstruction::DeleteFeed(args),
+        vec![
+            AccountMeta::new(*feed, false),
+            AccountMeta::new(globalstate, false),
+        ],
+        payer,
+    )
+}
+
+/// `MigrateFeed` (variant 125). Accounts: `[feed, globalstate]`.
+pub fn migrate_feed(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    feed: &Pubkey,
+    args: FeedMigrateArgs,
+) -> Instruction {
+    let (globalstate, _) = get_globalstate_pda(program_id);
+    common::build_with_permission(
+        program_id,
+        DoubleZeroInstruction::MigrateFeed(args),
         vec![
             AccountMeta::new(*feed, false),
             AccountMeta::new(globalstate, false),
@@ -354,6 +374,17 @@ mod tests {
         let activate = activate_feed(&pid, &payer, &feed, None);
         assert_eq!(activate.data[0], 124);
         assert_eq!(activate.accounts, expected);
+
+        let migrate = migrate_feed(
+            &pid,
+            &payer,
+            &feed,
+            FeedMigrateArgs {
+                feed_chain: doublezero_serviceability::state::feed::FeedChain::Solana,
+            },
+        );
+        assert_eq!(migrate.data[0], 125);
+        assert_eq!(migrate.accounts, expected);
 
         // A staked feed's mirror rides after the payer and system program, read-only, because the
         // step reads it rather than claiming it. `resume_feed` places it the same way, and the

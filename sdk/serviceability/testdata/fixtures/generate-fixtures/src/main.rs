@@ -25,7 +25,7 @@ use doublezero_serviceability::state::{
     accesspass::{AccessPass, AccessPassStatus, AccessPassType, FeedSeat},
     accounttype::AccountType,
     contributor::{Contributor, ContributorStatus},
-    feed::{Feed, FeedStatus},
+    feed::{Feed, FeedChain, FeedStatus},
     device::{Device, DeviceDesiredStatus, DeviceHealth, DeviceStatus, DeviceType},
     exchange::{Exchange, ExchangeStatus},
     globalconfig::GlobalConfig,
@@ -1524,6 +1524,7 @@ fn generate_feed(dir: &Path) {
         // or drops the field cannot pass. Negative, because `retires_at` is an i64 and a positive
         // value cannot tell a signed read from an unsigned one.
         retires_at: -1_764_547_200,
+        feed_chain: FeedChain::Hyperliquid,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -1549,6 +1550,7 @@ fn generate_feed(dir: &Path) {
             FieldValue { name: "Status".into(), value: "4".into(), typ: "u8".into() },
             FieldValue { name: "HaltedBy".into(), value: pubkey_bs58(&Pubkey::default()), typ: "pubkey".into() },
             FieldValue { name: "RetiresAt".into(), value: "-1764547200".into(), typ: "i64".into() },
+            FieldValue { name: "FeedChain".into(), value: "2".into(), typ: "u8".into() },
         ],
     };
 

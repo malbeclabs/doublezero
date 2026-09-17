@@ -1,5 +1,5 @@
 use crate::{commands::common::append_payer_permission_account, DoubleZeroClient};
-use doublezero_serviceability::processors::feed::update::FeedUpdateArgs;
+use doublezero_serviceability::{processors::feed::update::FeedUpdateArgs, state::feed::FeedChain};
 use doublezero_serviceability_instruction::feed::update_feed;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -9,6 +9,7 @@ pub struct UpdateFeedCommand {
     pub name: Option<String>,
     /// Replacement multicast group set. `None` leaves the groups unchanged.
     pub groups: Option<Vec<Pubkey>>,
+    pub feed_chain: Option<FeedChain>,
 }
 
 impl UpdateFeedCommand {
@@ -20,6 +21,7 @@ impl UpdateFeedCommand {
             FeedUpdateArgs {
                 name: self.name.clone(),
                 groups: self.groups.clone(),
+                feed_chain: self.feed_chain,
             },
         );
 
@@ -60,6 +62,7 @@ mod tests {
             FeedUpdateArgs {
                 name: Some("Test Feed".to_string()),
                 groups: None,
+                feed_chain: None,
             },
         );
         client
@@ -73,6 +76,7 @@ mod tests {
             pubkey: pda_pubkey,
             name: Some("Test Feed".to_string()),
             groups: None,
+            feed_chain: None,
         }
         .execute(&client);
         assert!(res.is_ok());
@@ -93,6 +97,7 @@ mod tests {
             FeedUpdateArgs {
                 name: Some("Test Feed".to_string()),
                 groups: None,
+                feed_chain: None,
             },
         );
         let (permission_pda_pubkey, _) = get_permission_pda(&program_id, &payer);
@@ -114,6 +119,7 @@ mod tests {
             pubkey: pda_pubkey,
             name: Some("Test Feed".to_string()),
             groups: None,
+            feed_chain: None,
         }
         .execute(&client);
         assert!(res.is_ok());

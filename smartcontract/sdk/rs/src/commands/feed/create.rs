@@ -1,5 +1,7 @@
 use doublezero_program_common::validate_account_code;
-use doublezero_serviceability::{pda::get_feed_pda, processors::feed::create::FeedCreateArgs};
+use doublezero_serviceability::{
+    pda::get_feed_pda, processors::feed::create::FeedCreateArgs, state::feed::FeedChain,
+};
 use doublezero_serviceability_instruction::feed::create_feed;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -13,6 +15,7 @@ pub struct CreateFeedCommand {
     pub exchange: Pubkey,
     /// Multicast groups joinable in this metro.
     pub groups: Vec<Pubkey>,
+    pub feed_chain: FeedChain,
 }
 
 impl CreateFeedCommand {
@@ -31,6 +34,7 @@ impl CreateFeedCommand {
                 name: self.name.clone(),
                 exchange: self.exchange,
                 groups: self.groups.clone(),
+                feed_chain: self.feed_chain,
                 ..Default::default()
             },
         );
@@ -47,7 +51,7 @@ mod tests {
         DoubleZeroClient,
     };
     use doublezero_serviceability::{
-        pda::get_permission_pda, processors::feed::create::FeedCreateArgs,
+        pda::get_permission_pda, processors::feed::create::FeedCreateArgs, state::feed::FeedChain,
     };
     use doublezero_serviceability_instruction::feed::create_feed;
     use mockall::predicate;
@@ -72,6 +76,7 @@ mod tests {
                 name: "Test Feed".to_string(),
                 exchange,
                 groups: vec![group],
+                feed_chain: FeedChain::Solana,
                 ..Default::default()
             },
         );
@@ -91,6 +96,7 @@ mod tests {
             name: "Test Feed".to_string(),
             exchange,
             groups: vec![group],
+            feed_chain: FeedChain::Solana,
         };
 
         let create_invalid_command = CreateFeedCommand {
@@ -122,6 +128,7 @@ mod tests {
                 name: "Test Feed".to_string(),
                 exchange,
                 groups: vec![group],
+                feed_chain: FeedChain::Solana,
                 ..Default::default()
             },
         );
@@ -145,6 +152,7 @@ mod tests {
             name: "Test Feed".to_string(),
             exchange,
             groups: vec![group],
+            feed_chain: FeedChain::Solana,
         };
 
         let res = create_command.execute(&client);

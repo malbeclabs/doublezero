@@ -44,6 +44,7 @@ fn staked_args(code: &str, exchange: Pubkey) -> FeedCreateArgs {
         spec_id: "top-of-book@v1.0.0".to_string(),
         sla_hash: [9u8; 32],
         committed_rate_bits_per_sec: 1_000_000_000,
+        ..Default::default()
     }
 }
 
@@ -135,6 +136,7 @@ async fn test_feed_create_get_update_delete() {
         DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
             name: Some("Shreds v2".to_string()),
             groups: Some(new_groups.clone()),
+            feed_chain: None,
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),

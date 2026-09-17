@@ -26,7 +26,7 @@ pub enum FeedCommands {
     Retire(RetireFeedCliCommand),
     /// End a retirement once its notice has elapsed
     FinalizeRetirement(FinalizeFeedRetirementCliCommand),
-    /// Update a feed's name or group set
+    /// Update a feed's name, group set, or chain
     #[clap()]
     Update(UpdateFeedCliCommand),
     /// List feeds, optionally narrowed to one code or one metro

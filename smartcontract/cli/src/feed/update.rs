@@ -6,7 +6,7 @@ use crate::{
 };
 use clap::Args;
 use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
-use doublezero_sdk::commands::feed::update::UpdateFeedCommand;
+use doublezero_sdk::{commands::feed::update::UpdateFeedCommand, FeedChain};
 use std::io::Write;
 
 #[derive(Args, Debug)]
@@ -25,6 +25,9 @@ pub struct UpdateFeedCliCommand {
     /// outside their access pass's feeds fails and changes nothing.
     #[arg(long, default_value_t = false)]
     pub force_unsubscribe: bool,
+    /// Chain this feed publishes for. When omitted, the stored chain is left unchanged.
+    #[arg(long)]
+    pub chain: Option<FeedChain>,
 }
 
 impl UpdateFeedCliCommand {
@@ -72,6 +75,7 @@ impl UpdateFeedCliCommand {
             pubkey,
             name: self.name,
             groups,
+            feed_chain: self.chain,
         })?;
 
         print_signature(out, &signature)
@@ -128,6 +132,7 @@ mod tests {
                 },
                 name: None,
                 groups: vec![g1.to_string()],
+                chain: None,
                 force_unsubscribe: false,
             }
             .execute(&ctx, &client, &mut output),
@@ -177,6 +182,7 @@ mod tests {
                 pubkey: f.feed_pk,
                 name: None,
                 groups: Some(vec![g1]),
+                feed_chain: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -192,6 +198,7 @@ mod tests {
                 },
                 name: None,
                 groups: vec![g1.to_string()],
+                chain: None,
                 force_unsubscribe: true,
             }
             .execute(&ctx, &client, &mut output),
@@ -241,6 +248,7 @@ mod tests {
                 pubkey: f.feed_pk,
                 name: None,
                 groups: Some(vec![g1]),
+                feed_chain: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -256,6 +264,7 @@ mod tests {
                 },
                 name: None,
                 groups: vec![g1.to_string()],
+                chain: None,
                 force_unsubscribe: true,
             }
             .execute(&ctx, &client, &mut output),
@@ -285,6 +294,7 @@ mod tests {
                 pubkey: f.feed_pk,
                 name: None,
                 groups: Some(vec![g1, g2]),
+                feed_chain: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -300,6 +310,7 @@ mod tests {
                 },
                 name: None,
                 groups: vec![g1.to_string(), g2.to_string()],
+                chain: None,
                 force_unsubscribe: false,
             }
             .execute(&ctx, &client, &mut output),
@@ -360,6 +371,7 @@ mod tests {
                 },
                 name: None,
                 groups: vec![g1.to_string()],
+                chain: None,
                 force_unsubscribe: true,
             }
             .execute(&ctx, &client, &mut output),
@@ -430,6 +442,7 @@ mod tests {
                 },
                 name: None,
                 groups: vec![g1.to_string()],
+                chain: None,
                 force_unsubscribe: true,
             }
             .execute(&ctx, &client, &mut output),
@@ -539,6 +552,7 @@ mod tests {
                 pubkey: feed_pk,
                 name: Some("Feed v2".to_string()),
                 groups: Some(vec![group_pk]),
+                feed_chain: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -554,6 +568,7 @@ mod tests {
                 },
                 name: Some("Feed v2".to_string()),
                 groups: vec!["mg01".to_string()],
+                chain: None,
                 force_unsubscribe: false,
             }
             .execute(&ctx, &client, &mut output),

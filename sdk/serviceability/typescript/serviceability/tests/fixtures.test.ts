@@ -20,6 +20,8 @@ import {
   deserializeAccessPass,
   deserializeTenant,
   deserializeFeed,
+  FEED_CHAIN_HYPERLIQUID,
+  FEED_CHAIN_UNSPECIFIED,
   FEED_STATUS_ACTIVE,
   FEED_STATUS_PENDING,
   FEED_STATUS_RETIRING,
@@ -650,6 +652,7 @@ describe("Feed fixture", () => {
       Status: feed.status,
       HaltedBy: feed.haltedBy,
       RetiresAt: feed.retiresAt,
+      FeedChain: feed.feedChain,
     });
 
     expect(feed.accountType).toBe(18);
@@ -658,6 +661,7 @@ describe("Feed fixture", () => {
     expect(feed.name).toBe("Shreds");
     expect(feed.groups).toHaveLength(2);
     expect(feed.status).toBe(FEED_STATUS_RETIRING);
+    expect(feed.feedChain).toBe(FEED_CHAIN_HYPERLIQUID);
     // Negative on purpose: it is the only value that makes the asIntN reinterpretation in the
     // decoder meaningful. Read as unsigned this would be a very large positive number.
     expect(feed.retiresAt).toBe(-1764547200n);
@@ -682,6 +686,7 @@ describe("Feed fixture", () => {
     expect(feed.specId).toBe("");
     expect(feed.slaHash).toEqual(new Uint8Array(32));
     expect(feed.committedRateBitsPerSec).toBe(0n);
+    expect(feed.feedChain).toBe(FEED_CHAIN_UNSPECIFIED);
   });
 });
 

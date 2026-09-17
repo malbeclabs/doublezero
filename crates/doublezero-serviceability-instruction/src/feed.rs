@@ -254,6 +254,7 @@ mod tests {
                 spec_id: "top-of-book@v1.0.0".to_string(),
                 sla_hash: [9u8; 32],
                 committed_rate_bits_per_sec: 1_000_000_000,
+                ..Default::default()
             },
         );
         let (mirror, _) = get_stake_mirror_pda(&pid, &stake_ref);
@@ -331,6 +332,7 @@ mod tests {
             FeedUpdateArgs {
                 name: Some("Feed".to_string()),
                 groups: None,
+                feed_chain: None,
             },
         );
         assert_eq!(update.data[0], 113);

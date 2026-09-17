@@ -1438,15 +1438,55 @@ type TopologyInfo struct {
 	PubKey         [32]byte
 }
 
+type FeedStatus uint8
+
+const (
+	FeedStatusPending  FeedStatus = 0
+	FeedStatusActive   FeedStatus = 1
+	FeedStatusHalted   FeedStatus = 2
+	FeedStatusRetired  FeedStatus = 3
+	FeedStatusRetiring FeedStatus = 4
+)
+
+type FeedChain uint8
+
+const (
+	FeedChainUnspecified FeedChain = 0
+	FeedChainSolana      FeedChain = 1
+	FeedChainHyperliquid FeedChain = 2
+)
+
+func (c FeedChain) String() string {
+	switch c {
+	case FeedChainUnspecified:
+		return "unspecified"
+	case FeedChainSolana:
+		return "solana"
+	case FeedChainHyperliquid:
+		return "hyperliquid"
+	default:
+		return "unknown"
+	}
+}
+
 // Feed is a serviceability catalog entry: one SKU scoped to a single metro (Exchange), holding the
 // multicast groups joinable there. One feed_key is one feed in one metro.
 type Feed struct {
-	AccountType AccountType
-	Owner       [32]byte
-	BumpSeed    uint8
-	Code        string
-	Name        string
-	Exchange    [32]byte
-	Groups      [][32]byte
-	PubKey      [32]byte
+	AccountType             AccountType
+	Owner                   [32]byte
+	BumpSeed                uint8
+	Code                    string
+	Name                    string
+	Exchange                [32]byte
+	Groups                  [][32]byte
+	Builder                 [32]byte
+	StakeRef                [32]byte
+	SpecId                  string
+	SlaHash                 [32]byte
+	CommittedRateBitsPerSec uint64
+	Status                  FeedStatus
+	HaltedBy                [32]byte
+	RetiresAt               int64
+	FeedChain               FeedChain
+	PubKey                  [32]byte
 }

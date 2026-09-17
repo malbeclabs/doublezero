@@ -628,9 +628,8 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 		time.Sleep(CallDelay)
 	}
 
-	// Oldest sample first. Jobs are polled newest-first and the exporter preserves insertion
-	// order, while the ledger reconstructs each sample's timestamp from its position in the
-	// account, so the records have to be back in time order before they are written.
+	// Polling is newest-first and the exporter does not reorder, but the ledger derives each
+	// sample's timestamp from its position in the account, so time order has to be restored.
 	slices.SortStableFunc(records, func(a, b exporter.Record) int {
 		return a.Timestamp.Compare(b.Timestamp)
 	})

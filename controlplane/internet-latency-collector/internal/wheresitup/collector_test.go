@@ -1393,8 +1393,8 @@ func TestInternetLatency_Wheresitup_ExportJobResults_DropsExpiredJobs(t *testing
 	require.Equal(t, int64(1), attr(t, missing, "missing_samples").Int64())
 }
 
-// Creation saves a batch roughly 30s before the export pass, so a job crossing the cutoff
-// between two passes must survive that save to be counted as expired by the pass that follows.
+// A job crossing the cutoff between two passes must survive creation's save, which runs
+// roughly 30s ahead of the export pass, or its expiry is never counted.
 func TestInternetLatency_Wheresitup_ExportJobResults_SaveDoesNotEvictBeforeExpiryIsCounted(t *testing.T) {
 	t.Parallel()
 
@@ -1457,9 +1457,9 @@ func TestInternetLatency_Wheresitup_ExportJobResults_AllExpiredReportsMissingSam
 	require.Empty(t, state.GetJobIDs())
 }
 
-// A stall leaves a run of intervals empty and the vendor then completes several of a
-// circuit's jobs in one pass. Each one stands for the interval it was created in, so all of
-// them are exported, in time order: the ledger derives a sample's timestamp from its position.
+// After a stall the vendor completes several of a circuit's jobs in one pass. Each stands for
+// the interval it was created in, so all are exported, in the order the positional encoding
+// downstream assumes.
 func TestInternetLatency_Wheresitup_ExportJobResults_ExportsEveryCompletedJobInTimeOrder(t *testing.T) {
 	t.Parallel()
 

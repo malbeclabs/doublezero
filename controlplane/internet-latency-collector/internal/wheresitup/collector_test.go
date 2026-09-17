@@ -1392,6 +1392,38 @@ func TestInternetLatency_Wheresitup_ExportJobResults_DropsExpiredJobs(t *testing
 	require.Equal(t, int64(1), attr(t, missing, "missing_samples").Int64())
 }
 
+// Creation saves a batch roughly 30s before the export pass, so a job crossing the cutoff
+// between two passes must survive that save to be counted as expired by the pass that follows.
+func TestInternetLatency_Wheresitup_ExportJobResults_SaveDoesNotEvictBeforeExpiryIsCounted(t *testing.T) {
+	t.Parallel()
+
+	handler := newTestLogHandler()
+	log := slog.New(handler).With("test", t.Name())
+
+	jobIDsFile := filepath.Join(t.TempDir(), "jobs.json")
+	state := NewState(jobIDsFile)
+	require.NoError(t, state.AddJobIDsWithCircuits([]string{"job-expired"}, []string{"lax → nyc"}, time.Now().Add(-2*time.Hour)))
+
+	saved := NewState(jobIDsFile)
+	require.NoError(t, saved.Load())
+	require.Equal(t, []string{"job-expired"}, saved.GetJobIDs(), "the save must not have pruned the expired job")
+
+	client := exportTestClient(func(ctx context.Context, jobID string) (*JobResultResponse, error) {
+		t.Errorf("expired job %s must not be polled", jobID)
+		return nil, inProgressResults()
+	})
+
+	c := exportTestCollector(log, client, &MockExporter{})
+	require.NoError(t, c.ExportJobResults(t.Context(), jobIDsFile))
+
+	dropped, _ := handler.only(t, "Wheresitup - Dropping expired jobs from tracking without polling")
+	require.Equal(t, int64(1), attr(t, dropped, "expired_count").Int64())
+
+	after := NewState(jobIDsFile)
+	require.NoError(t, after.Load())
+	require.Empty(t, after.GetJobIDs())
+}
+
 // A cycle in which every tracked job has expired still has to report the samples it owed,
 // which is the signal that was absent throughout the incident this behaviour comes from.
 func TestInternetLatency_Wheresitup_ExportJobResults_AllExpiredReportsMissingSamples(t *testing.T) {

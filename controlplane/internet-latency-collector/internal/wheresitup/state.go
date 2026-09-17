@@ -87,9 +87,9 @@ func (jt *State) Save() error {
 		return err
 	}
 
-	jt.PruneExpired(time.Now())
-
-	// Clear circuits when all jobs are filtered out
+	// Deliberately does not prune: creation saves a batch about 30s before the export pass
+	// runs, so a prune here would evict a job that crossed the cutoff between two passes
+	// before export could count it, and expiry would go unreported. ExportJobResults owns it.
 	if len(jt.Jobs) == 0 {
 		jt.Circuits = nil
 	}
@@ -171,9 +171,8 @@ func (jt *State) RemoveJobIDs(jobIDsToRemove []string) error {
 }
 
 // PruneExpired drops every job whose results WheresItUp has already discarded and returns
-// the IDs it dropped. It is the only expiry predicate in the package: Save() applies it on
-// every write, and ExportJobResults calls it so that the active set and the dropped set come
-// from one reading of the clock.
+// the IDs it dropped. It is the only expiry predicate in the package, and ExportJobResults is
+// its only caller, so every eviction is counted and logged once from one reading of the clock.
 func (jt *State) PruneExpired(now time.Time) []string {
 	cutoffTime := now.Add(-MaxJobAge)
 

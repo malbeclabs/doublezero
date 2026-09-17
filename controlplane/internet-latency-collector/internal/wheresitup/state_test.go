@@ -133,7 +133,10 @@ func TestInternetLatency_Wheresitup_State_JobExpiration(t *testing.T) {
 		{JobID: "very_recent", CreatedAt: now.Add(-5 * time.Minute)},
 	}
 
-	// Save should filter out the old job
+	// Expiry belongs to PruneExpired, not to Save: a save must never evict a job that the
+	// export pass has not yet counted as expired.
+	require.Equal(t, []string{"old"}, jt.PruneExpired(time.Now()))
+
 	err := jt.Save()
 	require.NoError(t, err, "Save() should not error")
 

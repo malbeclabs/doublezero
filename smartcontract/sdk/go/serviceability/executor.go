@@ -20,11 +20,11 @@ const (
 	instructionSetDeviceHealth           = 83
 	instructionSetLinkHealth             = 84
 	instructionSetUserBGPStatus          = 106
-	instructionDeletePrepaidUser         = 124
-	instructionDeleteSolanaValidatorUser = 125
-	instructionDeleteSolanaRPCUser       = 126
-	instructionDeleteOthersUser          = 127
-	instructionDeleteEdgeSeatUser        = 128
+	instructionDeletePrepaidUser         = 130
+	instructionDeleteSolanaValidatorUser = 131
+	instructionDeleteSolanaRPCUser       = 132
+	instructionDeleteOthersUser          = 133
+	instructionDeleteEdgeSeatUser        = 134
 )
 
 // AccessPassKind is the AccessPassType variant without its payload. DeleteUser is split one
@@ -253,7 +253,7 @@ func (e *Executor) CreateUser(ctx context.Context, args UserCreateArgs) (solana.
 	return sig, userPDA, nil
 }
 
-// DeleteUser submits the DeleteUser instruction for kind (variants 124 to 128) and
+// DeleteUser submits the DeleteUser instruction for kind (variants 130 to 134) and
 // waits for the user PDA to disappear from chain. The function reads the user
 // account first so it can derive the device-dependent PDAs and the
 // multicast-publisher flag, but kind is not read from that account: the program
@@ -384,7 +384,7 @@ func (e *Executor) buildCreateUserInstruction(args UserCreateArgs) (solana.Instr
 }
 
 // buildDeleteUserInstruction packs the payload for the DeleteUser variant that
-// matches kind (124 to 128) and assembles the account list in the order the
+// matches kind (130 to 134) and assembles the account list in the order the
 // onchain processor expects:
 //
 //	[user, accesspass, globalstate, device,

@@ -41,28 +41,112 @@ func (m *MockExporter) Close() error {
 	return nil
 }
 
-// testLogHandler is a simple slog handler for testing that captures messages and levels
+// testLogHandler captures whole records so tests can assert on a log line's message, level,
+// position and attributes. It honours WithAttrs and WithGroup rather than discarding them:
+// a handler that drops them lets an assertion on a top-level attribute pass against a
+// logger that would in fact emit the attribute nested, or not at all.
 type testLogHandler struct {
-	messages *[]string
-	levels   *[]slog.Level
+	mu       *sync.Mutex
+	recorded *[]slog.Record
+	attrs    []slog.Attr
+	groups   []string
+}
+
+func newTestLogHandler() *testLogHandler {
+	return &testLogHandler{mu: &sync.Mutex{}, recorded: &[]slog.Record{}}
 }
 
 func (h *testLogHandler) Enabled(ctx context.Context, level slog.Level) bool {
 	return true
 }
 
+// nest wraps attrs in whichever groups are open, as a real handler would.
+func (h *testLogHandler) nest(attrs []slog.Attr) []slog.Attr {
+	for i := len(h.groups) - 1; i >= 0; i-- {
+		attrs = []slog.Attr{{Key: h.groups[i], Value: slog.GroupValue(attrs...)}}
+	}
+	return attrs
+}
+
 func (h *testLogHandler) Handle(ctx context.Context, r slog.Record) error {
-	*h.messages = append(*h.messages, r.Message)
-	*h.levels = append(*h.levels, r.Level)
+	attrs := make([]slog.Attr, 0, r.NumAttrs())
+	r.Attrs(func(a slog.Attr) bool {
+		attrs = append(attrs, a)
+		return true
+	})
+
+	record := slog.NewRecord(r.Time, r.Level, r.Message, r.PC)
+	record.AddAttrs(h.attrs...)
+	record.AddAttrs(h.nest(attrs)...)
+
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	*h.recorded = append(*h.recorded, record)
 	return nil
 }
 
 func (h *testLogHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
-	return h
+	clone := *h
+	clone.attrs = append(append([]slog.Attr{}, h.attrs...), h.nest(attrs)...)
+	return &clone
 }
 
 func (h *testLogHandler) WithGroup(name string) slog.Handler {
-	return h
+	clone := *h
+	clone.groups = append(append([]string{}, h.groups...), name)
+	return &clone
+}
+
+func (h *testLogHandler) all() []slog.Record {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]slog.Record{}, *h.recorded...)
+}
+
+func (h *testLogHandler) messages() []string {
+	var messages []string
+	for _, r := range h.all() {
+		messages = append(messages, r.Message)
+	}
+	return messages
+}
+
+// only returns the single record with the given message, and its position in the stream.
+// It fails if the message is absent or logged more than once, so a test cannot be satisfied
+// by a duplicate line, and the position lets a test pin the order of two lines.
+func (h *testLogHandler) only(t *testing.T, message string) (slog.Record, int) {
+	t.Helper()
+
+	var found slog.Record
+	index := -1
+	for i, r := range h.all() {
+		if r.Message != message {
+			continue
+		}
+		require.Equal(t, -1, index, "log message %q was logged more than once: %v", message, h.messages())
+		found, index = r, i
+	}
+	require.NotEqual(t, -1, index, "expected a log line %q, got %v", message, h.messages())
+
+	return found, index
+}
+
+// attr reads one top-level attribute off a record.
+func attr(t *testing.T, r slog.Record, key string) slog.Value {
+	t.Helper()
+
+	var value slog.Value
+	found := false
+	r.Attrs(func(a slog.Attr) bool {
+		if a.Key == key {
+			value, found = a.Value, true
+			return false
+		}
+		return true
+	})
+	require.True(t, found, "expected attribute %q on log line %q", key, r.Message)
+
+	return value
 }
 
 // MockWheresitupClient implements wheresitupClientInterface for testing
@@ -834,6 +918,11 @@ func TestInternetLatency_Wheresitup_ExportJobResults_ErrorScenarios(t *testing.T
 			getLocationsFunc: mockLocationsFetcher([]collector.LocationMatch{}),
 		}
 
+		// A tracked job is needed for the mapping to be built at all: it only labels
+		// records, so a pass with nothing to poll skips it.
+		state := NewState(jobIDsFile)
+		require.NoError(t, state.AddJobIDs([]string{"job-123"}))
+
 		err := c.ExportJobResults(t.Context(), jobIDsFile)
 		require.Error(t, err, "Expected error from buildLocationMapping failure")
 	})
@@ -888,14 +977,7 @@ func TestInternetLatency_Wheresitup_ExportJobResults_ErrorScenarios(t *testing.T
 		tempDir := t.TempDir()
 		jobIDsFile := filepath.Join(tempDir, "jobs.json")
 
-		// Create a custom log handler to capture log messages
-		var logMessages []string
-		var logLevels []slog.Level
-		captureHandler := &testLogHandler{
-			messages: &logMessages,
-			levels:   &logLevels,
-		}
-
+		captureHandler := newTestLogHandler()
 		log := slog.New(captureHandler)
 
 		mockExporter := &MockExporter{
@@ -956,15 +1038,8 @@ func TestInternetLatency_Wheresitup_ExportJobResults_ErrorScenarios(t *testing.T
 		require.NoError(t, err, "ExportJobResults() should not return error")
 
 		// Check that an error was logged due to high failure rate
-		foundErrorLog := false
-		for i, msg := range logMessages {
-			if msg == "High failure rate for Wheresitup job results" {
-				require.Equal(t, slog.LevelError, logLevels[i], "High failure rate should be logged at ERROR level")
-				foundErrorLog = true
-				break
-			}
-		}
-		require.True(t, foundErrorLog, "Expected to find error log for high failure rate, but didn't find it. Logs: %v", logMessages)
+		record, _ := captureHandler.only(t, "High failure rate for Wheresitup job results")
+		require.Equal(t, slog.LevelError, record.Level, "High failure rate should be logged at ERROR level")
 	})
 }
 
@@ -1189,113 +1264,256 @@ func TestInitializeCreditBalance(t *testing.T) {
 	})
 }
 
-// recordingHandler captures full log records so tests can assert on attributes.
-type recordingHandler struct {
-	mu      sync.Mutex
-	records []slog.Record
-}
-
-func (h *recordingHandler) Enabled(ctx context.Context, level slog.Level) bool { return true }
-
-func (h *recordingHandler) Handle(ctx context.Context, r slog.Record) error {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	h.records = append(h.records, r.Clone())
-	return nil
-}
-
-func (h *recordingHandler) WithAttrs(attrs []slog.Attr) slog.Handler { return h }
-func (h *recordingHandler) WithGroup(name string) slog.Handler       { return h }
-
-func (h *recordingHandler) attr(message, key string) (slog.Value, bool) {
-	h.mu.Lock()
-	defer h.mu.Unlock()
-	for _, r := range h.records {
-		if r.Message != message {
-			continue
-		}
-		var value slog.Value
-		var found bool
-		r.Attrs(func(a slog.Attr) bool {
-			if a.Key == key {
-				value, found = a.Value, true
-				return false
-			}
-			return true
-		})
-		if found {
-			return value, true
-		}
-	}
-	return slog.Value{}, false
-}
-
 // writeJobState writes a state file directly so tests can control job ages, which
 // State.Save() cannot express (it prunes old entries on write).
-func writeJobState(t *testing.T, filename string, jobs []JobEntry) {
+func writeJobState(t *testing.T, filename string, jobs []JobEntry, circuits []string) {
 	t.Helper()
 	data, err := json.Marshal(struct {
-		Jobs []JobEntry `json:"jobs"`
-	}{Jobs: jobs})
+		Jobs     []JobEntry `json:"jobs"`
+		Circuits []string   `json:"circuits,omitempty"`
+	}{Jobs: jobs, Circuits: circuits})
 	require.NoError(t, err)
 	require.NoError(t, os.WriteFile(filename, data, 0o600))
+}
+
+// inProgressResults returns the error GetJobResults returns for a job WheresItUp is still
+// running, or whose results it has discarded: it reports "complete" as an empty array and
+// "in_progress" as an object, and both then fail to decode into JobResultResponse.
+func inProgressResults() error {
+	return errors.New("failed to decode response: json: cannot unmarshal array into Go struct field .response.complete of type map[string]wheresitup.ServiceResult")
+}
+
+// completedResults returns a job result carrying one usable ping sample.
+func completedResults(sourceName string, startTime int64, minLatencyMillis string) *JobResultResponse {
+	results := &JobResultResponse{}
+	results.Request.StartTime = startTime
+	results.Request.URL = "http://los_angeles.wonderproxy.com"
+
+	pingResult := PingResult{}
+	pingResult.Summary.Summary.Min = minLatencyMillis
+	results.Response.Complete = map[string]ServiceResult{sourceName: {Ping: pingResult}}
+
+	return results
+}
+
+// exportTestCollector builds a collector whose locations map the two sources used above
+// onto exchange codes, so exported records carry real circuit labels.
+func exportTestCollector(log *slog.Logger, client clientInterface, exp exporter.Exporter) *Collector {
+	return &Collector{
+		client:   client,
+		log:      log,
+		exporter: exp,
+		env:      "test",
+		getLocationsFunc: mockLocationsFetcher([]collector.LocationMatch{
+			{LocationCode: "lax", Latitude: 34, Longitude: -118},
+			{LocationCode: "nyc", Latitude: 40, Longitude: -74},
+		}),
+	}
+}
+
+func exportTestClient(getJobResults func(ctx context.Context, jobID string) (*JobResultResponse, error)) *MockWheresitupClient {
+	return &MockWheresitupClient{
+		GetNearestSourcesForLocationsFunc: func(ctx context.Context, locations []collector.LocationMatch) ([]LocationSourceMatch, error) {
+			return []LocationSourceMatch{
+				{
+					LocationMatch:  collector.LocationMatch{LocationCode: "lax"},
+					NearestSources: []Source{{Name: "los_angeles"}},
+					SourceCount:    1,
+				},
+				{
+					LocationMatch:  collector.LocationMatch{LocationCode: "nyc"},
+					NearestSources: []Source{{Name: "new_york"}},
+					SourceCount:    1,
+				},
+			}, nil
+		},
+		GetJobResultsFunc: getJobResults,
+	}
 }
 
 func TestInternetLatency_Wheresitup_ExportJobResults_DropsExpiredJobs(t *testing.T) {
 	t.Parallel()
 
-	handler := &recordingHandler{}
-	log := slog.New(handler)
+	handler := newTestLogHandler()
+	log := slog.New(handler).With("test", t.Name())
 
 	jobIDsFile := filepath.Join(t.TempDir(), "jobs.json")
 	now := time.Now()
 	writeJobState(t, jobIDsFile, []JobEntry{
-		{JobID: "job-1m", CreatedAt: now.Add(-1 * time.Minute)},
-		{JobID: "job-30m", CreatedAt: now.Add(-30 * time.Minute)},
-		{JobID: "job-90m", CreatedAt: now.Add(-90 * time.Minute)},
 		{JobID: "job-3h", CreatedAt: now.Add(-3 * time.Hour)},
-	})
+		{JobID: "job-90m", CreatedAt: now.Add(-90 * time.Minute)},
+		{JobID: "job-30m", CreatedAt: now.Add(-30 * time.Minute)},
+		{JobID: "job-1m", CreatedAt: now.Add(-1 * time.Minute)},
+	}, []string{"lax → nyc", "lax → sin"})
 
 	var mu sync.Mutex
 	var polled []string
-	c := &Collector{
-		client: &MockWheresitupClient{
-			GetJobResultsFunc: func(ctx context.Context, jobID string) (*JobResultResponse, error) {
-				mu.Lock()
-				polled = append(polled, jobID)
-				mu.Unlock()
-				// Still running: no completed results yet, so the job stays tracked.
-				results := &JobResultResponse{}
-				results.Response.InProgress = []any{"in progress"}
-				return results, nil
-			},
-		},
-		log:              log,
-		getLocationsFunc: mockLocationsFetcher([]collector.LocationMatch{}),
-	}
+	var written []exporter.Record
+	client := exportTestClient(func(ctx context.Context, jobID string) (*JobResultResponse, error) {
+		mu.Lock()
+		polled = append(polled, jobID)
+		mu.Unlock()
+		if jobID == "job-1m" {
+			return completedResults("new_york", now.Unix(), "12.5"), nil
+		}
+		return nil, inProgressResults()
+	})
+	exp := &MockExporter{WriteRecordsFunc: func(ctx context.Context, records []exporter.Record) error {
+		mu.Lock()
+		written = append(written, records...)
+		mu.Unlock()
+		return nil
+	}}
 
+	c := exportTestCollector(log, client, exp)
 	require.NoError(t, c.ExportJobResults(t.Context(), jobIDsFile))
 
-	require.ElementsMatch(t, []string{"job-1m", "job-30m"}, polled)
+	// The two expired jobs are never polled, and the newest is polled first so that a pass
+	// cut short loses the stale end rather than the fresh one.
+	require.Equal(t, []string{"job-1m", "job-30m"}, polled)
+
+	// The completed job is exported and untracked; the in-progress one stays tracked; the
+	// expired ones are gone from the state file.
+	require.Len(t, written, 1)
+	require.Equal(t, "nyc", written[0].SourceExchangeCode)
+	require.Equal(t, "lax", written[0].TargetExchangeCode)
 
 	state := NewState(jobIDsFile)
 	require.NoError(t, state.Load())
-	require.ElementsMatch(t, []string{"job-1m", "job-30m"}, state.GetJobIDs())
+	require.Equal(t, []string{"job-30m"}, state.GetJobIDs())
 
-	expired, ok := handler.attr("Wheresitup - Dropping expired jobs from tracking without polling", "expired_count")
-	require.True(t, ok, "expected one summary log line for expired jobs")
-	require.Equal(t, int64(2), expired.Int64())
+	dropped, droppedAt := handler.only(t, "Wheresitup - Dropping expired jobs from tracking without polling")
+	require.Equal(t, int64(2), attr(t, dropped, "expired_count").Int64())
+	require.Equal(t, MaxJobAge, attr(t, dropped, "max_job_age").Duration())
 
-	summary, ok := handler.attr("Operation completed: Wheresitup export_job_results", "expired_count")
-	require.True(t, ok, "expected expired_count in the cycle summary")
-	require.Equal(t, int64(2), summary.Int64())
+	summary, summaryAt := handler.only(t, "Operation completed: Wheresitup export_job_results")
+	require.Equal(t, int64(2), attr(t, summary, "expired_count").Int64())
+	require.Equal(t, int64(2), attr(t, summary, "total_jobs").Int64())
+	require.Equal(t, int64(1), attr(t, summary, "processed_count").Int64())
+	require.Less(t, droppedAt, summaryAt, "expired jobs must be dropped before the cycle summary")
+
+	// lax → sin was expected and produced nothing, so it has to be reported missing even
+	// though the same cycle did export a sample for the other circuit.
+	missing, _ := handler.only(t, "Wheresitup - Tracked missing samples")
+	require.Equal(t, int64(1), attr(t, missing, "missing_samples").Int64())
+}
+
+// A cycle in which every tracked job has expired still has to report the samples it owed,
+// which is the signal that was absent throughout the incident this behaviour comes from.
+func TestInternetLatency_Wheresitup_ExportJobResults_AllExpiredReportsMissingSamples(t *testing.T) {
+	t.Parallel()
+
+	handler := newTestLogHandler()
+	log := slog.New(handler).With("test", t.Name())
+
+	jobIDsFile := filepath.Join(t.TempDir(), "jobs.json")
+	now := time.Now()
+	writeJobState(t, jobIDsFile, []JobEntry{
+		{JobID: "job-2h", CreatedAt: now.Add(-2 * time.Hour)},
+		{JobID: "job-3h", CreatedAt: now.Add(-3 * time.Hour)},
+	}, []string{"lax → nyc", "lax → sin"})
+
+	client := exportTestClient(func(ctx context.Context, jobID string) (*JobResultResponse, error) {
+		t.Errorf("expired job %s must not be polled", jobID)
+		return nil, inProgressResults()
+	})
+
+	c := exportTestCollector(log, client, &MockExporter{})
+	require.NoError(t, c.ExportJobResults(t.Context(), jobIDsFile))
+
+	missing, _ := handler.only(t, "Wheresitup - Tracked missing samples")
+	require.Equal(t, int64(2), attr(t, missing, "missing_samples").Int64())
+	require.Equal(t, int64(2), attr(t, missing, "expected_circuits").Int64())
+
+	state := NewState(jobIDsFile)
+	require.NoError(t, state.Load())
+	require.Empty(t, state.GetJobIDs())
+}
+
+// Several batches for one circuit can complete in the same pass once the vendor recovers
+// from a stall. Only the newest may be exported: downstream derives each sample's timestamp
+// from its position in the account, so a second sample shifts every later one.
+func TestInternetLatency_Wheresitup_ExportJobResults_OneSamplePerCircuitPerPass(t *testing.T) {
+	t.Parallel()
+
+	handler := newTestLogHandler()
+	log := slog.New(handler).With("test", t.Name())
+
+	jobIDsFile := filepath.Join(t.TempDir(), "jobs.json")
+	now := time.Now()
+	writeJobState(t, jobIDsFile, []JobEntry{
+		{JobID: "job-old", CreatedAt: now.Add(-20 * time.Minute)},
+		{JobID: "job-new", CreatedAt: now.Add(-2 * time.Minute)},
+	}, []string{"lax → nyc"})
+
+	var mu sync.Mutex
+	var written []exporter.Record
+	client := exportTestClient(func(ctx context.Context, jobID string) (*JobResultResponse, error) {
+		if jobID == "job-old" {
+			return completedResults("new_york", now.Add(-20*time.Minute).Unix(), "99.0"), nil
+		}
+		return completedResults("new_york", now.Add(-2*time.Minute).Unix(), "12.5"), nil
+	})
+	exp := &MockExporter{WriteRecordsFunc: func(ctx context.Context, records []exporter.Record) error {
+		mu.Lock()
+		written = append(written, records...)
+		mu.Unlock()
+		return nil
+	}}
+
+	c := exportTestCollector(log, client, exp)
+	require.NoError(t, c.ExportJobResults(t.Context(), jobIDsFile))
+
+	require.Len(t, written, 1, "only one sample per circuit may be exported in a pass")
+	require.Equal(t, 12500*time.Microsecond, written[0].RTT, "the newest job's sample must win")
+
+	summary, _ := handler.only(t, "Operation completed: Wheresitup export_job_results")
+	require.Equal(t, int64(1), attr(t, summary, "superseded_count").Int64())
+
+	// Both jobs are done with, so neither is polled again.
+	state := NewState(jobIDsFile)
+	require.NoError(t, state.Load())
+	require.Empty(t, state.GetJobIDs())
+}
+
+// A cancelled context must stop the pass rather than walk the remaining jobs issuing calls
+// that can only fail, which is what a shutdown in the middle of a pass used to do.
+func TestInternetLatency_Wheresitup_ExportJobResults_StopsOnContextCancellation(t *testing.T) {
+	t.Parallel()
+
+	handler := newTestLogHandler()
+	log := slog.New(handler).With("test", t.Name())
+
+	jobIDsFile := filepath.Join(t.TempDir(), "jobs.json")
+	now := time.Now()
+	writeJobState(t, jobIDsFile, []JobEntry{
+		{JobID: "job-b", CreatedAt: now.Add(-3 * time.Minute)},
+		{JobID: "job-a", CreatedAt: now.Add(-2 * time.Minute)},
+	}, nil)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	var mu sync.Mutex
+	var polled []string
+	client := exportTestClient(func(ctx context.Context, jobID string) (*JobResultResponse, error) {
+		mu.Lock()
+		polled = append(polled, jobID)
+		mu.Unlock()
+		cancel()
+		return nil, inProgressResults()
+	})
+
+	c := exportTestCollector(log, client, &MockExporter{})
+	require.NoError(t, c.ExportJobResults(ctx, jobIDsFile))
+
+	require.Equal(t, []string{"job-a"}, polled, "the pass must stop after the context is cancelled")
+	handler.only(t, "Wheresitup - Stopping job export early")
 }
 
 func TestInternetLatency_Wheresitup_JobCreation_ExpireAfterIsConsistent(t *testing.T) {
 	t.Parallel()
 
-	handler := &recordingHandler{}
-	log := slog.New(handler)
+	handler := newTestLogHandler()
+	log := slog.New(handler).With("test", t.Name())
 
 	jobIDsFile := filepath.Join(t.TempDir(), "jobs.json")
 
@@ -1303,20 +1521,7 @@ func TestInternetLatency_Wheresitup_JobCreation_ExpireAfterIsConsistent(t *testi
 	var requests []map[string]any
 	c := &Collector{
 		client: &MockWheresitupClient{
-			GetNearestSourcesForLocationsFunc: func(ctx context.Context, locations []collector.LocationMatch) ([]LocationSourceMatch, error) {
-				return []LocationSourceMatch{
-					{
-						LocationMatch:  collector.LocationMatch{LocationCode: "US-LAX"},
-						NearestSources: []Source{{Name: "los_angeles"}},
-						SourceCount:    1,
-					},
-					{
-						LocationMatch:  collector.LocationMatch{LocationCode: "US-NYC"},
-						NearestSources: []Source{{Name: "new_york"}},
-						SourceCount:    1,
-					},
-				}, nil
-			},
+			GetNearestSourcesForLocationsFunc: exportTestClient(nil).GetNearestSourcesForLocationsFunc,
 			CreateJobWithRequestFunc: func(ctx context.Context, request any, debug bool) (*JobResponse, error) {
 				mu.Lock()
 				requests = append(requests, request.(map[string]any))
@@ -1328,33 +1533,25 @@ func TestInternetLatency_Wheresitup_JobCreation_ExpireAfterIsConsistent(t *testi
 	}
 
 	locations := []collector.LocationMatch{
-		{LocationCode: "US-LAX"},
-		{LocationCode: "US-NYC"},
+		{LocationCode: "lax"},
+		{LocationCode: "nyc"},
 	}
 	require.NoError(t, c.RunJobCreation(t.Context(), locations, false, jobIDsFile))
 
+	// The payload and the log line must both carry the literal the API accepts: the log
+	// claiming an expiry the payload never asked for is how the original bug stayed hidden.
 	require.Len(t, requests, 1)
 	options := requests[0]["options"].(map[string]any)
-	require.Equal(t, "1 hour", expireAfterParam(JobExpireAfter), "expiry must render in the relative form the API accepts")
-	require.Equal(t, expireAfterParam(JobExpireAfter), options["expire_after"])
+	require.Equal(t, "1 hour", options["expire_after"])
 
-	logged, ok := handler.attr("Wheresitup creating ping jobs between locations", "expire_after")
-	require.True(t, ok, "expected the job creation log to report the expiry")
-	require.Equal(t, expireAfterParam(JobExpireAfter), logged.String())
-}
+	logged, _ := handler.only(t, "Wheresitup creating ping jobs between locations")
+	require.Equal(t, "1 hour", attr(t, logged, "expire_after").String())
+	require.Equal(t, time.Hour, JobExpireAfter, "jobExpireAfterParam must describe JobExpireAfter")
 
-func TestInternetLatency_Wheresitup_ExpireAfterParam(t *testing.T) {
-	t.Parallel()
-
-	for _, tc := range []struct {
-		duration time.Duration
-		want     string
-	}{
-		{time.Hour, "1 hour"},
-		{2 * time.Hour, "2 hours"},
-		{time.Minute, "1 minute"},
-		{90 * time.Minute, "90 minutes"},
-	} {
-		require.Equal(t, tc.want, expireAfterParam(tc.duration))
-	}
+	// Jobs are stamped with the start of the creation pass, not its end, so the age of the
+	// first job in a long pass is not understated.
+	state := NewState(jobIDsFile)
+	require.NoError(t, state.Load())
+	require.Len(t, state.Jobs, 1)
+	require.WithinDuration(t, time.Now(), state.Jobs[0].CreatedAt, time.Minute)
 }

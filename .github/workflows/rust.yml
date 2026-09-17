@@ -11,11 +11,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.97.1
       - uses: Swatinem/rust-cache@v2
-        # TEMPORARY, revert before merge: forces a cache miss so this run takes
-        # the path #4332 failed on. Both green runs on this branch were cache
-        # hits, which is the condition the failure never appears under.
-        with:
-          prefix-key: v0-sbf-probe
       - name: Solana toolchain
         uses: ./.github/actions/solana-toolchain
         with:
@@ -36,11 +31,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.97.1
       - uses: Swatinem/rust-cache@v2
-        # TEMPORARY, revert before merge: forces a cache miss so this run takes
-        # the path #4332 failed on. Both green runs on this branch were cache
-        # hits, which is the condition the failure never appears under.
-        with:
-          prefix-key: v0-sbf-probe
       - name: Solana toolchain
         uses: ./.github/actions/solana-toolchain
         with:
@@ -52,11 +42,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.97.1
       - uses: Swatinem/rust-cache@v2
-        # TEMPORARY, revert before merge: forces a cache miss so this run takes
-        # the path #4332 failed on. Both green runs on this branch were cache
-        # hits, which is the condition the failure never appears under.
-        with:
-          prefix-key: v0-sbf-probe
       - name: Solana toolchain
         uses: ./.github/actions/solana-toolchain
         with:
@@ -96,6 +81,10 @@ jobs:
           # Only main writes them, so PR runs read a main-primed cache
           # without each branch adding its own and evicting the other Rust
           # jobs' caches under the repo-wide limit.
+          # `shared-key` is what makes them five: rust-cache's default key is
+          # scoped to the job id, which is identical across every matrix leg,
+          # so dropping the line would collapse all five packages onto one
+          # entry and restore the collision the matrix was written to avoid.
           save-if: ${{ github.ref == 'refs/heads/main' }}
           shared-key: ${{ matrix.package }}
       - name: Install musl toolchain

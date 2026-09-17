@@ -422,7 +422,10 @@ mod tests {
         ] {
             assert_eq!(chain.to_string().parse::<FeedChain>().unwrap(), chain);
         }
-        assert!("ethereum".parse::<FeedChain>().is_err());
+        assert_eq!(
+            "ethereum".parse::<FeedChain>(),
+            Err("Invalid feed chain: ethereum".to_string())
+        );
     }
 
     #[test]

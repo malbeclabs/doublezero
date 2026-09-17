@@ -245,6 +245,17 @@ func TestFixtureFeed(t *testing.T) {
 	assert.Equal(t, serviceability.FeedChainHyperliquid, feed.FeedChain)
 }
 
+func TestFixtureFeedWithoutChainByteDefaultsUnspecified(t *testing.T) {
+	data, _ := loadFixture(t, "feed")
+	data = data[:len(data)-1]
+
+	var feed serviceability.Feed
+	serviceability.DeserializeFeed(serviceability.NewByteReader(data), &feed)
+
+	assert.Equal(t, serviceability.FeedStatusRetiring, feed.Status)
+	assert.Equal(t, serviceability.FeedChainUnspecified, feed.FeedChain)
+}
+
 func fixtureFieldValue(t *testing.T, meta fixtureMeta, name string) string {
 	t.Helper()
 	for _, f := range meta.Fields {

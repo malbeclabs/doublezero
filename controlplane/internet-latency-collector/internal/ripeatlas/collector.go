@@ -930,6 +930,12 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 	currentTime := time.Now().Unix()
 	probeTimeout := currentTime - 3600 // 1 hour
 	newUnresponsiveProbes := 0
+
+	// Measurements whose target was judged stale or lossy in this cycle. Step 4b uses
+	// this rather than a standing probe-level mark: under rank-last a marked target
+	// keeps its measurement, so a probe-level check is re-satisfied every cycle and
+	// would exempt that measurement's sources from inspection permanently.
+	targetFailedThisCycle := make(map[int]bool)
 	for _, measurement := range doubleZeroMeasurements {
 		if meta, hasMeta := measurementState.GetMetadata(measurement.ID); hasMeta {
 			// Check if measurement is stale - either never exported, or last export was too long ago
@@ -955,6 +961,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 					slog.Time("created_at", time.Unix(meta.CreatedAt, 0)),
 					slog.Time("last_export_at", time.Unix(meta.LastExportAt, 0)))
 				measurementState.AddUnresponsiveTarget(meta.TargetProbeID)
+				targetFailedThisCycle[measurement.ID] = true
 				newUnresponsiveProbes++
 				continue
 			}
@@ -975,6 +982,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 					slog.Float64("loss_ratio", 1-float64(successes)/float64(attempts)),
 					slog.Float64("max_loss_ratio", MaxTargetLossRatio))
 				measurementState.AddUnresponsiveTarget(meta.TargetProbeID)
+				targetFailedThisCycle[measurement.ID] = true
 				newUnresponsiveProbes++
 			}
 		}
@@ -984,10 +992,10 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 	// This catches probes that are still "Connected" per RIPE Atlas but stopped sending pings
 	for _, measurement := range doubleZeroMeasurements {
 		if meta, hasMeta := measurementState.GetMetadata(measurement.ID); hasMeta {
-			// Skip measurements whose target is already marked unresponsive —
-			// source probes in these measurements will have stale LastResponseAt
-			// because the target isn't replying, not because the sources are broken
-			if measurementState.IsTargetUnresponsive(meta.TargetProbeID) {
+			// Skip measurements whose target failed in this cycle — their sources
+			// will have stale LastResponseAt because the target isn't replying, not
+			// because the sources are broken.
+			if targetFailedThisCycle[measurement.ID] {
 				continue
 			}
 			for _, source := range meta.Sources {

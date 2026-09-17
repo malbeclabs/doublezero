@@ -1566,6 +1566,82 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_UnresponsiveSourceProbe
 	}
 }
 
+// TestInternetLatency_RIPEAtlas_ConfigureMeasurements_KeptMarkedTargetStillChecksSources
+// pins the per-cycle skip. A target kept by rank-last carries its mark every cycle, so
+// keying the Step 4b exemption off the standing mark would exempt this measurement's
+// sources from inspection for good.
+func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_KeptMarkedTargetStillChecksSources(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	const markedTarget = 6626
+	const staleSource = 6726
+
+	mockClient := &MockClient{
+		GetAllMeasurementsFunc: func(_ context.Context, _ string) ([]Measurement, error) {
+			return []Measurement{{
+				ID:          1001,
+				Description: "DoubleZero [testnet] to xams probe 6626",
+				Target:      "84.38.236.1",
+				Status: struct {
+					Name string `json:"name"`
+					ID   int    `json:"id"`
+				}{Name: "Ongoing"},
+				Type: "ping",
+			}}, nil
+		},
+		CreateMeasurementFunc: func(_ context.Context, _ MeasurementRequest) (*MeasurementResponse, error) {
+			return &MeasurementResponse{Measurements: []int{2001}}, nil
+		},
+		GetMeasurementResultsIncrementalFunc: func(_ context.Context, _ int, _ int64) ([]any, error) {
+			return []any{}, nil
+		},
+	}
+
+	stateDir := filepath.Join(t.TempDir(), "state")
+	c := &Collector{client: mockClient, log: log, env: "testnet", getLocationsFunc: func(_ context.Context) []collector.LocationMatch {
+		return []collector.LocationMatch{}
+	}}
+
+	c.measurementState = NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
+
+	// Marked in an earlier cycle and kept, because xams has no other candidate. The
+	// measurement is exporting now and has no open loss window, so this cycle judges
+	// its target neither stale nor lossy.
+	c.measurementState.AddUnresponsiveTarget(markedTarget)
+	c.measurementState.SetMetadata(1001, MeasurementMeta{
+		TargetLocation: "xams",
+		TargetProbeID:  markedTarget,
+		Sources: []SourceProbeMeta{
+			{LocationCode: "xsin", ProbeID: staleSource, LastResponseAt: time.Now().Unix() - 7200},
+		},
+		CreatedAt:    time.Now().Unix() - 3*3600,
+		LastExportAt: time.Now().Unix(),
+	})
+
+	locationMatches := []LocationProbeMatch{
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "xams", Latitude: 52.3, Longitude: 4.7},
+			NearbyProbes:  []Probe{{ID: markedTarget, Address: "84.38.236.1", Latitude: 52.3, Longitude: 4.7}},
+			ProbeCount:    1,
+		},
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "xsin", Latitude: 1.3, Longitude: 103.8},
+			NearbyProbes: []Probe{
+				{ID: staleSource, Address: "139.99.78.22", Latitude: 1.3, Longitude: 103.8},
+				{ID: 1033, Address: "138.75.38.177", Latitude: 1.3, Longitude: 103.9},
+			},
+			ProbeCount: 2,
+		},
+	}
+
+	require.NoError(t, c.configureMeasurements(t.Context(), locationMatches, false, 1, stateDir, 10*time.Minute))
+
+	require.True(t, c.measurementState.IsProbeUnresponsive(staleSource),
+		"a standing target mark must not exempt the measurement's sources from inspection")
+}
+
 // TestInternetLatency_RIPEAtlas_ConfigureMeasurements_SourceThatNeverResponded covers
 // the probe that is offline while RIPE still reports it Connected. Its LastResponseAt
 // never leaves zero, and since the staleness path marks only UnresponsiveTargets this

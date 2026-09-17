@@ -56,6 +56,9 @@ type MeasurementState struct {
 	filename string
 	tracker  *MetadataTracker
 	mu       sync.Mutex
+
+	// migratedTargetMarks counts what the last Load reclassified, for the caller to log.
+	migratedTargetMarks int
 }
 
 type MetadataTracker struct {
@@ -71,6 +74,10 @@ type MetadataTracker struct {
 	// probe's ability to send pings, so these still source measurements normally and
 	// are only ranked last when a target is chosen.
 	UnresponsiveTargets []UnresponsiveProbeEntry `json:"unresponsive_targets,omitempty"`
+
+	// UnresponsiveMarksMigrated records that the one-time reclassification in Load has
+	// run against this file, so a source failure marked later is not moved by it.
+	UnresponsiveMarksMigrated bool `json:"unresponsive_marks_migrated,omitempty"`
 }
 
 type UnresponsiveProbeEntry struct {
@@ -133,9 +140,10 @@ func (ms *MeasurementState) Load() error {
 	// compatibility. unresponsive_targets is new in this format and has no legacy
 	// shape to fall back from, so it decodes directly.
 	var intermediate struct {
-		Metadata            map[int]MeasurementMeta  `json:"metadata"`
-		UnresponsiveProbes  json.RawMessage          `json:"unresponsive_probes,omitempty"`
-		UnresponsiveTargets []UnresponsiveProbeEntry `json:"unresponsive_targets,omitempty"`
+		Metadata                  map[int]MeasurementMeta  `json:"metadata"`
+		UnresponsiveProbes        json.RawMessage          `json:"unresponsive_probes,omitempty"`
+		UnresponsiveTargets       []UnresponsiveProbeEntry `json:"unresponsive_targets,omitempty"`
+		UnresponsiveMarksMigrated bool                     `json:"unresponsive_marks_migrated,omitempty"`
 	}
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&intermediate); err != nil {
@@ -145,6 +153,7 @@ func (ms *MeasurementState) Load() error {
 	var tracker MetadataTracker
 	tracker.Metadata = intermediate.Metadata
 	tracker.UnresponsiveTargets = intermediate.UnresponsiveTargets
+	tracker.UnresponsiveMarksMigrated = intermediate.UnresponsiveMarksMigrated
 
 	// Try new format first: [{probe_id: N, marked_at: T}, ...]
 	if len(intermediate.UnresponsiveProbes) > 0 {
@@ -167,8 +176,64 @@ func (ms *MeasurementState) Load() error {
 		tracker.Metadata = make(map[int]MeasurementMeta)
 	}
 
+	ms.migratedTargetMarks = 0
+	if !tracker.UnresponsiveMarksMigrated {
+		ms.migratedTargetMarks = migrateTargetMarks(&tracker)
+		tracker.UnresponsiveMarksMigrated = true
+	}
+
 	ms.tracker = &tracker
 	return nil
+}
+
+// migrateTargetMarks moves target failures out of the source list, reporting how many it
+// moved. Until the two roles were split the staleness path marked a measurement's target
+// probe with AddUnresponsiveProbe, so a file written by an earlier build holds target
+// failures where they still bar the probe from sourcing. Left in place they would swap
+// the metro's source probe back when they expire and tear down every measurement it
+// feeds, which is the cascade the split exists to remove, paid one last time.
+//
+// A marked probe that is some measurement's target probe was marked by that path. The
+// heuristic is not airtight — Step 4b could have marked the same probe as a source — so
+// Load runs it once and records that in the file rather than re-deciding on every start.
+func migrateTargetMarks(tracker *MetadataTracker) int {
+	targetProbes := make(map[int]bool, len(tracker.Metadata))
+	for _, meta := range tracker.Metadata {
+		if meta.TargetProbeID != 0 {
+			targetProbes[meta.TargetProbeID] = true
+		}
+	}
+
+	alreadyTarget := make(map[int]bool, len(tracker.UnresponsiveTargets))
+	for _, entry := range tracker.UnresponsiveTargets {
+		alreadyTarget[entry.ProbeID] = true
+	}
+
+	var keptSources []UnresponsiveProbeEntry
+	moved := 0
+	for _, entry := range tracker.UnresponsiveProbes {
+		if !targetProbes[entry.ProbeID] {
+			keptSources = append(keptSources, entry)
+			continue
+		}
+		if !alreadyTarget[entry.ProbeID] {
+			// MarkedAt carries over, so the mark expires when it always would have.
+			tracker.UnresponsiveTargets = append(tracker.UnresponsiveTargets, entry)
+			alreadyTarget[entry.ProbeID] = true
+		}
+		moved++
+	}
+	tracker.UnresponsiveProbes = keptSources
+	return moved
+}
+
+// MigratedTargetMarks reports how many marks the last Load reclassified from the source
+// list to the target list.
+func (ms *MeasurementState) MigratedTargetMarks() int {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	return ms.migratedTargetMarks
 }
 
 func (ms *MeasurementState) Save() error {

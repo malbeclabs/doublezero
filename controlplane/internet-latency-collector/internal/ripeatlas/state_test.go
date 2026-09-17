@@ -674,3 +674,62 @@ func TestInternetLatency_RIPEAtlas_State_RepeatMarkRefreshesMarkedAt(t *testing.
 		})
 	}
 }
+
+func TestInternetLatency_RIPEAtlas_State_MigratesLegacyTargetMarks(t *testing.T) {
+	t.Parallel()
+
+	const targetProbe = 1009793 // marked by the old staleness path, as a measurement target
+	const sourceProbe = 6726    // marked by Step 4b, genuinely a source failure
+
+	stateFile := filepath.Join(t.TempDir(), "state.json")
+
+	// A file as an earlier build wrote it: both roles in one list, no migration flag.
+	markedAt := time.Now().Add(-6 * time.Hour).Unix()
+	legacy := fmt.Sprintf(`{
+	  "metadata": {
+	    "1001": {"target_location": "cmh", "target_probe_id": %d, "sources": [
+	      {"location_code": "nyc", "probe_id": %d}
+	    ], "created_at": %d}
+	  },
+	  "unresponsive_probes": [
+	    {"probe_id": %d, "marked_at": %d},
+	    {"probe_id": %d, "marked_at": %d}
+	  ]
+	}`, targetProbe, sourceProbe, markedAt, targetProbe, markedAt, sourceProbe, markedAt)
+	require.NoError(t, os.WriteFile(stateFile, []byte(legacy), 0o600))
+
+	ms := NewMeasurementState(stateFile)
+	require.NoError(t, ms.Load())
+
+	require.Equal(t, 1, ms.MigratedTargetMarks())
+	require.Equal(t, []int{targetProbe}, ms.GetUnresponsiveTargets())
+
+	// The target failure no longer bars the probe from sourcing, which is the cascade
+	// this avoids paying once more on the cycle after deploy.
+	require.False(t, ms.IsProbeUnresponsive(targetProbe))
+	require.True(t, ms.IsTargetUnresponsive(targetProbe))
+
+	// The genuine source failure is left where it was.
+	require.True(t, ms.IsProbeUnresponsive(sourceProbe))
+	require.Equal(t, []int{sourceProbe}, ms.GetUnresponsiveProbes())
+
+	// MarkedAt carries over, so the mark expires when it always would have rather than
+	// being extended by the upgrade.
+	require.NoError(t, ms.Save())
+	raw, err := os.ReadFile(stateFile)
+	require.NoError(t, err)
+	var saved MetadataTracker
+	require.NoError(t, json.Unmarshal(raw, &saved))
+	require.Len(t, saved.UnresponsiveTargets, 1)
+	require.Equal(t, markedAt, saved.UnresponsiveTargets[0].MarkedAt)
+
+	// And it runs once: a source marked afterwards that happens to be some measurement's
+	// target probe is not reclassified on the next start.
+	ms.AddUnresponsiveProbe(targetProbe)
+	require.NoError(t, ms.Save())
+
+	reloaded := NewMeasurementState(stateFile)
+	require.NoError(t, reloaded.Load())
+	require.Zero(t, reloaded.MigratedTargetMarks(), "the migration must not run twice")
+	require.True(t, reloaded.IsProbeUnresponsive(targetProbe))
+}

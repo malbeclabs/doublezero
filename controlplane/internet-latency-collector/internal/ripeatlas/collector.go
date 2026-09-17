@@ -1660,6 +1660,10 @@ func (c *Collector) Run(ctx context.Context, dryRun bool, probesPerLocation int,
 	if err := c.measurementState.Load(); err != nil {
 		c.log.Warn("Failed to load measurement state at startup", slog.String("error", err.Error()))
 	}
+	if moved := c.measurementState.MigratedTargetMarks(); moved > 0 {
+		c.log.Info("Reclassified target failures out of the unresponsive source list",
+			slog.Int("moved_count", moved))
+	}
 
 	var wg sync.WaitGroup
 

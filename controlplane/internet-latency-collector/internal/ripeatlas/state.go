@@ -65,8 +65,9 @@ type MetadataTracker struct {
 	Metadata map[int]MeasurementMeta `json:"metadata"`
 
 	// UnresponsiveProbes holds probes that failed as a measurement source, meaning
-	// they stopped running measurements at all. Such a probe is excluded from both
-	// source and target selection.
+	// they stopped running measurements at all. Such a probe is excluded from source
+	// selection and ranked last in target selection — not excluded from it, since a
+	// metro whose only candidate is marked still needs a target.
 	UnresponsiveProbes []UnresponsiveProbeEntry `json:"unresponsive_probes,omitempty"`
 
 	// UnresponsiveTargets holds probes that failed as a measurement target: they do

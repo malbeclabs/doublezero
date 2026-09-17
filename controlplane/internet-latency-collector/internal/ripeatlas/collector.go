@@ -1559,9 +1559,21 @@ func (c *Collector) fetchFallbackProbesForUnresponsiveLocations(ctx context.Cont
 func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMatch, probesPerLocation int, measurementState *MeasurementState) []MeasurementSpec {
 	var wantedMeasurements []MeasurementSpec
 
+	// Target selection demotes the union of both lists, so neither count alone says how
+	// many probes are ranked last.
+	unresponsiveProbes := measurementState.GetUnresponsiveProbes()
+	unresponsiveTargets := measurementState.GetUnresponsiveTargets()
+	demoted := make(map[int]struct{}, len(unresponsiveProbes)+len(unresponsiveTargets))
+	for _, probeID := range unresponsiveProbes {
+		demoted[probeID] = struct{}{}
+	}
+	for _, probeID := range unresponsiveTargets {
+		demoted[probeID] = struct{}{}
+	}
 	c.log.Info("Generating wanted measurements",
-		slog.Int("unresponsive_probe_count", len(measurementState.GetUnresponsiveProbes())),
-		slog.Int("unresponsive_target_count", len(measurementState.GetUnresponsiveTargets())))
+		slog.Int("unresponsive_probe_count", len(unresponsiveProbes)),
+		slog.Int("unresponsive_target_count", len(unresponsiveTargets)),
+		slog.Int("demoted_target_count", len(demoted)))
 
 	// Sort locations alphabetically by location code to ensure deterministic ordering
 	sortedLocations := make([]LocationProbeMatch, len(locationMatches))

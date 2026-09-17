@@ -1566,6 +1566,99 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_UnresponsiveSourceProbe
 	}
 }
 
+// TestInternetLatency_RIPEAtlas_ConfigureMeasurements_SourceThatNeverResponded covers
+// the probe that is offline while RIPE still reports it Connected. Its LastResponseAt
+// never leaves zero, and since the staleness path marks only UnresponsiveTargets this
+// is the only route that takes it out of the source pool.
+func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_SourceThatNeverResponded(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+
+	const offlineSource = 6726
+	const replacementSource = 1033
+
+	var stoppedMeasurements []int
+	var mu sync.Mutex
+
+	mockClient := &MockClient{
+		GetAllMeasurementsFunc: func(_ context.Context, _ string) ([]Measurement, error) {
+			return []Measurement{{
+				ID:          1001,
+				Description: "DoubleZero [testnet] to xams probe 6626",
+				Target:      "84.38.236.1",
+				Status: struct {
+					Name string `json:"name"`
+					ID   int    `json:"id"`
+				}{Name: "Ongoing"},
+				Type: "ping",
+			}}, nil
+		},
+		CreateMeasurementFunc: func(_ context.Context, _ MeasurementRequest) (*MeasurementResponse, error) {
+			return &MeasurementResponse{Measurements: []int{2001}}, nil
+		},
+		StopMeasurementFunc: func(_ context.Context, measurementID int) error {
+			mu.Lock()
+			stoppedMeasurements = append(stoppedMeasurements, measurementID)
+			mu.Unlock()
+			return nil
+		},
+		GetMeasurementResultsIncrementalFunc: func(_ context.Context, _ int, _ int64) ([]any, error) {
+			return []any{}, nil
+		},
+	}
+
+	stateDir := filepath.Join(t.TempDir(), "state")
+	c := &Collector{client: mockClient, log: log, env: "testnet", getLocationsFunc: func(_ context.Context) []collector.LocationMatch {
+		return []collector.LocationMatch{}
+	}}
+
+	// The target is exporting, so the measurement is not stale and Step 4b runs. One
+	// source has uploaded nothing at all since the measurement was created 3h ago.
+	c.measurementState = NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
+	c.measurementState.SetMetadata(1001, MeasurementMeta{
+		TargetLocation: "xams",
+		TargetProbeID:  6626,
+		Sources: []SourceProbeMeta{
+			{LocationCode: "xsin", ProbeID: offlineSource, LastResponseAt: 0},
+			{LocationCode: "xtyo", ProbeID: 7080, LastResponseAt: time.Now().Unix()},
+		},
+		CreatedAt:    time.Now().Unix() - 3*3600,
+		LastExportAt: time.Now().Unix(),
+	})
+
+	locationMatches := []LocationProbeMatch{
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "xams", Latitude: 52.3, Longitude: 4.7},
+			NearbyProbes:  []Probe{{ID: 6626, Address: "84.38.236.1", Latitude: 52.3, Longitude: 4.7}},
+			ProbeCount:    1,
+		},
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "xsin", Latitude: 1.3, Longitude: 103.8},
+			NearbyProbes: []Probe{
+				{ID: offlineSource, Address: "139.99.78.22", Latitude: 1.3, Longitude: 103.8},
+				{ID: replacementSource, Address: "138.75.38.177", Latitude: 1.3, Longitude: 103.9},
+			},
+			ProbeCount: 2,
+		},
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "xtyo", Latitude: 35.6, Longitude: 139.6},
+			NearbyProbes:  []Probe{{ID: 7080, Address: "63.222.190.5", Latitude: 35.6, Longitude: 139.6}},
+			ProbeCount:    1,
+		},
+	}
+
+	require.NoError(t, c.configureMeasurements(t.Context(), locationMatches, false, 1, stateDir, 10*time.Minute))
+
+	require.True(t, c.measurementState.IsProbeUnresponsive(offlineSource),
+		"a source that has uploaded nothing in the measurement's first hour is offline, not merely unpopulated")
+	require.False(t, c.measurementState.IsProbeUnresponsive(7080))
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Contains(t, stoppedMeasurements, 1001, "the measurement is recreated onto the replacement source")
+}
+
 func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_UnresponsiveTargetDoesNotBlacklistSources(t *testing.T) {
 	t.Parallel()
 

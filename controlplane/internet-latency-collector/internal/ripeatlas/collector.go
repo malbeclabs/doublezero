@@ -999,15 +999,19 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 				if meta.CreatedAt == 0 || meta.CreatedAt >= probeTimeout {
 					continue
 				}
-				// Skip probes where LastResponseAt hasn't been populated yet —
-				// on first deploy, all existing source probes have 0 and need
-				// at least one export cycle to populate the field
-				if source.LastResponseAt == 0 {
-					continue
-				}
-				// Last response was > 1 hour ago
+				// A zero LastResponseAt is the offline case, not a missing field.
+				// UpdateSourceProbeResponse advances it for any result the probe
+				// uploaded, a timeout included, so a source that has uploaded
+				// nothing in the measurement's whole first hour is not running the
+				// measurement at all. Since the staleness path above now marks only
+				// UnresponsiveTargets, this is the sole route by which a probe that
+				// is offline while RIPE still reports it Connected leaves the source
+				// pool; treating zero as "not populated yet" left it enlisted forever.
 				if source.LastResponseAt < probeTimeout {
 					reason := "no_recent_responses"
+					if source.LastResponseAt == 0 {
+						reason = "no_responses_since_created"
+					}
 					c.log.Warn("Marking source probe as unresponsive - no results after 1 hour",
 						slog.Int("measurement_id", measurement.ID),
 						slog.Int("probe_id", source.ProbeID),

@@ -1207,7 +1207,6 @@ func (h *recordingHandler) Handle(ctx context.Context, r slog.Record) error {
 func (h *recordingHandler) WithAttrs(attrs []slog.Attr) slog.Handler { return h }
 func (h *recordingHandler) WithGroup(name string) slog.Handler       { return h }
 
-// attr returns the value of the named attribute on the first record with the given message.
 func (h *recordingHandler) attr(message, key string) (slog.Value, bool) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -1277,7 +1276,6 @@ func TestInternetLatency_Wheresitup_ExportJobResults_DropsExpiredJobs(t *testing
 
 	require.NoError(t, c.ExportJobResults(t.Context(), jobIDsFile))
 
-	// Jobs within the expiry window are polled; expired ones never are.
 	require.ElementsMatch(t, []string{"job-1m", "job-30m"}, polled)
 
 	state := NewState(jobIDsFile)

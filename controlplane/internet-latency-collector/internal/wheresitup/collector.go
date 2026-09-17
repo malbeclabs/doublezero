@@ -19,15 +19,14 @@ const (
 	RequestTimeout         = 30 * time.Second // Timeout for job requests
 	CreditWarningThreshold = 10000
 
-	// JobExpireAfter is how long WheresItUp is asked to retain a job's results. Once it
-	// lapses the API discards the results and reports the job with an empty "complete" and
-	// a populated "in_progress" - an expired job is indistinguishable from a running one.
-	// It must therefore comfortably exceed one collection cycle, so results are still there
-	// when the next cycle polls them.
+	// JobExpireAfter is how long WheresItUp is asked to retain a job's results. Past it the
+	// API discards them and reports the job with an empty "complete" and a populated
+	// "in_progress", indistinguishable from a job still running, so this has to comfortably
+	// exceed one collection cycle.
 	JobExpireAfter = time.Hour
 
-	// ExpiryGrace pads the local age cutoff so a job is only dropped from tracking once its
-	// results are certainly gone.
+	// ExpiryGrace pads the local age cutoff so a job is dropped only once its results are
+	// certainly gone.
 	ExpiryGrace = time.Minute
 )
 
@@ -489,10 +488,8 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 		return err
 	}
 
-	// A job past its expiry can never yield results again: WheresItUp has discarded them and
-	// now reports the job as in progress, so polling it only lengthens the pass. A long pass
-	// is what pushes the next batch of jobs past their own expiry, so dropping these keeps
-	// the poll set to roughly one cycle's worth of jobs and stops that loop forming.
+	// Polling an expired job can only ever return in_progress, and the time it costs is what
+	// pushes the next batch past their own expiry, so dropping them stops that loop forming.
 	expiryCutoff := time.Now().Add(-(JobExpireAfter + ExpiryGrace))
 	var jobIDs []string
 	var expiredJobIDs []string

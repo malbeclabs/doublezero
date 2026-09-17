@@ -23,10 +23,9 @@ const (
 	// jobExpireAfterParam is the same duration in the relative-time form the job API accepts
 	// (https://wheresitup.com/docs/?shell#creating-jobs). Keep the two in sync.
 	//
-	// Past the expiry the API discards the results and keeps reporting the job with an empty
-	// "complete" and a populated "in_progress" - the same shape as a job still running, as
-	// far as the fields this collector reads are concerned - so the value has to comfortably
-	// exceed one collection cycle.
+	// Past the expiry the API still reports the job with an empty "complete" and a populated
+	// "in_progress", which is what a running job looks like in the fields read here, so the
+	// value has to comfortably exceed one collection cycle.
 	JobExpireAfter      = time.Hour
 	jobExpireAfterParam = "1 hour"
 
@@ -473,7 +472,7 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 		return err
 	}
 
-	// Build expected circuits map from stored circuits, before pruning can clear them.
+	// Captured before pruning, which clears Circuits once it empties the job list.
 	circuitExpectedSamples := make(map[string]bool)
 	for _, circuit := range state.Circuits {
 		circuitExpectedSamples[circuit] = true
@@ -482,10 +481,9 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 		slog.Int("circuit_count", len(circuitExpectedSamples)),
 		slog.Any("circuits", state.Circuits))
 
-	// Polling an expired job can only ever return in_progress, and the time it costs is what
-	// pushes the next batch past their own expiry, so dropping them stops that loop forming.
-	// The drop is persisted here rather than with the completed jobs below so that it also
-	// happens when the exporter is down and this function returns early.
+	// Polling an expired job can only return in_progress, and the time it costs is what pushes
+	// the next batch past its own expiry, so dropping them stops that loop forming. Persisted
+	// here, not with the completed jobs below, so it survives an early return on write failure.
 	expiredJobIDs := state.PruneExpired(time.Now())
 	if len(expiredJobIDs) > 0 {
 		metrics.WheresitupExpiredJobsTotal.Add(float64(len(expiredJobIDs)))
@@ -516,8 +514,8 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 
 	var locationMap map[string]LocationInfo
 	if len(jobIDs) > 0 {
-		// Only needed to label the records below, so it is built after the early return above:
-		// it costs a full serviceability program scan plus one source-list fetch per location.
+		// Only labels the records below, and costs a serviceability program scan plus a
+		// source-list fetch per location, so nothing above this point may need it.
 		locations := c.getLocationsFunc(ctx)
 		var err error
 		locationMap, err = c.buildLocationMapping(ctx, locations)
@@ -533,11 +531,11 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 	supersededCount := 0
 	var completedJobIDs []string
 
-	// One sample per circuit per pass. Downstream reconstructs each sample's timestamp from
-	// its position in the account (telemetry/internal/data/internet/latencies.go), so a
-	// second sample for the same circuit shifts every later sample in that epoch. Several
-	// batches can complete in one pass once the vendor recovers from a stall, and with the
-	// newest-first order above the first record for a circuit is its freshest.
+	// One sample per circuit per pass: downstream derives each sample's timestamp from its
+	// position in the account (telemetry/internal/data/internet/latencies.go), so a second
+	// sample shifts every later one in that epoch. Several batches for a circuit can complete
+	// in the same pass once the vendor recovers from a stall; newest-first order above makes
+	// the first record the freshest.
 	actualCircuits := make(map[string]bool)
 
 	records := make([]exporter.Record, 0, len(jobIDs))
@@ -661,10 +659,9 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 			slog.Int("circuits", len(actualCircuits)))
 	}
 
-	// Track missing samples for circuits that were expected but not received. Outside the
-	// record-count guard, as in ripeatlas: a cycle where every job is expired or in progress
-	// is exactly the one that has to report missing samples, since the expected counter was
-	// already incremented for each of those circuits at job creation.
+	// Outside the record-count guard, as in ripeatlas: job creation already incremented the
+	// expected counter for these circuits, so a cycle that exports nothing is precisely the
+	// one that has to report them missing.
 	missingSamples := 0
 	for circuit := range circuitExpectedSamples {
 		if !actualCircuits[circuit] {
@@ -729,8 +726,8 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 	return nil
 }
 
-// circuitLabel names a circuit by its two exchanges in alphabetical order, so that the
-// expected, actual and missing sample metrics all agree on one label per pair.
+// circuitLabel orders the two exchanges alphabetically, so the expected, actual and missing
+// sample metrics all agree on one label per pair.
 func circuitLabel(sourceExchange, targetExchange string) string {
 	if sourceExchange < targetExchange {
 		return fmt.Sprintf("%s → %s", sourceExchange, targetExchange)

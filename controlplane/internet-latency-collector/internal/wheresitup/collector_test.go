@@ -42,9 +42,8 @@ func (m *MockExporter) Close() error {
 }
 
 // testLogHandler captures whole records so tests can assert on a log line's message, level,
-// position and attributes. It honours WithAttrs and WithGroup rather than discarding them:
-// a handler that drops them lets an assertion on a top-level attribute pass against a
-// logger that would in fact emit the attribute nested, or not at all.
+// position and attributes. It honours WithAttrs and WithGroup rather than discarding them: a
+// handler that drops them passes assertions a real one would emit nested, or not at all.
 type testLogHandler struct {
 	mu       *sync.Mutex
 	recorded *[]slog.Record
@@ -111,9 +110,9 @@ func (h *testLogHandler) messages() []string {
 	return messages
 }
 
-// only returns the single record with the given message, and its position in the stream.
-// It fails if the message is absent or logged more than once, so a test cannot be satisfied
-// by a duplicate line, and the position lets a test pin the order of two lines.
+// only returns the single record with the given message, and its position in the stream. It
+// fails on a duplicate as well as on an absent line, so no test is satisfied by a repeated
+// log, and the position lets a test pin the order of two lines.
 func (h *testLogHandler) only(t *testing.T, message string) (slog.Record, int) {
 	t.Helper()
 
@@ -918,8 +917,7 @@ func TestInternetLatency_Wheresitup_ExportJobResults_ErrorScenarios(t *testing.T
 			getLocationsFunc: mockLocationsFetcher([]collector.LocationMatch{}),
 		}
 
-		// A tracked job is needed for the mapping to be built at all: it only labels
-		// records, so a pass with nothing to poll skips it.
+		// The mapping only labels records, so a pass with nothing to poll never builds it.
 		state := NewState(jobIDsFile)
 		require.NoError(t, state.AddJobIDs([]string{"job-123"}))
 
@@ -1276,14 +1274,13 @@ func writeJobState(t *testing.T, filename string, jobs []JobEntry, circuits []st
 	require.NoError(t, os.WriteFile(filename, data, 0o600))
 }
 
-// inProgressResults returns the error GetJobResults returns for a job WheresItUp is still
-// running, or whose results it has discarded: it reports "complete" as an empty array and
-// "in_progress" as an object, and both then fail to decode into JobResultResponse.
+// inProgressResults returns what GetJobResults really returns for a running or expired job:
+// "complete" arrives as an empty array and "in_progress" as an object, so both fail to decode
+// and production classifies the job by matching this error string.
 func inProgressResults() error {
 	return errors.New("failed to decode response: json: cannot unmarshal array into Go struct field .response.complete of type map[string]wheresitup.ServiceResult")
 }
 
-// completedResults returns a job result carrying one usable ping sample.
 func completedResults(sourceName string, startTime int64, minLatencyMillis string) *JobResultResponse {
 	results := &JobResultResponse{}
 	results.Request.StartTime = startTime
@@ -1296,8 +1293,8 @@ func completedResults(sourceName string, startTime int64, minLatencyMillis strin
 	return results
 }
 
-// exportTestCollector builds a collector whose locations map the two sources used above
-// onto exchange codes, so exported records carry real circuit labels.
+// exportTestCollector maps the source names used above onto exchange codes, so exported
+// records carry real circuit labels.
 func exportTestCollector(log *slog.Logger, client clientInterface, exp exporter.Exporter) *Collector {
 	return &Collector{
 		client:   client,
@@ -1368,12 +1365,9 @@ func TestInternetLatency_Wheresitup_ExportJobResults_DropsExpiredJobs(t *testing
 	c := exportTestCollector(log, client, exp)
 	require.NoError(t, c.ExportJobResults(t.Context(), jobIDsFile))
 
-	// The two expired jobs are never polled, and the newest is polled first so that a pass
-	// cut short loses the stale end rather than the fresh one.
+	// Newest first, so a pass cut short loses the stale end rather than the fresh one.
 	require.Equal(t, []string{"job-1m", "job-30m"}, polled)
 
-	// The completed job is exported and untracked; the in-progress one stays tracked; the
-	// expired ones are gone from the state file.
 	require.Len(t, written, 1)
 	require.Equal(t, "nyc", written[0].SourceExchangeCode)
 	require.Equal(t, "lax", written[0].TargetExchangeCode)
@@ -1392,8 +1386,8 @@ func TestInternetLatency_Wheresitup_ExportJobResults_DropsExpiredJobs(t *testing
 	require.Equal(t, int64(1), attr(t, summary, "processed_count").Int64())
 	require.Less(t, droppedAt, summaryAt, "expired jobs must be dropped before the cycle summary")
 
-	// lax → sin was expected and produced nothing, so it has to be reported missing even
-	// though the same cycle did export a sample for the other circuit.
+	// lax → sin produced nothing, and must be reported missing even though the same cycle
+	// did export a sample for the other circuit.
 	missing, _ := handler.only(t, "Wheresitup - Tracked missing samples")
 	require.Equal(t, int64(1), attr(t, missing, "missing_samples").Int64())
 }
@@ -1431,8 +1425,7 @@ func TestInternetLatency_Wheresitup_ExportJobResults_AllExpiredReportsMissingSam
 }
 
 // Several batches for one circuit can complete in the same pass once the vendor recovers
-// from a stall. Only the newest may be exported: downstream derives each sample's timestamp
-// from its position in the account, so a second sample shifts every later one.
+// from a stall, and a second sample for a circuit shifts every later sample in the epoch.
 func TestInternetLatency_Wheresitup_ExportJobResults_OneSamplePerCircuitPerPass(t *testing.T) {
 	t.Parallel()
 
@@ -1470,7 +1463,6 @@ func TestInternetLatency_Wheresitup_ExportJobResults_OneSamplePerCircuitPerPass(
 	summary, _ := handler.only(t, "Operation completed: Wheresitup export_job_results")
 	require.Equal(t, int64(1), attr(t, summary, "superseded_count").Int64())
 
-	// Both jobs are done with, so neither is polled again.
 	state := NewState(jobIDsFile)
 	require.NoError(t, state.Load())
 	require.Empty(t, state.GetJobIDs())
@@ -1538,8 +1530,7 @@ func TestInternetLatency_Wheresitup_JobCreation_ExpireAfterIsConsistent(t *testi
 	}
 	require.NoError(t, c.RunJobCreation(t.Context(), locations, false, jobIDsFile))
 
-	// The payload and the log line must both carry the literal the API accepts: the log
-	// claiming an expiry the payload never asked for is how the original bug stayed hidden.
+	// A log claiming an expiry the payload never asked for is how the original bug hid.
 	require.Len(t, requests, 1)
 	options := requests[0]["options"].(map[string]any)
 	require.Equal(t, "1 hour", options["expire_after"])
@@ -1548,8 +1539,7 @@ func TestInternetLatency_Wheresitup_JobCreation_ExpireAfterIsConsistent(t *testi
 	require.Equal(t, "1 hour", attr(t, logged, "expire_after").String())
 	require.Equal(t, time.Hour, JobExpireAfter, "jobExpireAfterParam must describe JobExpireAfter")
 
-	// Jobs are stamped with the start of the creation pass, not its end, so the age of the
-	// first job in a long pass is not understated.
+	// Stamped with the start of the pass, so a long pass does not understate the first job.
 	state := NewState(jobIDsFile)
 	require.NoError(t, state.Load())
 	require.Len(t, state.Jobs, 1)

@@ -12,10 +12,9 @@ import (
 )
 
 // MaxJobAge bounds how long a job stays in the state file and how long it is worth polling.
-// Both follow from the vendor retention, so they are deliberately one value: past it the
-// results are gone, so a poll cannot produce a sample and the entry is only taking up space.
-// The steady-state poll set is therefore ceil(MaxJobAge/interval) batches - about 11 at the
-// 6-minute cadence, against 20 under the previous 2-hour cutoff.
+// One value covers both: past it the results are gone, so the entry can neither produce a
+// sample nor justify its space. The steady-state poll set is ceil(MaxJobAge/interval)
+// batches, about 11 at the 6-minute cadence against 20 under the previous 2-hour cutoff.
 const MaxJobAge = JobExpireAfter + ExpiryGrace
 
 type JobEntry struct {
@@ -125,10 +124,10 @@ func (jt *State) AddJobIDs(newJobIDs []string) error {
 	return jt.Save()
 }
 
-// AddJobIDsWithCircuits records a creation pass. createdAt should be when the pass started,
-// not when it ended: the vendor's expiry clock starts per job, and a pass at mainnet-beta's
-// 435 pairs takes minutes, so stamping all of them with the end time understates the age of
-// the earliest jobs by more than ExpiryGrace and they get polled past their real expiry.
+// AddJobIDsWithCircuits records a creation pass. createdAt must be when the pass started:
+// the vendor's expiry clock runs per job and a 435-pair pass takes minutes, so the end time
+// understates the earliest jobs' age by more than ExpiryGrace and they outlive their
+// results while still being polled.
 func (jt *State) AddJobIDsWithCircuits(newJobIDs []string, circuits []string, createdAt time.Time) error {
 	if err := jt.Load(); err != nil {
 		return err
@@ -172,9 +171,9 @@ func (jt *State) RemoveJobIDs(jobIDsToRemove []string) error {
 }
 
 // PruneExpired drops every job whose results WheresItUp has already discarded and returns
-// the IDs it dropped. This is the only place the expiry predicate lives: Save() applies it
-// on every write, and ExportJobResults calls it to learn both which jobs are still worth
-// polling and which were dropped, from a single reading of the clock.
+// the IDs it dropped. It is the only expiry predicate in the package: Save() applies it on
+// every write, and ExportJobResults calls it so that the active set and the dropped set come
+// from one reading of the clock.
 func (jt *State) PruneExpired(now time.Time) []string {
 	cutoffTime := now.Add(-MaxJobAge)
 

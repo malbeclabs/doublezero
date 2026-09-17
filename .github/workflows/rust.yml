@@ -82,9 +82,7 @@ jobs:
           # without each branch adding its own and evicting the other Rust
           # jobs' caches under the repo-wide limit.
           # `shared-key` is what makes them five: rust-cache's default key is
-          # scoped to the job id, which is identical across every matrix leg,
-          # so dropping the line would collapse all five packages onto one
-          # entry and restore the collision the matrix was written to avoid.
+          # job-id scoped, identical across every leg of a matrix.
           save-if: ${{ github.ref == 'refs/heads/main' }}
           shared-key: ${{ matrix.package }}
       - name: Install musl toolchain

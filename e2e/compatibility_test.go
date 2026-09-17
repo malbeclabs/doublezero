@@ -164,11 +164,11 @@ var knownIncompatibilities = map[string]knownIncompat{
 	// (variant 69) instructions into one variant per access pass type. Variants 42 and 69
 	// now return DoubleZeroError::Deprecated, and the `user delete` / `access-pass close`
 	// CLI verbs gained a required type flag the old binaries don't send. Old CLIs can't
-	// pass these steps against the upgraded program. This ships in 0.39.0.
-	"write/user_delete":        {ranges: before("0.39.0")},
-	"write/user_delete_2":      {ranges: before("0.39.0")},
-	"write/accesspass_close":   {ranges: before("0.39.0")},
-	"write/accesspass_close_2": {ranges: before("0.39.0")},
+	// pass these steps against the upgraded program. This ships in 0.42.0.
+	"write/user_delete":        {ranges: before("0.42.0")},
+	"write/user_delete_2":      {ranges: before("0.42.0")},
+	"write/accesspass_close":   {ranges: before("0.42.0")},
+	"write/accesspass_close_2": {ranges: before("0.42.0")},
 }
 
 // versionInRange checks whether ver falls within the half-open range [from, before).

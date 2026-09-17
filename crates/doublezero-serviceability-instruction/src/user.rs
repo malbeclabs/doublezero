@@ -1093,11 +1093,11 @@ mod tests {
         let owner = Pubkey::new_unique();
 
         let cases = [
-            (AccessPassKind::Prepaid, 124u8),
-            (AccessPassKind::SolanaValidator, 125),
-            (AccessPassKind::SolanaRPC, 126),
-            (AccessPassKind::Others, 127),
-            (AccessPassKind::EdgeSeat, 128),
+            (AccessPassKind::Prepaid, 130u8),
+            (AccessPassKind::SolanaValidator, 131),
+            (AccessPassKind::SolanaRPC, 132),
+            (AccessPassKind::Others, 133),
+            (AccessPassKind::EdgeSeat, 134),
         ];
 
         for (kind, want) in cases {
@@ -1141,7 +1141,7 @@ mod tests {
             AccessPassKind::Prepaid,
             UserDeleteArgs::default(),
         );
-        assert_eq!(ix.data[0], 124);
+        assert_eq!(ix.data[0], 130);
         // The builder always emits the mpb account, so it MUST pin
         // multicast_publisher_count > 0 to keep the declared count and the
         // account list in lockstep (else the processor skips the mpb slot and
@@ -1199,7 +1199,7 @@ mod tests {
             AccessPassKind::Prepaid,
             UserDeleteArgs::default(),
         );
-        assert_eq!(ix.data[0], 124);
+        assert_eq!(ix.data[0], 130);
         let (globalstate, _) = get_globalstate_pda(&pid);
         let (utb, _, _) = get_resource_extension_pda(&pid, ResourceType::UserTunnelBlock);
         let (mpb, _, _) = get_resource_extension_pda(&pid, ResourceType::MulticastPublisherBlock);

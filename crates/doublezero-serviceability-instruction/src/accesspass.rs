@@ -277,7 +277,7 @@ mod tests {
             AccessPassKind::Prepaid,
             CloseAccessPassArgs {},
         );
-        assert_eq!(close.data[0], 119);
+        assert_eq!(close.data[0], 125);
         assert_eq!(
             close.accounts,
             vec![
@@ -317,11 +317,11 @@ mod tests {
         let accesspass = Pubkey::new_unique();
 
         let cases = [
-            (AccessPassKind::Prepaid, 119u8),
-            (AccessPassKind::SolanaValidator, 120),
-            (AccessPassKind::SolanaRPC, 121),
-            (AccessPassKind::Others, 122),
-            (AccessPassKind::EdgeSeat, 123),
+            (AccessPassKind::Prepaid, 125u8),
+            (AccessPassKind::SolanaValidator, 126),
+            (AccessPassKind::SolanaRPC, 127),
+            (AccessPassKind::Others, 128),
+            (AccessPassKind::EdgeSeat, 129),
         ];
 
         for (kind, want) in cases {

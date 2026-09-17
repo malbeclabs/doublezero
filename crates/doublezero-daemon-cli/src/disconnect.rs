@@ -577,7 +577,7 @@ mod tests {
                 predicate::eq(AccessPassKind::Prepaid),
             )
             .once()
-            .returning(|_, _| Err(eyre::eyre!("simulated not found")));
+            .returning(|_, _, _| Err(eyre::eyre!("simulated not found")));
         // get_user for poll_for_user_closed — return "not found" immediately.
         ledger
             .expect_get_user()
@@ -616,13 +616,24 @@ mod tests {
             .expect_list_user()
             .returning(move || Ok(users.clone()));
         ledger
+            .expect_get_accesspass()
+            .with(predicate::eq(ip), predicate::eq(payer))
+            .returning(move |client_ip, user_payer| {
+                Ok(Some(make_test_accesspass(
+                    client_ip,
+                    user_payer,
+                    AccessPassType::Prepaid,
+                )))
+            });
+        ledger
             .expect_delete_user()
             .with(
-                mockall::predicate::eq(user_pk),
-                mockall::predicate::eq(None),
+                predicate::eq(user_pk),
+                predicate::eq(None),
+                predicate::eq(AccessPassKind::Prepaid),
             )
             .once()
-            .returning(|_, _| Err(eyre::eyre!("simulated not found")));
+            .returning(|_, _, _| Err(eyre::eyre!("simulated not found")));
         ledger
             .expect_get_user()
             .returning(|_| Err(eyre::eyre!("User not found")));
@@ -711,10 +722,11 @@ mod tests {
             .expect_delete_user()
             .with(
                 predicate::eq(self_owned_pk),
+                predicate::eq(None),
                 predicate::eq(AccessPassKind::Prepaid),
             )
             .once()
-            .returning(|_, _| Err(eyre::eyre!("simulated not found")));
+            .returning(|_, _, _| Err(eyre::eyre!("simulated not found")));
         ledger
             .expect_get_user()
             .returning(|_| Err(eyre::eyre!("User not found")));
@@ -760,10 +772,11 @@ mod tests {
             .expect_delete_user()
             .with(
                 predicate::eq(user_pk),
+                predicate::eq(None),
                 predicate::eq(AccessPassKind::SolanaValidator),
             )
             .once()
-            .returning(|_, _| Err(eyre::eyre!("simulated not found")));
+            .returning(|_, _, _| Err(eyre::eyre!("simulated not found")));
         ledger
             .expect_get_user()
             .returning(|_| Err(eyre::eyre!("User not found")));
@@ -834,10 +847,11 @@ mod tests {
                 .expect_delete_user()
                 .with(
                     predicate::eq(user_pk),
+                    predicate::eq(None),
                     predicate::eq(AccessPassKind::Prepaid),
                 )
                 .once()
-                .returning(|_, _| Ok(()));
+                .returning(|_, _, _| Ok(()));
             ledger
                 .expect_get_user()
                 .returning(|_| Err(eyre::eyre!("User not found")));

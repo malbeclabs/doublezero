@@ -960,6 +960,9 @@ mod tests {
         let device_pk = Pubkey::new_unique();
         let client_ip = Ipv4Addr::new(192, 168, 1, 10);
 
+        let (accesspass_pubkey, _) =
+            get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
+
         let user = User {
             account_type: AccountType::User,
             owner: payer,
@@ -983,6 +986,7 @@ mod tests {
             last_bgp_up_at: 0,
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
+            accesspass_pk: accesspass_pubkey,
             ..Default::default()
         };
 
@@ -990,9 +994,6 @@ mod tests {
             .expect_get()
             .with(predicate::eq(user_pubkey))
             .returning(move |_| Ok(AccountData::User(user.clone())));
-
-        let (accesspass_pubkey, _) =
-            get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
         let accesspass = AccessPass {
             account_type: AccountType::AccessPass,
             bump_seed: 0,
@@ -1056,6 +1057,7 @@ mod tests {
 
         let res = DeleteUserCommand {
             pubkey: user_pubkey,
+            accesspass_pk: None,
             kind: AccessPassKind::SolanaValidator,
         }
         .execute(&client);

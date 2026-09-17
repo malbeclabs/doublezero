@@ -340,11 +340,11 @@ func TestBuildDeleteUserInstructionPicksVariantPerKind(t *testing.T) {
 	user := User{}
 
 	cases := map[AccessPassKind]byte{
-		AccessPassKindPrepaid:         124,
-		AccessPassKindSolanaValidator: 125,
-		AccessPassKindSolanaRPC:       126,
-		AccessPassKindOthers:          127,
-		AccessPassKindEdgeSeat:        128,
+		AccessPassKindPrepaid:         130,
+		AccessPassKindSolanaValidator: 131,
+		AccessPassKindSolanaRPC:       132,
+		AccessPassKindOthers:          133,
+		AccessPassKindEdgeSeat:        134,
 	}
 
 	for kind, want := range cases {

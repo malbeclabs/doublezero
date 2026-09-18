@@ -39,13 +39,11 @@ const (
 	maxSourcesWithoutSamplesLogged = 20
 
 	// ResultLookback is how far behind the measurement cursor each export re-reads.
-	// The cursor is the newest result timestamp seen, and probes upload with a lag of
-	// seconds to many minutes, so an export landing shortly after a ping interval sees
-	// the on-time probes first and moves the cursor past that interval; a slower probe's
-	// result for the same interval then arrives behind the cursor and is never fetched,
-	// every interval, until a restart shifts the phase. One hour matches the Step 4b
-	// threshold, which is what such a probe otherwise trips: a result lagging by more
-	// than that is exactly the case Step 4b is meant to catch.
+	// Probes upload with a lag of seconds to many minutes, so an export landing just
+	// after a ping interval sees the on-time probes and moves the cursor past that
+	// interval; a slower probe's result for it then sits behind the cursor and is never
+	// fetched, until a restart shifts the phase. One hour matches the Step 4b threshold,
+	// which is what such a probe otherwise trips.
 	ResultLookback = time.Hour
 )
 
@@ -624,9 +622,8 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 		sourceLastResponse[source.ProbeID] = source.LastResponseAt
 	}
 
-	// Re-read the last ResultLookback of results so a probe that uploaded after the
-	// cursor moved past its ping is still seen. The per-probe gate below drops whatever
-	// that re-read brings back a second time.
+	// Re-read behind the cursor so a probe that uploaded after it moved past its ping is
+	// still seen; the per-probe gate below drops what that re-read repeats.
 	fetchFrom := lastTimestampUnix
 	if fetchFrom > 0 {
 		fetchFrom = max(fetchFrom-int64(ResultLookback.Seconds()), 0)
@@ -665,13 +662,11 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	// rarely can be told apart from a healthy one. Both look identical to the
 	// staleness check, which only asks whether anything came back at all.
 	//
-	// Every result reaching the tally has passed the per-probe gate below, which is
-	// what keeps a result the lookback re-delivered from being counted twice.
+	// Every result reaching the tally has passed the per-probe gate below, so nothing
+	// the lookback re-delivered is counted twice.
 	var targetAttempts, targetSuccesses, newestResult int64
 	countedUpTo := time.Now().Unix()
 
-	// Newest result timestamp seen per probe this pass, applied to state only once the
-	// batch is durable.
 	responded := make(map[int]int64, len(meta.Sources))
 
 	// Process results - use slice to preserve all samples
@@ -681,17 +676,14 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 		latency, timestamp, probeID := c.parseLatencyFromResult(result)
 		resultAt := timestamp.Unix()
 
-		// Exclude what has already been consumed per probe, not per measurement. The
-		// measurement cursor is the newest timestamp any probe reached, so using it
-		// here discards a slow probe's result for an interval its peers already
-		// reported — permanently, since the cursor only moves forward. LastResponseAt
-		// is the same high-water mark kept per probe, so it drops the lookback's
-		// replays without dropping late uploads. A probe absent from the metadata has
-		// no per-probe mark, so it falls back to the measurement cursor.
+		// Exclude per probe, not per measurement. The measurement cursor is the newest
+		// timestamp any probe reached, so gating on it permanently discards a slow
+		// probe's result for an interval its peers already reported. LastResponseAt is
+		// that same high-water mark kept per probe, so it drops the lookback's replays
+		// without dropping late uploads.
 		//
-		// Comparison is at one second granularity, so a result sharing the mark's
-		// second is skipped. Undercounting biases away from blacklisting a usable
-		// target, which is the safe direction to err in.
+		// The comparison is inclusive: a result sharing the mark's second is skipped,
+		// which undercounts rather than risks blacklisting a usable target.
 		gate := lastTimestampUnix
 		if lastResponse, ok := sourceLastResponse[probeID]; ok {
 			gate = lastResponse
@@ -700,9 +692,9 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 			continue
 		}
 
-		// A future-dated result is skipped rather than counted. The timestamp is
-		// probe-reported, so a clock-skewed probe would otherwise tally an attempt
-		// against a window it does not belong to.
+		// A future-dated result is not counted: the timestamp is probe-reported, and a
+		// clock-skewed probe would tally an attempt against a window it does not
+		// belong to.
 		if resultAt <= countedUpTo {
 			targetAttempts++
 			if latency > 0 {
@@ -742,9 +734,8 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 		}
 	}
 
-	// A late upload exported in a later pass carries an older timestamp than samples
-	// already written, so order each partition explicitly. Per-probe gating keeps the
-	// order monotonic across passes; this covers ordering within one.
+	// A recovered late upload is older than samples already written, so order each
+	// partition explicitly. Across passes per-probe gating already keeps them in order.
 	sort.SliceStable(records, func(i, j int) bool {
 		a, b := records[i], records[j]
 		if a.SourceExchangeCode != b.SourceExchangeCode {
@@ -767,8 +758,8 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	// A result the probe uploaded proves it ran the measurement even if nothing came
 	// back, and LastResponseAt aging out rotates the probe (Step 4b) and recreates
 	// measurements. Applied only once the batch is durable, because it is also the
-	// exclusion boundary above: advancing it for a batch that failed to write would
-	// gate those same results out of the retry and lose them.
+	// exclusion boundary above: advancing it for a failed write would gate those same
+	// results out of the retry.
 	for probeID, at := range responded {
 		measurementState.UpdateSourceProbeResponse(measurement.ID, probeID, at)
 	}
@@ -790,8 +781,7 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 			slog.Int("valid_latencies", processedResults),
 			slog.Int("exported_records", len(records)))
 	} else if len(records) > 0 {
-		// Expected when a pass brings back only late uploads: they sit behind the
-		// cursor by construction, which is what the lookback exists to recover.
+		// Expected: a pass can bring back only late uploads, which sit behind the cursor.
 		c.log.Info("Exported late results from behind the cursor",
 			slog.Int("measurement_id", measurement.ID),
 			slog.String("target_location", meta.TargetLocation),

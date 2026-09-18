@@ -137,10 +137,9 @@ type SourceProbeMeta struct {
 
 	// LastExportedAt is the newest result timestamp already consumed by a durable
 	// export for this probe, and is the per-probe exclusion boundary for the lookback
-	// fetch. Deliberately not LastResponseAt, which means liveness and must advance
-	// from the RIPE fetch alone: tying it to a successful write would freeze it for
-	// every probe whenever the exporter cannot reach the ledger, and Step 4b would
-	// then mark the whole fleet unresponsive an hour into an exporter outage.
+	// fetch. Kept separate from LastResponseAt, which is liveness: tying liveness to a
+	// successful write would freeze every probe's mark during an exporter outage, and
+	// Step 4b would mark the whole fleet unresponsive an hour in.
 	LastExportedAt int64 `json:"last_exported_at,omitempty"`
 }
 
@@ -500,8 +499,7 @@ func (ms *MeasurementState) UpdateSourceProbeResponse(measurementID int, probeID
 
 // UpdateSourceProbeExported advances the probe's export mark, the boundary the next
 // lookback fetch excludes against. Callers apply it only once the batch is durable: a
-// mark advanced past a batch that failed to write would exclude those same results
-// from the retry and lose them.
+// mark advanced past a failed write would exclude those results from the retry.
 func (ms *MeasurementState) UpdateSourceProbeExported(measurementID int, probeID int, timestamp int64) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()

@@ -681,14 +681,11 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 		// timestamp any probe reached, so gating on it permanently discards a slow
 		// probe's result for an interval its peers already reported.
 		//
-		// Three sources for the boundary, in order. LastExportedAt is the real one.
-		// LastResponseAt covers a state file written before that field existed: until
-		// then every fetched result advanced it and every fetched success was exported,
-		// so a result newer than it was never exported. That reasoning only holds once
-		// the measurement has exported at all, which is why the fallback is gated on
-		// the cursor: without it, a first pass whose write failed would have advanced
-		// LastResponseAt and excluded its own retry. A probe absent from the metadata
-		// has neither mark and falls back to the measurement cursor.
+		// LastResponseAt is the fallback for a state file written before LastExportedAt
+		// existed: until then every fetched result advanced it and every fetched
+		// success was exported. That only holds once the measurement has exported at
+		// all, hence the cursor condition — without it, a first pass whose write failed
+		// would have advanced LastResponseAt and excluded its own retry.
 		//
 		// The comparison is inclusive: a result sharing the mark's second is skipped,
 		// which undercounts rather than risks blacklisting a usable target.
@@ -705,10 +702,9 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 			continue
 		}
 
-		// A future-dated result is dropped before it touches anything. The timestamp is
-		// probe-reported, so a clock-skewed probe would otherwise tally an attempt
-		// against a window it does not belong to, and park this probe's marks and the
-		// measurement cursor ahead of wall clock for as long as the skew lasts.
+		// A future-dated result is dropped before it touches anything: the timestamp is
+		// probe-reported, and a clock-skewed probe would otherwise tally a bogus attempt
+		// and park this probe's marks and the cursor ahead of wall clock until it passed.
 		if resultAt > countedUpTo {
 			c.log.Debug("Skipping future-dated result",
 				slog.Int("measurement_id", measurement.ID),
@@ -782,8 +778,7 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	}
 
 	// The export marks move only once the batch is durable: they are the exclusion
-	// boundary above, so advancing one for a failed write would gate those same results
-	// out of the retry.
+	// boundary above, so advancing one for a failed write would lose those results.
 	for probeID, at := range exported {
 		measurementState.UpdateSourceProbeExported(measurement.ID, probeID, at)
 	}

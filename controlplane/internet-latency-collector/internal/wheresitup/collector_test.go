@@ -1149,7 +1149,11 @@ func TestInternetLatency_Wheresitup_Run_TickerExecution(t *testing.T) {
 	// Now that interval validation is removed, we can use a short interval
 	interval := 50 * time.Millisecond
 
-	ctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	// A collection cycle can outrun the sampling interval on a loaded machine, and
+	// ExportJobResults stops polling as soon as the context is done, so the test waits for
+	// the export to happen instead of racing a fixed wall-clock deadline. The timeout here
+	// is only a backstop against a hung Run.
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
 	defer cancel()
 
 	done := make(chan struct{})
@@ -1158,7 +1162,16 @@ func TestInternetLatency_Wheresitup_Run_TickerExecution(t *testing.T) {
 		_ = c.Run(ctx, interval, false, "jobs.json", stateDir)
 	}()
 
-	// Wait for completion
+	// Wait for the first cycle to create a job and export its results, then stop Run. The
+	// rest of the cycle (CSV write, state update) makes no context checks and Run only
+	// returns between cycles, so everything asserted below is settled once done is closed.
+	require.Eventually(t, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return jobCreationCalled && exportCalled && exportedJobID != ""
+	}, 20*time.Second, 5*time.Millisecond, "Run should have created and exported a job")
+
+	cancel()
 	<-done
 
 	// Verify the operations were called

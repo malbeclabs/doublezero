@@ -256,6 +256,25 @@ func TestFixtureFeedWithoutChainByteDefaultsUnspecified(t *testing.T) {
 	assert.Equal(t, serviceability.FeedChainUnspecified, feed.FeedChain)
 }
 
+func TestFixtureFeedLegacy(t *testing.T) {
+	data, meta := loadFixture(t, "feed_legacy")
+	require.Equal(t, "FeedLegacy", meta.Name)
+
+	var feed serviceability.Feed
+	serviceability.DeserializeFeed(serviceability.NewByteReader(data), &feed)
+
+	assert.Equal(t, "legacy", feed.Code)
+	assert.Equal(t, "Legacy", feed.Name)
+	require.Len(t, feed.Groups, 1)
+	assert.Equal(t, serviceability.FeedStatusActive, feed.Status)
+	assert.Equal(t, [32]byte{}, feed.Builder)
+	assert.Equal(t, [32]byte{}, feed.StakeRef)
+	assert.Equal(t, "", feed.SpecId)
+	assert.Equal(t, [32]byte{}, feed.SlaHash)
+	assert.Equal(t, uint64(0), feed.CommittedRateBitsPerSec)
+	assert.Equal(t, serviceability.FeedChainUnspecified, feed.FeedChain)
+}
+
 func fixtureFieldValue(t *testing.T, meta fixtureMeta, name string) string {
 	t.Helper()
 	for _, f := range meta.Fields {

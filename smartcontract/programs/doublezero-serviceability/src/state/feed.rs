@@ -399,8 +399,7 @@ mod tests {
         }
     }
 
-    /// A feed written before `feed_chain` has no trailing byte. It must still decode, and it must
-    /// decode as Unspecified so a later migrate can tell it from a feed that already chose a chain.
+    /// A feed written before `feed_chain` has no trailing byte. It must still decode as Unspecified.
     #[test]
     fn test_pre_chain_feed_decodes_unspecified() {
         let mut feed = feed_with(Pubkey::new_unique(), vec![Pubkey::new_unique()]);

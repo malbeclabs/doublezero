@@ -2,17 +2,32 @@ use crate::{
     doublezerocommand::CliCommand,
     feed::{guard::unsubscribe_orphans, resolve::FeedTargetArgs},
     helpers::resolve_multicastgroup_pk,
-    validators::validate_pubkey_or_code,
+    validators::{validate_code, validate_pubkey, validate_pubkey_or_code},
 };
-use clap::Args;
+use clap::{ArgGroup, Args};
 use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
-use doublezero_sdk::{commands::feed::update::UpdateFeedCommand, FeedChain};
-use std::io::Write;
+use doublezero_sdk::{
+    commands::feed::{
+        get::GetFeedCommand,
+        update::{UpdateFeedCommand, MAX_FEEDS_PER_TRANSACTION},
+    },
+    Feed, FeedChain,
+};
+use solana_sdk::pubkey::Pubkey;
+use std::{collections::HashSet, io::Write};
 
 #[derive(Args, Debug)]
+#[clap(group(ArgGroup::new("target").args(["pubkey", "code"]).required(true)))]
 pub struct UpdateFeedCliCommand {
-    #[command(flatten)]
-    pub target: FeedTargetArgs,
+    /// Feed pubkey (repeatable). The same name, groups, and chain are written on each.
+    #[arg(long, value_parser = validate_pubkey, conflicts_with = "exchange")]
+    pub pubkey: Vec<String>,
+    /// Feed code, which names one feed only together with its metro
+    #[arg(long, value_parser = validate_code, requires = "exchange")]
+    pub code: Option<String>,
+    /// Metro (exchange) pubkey or code carrying the feed named by --code
+    #[arg(long, value_parser = validate_pubkey_or_code)]
+    pub exchange: Option<String>,
     /// Updated name for the feed
     #[arg(long)]
     pub name: Option<String>,
@@ -42,7 +57,7 @@ impl UpdateFeedCliCommand {
             RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
         );
 
-        let (pubkey, feed) = self.target.resolve(client)?;
+        let feeds = self.resolve_feeds(client)?;
 
         // An empty `--group` list leaves the groups unchanged; otherwise replace them.
         let groups = if self.groups.is_empty() {
@@ -61,24 +76,55 @@ impl UpdateFeedCliCommand {
         // additive change — because it re-derives the dropped set from its own fresh scan, and
         // deciding from the `get_feed` read above would miss a group added in between.
         if let Some(new_groups) = &groups {
-            unsubscribe_orphans(
-                client,
-                out,
-                &pubkey,
-                &feed.code,
-                new_groups,
-                self.force_unsubscribe,
-            )?;
+            for (pubkey, feed) in &feeds {
+                unsubscribe_orphans(
+                    client,
+                    out,
+                    pubkey,
+                    &feed.code,
+                    new_groups,
+                    self.force_unsubscribe,
+                )?;
+            }
         }
 
-        let signature = client.update_feed(UpdateFeedCommand {
-            pubkey,
-            name: self.name,
-            groups,
-            feed_chain: self.chain,
-        })?;
+        let pubkeys: Vec<Pubkey> = feeds.iter().map(|(pubkey, _)| *pubkey).collect();
+        for chunk in pubkeys.chunks(MAX_FEEDS_PER_TRANSACTION) {
+            let signature = client.update_feed(UpdateFeedCommand {
+                pubkeys: chunk.to_vec(),
+                name: self.name.clone(),
+                groups: groups.clone(),
+                feed_chain: self.chain,
+            })?;
+            print_signature(out, &signature)?;
+        }
 
-        print_signature(out, &signature)
+        Ok(())
+    }
+
+    fn resolve_feeds<C: CliCommand>(&self, client: &C) -> eyre::Result<Vec<(Pubkey, Feed)>> {
+        if self.pubkey.is_empty() {
+            return Ok(vec![FeedTargetArgs {
+                pubkey: None,
+                code: self.code.clone(),
+                exchange: self.exchange.clone(),
+            }
+            .resolve(client)?]);
+        }
+
+        let mut seen = HashSet::new();
+        let mut feeds = Vec::new();
+        for arg in &self.pubkey {
+            let (pubkey, feed) = client.get_feed(GetFeedCommand {
+                pubkey_or_code: arg.clone(),
+                exchange: None,
+            })?;
+            if !seen.insert(pubkey) {
+                continue;
+            }
+            feeds.push((pubkey, feed));
+        }
+        Ok(feeds)
     }
 }
 
@@ -87,7 +133,6 @@ mod tests {
     use crate::{
         feed::{
             guard::fixtures::{device, feed as feed_account, pass, seat, user, GuardFixture},
-            resolve::FeedTargetArgs,
             update::UpdateFeedCliCommand,
         },
         tests::utils::create_test_client,
@@ -96,7 +141,10 @@ mod tests {
     use doublezero_sdk::{
         commands::{
             exchange::get::GetExchangeCommand,
-            feed::{get::GetFeedCommand, update::UpdateFeedCommand},
+            feed::{
+                get::GetFeedCommand,
+                update::{UpdateFeedCommand, MAX_FEEDS_PER_TRANSACTION},
+            },
             multicastgroup::{
                 get::GetMulticastGroupCommand, subscribe::UpdateMulticastGroupRolesCommand,
             },
@@ -126,11 +174,9 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             UpdateFeedCliCommand {
-                target: FeedTargetArgs {
-                    pubkey: Some(f.feed_pk.to_string()),
-                    code: None,
-                    exchange: None,
-                },
+                pubkey: vec![f.feed_pk.to_string()],
+                code: None,
+                exchange: None,
                 name: None,
                 groups: vec![g1.to_string()],
                 chain: None,
@@ -180,7 +226,7 @@ mod tests {
         client
             .expect_update_feed()
             .with(predicate::eq(UpdateFeedCommand {
-                pubkey: f.feed_pk,
+                pubkeys: vec![f.feed_pk],
                 name: None,
                 groups: Some(vec![g1]),
                 feed_chain: None,
@@ -192,11 +238,9 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             UpdateFeedCliCommand {
-                target: FeedTargetArgs {
-                    pubkey: Some(f.feed_pk.to_string()),
-                    code: None,
-                    exchange: None,
-                },
+                pubkey: vec![f.feed_pk.to_string()],
+                code: None,
+                exchange: None,
                 name: None,
                 groups: vec![g1.to_string()],
                 chain: None,
@@ -246,7 +290,7 @@ mod tests {
         client
             .expect_update_feed()
             .with(predicate::eq(UpdateFeedCommand {
-                pubkey: f.feed_pk,
+                pubkeys: vec![f.feed_pk],
                 name: None,
                 groups: Some(vec![g1]),
                 feed_chain: None,
@@ -258,11 +302,9 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             UpdateFeedCliCommand {
-                target: FeedTargetArgs {
-                    pubkey: Some(f.feed_pk.to_string()),
-                    code: None,
-                    exchange: None,
-                },
+                pubkey: vec![f.feed_pk.to_string()],
+                code: None,
+                exchange: None,
                 name: None,
                 groups: vec![g1.to_string()],
                 chain: None,
@@ -292,7 +334,7 @@ mod tests {
         client
             .expect_update_feed()
             .with(predicate::eq(UpdateFeedCommand {
-                pubkey: f.feed_pk,
+                pubkeys: vec![f.feed_pk],
                 name: None,
                 groups: Some(vec![g1, g2]),
                 feed_chain: None,
@@ -304,11 +346,9 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             UpdateFeedCliCommand {
-                target: FeedTargetArgs {
-                    pubkey: Some(f.feed_pk.to_string()),
-                    code: None,
-                    exchange: None,
-                },
+                pubkey: vec![f.feed_pk.to_string()],
+                code: None,
+                exchange: None,
                 name: None,
                 groups: vec![g1.to_string(), g2.to_string()],
                 chain: None,
@@ -365,11 +405,9 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             UpdateFeedCliCommand {
-                target: FeedTargetArgs {
-                    pubkey: Some(f.feed_pk.to_string()),
-                    code: None,
-                    exchange: None,
-                },
+                pubkey: vec![f.feed_pk.to_string()],
+                code: None,
+                exchange: None,
                 name: None,
                 groups: vec![g1.to_string()],
                 chain: None,
@@ -436,11 +474,9 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             UpdateFeedCliCommand {
-                target: FeedTargetArgs {
-                    pubkey: Some(f.feed_pk.to_string()),
-                    code: None,
-                    exchange: None,
-                },
+                pubkey: vec![f.feed_pk.to_string()],
+                code: None,
+                exchange: None,
                 name: None,
                 groups: vec![g1.to_string()],
                 chain: None,
@@ -550,7 +586,7 @@ mod tests {
         client
             .expect_update_feed()
             .with(predicate::eq(UpdateFeedCommand {
-                pubkey: feed_pk,
+                pubkeys: vec![feed_pk],
                 name: Some("Feed v2".to_string()),
                 groups: Some(vec![group_pk]),
                 feed_chain: None,
@@ -562,11 +598,9 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             UpdateFeedCliCommand {
-                target: FeedTargetArgs {
-                    pubkey: None,
-                    code: Some("feed01".to_string()),
-                    exchange: Some("xchi".to_string()),
-                },
+                pubkey: vec![],
+                code: Some("feed01".to_string()),
+                exchange: Some("xchi".to_string()),
                 name: Some("Feed v2".to_string()),
                 groups: vec!["mg01".to_string()],
                 chain: None,
@@ -592,7 +626,7 @@ mod tests {
         client
             .expect_update_feed()
             .with(predicate::eq(UpdateFeedCommand {
-                pubkey: f.feed_pk,
+                pubkeys: vec![f.feed_pk],
                 name: None,
                 groups: None,
                 feed_chain: Some(FeedChain::Hyperliquid),
@@ -604,11 +638,9 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             UpdateFeedCliCommand {
-                target: FeedTargetArgs {
-                    pubkey: Some(f.feed_pk.to_string()),
-                    code: None,
-                    exchange: None,
-                },
+                pubkey: vec![f.feed_pk.to_string()],
+                code: None,
+                exchange: None,
                 name: None,
                 groups: vec![],
                 chain: Some(FeedChain::Hyperliquid),
@@ -620,6 +652,75 @@ mod tests {
         assert_eq!(
             String::from_utf8(output).unwrap(),
             format!("Signature: {signature}\n")
+        );
+    }
+
+    #[test]
+    fn test_cli_feed_update_sends_a_second_batch_after_eight() {
+        let mut client = create_test_client();
+        client.expect_check_requirements().returning(|_| Ok(()));
+
+        let keys: Vec<Pubkey> = (0..MAX_FEEDS_PER_TRANSACTION + 1)
+            .map(|_| Pubkey::new_unique())
+            .collect();
+        let first = Signature::new_unique();
+        let second = Signature::new_unique();
+        let exchange = Pubkey::new_unique();
+
+        for key in &keys {
+            let feed_pk = *key;
+            let feed = feed_account(exchange, vec![]);
+            client
+                .expect_get_feed()
+                .with(predicate::eq(GetFeedCommand {
+                    pubkey_or_code: feed_pk.to_string(),
+                    exchange: None,
+                }))
+                .times(1)
+                .returning(move |_| Ok((feed_pk, feed.clone())));
+        }
+
+        let first_batch = keys[..MAX_FEEDS_PER_TRANSACTION].to_vec();
+        let last = vec![keys[MAX_FEEDS_PER_TRANSACTION]];
+        client
+            .expect_update_feed()
+            .with(predicate::eq(UpdateFeedCommand {
+                pubkeys: first_batch,
+                name: None,
+                groups: None,
+                feed_chain: Some(FeedChain::Solana),
+            }))
+            .times(1)
+            .returning(move |_| Ok(first));
+        client
+            .expect_update_feed()
+            .with(predicate::eq(UpdateFeedCommand {
+                pubkeys: last,
+                name: None,
+                groups: None,
+                feed_chain: Some(FeedChain::Solana),
+            }))
+            .times(1)
+            .returning(move |_| Ok(second));
+
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(
+            UpdateFeedCliCommand {
+                pubkey: keys.iter().map(ToString::to_string).collect(),
+                code: None,
+                exchange: None,
+                name: None,
+                groups: vec![],
+                chain: Some(FeedChain::Solana),
+                force_unsubscribe: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            format!("Signature: {first}\nSignature: {second}\n")
         );
     }
 }

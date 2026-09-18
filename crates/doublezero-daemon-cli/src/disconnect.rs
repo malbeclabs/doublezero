@@ -170,12 +170,18 @@ impl Disconnect {
 
             spinner.inc(1);
             writeln!(out, "⚡  Removing account: {pubkey}")?;
+            // A self delete, with no operator to state a kind, and the handler already checks
+            // the owner and the client IP. `None` takes the kind from the pass the delete
+            // itself resolves. Reading it here instead would use a different lookup than the
+            // one the delete sends: for a user recording an access pass those name different
+            // accounts, and the declared kind would then contradict the account in the
+            // transaction. The program's per-kind refusal cannot fire on this path either way.
             let accesspass_pk = if user.accesspass_pk == Pubkey::default() {
                 self.access_pass
             } else {
                 None
             };
-            match ledger.delete_user(*pubkey, accesspass_pk) {
+            match ledger.delete_user(*pubkey, accesspass_pk, None) {
                 Ok(_) => {
                     writeln!(out, "    Account deletion submitted")?;
                 }
@@ -285,6 +291,10 @@ mod tests {
 
     use doublezero_cli_core::testing::block_on;
     use doublezero_sdk::{AccountType, GlobalState, User, UserCYOA, UserStatus};
+    use doublezero_serviceability::state::accesspass::{
+        AccessPass, AccessPassStatus, AccessPassType,
+    };
+    use mockall::predicate;
 
     use crate::{
         client::{DoubleZeroStatus, MockDaemonClient, StatusResponse},
@@ -359,6 +369,32 @@ mod tests {
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
             ..Default::default()
+        }
+    }
+
+    fn make_test_accesspass(
+        client_ip: Ipv4Addr,
+        user_payer: Pubkey,
+        accesspass_type: AccessPassType,
+    ) -> AccessPass {
+        AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 0,
+            accesspass_type,
+            client_ip,
+            user_payer,
+            last_access_epoch: u64::MAX,
+            connection_count: 0,
+            status: AccessPassStatus::Connected,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
+            owner: Pubkey::default(),
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
         }
     }
 
@@ -508,15 +544,29 @@ mod tests {
         ledger
             .expect_list_user()
             .returning(move || Ok(users.clone()));
-        // delete_user SHOULD be called for self-owned user.
+        // The kind for delete_user comes from a read-back of the pass, since there is no
+        // operator here to declare one.
+        ledger
+            .expect_get_accesspass()
+            .with(predicate::eq(ip), predicate::eq(payer))
+            .returning(move |client_ip, user_payer| {
+                Ok(Some(make_test_accesspass(
+                    client_ip,
+                    user_payer,
+                    AccessPassType::Prepaid,
+                )))
+            });
+        // delete_user SHOULD be called for self-owned user, with the kind read from the
+        // pass fetched above.
         ledger
             .expect_delete_user()
             .with(
-                mockall::predicate::eq(user_pk),
-                mockall::predicate::eq(Some(accesspass_pk)),
+                predicate::eq(user_pk),
+                predicate::eq(Some(accesspass_pk)),
+                predicate::eq(None),
             )
             .once()
-            .returning(|_, _| Err(eyre::eyre!("simulated not found")));
+            .returning(|_, _, _| Err(eyre::eyre!("simulated not found")));
         // get_user for poll_for_user_closed — return "not found" immediately.
         ledger
             .expect_get_user()
@@ -555,13 +605,24 @@ mod tests {
             .expect_list_user()
             .returning(move || Ok(users.clone()));
         ledger
+            .expect_get_accesspass()
+            .with(predicate::eq(ip), predicate::eq(payer))
+            .returning(move |client_ip, user_payer| {
+                Ok(Some(make_test_accesspass(
+                    client_ip,
+                    user_payer,
+                    AccessPassType::Prepaid,
+                )))
+            });
+        ledger
             .expect_delete_user()
             .with(
-                mockall::predicate::eq(user_pk),
-                mockall::predicate::eq(None),
+                predicate::eq(user_pk),
+                predicate::eq(None),
+                predicate::eq(None),
             )
             .once()
-            .returning(|_, _| Err(eyre::eyre!("simulated not found")));
+            .returning(|_, _, _| Err(eyre::eyre!("simulated not found")));
         ledger
             .expect_get_user()
             .returning(|_| Err(eyre::eyre!("User not found")));
@@ -632,11 +693,29 @@ mod tests {
         ledger
             .expect_list_user()
             .returning(move || Ok(users.clone()));
-        // delete_user should be called exactly once (for the self-owned user only).
+        // The kind for delete_user comes from a read-back of the pass, since there is no
+        // operator here to declare one.
+        ledger
+            .expect_get_accesspass()
+            .with(predicate::eq(ip), predicate::eq(payer))
+            .returning(move |client_ip, user_payer| {
+                Ok(Some(make_test_accesspass(
+                    client_ip,
+                    user_payer,
+                    AccessPassType::Prepaid,
+                )))
+            });
+        // delete_user should be called exactly once (for the self-owned user only), with
+        // the kind read from the pass fetched above.
         ledger
             .expect_delete_user()
+            .with(
+                predicate::eq(self_owned_pk),
+                predicate::eq(None),
+                predicate::eq(None),
+            )
             .once()
-            .returning(|_, _| Err(eyre::eyre!("simulated not found")));
+            .returning(|_, _, _| Err(eyre::eyre!("simulated not found")));
         ledger
             .expect_get_user()
             .returning(|_| Err(eyre::eyre!("User not found")));
@@ -645,6 +724,48 @@ mod tests {
         let spinner = hidden_spinner();
         let mut out = Vec::new();
         let result = cmd.delete_users(&ledger, ip, oracle_key, &spinner, &mut out);
+        assert!(result.is_ok());
+    }
+
+    /// The kind sent to `delete_user` must come from the fetched pass, not a hardcoded
+    /// default: this seeds a SolanaValidator pass and asserts that exact kind is threaded
+    /// through, which a hardcoded-Prepaid implementation would fail.
+    #[test]
+    fn test_delete_users_declares_no_kind_for_a_non_prepaid_pass() {
+        let mut ledger = MockLedgerClient::new();
+        let payer = Pubkey::new_unique();
+        let feed_authority = Pubkey::new_unique();
+        let ip = Ipv4Addr::new(10, 0, 0, 1);
+
+        let user_pk = Pubkey::new_unique();
+        let user = make_test_user(ip, payer, UserType::IBRL);
+
+        let mut users = HashMap::new();
+        users.insert(user_pk, user);
+
+        ledger.expect_get_payer().return_const(payer);
+        ledger
+            .expect_list_user()
+            .returning(move || Ok(users.clone()));
+        // No get_accesspass expectation: disconnect must not read the pass to pick a kind.
+        // The mock panics if it does, which is the point of this test.
+        ledger
+            .expect_delete_user()
+            .with(
+                predicate::eq(user_pk),
+                predicate::eq(None),
+                predicate::eq(None),
+            )
+            .once()
+            .returning(|_, _, _| Err(eyre::eyre!("simulated not found")));
+        ledger
+            .expect_get_user()
+            .returning(|_| Err(eyre::eyre!("User not found")));
+
+        let cmd = test_cmd();
+        let spinner = hidden_spinner();
+        let mut out = Vec::new();
+        let result = cmd.delete_users(&ledger, ip, feed_authority, &spinner, &mut out);
         assert!(result.is_ok());
     }
 
@@ -693,7 +814,25 @@ mod tests {
             ledger
                 .expect_list_user()
                 .returning(move || Ok(users.clone()));
-            ledger.expect_delete_user().once().returning(|_, _| Ok(()));
+            ledger
+                .expect_get_accesspass()
+                .with(predicate::eq(ip), predicate::eq(payer))
+                .returning(move |client_ip, user_payer| {
+                    Ok(Some(make_test_accesspass(
+                        client_ip,
+                        user_payer,
+                        AccessPassType::Prepaid,
+                    )))
+                });
+            ledger
+                .expect_delete_user()
+                .with(
+                    predicate::eq(user_pk),
+                    predicate::eq(None),
+                    predicate::eq(None),
+                )
+                .once()
+                .returning(|_, _, _| Ok(()));
             ledger
                 .expect_get_user()
                 .returning(|_| Err(eyre::eyre!("User not found")));

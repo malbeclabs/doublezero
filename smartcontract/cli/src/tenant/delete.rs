@@ -71,7 +71,13 @@ impl DeleteTenantCliCommand {
 
                 for (user_pk, user) in &tenant_users {
                     spinner.set_message(format!("Deleting user {user_pk}"));
-                    let result = client.delete_user(DeleteUserCommand::new(*user_pk));
+                    // This cascade removes every user under the tenant, whatever kind of access
+                    // pass each one holds; there is no single operator-declared kind to state
+                    // here, so `None` tells the command to take the kind from the pass it
+                    // resolves. Reading the pass here instead would use a different lookup
+                    // than the one the command sends, and the two can name different passes.
+                    // The program's per-kind refusal cannot fire on this path either way.
+                    let result = client.delete_user(DeleteUserCommand::new(*user_pk, None));
                     if user.accesspass_pk == Pubkey::default() {
                         result.wrap_err_with(|| {
                             format!(
@@ -452,11 +458,13 @@ mod tests {
                 Ok(map)
             });
 
-        // Delete user
+        // Delete user. The cascade declares no kind, so it does not read the pass first:
+        // there is no get_accesspass expectation, and the mock fails if one is called.
         client
             .expect_delete_user()
             .times(1)
             .in_sequence(&mut seq)
+            .withf(|cmd| cmd.kind.is_none())
             .returning(|_| Ok(Signature::new_unique()));
 
         // List access passes - empty

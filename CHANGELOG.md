@@ -6,6 +6,10 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- CLI
+  - `doublezero access-pass close` requires a new flag `--accesspass-type` with one of `prepaid`, `solana-validator`, `solana-rpc`, `others`, `edge-seat`. (#2470)
+  - `doublezero user delete` requires the same new flag `--accesspass-type`. Both spell it the way `access-pass set` already does. (#2470)
+
 ### Changes
 
 - Collector
@@ -16,7 +20,9 @@ All notable changes to this project will be documented in this file.
   - Rotate a RIPE Atlas target probe that replies but drops most pings. The staleness check only asked whether a measurement exported anything in the last hour, so a target answering a small fraction of the time looked healthy indefinitely while its circuits took turns falling out of the freshness window. Ping outcomes now accumulate in a hourly window per measurement, and a target above the loss threshold is marked, which ranks it behind any healthier candidate.
 
 - Serviceability
-  - Ten new instructions remove an access pass or a user for one specific `AccessPassType`: `ClosePrepaidAccessPass`, `CloseSolanaValidatorAccessPass`, `CloseSolanaRPCAccessPass`, `CloseOthersAccessPass`, `CloseEdgeSeatAccessPass`, and `DeletePrepaidUser`, `DeleteSolanaValidatorUser`, `DeleteSolanaRPCUser`, `DeleteOthersUser`, `DeleteEdgeSeatUser`. Each reads the access pass and refuses with `InvalidAccessPassType` unless the pass matches the instruction. `CloseAccessPass` and `DeleteUser` keep working unchanged; a follow-up change deprecates them and moves every caller. (#2470)
+  - Ten new instructions remove an access pass or a user for one specific `AccessPassType`: `ClosePrepaidAccessPass`, `CloseSolanaValidatorAccessPass`, `CloseSolanaRPCAccessPass`, `CloseOthersAccessPass`, `CloseEdgeSeatAccessPass`, and `DeletePrepaidUser`, `DeleteSolanaValidatorUser`, `DeleteSolanaRPCUser`, `DeleteOthersUser`, `DeleteEdgeSeatUser`. Each reads the access pass and refuses with `InvalidAccessPassType` unless the pass matches the instruction. (#2470)
+- SDK
+  - `DeleteUserCommand` refuses a declared pass type that does not match the pass it read, before it builds a transaction. The program makes the same check and is the one that counts; locally it names both types instead of charging the caller for a transaction that comes back as a bare custom error code. (#2470)
 
 ## [v0.41.0](https://github.com/malbeclabs/doublezero/compare/client/v0.40.0...client/v0.41.0) - 2026-09-16
 

@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+### Changes
+
+## [v0.42.0](https://github.com/malbeclabs/doublezero/compare/client/v0.41.0...client/v0.42.0) - 2026-09-18
+
+### Breaking
+
 - CLI
   - `doublezero access-pass close` requires a new flag `--accesspass-type` with one of `prepaid`, `solana-validator`, `solana-rpc`, `others`, `edge-seat`. (#2470)
   - `doublezero user delete` requires the same new flag `--accesspass-type`. Both spell it the way `access-pass set` already does. (#2470)

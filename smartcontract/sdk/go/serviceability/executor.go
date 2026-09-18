@@ -269,6 +269,12 @@ func (e *Executor) DeleteUser(ctx context.Context, userPubkey solana.PublicKey, 
 	if e.programID.IsZero() {
 		return solana.Signature{}, ErrNoProgramID
 	}
+	// Checked here rather than where the instruction is built, so a caller that forgot the
+	// kind hears about it before the round trip. Go cannot make a parameter required, so the
+	// zero value has to fail rather than quietly mean Prepaid.
+	if _, err := deleteUserInstructionFor(kind); err != nil {
+		return solana.Signature{}, err
+	}
 
 	info, err := e.rpc.GetAccountInfo(ctx, userPubkey)
 	if err != nil {

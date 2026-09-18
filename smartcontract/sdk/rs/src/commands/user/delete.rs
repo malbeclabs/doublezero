@@ -46,8 +46,20 @@ impl DeleteUserCommand {
             .get_user()
             .map_err(|e| eyre::eyre!(e))?;
 
-        let (accesspass_pk, _) =
+        let (accesspass_pk, accesspass) =
             resolve_user_accesspass(client, self.pubkey, &user, self.accesspass_pk)?;
+
+        // The program makes this same comparison and is the check that counts. Making it here
+        // too only buys a better message: onchain it comes back as a bare custom error code,
+        // after the caller has paid for the transaction.
+        let stored = AccessPassKind::from(&accesspass.accesspass_type);
+        if stored != self.kind {
+            eyre::bail!(
+                "User {}'s access pass is {stored}, not {}. Pass --accesspass-type {stored}.",
+                self.pubkey,
+                self.kind,
+            );
+        }
 
         let unique_mgroup_pks: Vec<Pubkey> = user
             .publishers
@@ -948,9 +960,9 @@ mod tests {
     #[test]
     fn test_delete_user_threads_a_different_kind() {
         // A second, distinct kind from the other tests in this file: proves the command
-        // reads self.kind rather than passing through a hardcoded value. The stored pass's
-        // accesspass_type is irrelevant to this SDK-level test (the mock doesn't enforce
-        // the program's guard); only the kind carried on the command matters here.
+        // reads self.kind rather than passing through a hardcoded value. The stored pass
+        // carries the same kind, because the command now refuses a declared kind that does
+        // not match what it read; test_delete_user_refuses_a_mismatched_kind covers that.
         let mut client = create_test_client();
 
         let payer = client.get_payer();
@@ -997,7 +1009,7 @@ mod tests {
         let accesspass = AccessPass {
             account_type: AccountType::AccessPass,
             bump_seed: 0,
-            accesspass_type: AccessPassType::Prepaid,
+            accesspass_type: AccessPassType::SolanaValidator(Pubkey::new_unique()),
             client_ip: Ipv4Addr::UNSPECIFIED,
             user_payer: payer,
             last_access_epoch: 0,
@@ -1063,6 +1075,75 @@ mod tests {
         .execute(&client);
 
         assert!(res.is_ok());
+    }
+
+    /// The declared kind disagreeing with the stored pass is refused locally, before a
+    /// transaction is built. `expect_send_transaction` is never set up, so the mock panics if
+    /// the command tries to send: reaching chain would cost the caller a fee to be told the
+    /// same thing as a bare custom error code.
+    #[test]
+    fn test_delete_user_refuses_a_mismatched_kind() {
+        let mut client = create_test_client();
+
+        let payer = client.get_payer();
+        let program_id = client.get_program_id();
+
+        let user_pubkey = Pubkey::new_unique();
+        let device_pk = Pubkey::new_unique();
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+
+        let (accesspass_pubkey, _) =
+            get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
+
+        let user = User {
+            account_type: AccountType::User,
+            owner: payer,
+            status: UserStatus::Activated,
+            device_pk,
+            client_ip,
+            accesspass_pk: accesspass_pubkey,
+            ..Default::default()
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(user_pubkey))
+            .returning(move |_| Ok(AccountData::User(user.clone())));
+
+        let accesspass = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 0,
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: Ipv4Addr::UNSPECIFIED,
+            user_payer: payer,
+            last_access_epoch: 0,
+            connection_count: 0,
+            status: AccessPassStatus::Requested,
+            owner: payer,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(accesspass_pubkey))
+            .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
+
+        let err = DeleteUserCommand {
+            pubkey: user_pubkey,
+            accesspass_pk: None,
+            kind: AccessPassKind::EdgeSeat,
+        }
+        .execute(&client)
+        .expect_err("a declared kind that does not match the stored pass must be refused");
+
+        let msg = err.to_string();
+        assert!(msg.contains("prepaid"), "{msg}");
+        assert!(msg.contains("edge_seat"), "{msg}");
     }
 
     #[test]

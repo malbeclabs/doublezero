@@ -1,7 +1,7 @@
 use clap::ValueEnum;
 use doublezero_serviceability::state::accesspass::AccessPassKind;
 
-/// The `--type` flag's values. One per `AccessPassType` variant. Kept next to the access pass
+/// The `--accesspass-type` flag's values. One per `AccessPassType` variant. Kept next to the access pass
 /// commands because `access-pass close` and `user delete` both take it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub enum CliAccessPassType {

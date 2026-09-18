@@ -153,8 +153,10 @@ fn generate_user_create_args(dir: &Path) {
     write_fixture(dir, "user_create_args", &data, &meta);
 }
 
-/// Borsh-encoded `UserDeleteArgs` (the body of instruction variant 42, without the
+/// Borsh-encoded `UserDeleteArgs` (the body of instruction variants 130 to 134, without the
 /// 1-byte discriminant). Field order: dz_prefix_count, multicast_publisher_count.
+/// Variant 42 carried this body until it was deprecated and split by pass type; the args are
+/// unchanged, so the fixture bytes are too.
 fn generate_user_delete_args(dir: &Path) {
     let val = UserDeleteArgs {
         dz_prefix_count: 3,

@@ -2520,9 +2520,8 @@ func (failingExporter) WriteRecords(_ context.Context, _ []exporter.Record) erro
 func (failingExporter) Close() error { return nil }
 
 // TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LateUploads covers the
-// per-probe exclusion boundary. Probes upload with lag, so the measurement cursor
-// routinely runs ahead of a slow probe's result for an interval its peers already
-// reported.
+// per-probe exclusion boundary: the measurement cursor routinely runs ahead of a slow
+// probe's result for an interval its peers already reported.
 func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LateUploads(t *testing.T) {
 	t.Parallel()
 
@@ -2538,8 +2537,7 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LateUploads(t 
 	}
 
 	// newCollector returns a collector replaying one batch per export call, plus the
-	// startTimestamp each call was made with, so the lookback is asserted rather than
-	// inferred from what came back.
+	// startTimestamp each call was made with, so the lookback is asserted not inferred.
 	newCollector := func(t *testing.T, batches [][]any) (*Collector, *MeasurementState, *[]int64) {
 		t.Helper()
 		outputDir := t.TempDir()
@@ -2576,7 +2574,6 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LateUploads(t 
 		return c, ms, &starts
 	}
 
-	// sample is the part of an exported record these cases assert on.
 	type sample struct {
 		source string
 		at     int64
@@ -2747,10 +2744,9 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_RecordsTargetL
 	t.Run("a replayed timeout is not counted twice", func(t *testing.T) {
 		t.Parallel()
 
-		// A timeout leaves the export cursor where it was, and the lookback re-reads
-		// behind it, so the same timeout comes back on the next pass. Counting it again
-		// would drive a target that merely lost its most recent pings toward the
-		// threshold. Probe 100's own LastResponseAt is what drops the replay.
+		// A timeout leaves the export cursor where it was and the lookback re-reads
+		// behind it, so the same timeout comes back next pass. Counting it again would
+		// drive a target that merely lost its most recent pings toward the threshold.
 		batch := []any{timedOut(100, base)}
 		batches := [][]any{batch, batch}
 		c, ms := newCollector(t, nil, &batches)
@@ -2923,9 +2919,8 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_LossyTargetIsRotated(t 
 	c.measurementState.SetMetadata(1001, MeasurementMeta{
 		TargetLocation: "cmh",
 		TargetProbeID:  lossyTargetProbe,
-		// The marks sit behind the seeded results, which span the last 40 minutes: the
-		// export path excludes per source probe against LastResponseAt, and they are
-		// still recent enough that Step 4b leaves the sources alone.
+		// The marks sit behind the seeded results, which span the last 40 minutes, since
+		// the export path excludes against them; still recent enough for Step 4b.
 		Sources: []SourceProbeMeta{
 			{LocationCode: "nyc", ProbeID: 100, LastResponseAt: time.Now().Add(-45 * time.Minute).Unix()},
 			{LocationCode: "sea", ProbeID: 101, LastResponseAt: time.Now().Add(-45 * time.Minute).Unix()},

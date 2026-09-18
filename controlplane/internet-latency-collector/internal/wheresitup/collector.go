@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -18,7 +19,20 @@ import (
 const (
 	RequestTimeout         = 30 * time.Second // Timeout for job requests
 	CreditWarningThreshold = 10000
-	ExpireAfter            = "10 minutes" // Relative time like "1 hour" - https://wheresitup.com/docs/?shell#creating-jobs
+
+	// JobExpireAfter is how long WheresItUp is asked to retain a job's results, and
+	// jobExpireAfterParam is the same duration in the relative-time form the job API accepts
+	// (https://wheresitup.com/docs/?shell#creating-jobs). Keep the two in sync.
+	//
+	// Past the expiry the API still reports the job with an empty "complete" and a populated
+	// "in_progress", which is what a running job looks like in the fields read here, so the
+	// value has to comfortably exceed one collection cycle.
+	JobExpireAfter      = time.Hour
+	jobExpireAfterParam = "1 hour"
+
+	// ExpiryGrace pads the local age cutoff so a job is dropped only once its results are
+	// certainly gone.
+	ExpiryGrace = time.Minute
 )
 
 type Collector struct {
@@ -141,7 +155,6 @@ func (c *Collector) RunJobCreation(ctx context.Context, locations []collector.Lo
 		}
 	}
 
-	expireAfter := "1 hour"
 	if len(locations) == 0 {
 		c.log.Warn("No locations found")
 		return nil
@@ -182,7 +195,7 @@ func (c *Collector) RunJobCreation(ctx context.Context, locations []collector.Lo
 	c.log.Info(
 		"Wheresitup creating ping jobs between locations",
 		slog.Int("location_count", len(locationsWithSources)),
-		slog.String("expire_after", expireAfter))
+		slog.String("expire_after", jobExpireAfterParam))
 
 	jobCreationStart := time.Now()
 	jobResponses, err := c.CreateJobsBetweenLocations(ctx, locationsWithSources, dryRun, false)
@@ -234,7 +247,7 @@ func (c *Collector) RunJobCreation(ctx context.Context, locations []collector.Lo
 					if sourceLocation.LocationCode >= targetLocation.LocationCode {
 						continue
 					}
-					circuit := fmt.Sprintf("%s → %s", sourceLocation.LocationCode, targetLocation.LocationCode)
+					circuit := circuitLabel(sourceLocation.LocationCode, targetLocation.LocationCode)
 					circuits = append(circuits, circuit)
 					metrics.LatencySamplesPerCollectionIntervalExpected.WithLabelValues("wheresitup", circuit).Add(1)
 				}
@@ -250,7 +263,7 @@ func (c *Collector) RunJobCreation(ctx context.Context, locations []collector.Lo
 				slog.String("file", jobIDsFile))
 
 			state := NewState(jobIDsFile)
-			if err := state.AddJobIDsWithCircuits(newJobIDs, circuits); err != nil {
+			if err := state.AddJobIDsWithCircuits(newJobIDs, circuits, jobCreationStart); err != nil {
 				c.log.Warn("Wheresitup - Failed to store job IDs and circuits",
 					slog.String("file", jobIDsFile),
 					slog.Int("job_count", len(newJobIDs)),
@@ -304,7 +317,7 @@ func (c *Collector) CreateJobsBetweenLocations(ctx context.Context, locations []
 				"tests":   []string{"ping"},
 				"sources": []string{sourceName},
 				"options": map[string]any{
-					"expire_after": ExpireAfter,
+					"expire_after": jobExpireAfterParam,
 					"label":        fmt.Sprintf("DoubleZero: %s to %s", sourceLocation.LocationCode, targetLocation.LocationCode),
 					"timeout":      int(RequestTimeout.Seconds()),
 				},
@@ -455,20 +468,12 @@ func (c *Collector) buildLocationMapping(ctx context.Context, locations []collec
 }
 
 func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) error {
-	locations := c.getLocationsFunc(ctx)
-	locationMap, err := c.buildLocationMapping(ctx, locations)
-	if err != nil {
-		return collector.NewValidationError("build_location_mapping", "failed to build location mapping", err).
-			WithContext("location_count", len(locations))
-	}
-
 	state := NewState(jobIDsFile)
 	if err := state.Load(); err != nil {
 		return err
 	}
-	jobIDs := state.GetJobIDs()
 
-	// Build expected circuits map from stored circuits
+	// Captured before pruning, which clears Circuits once it empties the job list.
 	circuitExpectedSamples := make(map[string]bool)
 	for _, circuit := range state.Circuits {
 		circuitExpectedSamples[circuit] = true
@@ -477,12 +482,68 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 		slog.Int("circuit_count", len(circuitExpectedSamples)),
 		slog.Any("circuits", state.Circuits))
 
-	if len(jobIDs) == 0 {
+	// Polling an expired job can only return in_progress, and the time it costs is what pushes
+	// the next batch past its own expiry, so dropping them stops that loop forming. Persisted
+	// here, not with the completed jobs below, so it survives an early return on write failure.
+	expiredJobIDs := state.PruneExpired(time.Now())
+	if len(expiredJobIDs) > 0 {
+		c.log.Info("Wheresitup - Dropping expired jobs from tracking without polling",
+			slog.Int("expired_count", len(expiredJobIDs)),
+			slog.Duration("max_job_age", MaxJobAge))
+		if err := state.Save(); err != nil {
+			c.log.Warn("Wheresitup failed to drop expired job IDs",
+				slog.String("file", jobIDsFile),
+				slog.Int("expired_count", len(expiredJobIDs)),
+				slog.String("error", err.Error()))
+		} else {
+			// Counted only once the prune reaches disk: RemoveJobIDs reloads the file at the
+			// end of the pass, so a failed save leaves these jobs to be pruned and counted
+			// again next cycle.
+			metrics.WheresitupExpiredJobsTotal.Add(float64(len(expiredJobIDs)))
+		}
+	}
+
+	// Newest batch first: the poll set holds several batches when the vendor is slow, and only
+	// the newest is certain to still have results, so a pass cut short sheds the stale end.
+	jobIDs := make([]string, 0, len(state.Jobs))
+	for i := len(state.Jobs) - 1; i >= 0; i-- {
+		jobIDs = append(jobIDs, state.Jobs[i].JobID)
+	}
+
+	if len(jobIDs) == 0 && len(expiredJobIDs) == 0 {
 		c.log.Info("No tracked jobs found to export")
 		return nil
 	}
 
 	c.log.Info("Found tracked jobs to check", slog.Int("job_count", len(jobIDs)))
+
+	var locationMap map[string]LocationInfo
+	if len(jobIDs) > 0 {
+		// Only labels the records below, and costs a serviceability program scan plus a
+		// source-list fetch per location, so nothing above this point may need it.
+		locations := c.getLocationsFunc(ctx)
+		var err error
+		locationMap, err = c.buildLocationMapping(ctx, locations)
+		if err != nil {
+			return collector.NewValidationError("build_location_mapping", "failed to build location mapping", err).
+				WithContext("location_count", len(locations))
+		}
+
+		// GetLocations fails open with an empty slice when the ledger fetch fails, and every
+		// record would then be labelled Unknown, dropped by the exporter without an error, and
+		// its job removed as completed. Stopping here costs one cycle of polling; going on
+		// would consume every resident job's results, which at this retention is about ten
+		// cycles' worth.
+		if len(locationMap) == 0 {
+			c.log.Error("Wheresitup - No location mapping, keeping tracked jobs for the next cycle",
+				slog.Int("job_count", len(jobIDs)),
+				slog.Int("location_count", len(locations)))
+			c.trackMissingSamples(circuitExpectedSamples, nil)
+			return collector.NewValidationError("build_location_mapping", "empty location mapping", nil).
+				WithContext("job_count", len(jobIDs)).
+				WithContext("location_count", len(locations))
+		}
+	}
 
 	processedCount := 0
 	failedCount := 0
@@ -491,6 +552,14 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 
 	records := make([]exporter.Record, 0, len(jobIDs))
 	for _, jobID := range jobIDs {
+		if ctx.Err() != nil {
+			c.log.Info("Wheresitup - Stopping job export early",
+				slog.Int("polled_count", processedCount+failedCount+inProgressCount),
+				slog.Int("job_count", len(jobIDs)),
+				slog.String("reason", ctx.Err().Error()))
+			break
+		}
+
 		c.log.Debug("Processing job", slog.String("job_id", jobID))
 
 		apiStart := time.Now()
@@ -562,6 +631,8 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 			continue
 		}
 
+		completedJobIDs = append(completedJobIDs, jobID)
+
 		records = append(records, exporter.Record{
 			DataProvider:       exporter.DataProviderNameWheresitup,
 			SourceExchangeCode: sourceLocation,
@@ -570,11 +641,21 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 			RTT:                latency,
 		})
 
-		completedJobIDs = append(completedJobIDs, jobID)
 		processedCount++
 
 		// Add delay to avoid rate limiting
 		time.Sleep(CallDelay)
+	}
+
+	// Polling is newest-first and the exporter does not reorder, but the ledger derives each
+	// sample's timestamp from its position in the account, so time order has to be restored.
+	slices.SortStableFunc(records, func(a, b exporter.Record) int {
+		return a.Timestamp.Compare(b.Timestamp)
+	})
+
+	circuitActualSamples := make(map[string]int)
+	for _, record := range records {
+		circuitActualSamples[circuitLabel(record.SourceExchangeCode, record.TargetExchangeCode)]++
 	}
 
 	// Write the batch of records with the exporter.
@@ -583,40 +664,15 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 			c.log.Warn("Wheresitup failed to write records", "error", err.Error(), "records", len(records))
 			return fmt.Errorf("failed to write records: %w", err)
 		}
-		// Track actual samples metric per circuit
-		circuitActualSamples := make(map[string]int)
-		for _, record := range records {
-			// Create circuit label with alphabetically sorted exchanges
-			var circuit string
-			if record.SourceExchangeCode < record.TargetExchangeCode {
-				circuit = fmt.Sprintf("%s → %s", record.SourceExchangeCode, record.TargetExchangeCode)
-			} else {
-				circuit = fmt.Sprintf("%s → %s", record.TargetExchangeCode, record.SourceExchangeCode)
-			}
-			circuitActualSamples[circuit]++
-		}
 		for circuit, count := range circuitActualSamples {
 			metrics.LatencySamplesPerCollectionIntervalActual.WithLabelValues("wheresitup", circuit).Add(float64(count))
 		}
 		c.log.Info("Wheresitup - Added actual samples metrics",
 			slog.Int("actual_samples", len(records)),
 			slog.Int("circuits", len(circuitActualSamples)))
-
-		// Track missing samples metric for circuits that were expected but not received
-		missingSamples := 0
-		for circuit := range circuitExpectedSamples {
-			if _, exists := circuitActualSamples[circuit]; !exists {
-				metrics.LatencySamplesPerCollectionIntervalMissing.WithLabelValues(c.env, circuit, "wheresitup").Add(1)
-				missingSamples++
-			}
-		}
-		if missingSamples > 0 {
-			c.log.Info("Wheresitup - Tracked missing samples",
-				slog.Int("missing_samples", missingSamples),
-				slog.Int("expected_circuits", len(circuitExpectedSamples)),
-				slog.Int("actual_circuits", len(circuitActualSamples)))
-		}
 	}
+
+	c.trackMissingSamples(circuitExpectedSamples, circuitActualSamples)
 
 	if len(completedJobIDs) > 0 {
 		if err := state.RemoveJobIDs(completedJobIDs); err != nil {
@@ -630,17 +686,22 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 	// Calculate failure rate and log appropriately
 	totalJobs := len(jobIDs)
 	pendingJobs := totalJobs - len(completedJobIDs) - failedCount
-	failureRate := float64(failedCount) / float64(totalJobs)
+	var failureRate float64
+	if totalJobs > 0 {
+		failureRate = float64(failedCount) / float64(totalJobs)
+	}
 
 	// Update pending jobs gauge for Prometheus
 	metrics.WheresitupPendingJobs.Set(float64(pendingJobs))
 
-	if failureRate > 0.10 && totalJobs > 0 {
+	// failureRate is zero unless totalJobs > 0, so this branch already implies it.
+	if failureRate > 0.10 {
 		// Log error if more than 10% of jobs failed
 		c.log.Error("High failure rate for Wheresitup job results",
 			slog.Int("processed_count", processedCount),
 			slog.Int("failed_count", failedCount),
 			slog.Int("in_progress_count", inProgressCount),
+			slog.Int("expired_count", len(expiredJobIDs)),
 			slog.Int("pending_jobs", pendingJobs),
 			slog.Int("total_jobs", totalJobs),
 			slog.Int("removed_job_count", len(completedJobIDs)),
@@ -651,6 +712,7 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 			slog.Int("processed_count", processedCount),
 			slog.Int("failed_count", failedCount),
 			slog.Int("in_progress_count", inProgressCount),
+			slog.Int("expired_count", len(expiredJobIDs)),
 			slog.Int("pending_jobs", pendingJobs),
 			slog.Int("removed_job_count", len(completedJobIDs)),
 			slog.Int("total_jobs", totalJobs),
@@ -658,6 +720,35 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 	}
 
 	return nil
+}
+
+// trackMissingSamples reports the circuits job creation expected but the pass did not export.
+// Called outside any record-count guard, as in ripeatlas: the expected counter was already
+// incremented for these circuits, so a cycle that exports nothing is precisely the one that
+// has to report them missing.
+func (c *Collector) trackMissingSamples(expected map[string]bool, actual map[string]int) {
+	missingSamples := 0
+	for circuit := range expected {
+		if _, exists := actual[circuit]; !exists {
+			metrics.LatencySamplesPerCollectionIntervalMissing.WithLabelValues(c.env, circuit, "wheresitup").Add(1)
+			missingSamples++
+		}
+	}
+	if missingSamples > 0 {
+		c.log.Info("Wheresitup - Tracked missing samples",
+			slog.Int("missing_samples", missingSamples),
+			slog.Int("expected_circuits", len(expected)),
+			slog.Int("actual_circuits", len(actual)))
+	}
+}
+
+// circuitLabel orders the two exchanges alphabetically, so the expected, actual and missing
+// sample metrics all agree on one label per pair.
+func circuitLabel(sourceExchange, targetExchange string) string {
+	if sourceExchange < targetExchange {
+		return fmt.Sprintf("%s → %s", sourceExchange, targetExchange)
+	}
+	return fmt.Sprintf("%s → %s", targetExchange, sourceExchange)
 }
 
 func parseMillisString(s string) (time.Duration, error) {

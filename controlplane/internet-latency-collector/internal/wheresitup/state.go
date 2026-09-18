@@ -11,7 +11,11 @@ import (
 	"github.com/malbeclabs/doublezero/controlplane/internet-latency-collector/internal/collector"
 )
 
-const MaxJobAge = 2 * time.Hour
+// MaxJobAge bounds how long a job stays in the state file and how long it is worth polling.
+// One value covers both: past it the results are gone, so the entry can neither produce a
+// sample nor justify its space. The steady-state poll set is ceil(MaxJobAge/interval)
+// batches, about 11 at the 6-minute cadence against 20 under the previous 2-hour cutoff.
+const MaxJobAge = JobExpireAfter + ExpiryGrace
 
 type JobEntry struct {
 	JobID     string    `json:"job_id"`
@@ -83,18 +87,9 @@ func (jt *State) Save() error {
 		return err
 	}
 
-	// Filter out jobs older than MaxJobAge
-	cutoffTime := time.Now().Add(-MaxJobAge)
-
-	var activeJobs []JobEntry
-	for _, job := range jt.Jobs {
-		if job.CreatedAt.After(cutoffTime) {
-			activeJobs = append(activeJobs, job)
-		}
-	}
-	jt.Jobs = activeJobs
-
-	// Clear circuits when all jobs are filtered out
+	// Deliberately does not prune: creation saves a batch about 30s before the export pass
+	// runs, so a prune here would evict a job that crossed the cutoff between two passes
+	// before export could count it, and expiry would go unreported. ExportJobResults owns it.
 	if len(jt.Jobs) == 0 {
 		jt.Circuits = nil
 	}
@@ -129,16 +124,19 @@ func (jt *State) AddJobIDs(newJobIDs []string) error {
 	return jt.Save()
 }
 
-func (jt *State) AddJobIDsWithCircuits(newJobIDs []string, circuits []string) error {
+// AddJobIDsWithCircuits records a creation pass. createdAt must be when the pass started:
+// the vendor's expiry clock runs per job and a 435-pair pass takes minutes, so the end time
+// understates the earliest jobs' age by more than ExpiryGrace and they outlive their
+// results while still being polled.
+func (jt *State) AddJobIDsWithCircuits(newJobIDs []string, circuits []string, createdAt time.Time) error {
 	if err := jt.Load(); err != nil {
 		return err
 	}
 
-	now := time.Now()
 	for _, jobID := range newJobIDs {
 		jt.Jobs = append(jt.Jobs, JobEntry{
 			JobID:     jobID,
-			CreatedAt: now,
+			CreatedAt: createdAt,
 		})
 	}
 	jt.Circuits = circuits
@@ -170,6 +168,26 @@ func (jt *State) RemoveJobIDs(jobIDsToRemove []string) error {
 	}
 
 	return jt.Save()
+}
+
+// PruneExpired drops every job whose results WheresItUp has already discarded and returns
+// the IDs it dropped. It is the only expiry predicate in the package, and ExportJobResults is
+// its only caller, so every eviction is counted and logged once from one reading of the clock.
+func (jt *State) PruneExpired(now time.Time) []string {
+	cutoffTime := now.Add(-MaxJobAge)
+
+	var activeJobs []JobEntry
+	var expiredJobIDs []string
+	for _, job := range jt.Jobs {
+		if job.CreatedAt.After(cutoffTime) {
+			activeJobs = append(activeJobs, job)
+			continue
+		}
+		expiredJobIDs = append(expiredJobIDs, job.JobID)
+	}
+	jt.Jobs = activeJobs
+
+	return expiredJobIDs
 }
 
 func (jt *State) GetJobIDs() []string {

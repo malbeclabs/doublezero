@@ -8,7 +8,7 @@ use crate::{
     state::{
         accounttype::AccountType,
         feature_flags::{is_feature_enabled, FeatureFlag},
-        feed::{Feed, FeedStatus},
+        feed::{Feed, FeedChain, FeedStatus},
         globalstate::GlobalState,
         permission::permission_flags,
         stake_mirror::StakeMirror,
@@ -60,6 +60,8 @@ pub struct FeedCreateArgs {
     /// Committed rate in bits per second, `u64::MAX` for the unmetered tier.
     #[incremental(default = 0)]
     pub committed_rate_bits_per_sec: u64,
+    #[incremental(default = FeedChain::Unspecified)]
+    pub feed_chain: FeedChain,
 }
 
 pub fn process_create_feed(
@@ -159,6 +161,7 @@ pub fn process_create_feed(
         },
         halted_by: Pubkey::default(),
         retires_at: 0,
+        feed_chain: value.feed_chain,
     };
 
     try_acc_create(

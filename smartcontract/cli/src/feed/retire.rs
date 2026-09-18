@@ -90,7 +90,7 @@ mod tests {
         let res = block_on(
             RetireFeedCliCommand {
                 target: FeedTargetArgs {
-                    pubkey: Some(feed_pk.to_string()),
+                    pubkey: vec![feed_pk.to_string()],
                     code: None,
                     exchange: None,
                 },

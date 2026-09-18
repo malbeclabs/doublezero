@@ -87,7 +87,7 @@ mod tests {
         let res = block_on(
             DeleteFeedCliCommand {
                 target: FeedTargetArgs {
-                    pubkey: Some(f.feed_pk.to_string()),
+                    pubkey: vec![f.feed_pk.to_string()],
                     code: None,
                     exchange: None,
                 },
@@ -139,7 +139,7 @@ mod tests {
         let res = block_on(
             DeleteFeedCliCommand {
                 target: FeedTargetArgs {
-                    pubkey: Some(f.feed_pk.to_string()),
+                    pubkey: vec![f.feed_pk.to_string()],
                     code: None,
                     exchange: None,
                 },
@@ -229,7 +229,7 @@ mod tests {
         let res = block_on(
             DeleteFeedCliCommand {
                 target: FeedTargetArgs {
-                    pubkey: None,
+                    pubkey: vec![],
                     code: Some("feed01".to_string()),
                     exchange: Some("xchi".to_string()),
                 },

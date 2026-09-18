@@ -23,7 +23,7 @@ use doublezero_serviceability::{
     state::{
         accounttype::AccountType,
         feature_flags::FeatureFlag,
-        feed::{Feed, FeedStatus},
+        feed::{Feed, FeedChain, FeedStatus},
         globalstate::GlobalState,
         stake_mirror::{StakeMirror, StakeTier},
     },
@@ -153,6 +153,7 @@ async fn staked_feed_owned_by(
             spec_id: "top-of-book@v1.0.0".to_string(),
             sla_hash: [9u8; 32],
             committed_rate_bits_per_sec: ONE_GBPS,
+            ..Default::default()
         }),
         feed_accounts(feed, globalstate),
         &payer,
@@ -361,6 +362,7 @@ fn halted_feed(
         status: FeedStatus::Halted,
         halted_by,
         retires_at: 0,
+        feed_chain: FeedChain::Unspecified,
     };
 
     let (mirror_key, mirror_bump) = get_stake_mirror_pda(&program_id, &stake_ref);
@@ -573,6 +575,7 @@ fn retiring_feed(
         status: FeedStatus::Retiring,
         halted_by: Pubkey::default(),
         retires_at,
+        feed_chain: FeedChain::Unspecified,
     };
     (feed_key, borsh::to_vec(&feed).unwrap())
 }
@@ -1217,6 +1220,7 @@ async fn test_a_feed_cannot_activate_beyond_its_stake() {
         status: FeedStatus::Pending,
         halted_by: Pubkey::default(),
         retires_at: 0,
+        feed_chain: FeedChain::Unspecified,
     })
     .unwrap();
 
@@ -1337,6 +1341,7 @@ async fn test_a_builder_in_the_foundation_allowlist_still_cannot_activate() {
         status: FeedStatus::Pending,
         halted_by: Pubkey::default(),
         retires_at: 0,
+        feed_chain: FeedChain::Unspecified,
     };
     program_test.add_account(
         feed_key,
@@ -1461,6 +1466,7 @@ async fn test_a_seeded_feed_matches_what_create_feed_writes() {
             spec_id: "top-of-book@v1.0.0".to_string(),
             sla_hash: [9u8; 32],
             committed_rate_bits_per_sec: ONE_GBPS,
+            ..Default::default()
         }),
         feed_accounts(feed_key, globalstate),
         &payer,
@@ -1492,6 +1498,7 @@ async fn test_a_seeded_feed_matches_what_create_feed_writes() {
         status: FeedStatus::Pending,
         halted_by: Pubkey::default(),
         retires_at: 0,
+        feed_chain: FeedChain::Unspecified,
     };
 
     assert_eq!(

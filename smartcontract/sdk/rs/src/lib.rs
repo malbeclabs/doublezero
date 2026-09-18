@@ -18,7 +18,7 @@ pub use doublezero_serviceability::{
         contributor::{Contributor, ContributorStatus},
         device::{Device, DeviceStatus, DeviceType},
         exchange::{Exchange, ExchangeStatus, BGP_COMMUNITY_MAX, BGP_COMMUNITY_MIN},
-        feed::Feed,
+        feed::{Feed, FeedChain},
         globalconfig::GlobalConfig,
         globalstate::GlobalState,
         interface::{Interface, InterfaceDeprecated, InterfaceStatus, InterfaceType, LoopbackType},

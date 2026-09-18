@@ -20,7 +20,7 @@ use doublezero_serviceability::{
     state::{
         accounttype::AccountType,
         feature_flags::FeatureFlag,
-        feed::{Feed, FeedStatus},
+        feed::{Feed, FeedChain, FeedStatus},
         permission::permission_flags,
         stake_mirror::{StakeMirror, StakeTier},
     },
@@ -44,6 +44,7 @@ fn staked_args(code: &str, exchange: Pubkey) -> FeedCreateArgs {
         spec_id: "top-of-book@v1.0.0".to_string(),
         sla_hash: [9u8; 32],
         committed_rate_bits_per_sec: 1_000_000_000,
+        ..Default::default()
     }
 }
 
@@ -135,6 +136,7 @@ async fn test_feed_create_get_update_delete() {
         DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
             name: Some("Shreds v2".to_string()),
             groups: Some(new_groups.clone()),
+            feed_chain: None,
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),
@@ -168,6 +170,59 @@ async fn test_feed_create_get_update_delete() {
     .await;
 
     assert_eq!(get_account_data(&mut banks_client, feed_pubkey).await, None);
+}
+
+#[tokio::test]
+async fn test_feed_create_and_update_persist_chain() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "shreds", &exchange);
+    let accounts = vec![
+        AccountMeta::new(feed_pubkey, false),
+        AccountMeta::new(globalstate_pubkey, false),
+    ];
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
+            code: "shreds".to_string(),
+            name: "Shreds".to_string(),
+            exchange,
+            groups: vec![Pubkey::new_unique()],
+            feed_chain: FeedChain::Solana,
+            ..Default::default()
+        }),
+        accounts.clone(),
+        &payer,
+    )
+    .await;
+
+    let feed = get_feed(&mut banks_client, feed_pubkey).await;
+    assert_eq!(feed.feed_chain, FeedChain::Solana);
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
+            name: None,
+            groups: None,
+            feed_chain: Some(FeedChain::Hyperliquid),
+        }),
+        accounts,
+        &payer,
+    )
+    .await;
+
+    let feed = get_feed(&mut banks_client, feed_pubkey).await;
+    assert_eq!(feed.feed_chain, FeedChain::Hyperliquid);
+    assert_eq!(feed.code, "shreds");
 }
 
 #[tokio::test]

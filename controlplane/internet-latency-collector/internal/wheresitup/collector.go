@@ -496,9 +496,9 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 				slog.Int("expired_count", len(expiredJobIDs)),
 				slog.String("error", err.Error()))
 		} else {
-			// Counted only once the prune reaches disk. RemoveJobIDs reloads the file at the
-			// end of the pass, so a failed save leaves these jobs tracked to be pruned again
-			// next cycle, and counting here too would report them twice.
+			// Counted only once the prune reaches disk: RemoveJobIDs reloads the file at the
+			// end of the pass, so a failed save leaves these jobs to be pruned and counted
+			// again next cycle.
 			metrics.WheresitupExpiredJobsTotal.Add(float64(len(expiredJobIDs)))
 		}
 	}

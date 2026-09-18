@@ -166,7 +166,7 @@ pub fn process_delete_user(
     if let Some(expected) = expected {
         let actual = AccessPassKind::from(&accesspass.accesspass_type);
         if actual != expected {
-            msg!("this instruction deletes a user on a {expected} pass, but the pass is {actual}");
+            msg!("This instruction deletes a user on a {expected} pass, but the pass is {actual}");
             return Err(DoubleZeroError::InvalidAccessPassType.into());
         }
     }

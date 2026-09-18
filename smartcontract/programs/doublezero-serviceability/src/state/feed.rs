@@ -46,7 +46,7 @@ impl fmt::Display for FeedStatus {
     }
 }
 
-/// The chain a feed publishes for. Monthly rewards copy this onto each `FeedDistribution`.
+/// The chain a feed publishes for.
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Eq, Clone, Copy, Default)]
 #[borsh(use_discriminant = true)]

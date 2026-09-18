@@ -109,7 +109,7 @@ mod tests {
         let res = block_on(
             ActivateFeedCliCommand {
                 target: FeedTargetArgs {
-                    pubkey: Some(feed_pk.to_string()),
+                    pubkey: vec![feed_pk.to_string()],
                     code: None,
                     exchange: None,
                 },
@@ -153,7 +153,7 @@ mod tests {
         let res = block_on(
             ActivateFeedCliCommand {
                 target: FeedTargetArgs {
-                    pubkey: Some(feed_pk.to_string()),
+                    pubkey: vec![feed_pk.to_string()],
                     code: None,
                     exchange: None,
                 },

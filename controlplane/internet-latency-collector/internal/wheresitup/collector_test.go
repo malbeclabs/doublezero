@@ -1262,8 +1262,8 @@ func TestInitializeCreditBalance(t *testing.T) {
 	})
 }
 
-// writeJobState writes a state file directly so tests can control job ages, which
-// State.Save() cannot express (it prunes old entries on write).
+// writeJobState writes a state file directly so tests can set arbitrary per-job ages, which
+// the Add* helpers cannot express: they stamp every job in a call from one clock.
 func writeJobState(t *testing.T, filename string, jobs []JobEntry, circuits []string) {
 	t.Helper()
 	data, err := json.Marshal(struct {

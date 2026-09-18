@@ -487,7 +487,6 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 	// here, not with the completed jobs below, so it survives an early return on write failure.
 	expiredJobIDs := state.PruneExpired(time.Now())
 	if len(expiredJobIDs) > 0 {
-		metrics.WheresitupExpiredJobsTotal.Add(float64(len(expiredJobIDs)))
 		c.log.Info("Wheresitup - Dropping expired jobs from tracking without polling",
 			slog.Int("expired_count", len(expiredJobIDs)),
 			slog.Duration("max_job_age", MaxJobAge))
@@ -496,6 +495,11 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 				slog.String("file", jobIDsFile),
 				slog.Int("expired_count", len(expiredJobIDs)),
 				slog.String("error", err.Error()))
+		} else {
+			// Counted only once the prune reaches disk. RemoveJobIDs reloads the file at the
+			// end of the pass, so a failed save leaves these jobs tracked to be pruned again
+			// next cycle, and counting here too would report them twice.
+			metrics.WheresitupExpiredJobsTotal.Add(float64(len(expiredJobIDs)))
 		}
 	}
 

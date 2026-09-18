@@ -160,11 +160,11 @@ var knownIncompatibilities = map[string]knownIncompat{
 	"write/device_interface_delete_3": {ranges: []versionRange{{before: "0.19.0"}}},
 	"write/device_interface_delete_4": {ranges: []versionRange{{before: "0.19.0"}}},
 
-	// malbeclabs/infra#2470 split the single DeleteUser (variant 42) and CloseAccessPass
-	// (variant 69) instructions into one variant per access pass type. Variants 42 and 69
-	// now return DoubleZeroError::Deprecated, and the `user delete` / `access-pass close`
-	// CLI verbs gained a required type flag the old binaries don't send. Old CLIs can't
-	// pass these steps against the upgraded program. This ships in 0.42.0.
+	// malbeclabs/infra#2470 gave `user delete` and `access-pass close` a required
+	// --accesspass-type flag, which older binaries do not accept, so these steps fail at
+	// argument parsing for them. Variants 42 and 69 still work and still skip the pass type
+	// check, so this is a CLI break only; deprecating them is a follow-up, once the
+	// doublezero-shreds oracle has moved off them. This ships in 0.42.0.
 	"write/user_delete":        {ranges: before("0.42.0")},
 	"write/user_delete_2":      {ranges: before("0.42.0")},
 	"write/accesspass_close":   {ranges: before("0.42.0")},

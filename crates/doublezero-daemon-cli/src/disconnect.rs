@@ -11,7 +11,6 @@ use backon::{BlockingRetryable, ExponentialBuilder};
 use clap::{Args, ValueEnum};
 use doublezero_cli_core::CliContext;
 use doublezero_sdk::UserType;
-use doublezero_serviceability::state::accesspass::AccessPassKind;
 use indicatif::ProgressBar;
 use solana_sdk::pubkey::Pubkey;
 
@@ -171,28 +170,18 @@ impl Disconnect {
 
             spinner.inc(1);
             writeln!(out, "⚡  Removing account: {pubkey}")?;
-            // This is a self delete with no operator to state a kind, and the handler already
-            // checks the owner and the client IP. The kind therefore comes from the pass
-            // itself — which means the program's per-kind refusal cannot fire on this path:
-            // the value we assert and the value the program checks both come from the same
-            // account, read moments apart, so a mismatch can never be caught here.
+            // A self delete, with no operator to state a kind, and the handler already checks
+            // the owner and the client IP. `None` takes the kind from the pass the delete
+            // itself resolves. Reading it here instead would use a different lookup than the
+            // one the delete sends: for a user recording an access pass those name different
+            // accounts, and the declared kind would then contradict the account in the
+            // transaction. The program's per-kind refusal cannot fire on this path either way.
             let accesspass_pk = if user.accesspass_pk == Pubkey::default() {
                 self.access_pass
             } else {
                 None
             };
-            match ledger
-                .get_accesspass(user.client_ip, user.owner)
-                .and_then(|accesspass| {
-                    accesspass.ok_or_else(|| eyre::eyre!("no access pass found for user {pubkey}"))
-                })
-                .and_then(|accesspass| {
-                    ledger.delete_user(
-                        *pubkey,
-                        accesspass_pk,
-                        AccessPassKind::from(&accesspass.accesspass_type),
-                    )
-                }) {
+            match ledger.delete_user(*pubkey, accesspass_pk, None) {
                 Ok(_) => {
                     writeln!(out, "    Account deletion submitted")?;
                 }
@@ -574,7 +563,7 @@ mod tests {
             .with(
                 predicate::eq(user_pk),
                 predicate::eq(Some(accesspass_pk)),
-                predicate::eq(AccessPassKind::Prepaid),
+                predicate::eq(None),
             )
             .once()
             .returning(|_, _, _| Err(eyre::eyre!("simulated not found")));
@@ -630,7 +619,7 @@ mod tests {
             .with(
                 predicate::eq(user_pk),
                 predicate::eq(None),
-                predicate::eq(AccessPassKind::Prepaid),
+                predicate::eq(None),
             )
             .once()
             .returning(|_, _, _| Err(eyre::eyre!("simulated not found")));
@@ -723,7 +712,7 @@ mod tests {
             .with(
                 predicate::eq(self_owned_pk),
                 predicate::eq(None),
-                predicate::eq(AccessPassKind::Prepaid),
+                predicate::eq(None),
             )
             .once()
             .returning(|_, _, _| Err(eyre::eyre!("simulated not found")));
@@ -742,7 +731,7 @@ mod tests {
     /// default: this seeds a SolanaValidator pass and asserts that exact kind is threaded
     /// through, which a hardcoded-Prepaid implementation would fail.
     #[test]
-    fn test_delete_users_sends_the_kind_read_from_a_non_prepaid_pass() {
+    fn test_delete_users_declares_no_kind_for_a_non_prepaid_pass() {
         let mut ledger = MockLedgerClient::new();
         let payer = Pubkey::new_unique();
         let feed_authority = Pubkey::new_unique();
@@ -758,22 +747,14 @@ mod tests {
         ledger
             .expect_list_user()
             .returning(move || Ok(users.clone()));
-        ledger
-            .expect_get_accesspass()
-            .with(predicate::eq(ip), predicate::eq(payer))
-            .returning(move |client_ip, user_payer| {
-                Ok(Some(make_test_accesspass(
-                    client_ip,
-                    user_payer,
-                    AccessPassType::SolanaValidator(Pubkey::new_unique()),
-                )))
-            });
+        // No get_accesspass expectation: disconnect must not read the pass to pick a kind.
+        // The mock panics if it does, which is the point of this test.
         ledger
             .expect_delete_user()
             .with(
                 predicate::eq(user_pk),
                 predicate::eq(None),
-                predicate::eq(AccessPassKind::SolanaValidator),
+                predicate::eq(None),
             )
             .once()
             .returning(|_, _, _| Err(eyre::eyre!("simulated not found")));
@@ -848,7 +829,7 @@ mod tests {
                 .with(
                     predicate::eq(user_pk),
                     predicate::eq(None),
-                    predicate::eq(AccessPassKind::Prepaid),
+                    predicate::eq(None),
                 )
                 .once()
                 .returning(|_, _, _| Ok(()));

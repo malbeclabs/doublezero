@@ -2,17 +2,14 @@ use std::time::Duration;
 
 use crate::{
     commands::{
-        accesspass::{
-            get::resolve_user_accesspass, list::ListAccessPassCommand, set::SetAccessPassCommand,
-        },
+        accesspass::{list::ListAccessPassCommand, set::SetAccessPassCommand},
         user::{delete::DeleteUserCommand, list::ListUserCommand},
     },
     DoubleZeroClient,
 };
 use backon::{BlockingRetryable, ExponentialBuilder};
 use doublezero_serviceability::{
-    processors::tenant::delete::TenantDeleteArgs,
-    state::{accesspass::AccessPassKind, accountdata::AccountData},
+    processors::tenant::delete::TenantDeleteArgs, state::accountdata::AccountData,
 };
 use doublezero_serviceability_instruction::tenant::delete_tenant;
 use eyre::WrapErr;
@@ -35,25 +32,18 @@ impl DeleteTenantCommand {
                 .collect();
 
             for (user_pk, user) in &tenant_users {
-                // This cascade removes every user under the tenant, whatever kind of
-                // access pass each one holds; there is no single operator-declared kind
-                // to state here, so the kind comes from the pass itself. That means the
-                // program's per-kind refusal cannot fire on this path: the value we assert
-                // and the value the program checks both come from the same account, read
-                // moments apart, so a mismatch can never be caught here. Forcing a declared
-                // kind would turn "delete every user under this tenant" into "delete only
-                // users of one kind", stranding the tenant record, since the code below
-                // waits for reference_count to reach 0.
-                //
-                // DeleteUserCommand reads the pass again, so each user costs two fetches. The
-                // alternative is a command that derives its own kind, which is the thing the
-                // declared kind exists to prevent. Two reads is the cheaper mistake.
-                let (_, accesspass) = resolve_user_accesspass(client, *user_pk, user, None)?;
-
+                // This cascade removes every user under the tenant, whatever kind of access
+                // pass each one holds, so there is no single operator-declared kind to state
+                // here: `None` tells the command to take the kind from the pass it resolves.
+                // Forcing one declared kind would turn "delete every user under this tenant"
+                // into "delete only users of one kind", stranding the tenant record, since
+                // the code below waits for reference_count to reach 0. The program's per-kind
+                // refusal cannot fire on this path, because both sides then come from the one
+                // account the transaction names.
                 let result = DeleteUserCommand {
                     pubkey: *user_pk,
                     accesspass_pk: None,
-                    kind: AccessPassKind::from(&accesspass.accesspass_type),
+                    kind: None,
                 }
                 .execute(client);
                 if user.accesspass_pk == Pubkey::default() {

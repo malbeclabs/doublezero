@@ -47,13 +47,14 @@ pub trait LedgerClient: Send + Sync {
     /// List all users on the ledger.
     fn list_user(&self) -> eyre::Result<HashMap<Pubkey, User>>;
 
-    /// Delete the user account at `pubkey`. `kind` names the kind of access pass the user
-    /// holds; the program refuses the call when the stored pass is a different kind.
+    /// Delete the user account at `pubkey`. `kind` is the kind of access pass the caller means
+    /// to remove; `None` takes it from the pass the delete resolves, which is what a self
+    /// delete wants since no operator is there to declare one.
     fn delete_user(
         &self,
         pubkey: Pubkey,
         accesspass_pk: Option<Pubkey>,
-        kind: AccessPassKind,
+        kind: Option<AccessPassKind>,
     ) -> eyre::Result<()>;
 
     /// Fetch the user account at `pubkey` (used to poll for deletion).

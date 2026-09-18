@@ -110,7 +110,7 @@ mod tests {
             .expect_delete_user()
             .with(predicate::eq(DeleteUserCommand::new(
                 pda_pubkey,
-                AccessPassKind::Prepaid,
+                Some(AccessPassKind::Prepaid),
             )))
             .returning(move |_| Ok(signature));
         client

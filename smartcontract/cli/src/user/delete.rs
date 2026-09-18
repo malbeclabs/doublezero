@@ -43,7 +43,7 @@ impl DeleteUserCliCommand {
         let signature = client.delete_user(DeleteUserCommand {
             pubkey,
             accesspass_pk,
-            kind: self.accesspass_type.into(),
+            kind: Some(self.accesspass_type.into()),
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -123,7 +123,7 @@ mod tests {
             .with(predicate::eq(DeleteUserCommand {
                 pubkey: pda_pubkey,
                 accesspass_pk: Some(accesspass_pk),
-                kind: AccessPassKind::Prepaid,
+                kind: Some(AccessPassKind::Prepaid),
             }))
             .returning(move |_| Ok(signature));
 

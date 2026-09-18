@@ -15,7 +15,8 @@ func TestLoadOrMigrateState_ExistingStateFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	enabled, err := LoadOrMigrateState(dir)
+	enabledState, err := LoadOrMigrateState(dir)
+	enabled := enabledState.ReconcilerEnabled
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +33,8 @@ func TestLoadOrMigrateState_ExistingStateFileDisabled(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	enabled, err := LoadOrMigrateState(dir)
+	enabledState, err := LoadOrMigrateState(dir)
+	enabled := enabledState.ReconcilerEnabled
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +53,8 @@ func TestLoadOrMigrateState_MigrationFromOldFileWithEntries(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	enabled, err := LoadOrMigrateState(dir)
+	enabledState, err := LoadOrMigrateState(dir)
+	enabled := enabledState.ReconcilerEnabled
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +68,8 @@ func TestLoadOrMigrateState_MigrationFromOldFileWithEntries(t *testing.T) {
 	}
 
 	// New state file should exist with enabled=true
-	newEnabled, err := LoadOrMigrateState(dir)
+	newEnabledState, err := LoadOrMigrateState(dir)
+	newEnabled := newEnabledState.ReconcilerEnabled
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +87,8 @@ func TestLoadOrMigrateState_MigrationFromOldFileEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	enabled, err := LoadOrMigrateState(dir)
+	enabledState, err := LoadOrMigrateState(dir)
+	enabled := enabledState.ReconcilerEnabled
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -106,7 +111,8 @@ func TestLoadOrMigrateState_MigrationFromOldFileEmptyObject(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	enabled, err := LoadOrMigrateState(dir)
+	enabledState, err := LoadOrMigrateState(dir)
+	enabled := enabledState.ReconcilerEnabled
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +135,8 @@ func TestLoadOrMigrateState_MigrationFromOldFileZeroBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	enabled, err := LoadOrMigrateState(dir)
+	enabledState, err := LoadOrMigrateState(dir)
+	enabled := enabledState.ReconcilerEnabled
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,7 +153,8 @@ func TestLoadOrMigrateState_MigrationFromOldFileZeroBytes(t *testing.T) {
 func TestLoadOrMigrateState_FreshInstall(t *testing.T) {
 	dir := t.TempDir()
 
-	enabled, err := LoadOrMigrateState(dir)
+	enabledState, err := LoadOrMigrateState(dir)
+	enabled := enabledState.ReconcilerEnabled
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +176,7 @@ func TestLoadOrMigrateState_FreshInstall(t *testing.T) {
 func TestWriteState(t *testing.T) {
 	dir := t.TempDir()
 
-	if err := WriteState(dir, true); err != nil {
+	if err := WriteState(dir, State{ReconcilerEnabled: true}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -181,7 +189,7 @@ func TestWriteState(t *testing.T) {
 	}
 
 	// Overwrite with false
-	if err := WriteState(dir, false); err != nil {
+	if err := WriteState(dir, State{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -198,7 +206,7 @@ func TestWriteState_CreatesDirectory(t *testing.T) {
 	dir := t.TempDir()
 	nested := filepath.Join(dir, "nested", "dir")
 
-	if err := WriteState(nested, true); err != nil {
+	if err := WriteState(nested, State{ReconcilerEnabled: true}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -249,7 +257,8 @@ func TestLoadOrMigrateState_MigrationWithNonArrayContent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	enabled, err := LoadOrMigrateState(dir)
+	enabledState, err := LoadOrMigrateState(dir)
+	enabled := enabledState.ReconcilerEnabled
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +283,8 @@ func TestLoadOrMigrateState_StateFileTakesPrecedenceOverOldFile(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	enabled, err := LoadOrMigrateState(dir)
+	enabledState, err := LoadOrMigrateState(dir)
+	enabled := enabledState.ReconcilerEnabled
 	if err != nil {
 		t.Fatal(err)
 	}

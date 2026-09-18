@@ -30,6 +30,41 @@ const (
 	updateInstalledRoutesGaugeInterval = 10 * time.Second
 )
 
+// restoreClientIPPin decides whether a pin loaded from the state file may be used as this
+// run's client IP, returning it when it may and "" to fall back to discovery.
+//
+// `/enable` checks local assignment before accepting a pin, but that says nothing about now:
+// an address can leave with a DHCP lease, a NIC swap or a re-addressing while the daemon is
+// down. Coming back up pinned to an address the kernel no longer holds, the reconciler would
+// match no onchain user and build no tunnel, and there is no un-pin path short of editing the
+// state file — so the check is repeated here rather than trusted from whenever it last ran.
+//
+// A rejected pin is dropped rather than kept dormant. Holding an address the daemon is not using
+// is the worse failure: it would be reported as the pin in effect, written back by the next state
+// write, and applied again on some later restart once the address happened to return — a silent
+// address migration triggered by nothing the operator did, and a state file that disagrees with
+// the running daemon in the meantime. The warning says so, and re-pinning is one `connect
+// --client-ip` away.
+//
+// An enumeration failure keeps the pin: that is a failure to check, not a failed check.
+func restoreClientIPPin(pinned string, isAssigned func(net.IP) (bool, error)) string {
+	ip := net.ParseIP(pinned)
+	if ip == nil || ip.To4() == nil {
+		slog.Warn("reconciler: ignoring unusable pinned client IP, falling back to discovery", "pinned", pinned)
+		return ""
+	}
+	assigned, err := isAssigned(ip.To4())
+	if err != nil {
+		slog.Warn("reconciler: could not verify pinned client IP, using it anyway", "pinned", pinned, "error", err)
+		return pinned
+	}
+	if !assigned {
+		slog.Warn("reconciler: pinned client IP is not assigned to any interface that is up on this host, falling back to discovery; the pin is dropped, re-pin with `doublezero connect --client-ip` once the address is back", "pinned", pinned)
+		return ""
+	}
+	return pinned
+}
+
 func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics, latencyProbeTunnelEndpoints, latencySingleSocket bool, networkConfig *config.NetworkConfig, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig, clientIP string, reconcilerPollInterval int, reconcilerFetchTimeout int, stateDir string, onchainRPCTimeout time.Duration) error {
 	nlr := routing.Netlink{}
 	var crw bgp.RouteReaderWriter
@@ -80,17 +115,31 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	svcClient := serviceability.New(dzrpc.NewWithRetries(networkConfig.LedgerPublicRPCURL, nil), pid)
 	cachingFetcher := onchain.NewCachingFetcher(svcClient, onchain.DefaultCacheTTL, onchainRPCTimeout)
 
-	ip, method, err := DiscoverClientIP(clientIP)
+	state, err := manager.LoadOrMigrateState(stateDir)
+	if err != nil {
+		return fmt.Errorf("error loading reconciler state: %w", err)
+	}
+	slog.Info("reconciler: loaded state", "enabled", state.ReconcilerEnabled, "client_ip", state.ClientIP)
+
+	// Precedence: the daemon's own -client-ip flag, then an address pinned by a previous
+	// `connect --client-ip`, then discovery. The flag comes from the unit file and is the
+	// operator's standing configuration for this host, so it outranks a pin left by a
+	// connection; without it, restoring the pin is what keeps a restart from reverting the
+	// host to its discovered address and tearing the tunnel down.
+	effectiveClientIP := clientIP
+	pinnedClientIP := state.ClientIP
+	if clientIP == "" && state.ClientIP != "" {
+		// One value for both: a pin this host cannot use is not the pin in effect either, so it
+		// is neither used nor reported nor written back.
+		pinnedClientIP = restoreClientIPPin(state.ClientIP, manager.IsLocallyAssigned)
+		effectiveClientIP = pinnedClientIP
+	}
+
+	ip, method, err := DiscoverClientIP(effectiveClientIP)
 	if err != nil {
 		return fmt.Errorf("client IP discovery failed: %w", err)
 	}
 	slog.Info("reconciler: discovered client IP", "ip", ip.String(), "method", method)
-
-	reconcilerEnabled, err := manager.LoadOrMigrateState(stateDir)
-	if err != nil {
-		return fmt.Errorf("error loading reconciler state: %w", err)
-	}
-	slog.Info("reconciler: loaded state", "enabled", reconcilerEnabled)
 
 	if reconcilerPollInterval < 1 {
 		return fmt.Errorf("reconciler poll interval must be >= 1 second, got %d", reconcilerPollInterval)
@@ -120,7 +169,8 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		manager.WithFetcher(cachingFetcher),
 		manager.WithPollInterval(pollInterval),
 		manager.WithFetchTimeout(fetchTimeout),
-		manager.WithEnabled(reconcilerEnabled),
+		manager.WithEnabled(state.ReconcilerEnabled),
+		manager.WithPinnedClientIP(pinnedClientIP),
 		manager.WithStateDir(stateDir),
 		manager.WithNetwork(networkConfig.Moniker),
 	}

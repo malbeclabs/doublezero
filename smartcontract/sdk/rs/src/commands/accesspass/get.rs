@@ -41,6 +41,55 @@ impl GetAccessPassCommand {
     }
 }
 
+/// Fetch the AccessPass stored at the exact `(client_ip, user_payer)` PDA.
+///
+/// Unlike [`GetAccessPassCommand`], this never falls back to the dynamic (0.0.0.0) pass.
+/// `connect --client-ip` needs exactly that distinction: the flag is honored only for a pass
+/// whose address an issuing authority pinned, and the wildcard-first resolution above would
+/// answer such a query with a dynamic pass — one that authorizes any address at all, which is
+/// the case the flag must refuse.
+#[derive(Debug, PartialEq, Clone)]
+pub struct GetExactAccessPassCommand {
+    pub client_ip: Ipv4Addr,
+    pub user_payer: Pubkey,
+}
+
+impl GetExactAccessPassCommand {
+    pub fn execute(
+        &self,
+        client: &dyn DoubleZeroClient,
+    ) -> eyre::Result<Option<(Pubkey, AccessPass)>> {
+        // A pass at the UNSPECIFIED PDA is the dynamic pass by construction, so an exact
+        // lookup for it would contradict the name. Refuse rather than quietly resolving it.
+        if self.client_ip == Ipv4Addr::UNSPECIFIED {
+            return Ok(None);
+        }
+        let program_id = client.get_program_id();
+        let (pubkey, _) = get_accesspass_pda(&program_id, &self.client_ip, &self.user_payer);
+        match client.get(pubkey) {
+            Ok(AccountData::AccessPass(accesspass)) => Ok(Some((pubkey, accesspass))),
+            Ok(_) => Ok(None),
+            // `GetAccessPassCommand` can fold an error into `None` because a second lookup
+            // follows it; here the lookup *is* the answer, so an unreachable or misconfigured
+            // ledger would otherwise render as "this payer holds no pass" and send an operator
+            // off to have one reissued. Only a genuinely absent account is `None`. The RPC
+            // reports that as `AccountNotFound` and offers no typed form of it through this
+            // trait, so the string is what there is to match; misreading one as absent is the
+            // behaviour this replaces, and the transport errors worth retrying have already
+            // been retried by the client.
+            Err(err) => {
+                if format!("{err:#}").contains("AccountNotFound") {
+                    Ok(None)
+                } else {
+                    Err(err).wrap_err_with(|| {
+                        format!("reading the AccessPass at {pubkey} for {}", self.user_payer)
+                    })
+                }
+            }
+        }
+    }
+}
+
 pub fn resolve_user_accesspass(
     client: &dyn DoubleZeroClient,
     user_pk: Pubkey,
@@ -134,7 +183,9 @@ fn format_accesspass_choices(candidates: &[(Pubkey, AccessPass)]) -> String {
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::accesspass::get::{resolve_user_accesspass, GetAccessPassCommand},
+        commands::accesspass::get::{
+            resolve_user_accesspass, GetAccessPassCommand, GetExactAccessPassCommand,
+        },
         tests::utils::create_test_client,
         DoubleZeroClient,
     };
@@ -171,6 +222,105 @@ mod tests {
             multicast_user_count: 0,
             max_multicast_users: 1,
         }
+    }
+
+    /// The whole point of the exact command: a dynamic pass must not answer for an address.
+    #[test]
+    fn test_get_exact_accesspass_never_resolves_the_dynamic_pass() {
+        let mut client = create_test_client();
+        let program_id = client.get_program_id();
+        let client_ip: Ipv4Addr = [203, 0, 113, 9].into();
+        let payer = Pubkey::new_unique();
+
+        let (exact_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &payer);
+        // Only the exact PDA is ever queried, and it holds nothing.
+        client
+            .expect_get()
+            .with(predicate::eq(exact_pubkey))
+            .times(1)
+            .returning(|_| Ok(AccountData::None));
+
+        let res = GetExactAccessPassCommand {
+            client_ip,
+            user_payer: payer,
+        }
+        .execute(&client)
+        .expect("a missing account is not an error");
+        assert!(res.is_none());
+    }
+
+    #[test]
+    fn test_get_exact_accesspass_returns_the_pass_at_that_pda() {
+        let mut client = create_test_client();
+        let program_id = client.get_program_id();
+        let client_ip: Ipv4Addr = [203, 0, 113, 9].into();
+        let payer = Pubkey::new_unique();
+
+        let (exact_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &payer);
+        let pass = sample_accesspass(client_ip, payer);
+        let expected = pass.clone();
+        client
+            .expect_get()
+            .with(predicate::eq(exact_pubkey))
+            .times(1)
+            .returning(move |_| Ok(AccountData::AccessPass(pass.clone())));
+
+        let (pubkey, found) = GetExactAccessPassCommand {
+            client_ip,
+            user_payer: payer,
+        }
+        .execute(&client)
+        .expect("the lookup must succeed")
+        .expect("the pass must be found");
+        assert_eq!(pubkey, exact_pubkey);
+        assert_eq!(found, expected);
+    }
+
+    /// An unreachable or misconfigured ledger must not read as "this payer holds no pass" —
+    /// that is the answer that sends an operator to have a live pass reissued.
+    #[test]
+    fn test_get_exact_accesspass_propagates_a_transport_error() {
+        let mut client = create_test_client();
+        let client_ip: Ipv4Addr = [203, 0, 113, 9].into();
+        let payer = Pubkey::new_unique();
+
+        client
+            .expect_get()
+            .times(1)
+            .returning(|_| Err(eyre::eyre!("error sending request for url (http://ledger)")));
+
+        let err = GetExactAccessPassCommand {
+            client_ip,
+            user_payer: payer,
+        }
+        .execute(&client)
+        .expect_err("a transport failure must not be reported as an absent pass");
+        assert!(
+            format!("{err:#}").contains("reading the AccessPass at"),
+            "unexpected error: {err:#}"
+        );
+    }
+
+    /// The RPC's own way of saying the account is not there still means "no pass".
+    #[test]
+    fn test_get_exact_accesspass_treats_account_not_found_as_absent() {
+        let mut client = create_test_client();
+        let client_ip: Ipv4Addr = [203, 0, 113, 9].into();
+        let payer = Pubkey::new_unique();
+
+        client.expect_get().times(1).returning(|pk| {
+            Err(eyre::eyre!(
+                "AccountNotFound: pubkey={pk}: RPC response error"
+            ))
+        });
+
+        let res = GetExactAccessPassCommand {
+            client_ip,
+            user_payer: payer,
+        }
+        .execute(&client)
+        .expect("AccountNotFound is absence, not failure");
+        assert!(res.is_none());
     }
 
     #[test]

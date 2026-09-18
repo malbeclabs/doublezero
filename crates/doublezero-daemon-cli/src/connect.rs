@@ -32,6 +32,7 @@ use solana_sdk::pubkey::Pubkey;
 
 use crate::{
     client::{DaemonClient, LatencyRecord, StatusResponse},
+    clientip::{validate_client_ip, ClientIpRejection},
     enable::ensure_reconciler_enabled,
     helpers::{init_spinner, resolve_client_ip},
     ip_proof::{HttpIpProofClient, IpProofClient, IpProofError},
@@ -111,9 +112,11 @@ pub struct Connect {
     #[arg(long, default_value_t = false)]
     pub allocate_addr: bool,
 
-    /// [deprecated] Client IP address — ignored; set --client-ip on the daemon (doublezerod) instead
+    /// Client IP address to provision, instead of the one the daemon discovered. Requires an
+    /// AccessPass pinned to this exact address, and the address must be assigned to an
+    /// interface that is up on this host.
     #[arg(long, global = true)]
-    pub client_ip: Option<String>,
+    pub client_ip: Option<Ipv4Addr>,
 
     /// Device Pubkey or code to associate with the user
     #[arg(long, global = true)]
@@ -170,6 +173,100 @@ enum FeedJoinUser {
         device_pk: Pubkey,
         tunnel_endpoint: Ipv4Addr,
     },
+}
+
+/// Resolve the address this connection will provision.
+///
+/// Without `--client-ip` that is whatever the daemon discovered, unchanged. With it, the flag
+/// wins — but only after two checks, because nothing onchain attests a caller-supplied address:
+///
+/// 1. This host must actually hold it (see [`crate::clientip`]). An address the kernel will not
+///    let us source from cannot carry a tunnel, and refusing it here also stops a caller naming
+///    somebody else's address.
+/// 2. The payer must hold an AccessPass pinned to that exact address. A dynamic (`0.0.0.0`) pass
+///    is deliberately not enough: it authorizes any address at all, so honoring a caller-chosen
+///    one against it would let the caller bind an address no authority ever vouched for — the
+///    squatting RFC-27 exists to close. The lookup therefore goes to the exact PDA rather than
+///    through `get_accesspass`, which prefers the dynamic pass and would mask the distinction.
+///    A pass at the exact PDA flagged `allow_multiple_ip` says the same thing as a dynamic one
+///    — any address will do — so it is refused too. This is the predicate `create_user` applies
+///    to decide whether an RFC-27 proof is still required (`accesspass_is_ip_bound`); matching
+///    it here is what turns a late `IpOwnershipProofRequired` into an up-front diagnostic for
+///    the case the flag exists to serve, a host with no obtainable proof.
+async fn resolve_connect_client_ip<D: DaemonClient, L: LedgerClient, W: Write>(
+    explicit: Option<Ipv4Addr>,
+    daemon: &D,
+    ledger: &L,
+    out: &mut W,
+) -> eyre::Result<Ipv4Addr> {
+    resolve_connect_client_ip_with(explicit, daemon, ledger, out, validate_client_ip).await
+}
+
+/// The body of [`resolve_connect_client_ip`], with the local-host check injected so tests can
+/// describe a host's interfaces instead of depending on the machine running them.
+async fn resolve_connect_client_ip_with<D: DaemonClient, L: LedgerClient, W: Write>(
+    explicit: Option<Ipv4Addr>,
+    daemon: &D,
+    ledger: &L,
+    out: &mut W,
+    validate: fn(Ipv4Addr) -> Result<(), ClientIpRejection>,
+) -> eyre::Result<Ipv4Addr> {
+    let Some(client_ip) = explicit else {
+        return resolve_client_ip(daemon).await;
+    };
+
+    if let Err(rejection) = validate(client_ip) {
+        writeln!(
+            out,
+            "❌  --client-ip {client_ip} cannot be used: {rejection}"
+        )?;
+        return Err(eyre::eyre!("--client-ip {client_ip} cannot be used here"));
+    }
+
+    let pinned = ledger
+        .get_accesspass_exact(client_ip, ledger.get_payer())?
+        .filter(|accesspass| !accesspass.allow_multiple_ip());
+    if pinned.is_none() {
+        writeln!(
+            out,
+            "❌  No AccessPass is pinned to {client_ip} for UserPayer: {}",
+            ledger.get_payer()
+        )?;
+        return Err(eyre::eyre!(
+            "--client-ip requires an AccessPass issued for that exact address and not flagged \
+             allow_multiple_ip. A pass that authorizes any address does not authorize a \
+             caller-chosen one; connect without --client-ip to use the address the daemon \
+             discovered."
+        ));
+    }
+
+    // The gate has to predict what `create_user` will evaluate, and what it evaluates is the
+    // pass the *transaction* attaches — which `CreateUserCommand` resolves with
+    // `GetAccessPassCommand`, preferring the dynamic (0.0.0.0) PDA whenever one exists. A payer
+    // holding both passes would clear the check above on the exact one and then have the dynamic
+    // one sent, where `accesspass_is_ip_bound` is false and the proof is required after all:
+    // precisely the late `IpOwnershipProofRequired` this gate exists to turn into an early,
+    // legible refusal. Saying so here is the honest half of the fix; letting the pin choose which
+    // pass is charged for the seat is a larger change than this flag should make.
+    if ledger
+        .get_accesspass(Ipv4Addr::UNSPECIFIED, ledger.get_payer())?
+        .is_some()
+    {
+        writeln!(
+            out,
+            "❌  UserPayer {} also holds a dynamic (0.0.0.0) AccessPass, which takes precedence",
+            ledger.get_payer()
+        )?;
+        return Err(eyre::eyre!(
+            "--client-ip cannot be honored while a dynamic AccessPass exists for this payer: \
+             user creation attaches the dynamic pass, which authorizes any address and so does \
+             not attest {client_ip}. Connect without --client-ip, or have the dynamic pass \
+             removed to use the one pinned to {client_ip}."
+        ));
+    }
+
+    writeln!(out, "    Using --client-ip {client_ip}")?;
+    Ok(client_ip)
 }
 
 /// AccessPass pre-flight: `Ok(false)` when no pass exists for `(client_ip, payer)` so the caller
@@ -499,17 +596,7 @@ impl Connect {
 
         writeln!(out, "⚡  Connecting to {}...", ledger.get_environment())?;
 
-        // Deprecation warning for --client-ip flag
-        if self.client_ip.is_some() {
-            writeln!(
-                out,
-                "⚠️  WARNING: --client-ip on the CLI is deprecated and will be ignored. \
-                 Set --client-ip on the daemon (doublezerod) instead."
-            )?;
-        }
-
-        // Get public IP from daemon
-        let client_ip = resolve_client_ip(daemon).await?;
+        let client_ip = resolve_connect_client_ip(self.client_ip, daemon, ledger, out).await?;
         let client_ip_str = client_ip.to_string();
 
         // No subcommand: provision everything the AccessPass authorizes.
@@ -635,9 +722,15 @@ impl Connect {
         // `user_activated` first: a run where every leg skips must still leave the
         // daemon managing tunnels. Non-fatal, matching `user_activated` — the onchain
         // users are still worth creating if only the local daemon is uncooperative.
-        match ensure_reconciler_enabled(daemon).await {
+        match ensure_reconciler_enabled(daemon, self.client_ip).await {
             Ok(true) => {}
             Ok(false) => writeln!(out, "    Reconciler enabled")?,
+            // A rejected pin is the exception: the address *is* the connection, and the
+            // daemon refuses one this host does not hold. Stopping here means nothing is
+            // created onchain for an address the daemon was never going to serve.
+            Err(e) if self.client_ip.is_some() => {
+                return Err(e.wrap_err(format!("the daemon refused --client-ip {}", client_ip)))
+            }
             Err(e) => writeln!(
                 out,
                 "⚠️  Failed to enable the reconciler: {e}. Tunnels will not be provisioned \
@@ -2230,20 +2323,40 @@ impl Connect {
     ) -> eyre::Result<()> {
         spinner.inc(1);
 
-        // Enable the reconciler (no-op if already enabled).
-        if let Err(e) = daemon.enable().await {
-            // Check if the reconciler is already enabled despite the enable call failing.
-            let already_enabled = daemon
-                .v2_status()
-                .await
-                .map(|s| s.reconciler_enabled)
-                .unwrap_or(false);
-            if !already_enabled {
-                writeln!(
-                    out,
-                    "    Error: failed to enable reconciler: {e}. Tunnel will not be provisioned."
-                )?;
-                return Ok(());
+        // Enable the reconciler, pinning the address when `--client-ip` named one (an
+        // unpinned enable is a no-op if the reconciler is already on).
+        if let Err(e) = daemon.enable(self.client_ip).await {
+            let status = daemon.v2_status().await.ok();
+            match self.client_ip {
+                // A pin cannot be written off as a redundant enable. The daemon refuses an
+                // address this host does not hold, and the user just created onchain names
+                // that address, so treating the refusal as success would leave the operator
+                // waiting on a tunnel the daemon will never build. Only a daemon already
+                // reporting that exact address makes the failure moot.
+                Some(pinned) => {
+                    let adopted = status
+                        .is_some_and(|s| s.reconciler_enabled && s.client_ip == pinned.to_string());
+                    if !adopted {
+                        eyre::bail!(
+                            "the daemon is not provisioning {pinned}: {e}. The onchain user \
+                             exists, but no tunnel will be built until the daemon adopts that \
+                             address."
+                        );
+                    }
+                }
+                // Without a pin the call only had to flip a flag, and an already-enabled
+                // reconciler means it was flipped. Anything else is reported and survived:
+                // the onchain user is still worth having.
+                None => {
+                    if !status.is_some_and(|s| s.reconciler_enabled) {
+                        writeln!(
+                            out,
+                            "    Error: failed to enable reconciler: {e}. Tunnel will not be \
+                             provisioned."
+                        )?;
+                        return Ok(());
+                    }
+                }
             }
         }
 
@@ -2635,7 +2748,7 @@ mod tests {
     use doublezero_config::Environment;
     use doublezero_sdk::{tests::utils::create_temp_config, utils::parse_pubkey};
     use doublezero_serviceability::state::{
-        accesspass::{AccessPass, AccessPassStatus, AccessPassType, FeedSeat},
+        accesspass::{AccessPass, AccessPassStatus, AccessPassType, FeedSeat, ALLOW_MULTIPLE_IP},
         accounttype::AccountType,
         device::{Device, DeviceStatus, DeviceType},
         exchange::{Exchange, ExchangeStatus},
@@ -3027,6 +3140,15 @@ mod tests {
                 )
                 .returning_st(move |_, _| Ok(Some(accesspass.lock().unwrap().clone())));
 
+            // No pass at the dynamic PDA: `--client-ip` asks this to find out whether a dynamic
+            // pass would outrank the pinned one in the transaction, and the fixture's payer holds
+            // only the one keyed on its own address.
+            fixture
+                .ledger
+                .expect_get_accesspass()
+                .with(predicate::eq(Ipv4Addr::UNSPECIFIED), predicate::eq(payer))
+                .returning(|_, _| Ok(None));
+
             let users = fixture.users.clone();
             fixture
                 .ledger
@@ -3117,7 +3239,7 @@ mod tests {
         }
 
         pub fn setup_enable<F: Fn() -> eyre::Result<()> + Send + 'static>(&mut self, f: F) {
-            self.daemon.expect_enable().returning(f);
+            self.daemon.expect_enable().returning(move |_| f());
         }
 
         pub fn add_device(
@@ -3661,7 +3783,6 @@ mod tests {
                     tenant: Some(tenant.code.clone()),
                     allocate_addr: false,
                 }),
-                client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -3698,7 +3819,6 @@ mod tests {
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
                 }),
-                client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -3966,7 +4086,6 @@ mod tests {
                     tenant: Some(tenant.code.clone()),
                     allocate_addr: false,
                 }),
-                client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -3998,7 +4117,6 @@ mod tests {
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
                 }),
-                client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -4016,14 +4134,13 @@ mod tests {
             let mut fixture = TestFixture::new();
 
             let (device1_pk, _device1) = fixture.add_device(DeviceType::Transit, 100, true);
-            let user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
+            let _user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
 
             let command = Connect {
                 dz_mode: Some(DzMode::IBRL {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: false,
                 }),
-                client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -4053,7 +4170,6 @@ mod tests {
                     tenant: Some(tenant.code.clone()),
                     allocate_addr: true,
                 }),
-                client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -4082,7 +4198,6 @@ mod tests {
                     tenant: Some(tenant.code.clone()),
                     allocate_addr: true,
                 }),
-                client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -4100,14 +4215,13 @@ mod tests {
             let mut fixture = TestFixture::new();
 
             let (device1_pk, _device1) = fixture.add_device(DeviceType::Transit, 100, true);
-            let user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
+            let _user = fixture.create_user(UserType::IBRLWithAllocatedIP, device1_pk, "1.2.3.4");
 
             let command = Connect {
                 dz_mode: Some(DzMode::IBRL {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: true,
                 }),
-                client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -4135,7 +4249,6 @@ mod tests {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: false,
                 }),
-                client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -4174,7 +4287,6 @@ mod tests {
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
                 }),
-                client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -4448,7 +4560,6 @@ mod tests {
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
                 }),
-                client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -4492,7 +4603,6 @@ mod tests {
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
                 }),
-                client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -4545,7 +4655,6 @@ mod tests {
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
                 }),
-                client_ip: Some(ibrl_user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -4599,7 +4708,6 @@ mod tests {
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
                 }),
-                client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -4650,7 +4758,6 @@ mod tests {
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
                 }),
-                client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -4680,7 +4787,6 @@ mod tests {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: false,
                 }),
-                client_ip: Some("1.2.3.4".to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -4742,7 +4848,6 @@ mod tests {
                 sub_feeds: vec![],
                 unsub_feeds: vec![],
             }),
-            client_ip: Some(user.client_ip.to_string()),
             device: None,
             ip_verifier_url: None,
             verbose: false,
@@ -4760,7 +4865,7 @@ mod tests {
 
             fixture.add_multicast_group("test-group", "239.0.0.1");
             let (device1_pk, _) = fixture.add_device(DeviceType::Hybrid, 100, true);
-            let user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+            let _user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
 
             let command = Connect {
                 dz_mode: Some(DzMode::Multicast {
@@ -4772,7 +4877,6 @@ mod tests {
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
                 }),
-                client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -4823,7 +4927,6 @@ mod tests {
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
                 }),
-                client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -4870,7 +4973,6 @@ mod tests {
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
                 }),
-                client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -4920,7 +5022,6 @@ mod tests {
                 sub_feeds: vec![],
                 unsub_feeds: vec![],
             }),
-            client_ip: Some(user.client_ip.to_string()),
             device: None,
             ip_verifier_url: None,
             verbose: false,
@@ -4974,7 +5075,6 @@ mod tests {
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
                 }),
-                client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -4994,7 +5094,6 @@ mod tests {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: false,
                 }),
-                client_ip: Some(ibrl_user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -5041,7 +5140,6 @@ mod tests {
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
                 }),
-                client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -5071,7 +5169,6 @@ mod tests {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: false,
                 }),
-                client_ip: Some(ibrl_user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -5105,7 +5202,6 @@ mod tests {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: false,
                 }),
-                client_ip: Some("1.2.3.4".to_string()),
                 device: Some(device.code.clone()), // Explicitly specify the device
                 ip_verifier_url: None,
                 verbose: false,
@@ -5150,7 +5246,6 @@ mod tests {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: false,
                 }),
-                client_ip: Some("1.2.3.4".to_string()),
                 device: Some(device.code.clone()), // Explicitly specify the device
                 ip_verifier_url: None,
                 verbose: false,
@@ -5190,7 +5285,6 @@ mod tests {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: false,
                 }),
-                client_ip: Some("1.2.3.4".to_string()),
                 device: None, // auto-select
                 ip_verifier_url: None,
                 verbose: false,
@@ -5240,7 +5334,6 @@ mod tests {
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
                 }),
-                client_ip: Some(user.client_ip.to_string()),
                 device: None, // auto-select
                 ip_verifier_url: None,
                 verbose: false,
@@ -5289,7 +5382,6 @@ mod tests {
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
                 }),
-                client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -5327,7 +5419,6 @@ mod tests {
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
                 }),
-                client_ip: Some("1.2.3.4".to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -5364,7 +5455,6 @@ mod tests {
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
                 }),
-                client_ip: Some("1.2.3.4".to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -5395,7 +5485,6 @@ mod tests {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: false,
                 }),
-                client_ip: Some("1.2.3.4".to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -5422,7 +5511,6 @@ mod tests {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: false,
                 }),
-                client_ip: Some("1.2.3.4".to_string()),
                 device: Some("nonexistent-device".to_string()), // Device that doesn't exist
                 ip_verifier_url: None,
                 verbose: false,
@@ -5457,7 +5545,6 @@ mod tests {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: true,
                 }),
-                client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -5508,7 +5595,6 @@ mod tests {
                     sub_feeds: vec![],
                     unsub_feeds: vec![],
                 }),
-                client_ip: Some(ibrl_user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -5556,7 +5642,6 @@ mod tests {
                     tenant: Some("test-tenant".to_string()),
                     allocate_addr: false,
                 }),
-                client_ip: Some(ibrl_user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -5605,7 +5690,6 @@ mod tests {
                     tenant: Some(tenant.code.clone()),
                     allocate_addr: false,
                 }),
-                client_ip: Some(user.client_ip.to_string()),
                 device: None,
                 ip_verifier_url: None,
                 verbose: false,
@@ -5866,10 +5950,10 @@ mod tests {
         }
     }
 
-    /// A bare `doublezero connect`: no subcommand at all.
-    fn bare_connect(client_ip: &str) -> Connect {
+    /// A bare `doublezero connect`: no subcommand and no --client-ip, so it provisions the
+    /// address the daemon discovered.
+    fn bare_connect() -> Connect {
         Connect {
-            client_ip: Some(client_ip.to_string()),
             ..Default::default()
         }
     }
@@ -6631,8 +6715,7 @@ mod tests {
             );
 
             let (verifier, seen) = verifier_for(client_ip);
-            let (result, output) =
-                run_with_proof_client(&fixture, bare_connect("1.2.3.4"), verifier).await;
+            let (result, output) = run_with_proof_client(&fixture, bare_connect(), verifier).await;
 
             assert!(result.is_ok(), "{result:?}\n{output}");
             assert!(output.contains("IBRL: provisioned"), "{output}");
@@ -6669,7 +6752,7 @@ mod tests {
                 true,  // subscriber
             );
 
-            let (result, output) = run(&fixture, bare_connect("1.2.3.4")).await;
+            let (result, output) = run(&fixture, bare_connect()).await;
             assert!(result.is_ok(), "{:?}", result.err());
             assert!(output.contains("IBRL: provisioned"), "{output}");
             assert!(output.contains("Multicast: provisioned"), "{output}");
@@ -6693,7 +6776,7 @@ mod tests {
             let ibrl_user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
             fixture.expect_create_user_with_tenant(Pubkey::new_unique(), &ibrl_user, None);
 
-            let (result, output) = run(&fixture, bare_connect("1.2.3.4")).await;
+            let (result, output) = run(&fixture, bare_connect()).await;
             assert!(result.is_ok(), "{:?}", result.err());
             assert!(output.contains("IBRL: provisioned"), "{output}");
             assert!(
@@ -6725,7 +6808,7 @@ mod tests {
                 true,
             );
 
-            let (result, output) = run(&fixture, bare_connect("1.2.3.4")).await;
+            let (result, output) = run(&fixture, bare_connect()).await;
             assert!(result.is_ok(), "{:?}", result.err());
             assert!(output.contains("IBRL skipped"), "{output}");
             assert!(
@@ -6746,7 +6829,7 @@ mod tests {
             fixture.accesspass.lock().unwrap().last_access_epoch = 0;
             fixture.add_device(DeviceType::Hybrid, 100, true);
 
-            let (result, output) = run(&fixture, bare_connect("1.2.3.4")).await;
+            let (result, output) = run(&fixture, bare_connect()).await;
             let err = result.expect_err("nothing was provisioned; must not exit 0");
             assert!(format!("{err:#}").contains("nothing to connect"), "{err:#}");
             assert!(!output.contains("✅  User Provisioned"), "{output}");
@@ -6762,7 +6845,7 @@ mod tests {
             fixture.accesspass.lock().unwrap().last_access_epoch = 0;
             fixture.add_device(DeviceType::Hybrid, 100, true);
 
-            let (result, output) = run(&fixture, bare_connect("1.2.3.4")).await;
+            let (result, output) = run(&fixture, bare_connect()).await;
             assert!(result.is_err());
             assert!(output.contains("Reconciler enabled"), "{output}");
         });
@@ -6778,13 +6861,54 @@ mod tests {
             let ibrl_user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
             fixture.expect_create_user_with_tenant(Pubkey::new_unique(), &ibrl_user, None);
 
-            let (result, output) = run(&fixture, bare_connect("1.2.3.4")).await;
+            let (result, output) = run(&fixture, bare_connect()).await;
             assert!(result.is_ok(), "{:?}", result.err());
             assert!(
                 output.contains("Failed to enable the reconciler"),
                 "{output}"
             );
             assert!(output.contains("IBRL: provisioned"), "{output}");
+        });
+    }
+
+    /// The counterpart with a pin: a daemon that will not take the address must stop the run
+    /// *before* anything is created onchain, because a user at an address the daemon never
+    /// adopted is an account nothing will ever provision or tear down.
+    #[test]
+    fn test_connect_bare_with_client_ip_stops_when_the_daemon_refuses_the_pin() {
+        block_on(async {
+            let _host = crate::clientip::test_support::with_host_holding_any_address();
+
+            let mut fixture = TestFixture::new_with_failing_enable();
+            fixture.add_device(DeviceType::Hybrid, 100, true);
+
+            const PINNED: Ipv4Addr = Ipv4Addr::new(5, 6, 7, 8);
+            {
+                let mut ap = fixture.accesspass.lock().unwrap();
+                ap.client_ip = PINNED;
+                ap.flags = 0;
+            }
+            let accesspass = fixture.accesspass.clone();
+            fixture
+                .ledger
+                .expect_get_accesspass_exact()
+                .returning_st(move |_, _| Ok(Some(accesspass.lock().unwrap().clone())));
+            let accesspass = fixture.accesspass.clone();
+            fixture
+                .ledger
+                .expect_get_accesspass()
+                .returning_st(move |_, _| Ok(Some(accesspass.lock().unwrap().clone())));
+
+            // No create_user expectation: reaching one would be the bug.
+            let command = Connect {
+                client_ip: Some(PINNED),
+                ..Default::default()
+            };
+            let (result, output) = run(&fixture, command).await;
+
+            let err = format!("{:#}", result.expect_err("the pin was refused"));
+            assert!(err.contains("refused --client-ip 5.6.7.8"), "{err}");
+            assert!(!output.contains("IBRL: provisioned"), "{output}");
         });
     }
 
@@ -6806,7 +6930,7 @@ mod tests {
             fixture.expect_create_user_with_tenant(mcast_pk, &mcast_user, None);
             fixture.expect_subscribe_feed(mcast_pk, vec![feed_pk]);
 
-            let (result, output) = run(&fixture, bare_connect("1.2.3.4")).await;
+            let (result, output) = run(&fixture, bare_connect()).await;
             assert!(result.is_ok(), "{:?}", result.err());
             assert!(output.contains("IBRL skipped"), "{output}");
             assert!(
@@ -6848,7 +6972,7 @@ mod tests {
                 .unwrap()
                 .insert(UserType::Multicast.to_string());
 
-            let (result, output) = run(&fixture, bare_connect("1.2.3.4")).await;
+            let (result, output) = run(&fixture, bare_connect()).await;
             assert!(result.is_ok(), "{:?}", result.err());
             assert!(!output.contains("IBRL skipped"), "{output}");
             assert!(output.contains("IBRL: provisioned"), "{output}");
@@ -6881,7 +7005,7 @@ mod tests {
                 true,
             );
 
-            let (result, output) = run(&fixture, bare_connect("1.2.3.4")).await;
+            let (result, output) = run(&fixture, bare_connect()).await;
             assert!(result.is_err());
             assert!(output.contains("❌  IBRL failed"), "{output}");
             assert!(
@@ -6908,7 +7032,7 @@ mod tests {
             let ibrl_user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
             fixture.expect_create_user_with_tenant(Pubkey::new_unique(), &ibrl_user, None);
 
-            let (result, output) = run(&fixture, bare_connect("1.2.3.4")).await;
+            let (result, output) = run(&fixture, bare_connect()).await;
             assert!(result.is_err(), "{output}");
             assert!(output.contains("IBRL: provisioned"), "{output}");
             assert!(output.contains("❌  Multicast failed"), "{output}");
@@ -6951,7 +7075,7 @@ mod tests {
 
             let command = Connect {
                 device: Some(device.code.clone()),
-                ..bare_connect("1.2.3.4")
+                ..bare_connect()
             };
             let (result, output) = run(&fixture, command).await;
 
@@ -6978,7 +7102,7 @@ mod tests {
             let command = Connect {
                 tenant: Some(tenant.code.clone()),
                 allocate_addr: true,
-                ..bare_connect("1.2.3.4")
+                ..bare_connect()
             };
 
             let (result, output) = run(&fixture, command).await;
@@ -7009,5 +7133,469 @@ mod tests {
             format!("{err:#}").contains("apply to the bare 'doublezero connect'"),
             "{err:#}"
         );
+    }
+    // --- resolve_connect_client_ip: honoring --client-ip for non-dynamic access passes ---
+    mod resolve_client_ip_flag {
+        use super::*;
+
+        const PINNED: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 9);
+
+        fn held_by_host(_: Ipv4Addr) -> Result<(), ClientIpRejection> {
+            Ok(())
+        }
+        fn not_held_by_host(_: Ipv4Addr) -> Result<(), ClientIpRejection> {
+            Err(ClientIpRejection::NotLocallyAssigned)
+        }
+        fn not_global(_: Ipv4Addr) -> Result<(), ClientIpRejection> {
+            Err(ClientIpRejection::NotGlobal)
+        }
+
+        fn daemon_reporting(ip: &str) -> MockDaemonClient {
+            let mut daemon = MockDaemonClient::new();
+            let ip = ip.to_string();
+            daemon.expect_v2_status().returning(move || {
+                Ok(V2StatusResponse {
+                    reconciler_enabled: false,
+                    client_ip: ip.clone(),
+                    network: String::new(),
+                    services: vec![],
+                })
+            });
+            daemon
+        }
+
+        fn pinned_accesspass() -> AccessPass {
+            let payer = Pubkey::new_unique();
+            AccessPass {
+                account_type: AccountType::AccessPass,
+                owner: payer,
+                bump_seed: 1,
+                client_ip: PINNED,
+                user_payer: payer,
+                last_access_epoch: u64::MAX,
+                accesspass_type: AccessPassType::Prepaid,
+                connection_count: 0,
+                status: AccessPassStatus::Requested,
+                mgroup_pub_allowlist: vec![],
+                mgroup_sub_allowlist: vec![],
+                tenant_allowlist: vec![],
+                flags: 0,
+                unicast_user_count: 0,
+                max_unicast_users: 1,
+                multicast_user_count: 0,
+                max_multicast_users: 1,
+            }
+        }
+
+        async fn resolve(
+            explicit: Option<Ipv4Addr>,
+            ledger: MockLedgerClient,
+            validate: fn(Ipv4Addr) -> Result<(), ClientIpRejection>,
+        ) -> (eyre::Result<Ipv4Addr>, String) {
+            let daemon = daemon_reporting("1.2.3.4");
+            let mut out = Vec::new();
+            let res =
+                resolve_connect_client_ip_with(explicit, &daemon, &ledger, &mut out, validate)
+                    .await;
+            (res, String::from_utf8(out).unwrap())
+        }
+
+        /// Without the flag nothing changes: the daemon's address is used and the ledger is
+        /// never consulted about a pinned pass.
+        #[tokio::test]
+        async fn without_the_flag_uses_the_daemon_address() {
+            let ledger = MockLedgerClient::new();
+            let (res, _) = resolve(None, ledger, not_held_by_host).await;
+            assert_eq!(res.unwrap(), Ipv4Addr::new(1, 2, 3, 4));
+        }
+
+        #[tokio::test]
+        async fn rejects_an_address_this_host_does_not_hold() {
+            let ledger = MockLedgerClient::new();
+            let (res, out) = resolve(Some(PINNED), ledger, not_held_by_host).await;
+            assert!(res.is_err());
+            assert!(
+                out.contains("not assigned to any interface"),
+                "unexpected output: {out}"
+            );
+        }
+
+        #[tokio::test]
+        async fn rejects_a_non_global_address() {
+            let ledger = MockLedgerClient::new();
+            let (res, out) = resolve(Some(PINNED), ledger, not_global).await;
+            assert!(res.is_err());
+            assert!(
+                out.contains("not a globally routable address"),
+                "unexpected output: {out}"
+            );
+        }
+
+        /// The point of the feature: a pass pinned to the exact address is honored.
+        #[tokio::test]
+        async fn accepts_an_address_with_a_pinned_access_pass() {
+            let mut ledger = MockLedgerClient::new();
+            ledger.expect_get_payer().returning(Pubkey::new_unique);
+            ledger
+                .expect_get_accesspass_exact()
+                .returning(|_, _| Ok(Some(pinned_accesspass())));
+            // No dynamic pass, so the pinned one is what the transaction will attach.
+            ledger.expect_get_accesspass().returning(|_, _| Ok(None));
+            let (res, out) = resolve(Some(PINNED), ledger, held_by_host).await;
+            assert_eq!(res.unwrap(), PINNED);
+            assert!(
+                out.contains("Using --client-ip"),
+                "unexpected output: {out}"
+            );
+        }
+
+        /// A dynamic pass authorizes any address, so it must not authorize a caller-chosen one.
+        /// `get_accesspass_exact` is what draws the line — `get_accesspass` would have resolved
+        /// the dynamic pass and admitted this.
+        #[tokio::test]
+        async fn refuses_when_only_a_dynamic_access_pass_exists() {
+            let mut ledger = MockLedgerClient::new();
+            ledger.expect_get_payer().returning(Pubkey::new_unique);
+            ledger
+                .expect_get_accesspass_exact()
+                .returning(|_, _| Ok(None));
+            let (res, out) = resolve(Some(PINNED), ledger, held_by_host).await;
+            let err = res.unwrap_err().to_string();
+            assert!(
+                err.contains("AccessPass issued for that exact address"),
+                "unexpected error: {err}"
+            );
+            assert!(
+                out.contains("No AccessPass is pinned to"),
+                "unexpected output: {out}"
+            );
+        }
+
+        /// Holding both passes is the case where the gate's predicate and the transaction's
+        /// disagree: `CreateUserCommand` resolves the account with `GetAccessPassCommand`, which
+        /// prefers the dynamic PDA, so admitting this would fail onchain with
+        /// `IpOwnershipProofRequired` after the user was already created.
+        #[tokio::test]
+        async fn refuses_when_a_dynamic_pass_would_take_precedence() {
+            let mut ledger = MockLedgerClient::new();
+            ledger.expect_get_payer().returning(Pubkey::new_unique);
+            ledger
+                .expect_get_accesspass_exact()
+                .returning(|_, _| Ok(Some(pinned_accesspass())));
+            ledger
+                .expect_get_accesspass()
+                .returning(|_, _| Ok(Some(pinned_accesspass())));
+            let (res, out) = resolve(Some(PINNED), ledger, held_by_host).await;
+            let err = res.unwrap_err().to_string();
+            assert!(
+                err.contains("while a dynamic AccessPass exists"),
+                "unexpected error: {err}"
+            );
+            assert!(out.contains("takes precedence"), "unexpected output: {out}");
+        }
+
+        /// A pass stored at the exact PDA but flagged `allow_multiple_ip` authorizes any
+        /// address, exactly as a dynamic one does, so it does not pin this one. It is also
+        /// the predicate `create_user` uses to decide whether an RFC-27 proof is still
+        /// required: admitting it here would push the failure to `IpOwnershipProofRequired`
+        /// after the enable, instead of naming the problem now.
+        #[tokio::test]
+        async fn refuses_an_exact_pass_flagged_allow_multiple_ip() {
+            let mut ledger = MockLedgerClient::new();
+            ledger.expect_get_payer().returning(Pubkey::new_unique);
+            ledger.expect_get_accesspass_exact().returning(|_, _| {
+                let mut accesspass = pinned_accesspass();
+                accesspass.flags = ALLOW_MULTIPLE_IP;
+                Ok(Some(accesspass))
+            });
+            let (res, out) = resolve(Some(PINNED), ledger, held_by_host).await;
+            let err = res.unwrap_err().to_string();
+            assert!(
+                err.contains("not flagged allow_multiple_ip"),
+                "unexpected error: {err}"
+            );
+            assert!(
+                out.contains("No AccessPass is pinned to"),
+                "unexpected output: {out}"
+            );
+        }
+    }
+    /// `user_activated` runs after the onchain user exists, so what it does with a failed
+    /// enable decides whether the operator learns the daemon never took the address.
+    mod user_activated_pin {
+        use super::*;
+        use crate::client::{DoubleZeroStatus, StatusResponse};
+
+        const PINNED: Ipv4Addr = Ipv4Addr::new(5, 6, 7, 8);
+
+        fn daemon_rejecting_enable(reports: &str) -> MockDaemonClient {
+            let mut daemon = MockDaemonClient::new();
+            daemon.expect_enable().returning(|_| {
+                Err(eyre::eyre!(
+                    "client_ip 5.6.7.8 is not assigned to any interface that is up on this host"
+                ))
+            });
+            let reports = reports.to_string();
+            daemon.expect_v2_status().returning(move || {
+                Ok(V2StatusResponse {
+                    // Already on: the state the "already enabled, carry on" path keyed off.
+                    reconciler_enabled: true,
+                    client_ip: reports.clone(),
+                    network: String::new(),
+                    services: vec![],
+                })
+            });
+            daemon
+        }
+
+        async fn run_user_activated(
+            daemon: &MockDaemonClient,
+            client_ip: Option<Ipv4Addr>,
+        ) -> (eyre::Result<()>, String) {
+            let command = Connect {
+                client_ip,
+                ..Default::default()
+            };
+            let mut out = Vec::new();
+            let res = command
+                .user_activated(daemon, UserType::IBRL, &ProgressBar::hidden(), &mut out)
+                .await;
+            (res, String::from_utf8(out).unwrap())
+        }
+
+        /// The regression: a refused pin on an already-enabled daemon was treated as a
+        /// redundant enable and the connect went on to wait for a tunnel that could never be
+        /// built, for an address the daemon had not taken.
+        #[tokio::test]
+        async fn a_refused_pin_is_not_excused_by_an_enabled_reconciler() {
+            let daemon = daemon_rejecting_enable("1.2.3.4");
+            let (res, _) = run_user_activated(&daemon, Some(PINNED)).await;
+            let err = format!("{:#}", res.expect_err("the daemon never took the address"));
+            assert!(
+                err.contains("not provisioning 5.6.7.8"),
+                "unexpected error: {err}"
+            );
+            assert!(
+                err.contains("is not assigned to any interface"),
+                "the daemon's own reason belongs in the error: {err}"
+            );
+        }
+
+        /// The one case where the failure really is moot: the daemon already reports the
+        /// pinned address, so the enable had nothing left to do.
+        #[tokio::test]
+        async fn a_refused_pin_is_excused_when_the_address_is_already_adopted() {
+            let mut daemon = daemon_rejecting_enable("5.6.7.8");
+            daemon.expect_status().returning(|| {
+                Ok(vec![StatusResponse {
+                    doublezero_status: DoubleZeroStatus {
+                        session_status: "up".to_string(),
+                        last_session_update: None,
+                    },
+                    tunnel_name: Some("doublezero1".to_string()),
+                    tunnel_src: Some("5.6.7.8".to_string()),
+                    tunnel_dst: None,
+                    doublezero_ip: None,
+                    user_type: Some(UserType::IBRL.to_string()),
+                }])
+            });
+
+            let (res, output) = run_user_activated(&daemon, Some(PINNED)).await;
+            assert!(res.is_ok(), "{res:?}\n{output}");
+            assert!(output.contains("Tunnel Src: 5.6.7.8"), "{output}");
+        }
+
+        /// Without a pin the lenient path stands: the enable only had to flip a flag, and an
+        /// already-enabled reconciler means it was flipped.
+        #[tokio::test]
+        async fn an_unpinned_failure_still_carries_on_when_already_enabled() {
+            let mut daemon = daemon_rejecting_enable("1.2.3.4");
+            daemon.expect_status().returning(|| {
+                Ok(vec![StatusResponse {
+                    doublezero_status: DoubleZeroStatus {
+                        session_status: "up".to_string(),
+                        last_session_update: None,
+                    },
+                    tunnel_name: Some("doublezero1".to_string()),
+                    tunnel_src: Some("1.2.3.4".to_string()),
+                    tunnel_dst: None,
+                    doublezero_ip: None,
+                    user_type: Some(UserType::IBRL.to_string()),
+                }])
+            });
+
+            let (res, output) = run_user_activated(&daemon, None).await;
+            assert!(res.is_ok(), "{res:?}\n{output}");
+            assert!(
+                !output.contains("failed to enable reconciler"),
+                "an already-enabled reconciler is not an error: {output}"
+            );
+        }
+    }
+
+    // ========================================================================
+    // --client-ip and access-pass shape (issue #4333)
+    //
+    // Three combinations of (pass shape, where the address came from, whether a proof was
+    // obtained) that must all create a user. They are listed together because the interesting
+    // part is the interaction: the pass shape decides whether a caller may choose the address
+    // at all, and the proof is independent of both.
+    // ========================================================================
+
+    /// Makes the fixture's pass dynamic: stored at the `0.0.0.0` PDA and flagged for multiple
+    /// IPs, which is the shape that authorizes any address the daemon happens to discover.
+    fn make_accesspass_dynamic(fixture: &TestFixture) {
+        let mut ap = fixture.accesspass.lock().unwrap();
+        ap.client_ip = Ipv4Addr::UNSPECIFIED;
+        ap.flags = doublezero_serviceability::state::accesspass::ALLOW_MULTIPLE_IP;
+    }
+
+    /// Dynamic pass, address discovered by the daemon, proof obtained.
+    ///
+    /// The certified path a dynamic pass depends on: it vouches for no particular address, so
+    /// the proof is the only thing binding the user to one.
+    #[test]
+    fn test_dynamic_pass_with_discovered_and_certified_ip() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            make_accesspass_dynamic(&fixture);
+            let (device1_pk, _) = fixture.add_device(DeviceType::Hybrid, 100, true);
+
+            let user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
+            let payer = fixture.ledger.get_payer();
+            let proof = test_proof(payer, user.client_ip, UserType::IBRL);
+            fixture.expect_create_user_with_tenant_and_proof(
+                Pubkey::new_unique(),
+                &user,
+                None,
+                Some(proof),
+            );
+
+            let command = Connect {
+                dz_mode: Some(DzMode::IBRL {
+                    tenant: None,
+                    allocate_addr: false,
+                }),
+                ..Default::default()
+            };
+
+            let (verifier, user_types) = verifier_for(user.client_ip);
+            let (result, output) = run_with_proof_client(&fixture, command, verifier).await;
+
+            assert!(result.is_ok(), "{result:?}\n{output}");
+            assert!(
+                output.contains("IP ownership verified for 1.2.3.4"),
+                "{output}"
+            );
+            assert_eq!(*user_types.lock().unwrap(), vec![UserType::IBRL]);
+        });
+    }
+
+    /// Non-dynamic pass, address discovered by the daemon, no proof.
+    ///
+    /// No verifier is configured, so no proof is obtained and none is attached. The user is
+    /// still created: the pass names this address, and enforcement is a per-environment flag
+    /// that is not set here.
+    #[test]
+    fn test_non_dynamic_pass_with_discovered_uncertified_ip() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device1_pk, _) = fixture.add_device(DeviceType::Hybrid, 100, true);
+
+            // The fixture's pass is already pinned to 1.2.3.4 with no ALLOW_MULTIPLE_IP.
+            assert_eq!(
+                fixture.accesspass.lock().unwrap().client_ip,
+                Ipv4Addr::new(1, 2, 3, 4)
+            );
+
+            let user = fixture.create_user(UserType::IBRL, device1_pk, "1.2.3.4");
+            fixture.expect_create_user_with_tenant_and_proof(
+                Pubkey::new_unique(),
+                &user,
+                None,
+                None,
+            );
+
+            let command = Connect {
+                dz_mode: Some(DzMode::IBRL {
+                    tenant: None,
+                    allocate_addr: false,
+                }),
+                ..Default::default()
+            };
+
+            // `run` uses a verifier that reports NotConfigured.
+            let (result, output) = run(&fixture, command).await;
+
+            assert!(result.is_ok(), "{result:?}\n{output}");
+            assert!(
+                !output.contains("IP ownership verified"),
+                "expected no proof to be attached: {output}"
+            );
+        });
+    }
+
+    /// Non-dynamic pass, address supplied with --client-ip, no proof.
+    ///
+    /// The case the flag exists for: the host provisions an address it holds and its pass
+    /// names, without the daemon having discovered it and without a verifier signing it.
+    #[test]
+    fn test_non_dynamic_pass_with_manual_uncertified_client_ip() {
+        block_on(async {
+            let _host = crate::clientip::test_support::with_host_holding_any_address();
+
+            let mut fixture = TestFixture::new();
+            let (device1_pk, _) = fixture.add_device(DeviceType::Hybrid, 100, true);
+
+            // The daemon reports 1.2.3.4; the operator provisions 5.6.7.8 instead.
+            const PINNED: Ipv4Addr = Ipv4Addr::new(5, 6, 7, 8);
+            {
+                let mut ap = fixture.accesspass.lock().unwrap();
+                ap.client_ip = PINNED;
+                ap.flags = 0;
+            }
+            let accesspass = fixture.accesspass.clone();
+            fixture
+                .ledger
+                .expect_get_accesspass_exact()
+                .with(predicate::eq(PINNED), predicate::always())
+                .returning_st(move |_, _| Ok(Some(accesspass.lock().unwrap().clone())));
+            // The pass lookups further down the connect flow are keyed on the pinned address
+            // too, which is the point: the flag has to reach every one of them.
+            let accesspass = fixture.accesspass.clone();
+            fixture
+                .ledger
+                .expect_get_accesspass()
+                .with(predicate::eq(PINNED), predicate::always())
+                .returning_st(move |_, _| Ok(Some(accesspass.lock().unwrap().clone())));
+
+            let user = fixture.create_user(UserType::IBRL, device1_pk, "5.6.7.8");
+            fixture.expect_create_user_with_tenant_and_proof(
+                Pubkey::new_unique(),
+                &user,
+                None,
+                None,
+            );
+
+            let command = Connect {
+                dz_mode: Some(DzMode::IBRL {
+                    tenant: None,
+                    allocate_addr: false,
+                }),
+                client_ip: Some(PINNED),
+                ..Default::default()
+            };
+
+            let (result, output) = run(&fixture, command).await;
+
+            assert!(result.is_ok(), "{result:?}\n{output}");
+            assert!(output.contains("Using --client-ip 5.6.7.8"), "{output}");
+            // The address that reached provisioning is the pinned one, not the discovered one.
+            assert!(output.contains("Provisioning for IP: 5.6.7.8"), "{output}");
+            assert!(
+                !output.contains("IP ownership verified"),
+                "expected no proof to be attached: {output}"
+            );
+        });
     }
 }

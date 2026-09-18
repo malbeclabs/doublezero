@@ -2878,6 +2878,7 @@ dependencies = [
  "hyperlocal",
  "indicatif",
  "mockall 0.15.0",
+ "nix",
  "reqwest 0.13.4",
  "serde",
  "serde_json",

@@ -24,6 +24,7 @@ hyper-util.workspace = true
 hyperlocal.workspace = true
 indicatif.workspace = true
 mockall.workspace = true
+nix.workspace = true
 # The RFC-27 proof retrieved from the verification service and forwarded to the SDK.
 doublezero-ip-proof.workspace = true
 # One short blocking HTTP request per `connect`, to the IP verification service. `local_address`

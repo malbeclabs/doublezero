@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/manager"
 )
 
 const (
@@ -17,53 +19,16 @@ const (
 
 var externalDiscoveryBackoff = 2 * time.Second
 
-var (
-	// bgpMartianNets contains the standard BGP martian prefixes — addresses
-	// that should never appear in BGP routing tables.
-	bgpMartianNets []*net.IPNet
-
-	// externalDiscoveryURL is the endpoint queried for external IP discovery.
-	// Overridden in tests.
-	externalDiscoveryURL = "https://ifconfig.me/ip"
-)
-
-func init() {
-	for _, cidr := range []string{
-		"0.0.0.0/8",       // "this" network (RFC 1122)
-		"10.0.0.0/8",      // private (RFC 1918)
-		"100.64.0.0/10",   // shared address space / CGNAT (RFC 6598)
-		"127.0.0.0/8",     // loopback (RFC 1122)
-		"169.254.0.0/16",  // link-local (RFC 3927)
-		"172.16.0.0/12",   // private (RFC 1918)
-		"192.0.0.0/24",    // IETF protocol assignments (RFC 6890)
-		"192.0.2.0/24",    // documentation TEST-NET-1 (RFC 5737)
-		"192.168.0.0/16",  // private (RFC 1918)
-		"198.51.100.0/24", // documentation TEST-NET-2 (RFC 5737)
-		"203.0.113.0/24",  // documentation TEST-NET-3 (RFC 5737)
-		"224.0.0.0/4",     // multicast (RFC 5771)
-		"240.0.0.0/4",     // reserved (RFC 1112)
-		"255.255.255.255/32",
-	} {
-		_, ipNet, _ := net.ParseCIDR(cidr)
-		bgpMartianNets = append(bgpMartianNets, ipNet)
-	}
-}
+// externalDiscoveryURL is the endpoint queried for external IP discovery.
+// Overridden in tests.
+var externalDiscoveryURL = "https://ifconfig.me/ip"
 
 // IsPublicIPv4 reports whether ip is a publicly routable IPv4 address.
-// It returns false for any address that falls within a standard BGP martian
-// prefix (loopback, link-local, RFC 1918, CGNAT, documentation, multicast,
-// and other reserved ranges).
+//
+// The predicate lives in the manager package, which is where a pinned address is validated; this
+// keeps one definition for the discovered address and the pinned one.
 func IsPublicIPv4(ip net.IP) bool {
-	ip = ip.To4()
-	if ip == nil {
-		return false
-	}
-	for _, n := range bgpMartianNets {
-		if n.Contains(ip) {
-			return false
-		}
-	}
-	return true
+	return manager.IsPublicIPv4(ip)
 }
 
 // DiscoverClientIP determines the client's public IP address.

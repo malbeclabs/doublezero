@@ -208,3 +208,55 @@ func TestDiscoverFromExternal_AllRetriesExhausted(t *testing.T) {
 		t.Errorf("expected 3 attempts, got %d", got)
 	}
 }
+
+func TestRestoreClientIPPin(t *testing.T) {
+	tests := []struct {
+		name     string
+		pinned   string
+		isAssign func(net.IP) (bool, error)
+		want     string
+	}{
+		{
+			name:     "held by the host, so the pin stands",
+			pinned:   "203.0.113.9",
+			isAssign: func(net.IP) (bool, error) { return true, nil },
+			want:     "203.0.113.9",
+		},
+		{
+			// The lockout this guards: the address left while the daemon was down, and a
+			// pinned daemon would match no onchain user and build no tunnel.
+			name:     "no longer held, so discovery takes over",
+			pinned:   "203.0.113.9",
+			isAssign: func(net.IP) (bool, error) { return false, nil },
+			want:     "",
+		},
+		{
+			// A failure to check is not a failed check: keeping the pin is what stops a
+			// transient netlink error from silently re-addressing the host.
+			name:     "enumeration failed, so the pin is kept",
+			pinned:   "203.0.113.9",
+			isAssign: func(net.IP) (bool, error) { return false, fmt.Errorf("enumerating interfaces") },
+			want:     "203.0.113.9",
+		},
+		{
+			name:     "unparseable pin falls back to discovery",
+			pinned:   "not-an-ip",
+			isAssign: func(net.IP) (bool, error) { return true, nil },
+			want:     "",
+		},
+		{
+			name:     "IPv6 pin falls back to discovery",
+			pinned:   "2001:db8::1",
+			isAssign: func(net.IP) (bool, error) { return true, nil },
+			want:     "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := restoreClientIPPin(tt.pinned, tt.isAssign); got != tt.want {
+				t.Errorf("restoreClientIPPin(%q) = %q, want %q", tt.pinned, got, tt.want)
+			}
+		})
+	}
+}

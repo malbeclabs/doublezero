@@ -705,17 +705,24 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 			continue
 		}
 
-		// A future-dated result is not counted: the timestamp is probe-reported, and a
-		// clock-skewed probe would tally an attempt against a window it does not
-		// belong to.
-		if resultAt <= countedUpTo {
-			targetAttempts++
-			if latency > 0 {
-				targetSuccesses++
-			}
-			if resultAt > newestResult {
-				newestResult = resultAt
-			}
+		// A future-dated result is dropped before it touches anything. The timestamp is
+		// probe-reported, so a clock-skewed probe would otherwise tally an attempt
+		// against a window it does not belong to, and park this probe's marks and the
+		// measurement cursor ahead of wall clock for as long as the skew lasts.
+		if resultAt > countedUpTo {
+			c.log.Debug("Skipping future-dated result",
+				slog.Int("measurement_id", measurement.ID),
+				slog.Int("probe_id", probeID),
+				slog.Int64("result_at", resultAt))
+			continue
+		}
+
+		targetAttempts++
+		if latency > 0 {
+			targetSuccesses++
+		}
+		if resultAt > newestResult {
+			newestResult = resultAt
 		}
 
 		// A result the probe uploaded proves it ran the measurement even if nothing came

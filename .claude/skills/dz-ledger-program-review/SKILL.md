@@ -11,7 +11,7 @@ This skill distills the review conventions actually applied to on-chain program 
 
 **Serialization model — read this first.** These programs use **borsh serde for account (de)serialization** with a **custom 1-byte `AccountType` enum discriminator**. Accounts are read via `T::try_from(&AccountInfo)`, which borsh-deserializes the data and checks the **discriminant only** (`account_type == AccountType::X`). It does **not** check `account.owner` — every processor must verify ownership separately (CLAUDE.md Security §1), with the singleton exception (ProgramConfig, GlobalState) where the discriminant check alone suffices. Do not assume `try_from` pins identity. State creation/mutation/close goes through the `try_acc_create` / `try_acc_write` / `try_acc_close` helpers. Authority is enforced with `GlobalState` + `authorize(...)` + `permission_flags`. PDAs are derived with `find_program_address`, with the bump cached on the account only when it must sign. Errors use the `DoubleZeroError` custom enum, and validation is done with `assert!` / `assert_eq!` and `return Err(DoubleZeroError::…)`.
 
-**This is NOT a bytemuck / zero-copy program.** Solana zero-copy conventions (fixed Pod layouts, 8-byte precomputed discriminators, `try_next_accounts` account loaders, etc.) do **not** apply here and should never be suggested — the discriminator is a plain 1-byte `AccountType` enum and accounts are borsh-serialized. If a suggestion only makes sense for a zero-copy program, it is wrong for this repo.
+**This is a borsh-serde program, not a bytemuck / zero-copy program.** These programs use borsh serde + a 1-byte `AccountType` enum discriminator and the `try_acc_create`/`try_acc_write`/`try_acc_close` helpers described above. Zero-copy conventions (fixed Pod layouts, 8-byte precomputed discriminators, `try_next_accounts` account loaders, `StorageGap`) do **not** apply here and should never be suggested — those belong to programs built on the **bytemuck zero-copy framework**, which is a different serialization framework, not a different network: sibling DoubleZero repos (e.g. `malbeclabs/doublezero-shreds`) run bytemuck zero-copy programs on this same DoubleZero Ledger. The question to ask of any guidance is therefore *which framework does this program use*, not which chain or repo it lives in. If a zero-copy program is ever added inside this repo, this skill would not apply to it.
 
 Review window for these conventions: **2025-07 through 2026-03**.
 
@@ -37,8 +37,6 @@ Then apply the classes below one at a time against the diff, highest-signal firs
 
 **Current guidance:** Serviceability is a family of parallel processors (create/update/suspend/resume/delete × device/link/user/exchange/…). A new instruction or entity should match its closest established sibling unless there's a stated reason to differ. Before reviewing a new processor in isolation, diff it against the nearest sibling and reconcile every divergence: the same `authorize()` / `permission_flags` gating, the same status-transition handling (suspend/resume/activate), the same `reference_count` increment/decrement discipline, and the same account-validation shape. Drift-from-sibling is its own bug class — the per-class checks below each look at the diff in isolation and will miss it. *(Reviewer-curated: a recurrent review theme rather than a single quoted PR.)*
 
-**Why it matters:** These processors are near-copies by design; silent divergence in authorization, status handling, or counters is almost always an oversight, and it reads as "fine" when you only look at the new file.
-
 **What to look for in a diff:**
 - A new processor gated by different `authorize()`/`permission_flags` than its siblings, with no explanation.
 - A new entity with a `reference_count` (or similar counter) that increments but has no matching decrement path, or that diverges from how siblings manage it.
@@ -51,7 +49,7 @@ Then apply the classes below one at a time against the diff, highest-signal firs
 
 **Current guidance (as of 2026-02-27):** CLAUDE.md Testing §1–§4 already require asserting specific error types (never a bare `.is_err()`), full-struct `PartialEq` equality, not testing framework/SDK behavior, and integration tests for every processor (success, all error paths, edge cases, state transitions) — the diff-scan for those is below. Beyond CLAUDE.md: add an SVM test that proves `validate()` catches invalid input; after an instruction, deserialize the account and assert header/field contents (not just that the call succeeded); check a computed expected value (e.g. total block rewards), not a smoke test; and cover schema-migration/upgrade paths (an old-schema account upgrading) and boundary sizes (a collection grown near the 32KB heap max — see Rent / heap caps). **Reach the target state through real instruction sequences, not `set_*`/poke helpers that write account bytes directly.** Flag tests gated behind a feature the default CI build never enables — they give false coverage.
 
-**Why it matters:** A test that only checks `.is_err()` passes even when the instruction reverts for an unrelated reason, hiding real regressions. Field-by-field assertions silently skip new fields. Untested migration paths ship broken upgrades that can brick live accounts. Byte-poked state tests a shape the real instruction path can't actually produce; feature-gated tests that never run are coverage theater.
+**Why it matters:** `.is_err()` checks pass even when the instruction reverts for the wrong reason, hiding real regressions; untested migration paths can brick live accounts.
 
 **What to look for in a diff:**
 - New tests using `.is_err()` / `.is_ok()` instead of matching `ProgramError::Custom(n)`.
@@ -75,7 +73,7 @@ Then apply the classes below one at a time against the diff, highest-signal firs
 
 **Current guidance (as of 2026-02-24):** Ownership/identity rules are codified in CLAUDE.md Security §1–§3 (verify the owner of program-owned accounts; singleton discriminant exception; the System-program check is unnecessary; PDA validation self-confirms derivation) and Code Org §3 (don't pass a key as an arg and then assert it matches a passed account) — the diff-scan for those is below. **One addition:** the *expected* owner/program id must come from a hardcoded in-repo constant (e.g. `crate::serviceability_program_id()`), never from an instruction arg or a caller-passed account — a caller-supplied "expected owner" is no check at all.
 
-**Why it matters:** A missing owner check lets an attacker substitute a look-alike account owned by a different program and bypass all downstream trust. Redundant checks the runtime already enforces add compute cost and noise without adding safety. And an owner check against a caller-supplied value is worse than none — it looks like a guard but enforces nothing.
+**Why it matters:** A missing owner check lets an attacker substitute a look-alike account owned by a different program, bypassing all downstream trust checks.
 
 **What to look for in a diff:**
 - A program-owned account read without an owner check against the serviceability program id or `program_id`.
@@ -97,8 +95,6 @@ Then apply the classes below one at a time against the diff, highest-signal firs
 
 **Current guidance (as of 2025-12-18):** Enforce project naming conventions and idiomatic Rust. Use the adopted domain vocabulary — call an authority a "Sentinel" / `SetSentinel` to match the Passport and Revenue Distribution programs rather than a generic name, and label a newly created PDA after its instruction (`access_pass_account`) so it is auditable. Suffix `AccountInfo` bindings with `_info` (`device_info`, not `device`), and name a constant for its general purpose, not the one incidental call site that uses it. Fix casing (no camelCase for pubkeys). Prefer idiomatic constructions: `Contributor::try_from(acct)?` rather than restating the type on the binding; derive `Default` with `#[default]` on an enum instead of a hand-written match; use `Self::` inside impl blocks. Remove `msg!`/print statements added solely to silence an unused-variable warning, and drop unneeded function parameters (a processor with no args should take just `program_id` and `accounts`).
 
-**Why it matters:** Consistent vocabulary and PDA labels make audits and log reading tractable across the program family. Idiomatic constructions and removing noise keep the surface reviewable.
-
 **What to look for in a diff:**
 - A generic authority name where the family already uses "Sentinel".
 - A newly created PDA bound to a name that does not describe its instruction/role.
@@ -119,7 +115,7 @@ Then apply the classes below one at a time against the diff, highest-signal firs
 
 **Current guidance (as of 2026-03):** Reject clearly invalid or nonsensical input at the instruction boundary — but reject it, do not silently no-op or filter. Revert (do not filter out) when a collector submits zero samples or any zero values, because a zero means the collector is misbehaving and the revert surfaces in logs for debugging. Add a revert when `actual_key == new_key` on a migrate so passing the same account twice cannot become a silent no-op. Equally, do not add redundant or impossible validation: don't re-check a condition already guaranteed elsewhere (a code length already validated at create time, or a case `find_program_address` would already reject), and don't validate a value you can just take directly from the passed account (CLAUDE.md Code Org §3). Remove validation that duplicates a check done in another processor.
 
-**Why it matters:** Silently filtering bad input hides a broken producer and corrupts downstream data; a silent no-op on a mistaken migrate looks like success. Redundant validation costs compute and misleads readers into thinking a real invariant is being enforced there.
+**Why it matters:** Silently filtering zero/invalid input instead of reverting hides a broken producer and corrupts downstream data; a no-op migrate looks like success.
 
 **What to look for in a diff:**
 - Zero-length / zero-value inputs being filtered or no-op'd instead of reverted.
@@ -139,7 +135,7 @@ Then apply the classes below one at a time against the diff, highest-signal firs
 
 **Current guidance (as of 2026-02-24):** CLAUDE.md Serialization codifies preferring borsh derives (`BorshDeserialize`, or `BorshDeserializeIncremental` when fields may be added over time) over hand-rolled deserialization; the diff-scan and examples here support that. State structs and instruction-arg structs should derive rather than manually deserializing field-by-field or writing custom deserialize methods that merely wrap the borsh methods. Instruction `pack`/`unpack` helpers that are thin wrappers over `borsh::to_vec` / `from_slice` are unnecessary. For forward-compatibility, plain `T::deserialize(&mut &buf[..])` already ignores trailing bytes, so a custom `compat_deserialize` helper is redundant. Borsh enums pack efficiently — the variant tag plus only that variant's fields.
 
-**Why it matters:** Hand-written (de)serialization drifts from the derived layout and introduces subtle field-ordering or length bugs; wrapper helpers add surface with no benefit and obscure what borsh already guarantees, including forward-compatible trailing-byte handling.
+**Why it matters:** Hand-written (de)serialization drifts from the derived layout, introducing subtle field-ordering or length bugs that a borsh derive would avoid.
 
 **What to look for in a diff:**
 - A manual `deserialize` impl that reads each field in sequence where `#[derive(BorshDeserialize)]` would do the same.
@@ -159,7 +155,7 @@ Then apply the classes below one at a time against the diff, highest-signal firs
 
 **Current guidance (as of 2026-02-17):** Don't store a bump seed unless a PDA actually signs a CPI (CLAUDE.md Code Org §2) — if an account never signs, storing the bump is unnecessary. Prefer encoding identity into the PDA seeds (e.g. add the collector key as a seed) rather than storing an authority elsewhere, so anyone can write but only the canonical key's data is trusted downstream. Tie PDA labels to the instruction for auditability (name the created PDA `access_pass_account`). For deterministic create-account flows, prefer create-account-with-seed via allocate + assign + transfer to avoid the DoS where lamports pre-sent to the derived key make the runtime believe the account already exists. Avoid calling `find_program_address` twice — conditionally vary the seeds instead.
 
-**Why it matters:** Storing an unused bump wastes account space and misleads readers into thinking the PDA signs. Deriving twice doubles compute. Encoding identity in seeds removes a whole class of authority-validation code. The pre-funded-key DoS can block a create flow entirely.
+**Why it matters:** An unused stored bump misleads readers into thinking the PDA signs, and pre-funding a deterministic PDA's lamports ahead of creation can permanently block that create flow.
 
 **What to look for in a diff:**
 - A stored `bump`/`bump_seed` on an account that never signs a CPI.
@@ -180,7 +176,7 @@ Then apply the classes below one at a time against the diff, highest-signal firs
 
 **Current guidance (as of 2026-01-21):** Store an authority where it logically belongs and where it is actually used. Do not put one program's authority in another program's global state — an authority for a program should live in that program's own config/global state, or better yet be encoded into the PDA seeds so anyone can write but only the canonical key's data is trusted downstream. Remove owner checks that carry no meaning (an exchange's owner is irrelevant to interacting with the exchange). Question authorization rules more restrictive than the spec requires — a payer in the foundation allowlist should still be removable from the QA allowlist, and the QA allowlist should be emptyable. See also CLAUDE.md **Permissions** (when migrating an instruction to `authorize()`, keep `AUTHORIZE_GATED_FLAGS`, `legacy_keys_for_flags`, and `check_legacy_any` in sync, and revisit `NON_MIGRATED_SUBSYSTEMS`) and **Resource Allocation** (keep `doublezero resource verify` in sync when a processor allocates/deallocates a `ResourceExtension` field).
 
-**Why it matters:** Authority stored in the wrong program couples unrelated codebases and confuses the trust model. A meaningless owner check gives a false sense of protection while blocking legitimate operations. Over-restrictive rules can lock the system into an unrecoverable allowlist state. A gated flag missing from `AUTHORIZE_GATED_FLAGS` makes `doublezero permission audit` silently understate lockout risk.
+**Why it matters:** A flag missing from `AUTHORIZE_GATED_FLAGS` makes `doublezero permission audit` silently understate lockout risk, and an over-restrictive allowlist rule can become unrecoverable.
 
 **What to look for in a diff:**
 - An authority for program A being added to program B's `GlobalState`.
@@ -202,7 +198,7 @@ Then apply the classes below one at a time against the diff, highest-signal firs
 
 **Current guidance (as of 2025-12-02):** Understand the close-vs-realloc distinction precisely. Realloc-to-0 does **not** close an account — to truly close it you must move all lamports out (and change owner). Naming an instruction "close" when it only reallocs to 0 bytes will be flagged. For deterministic-key account creation, use allocate + assign + transfer (create-account-with-seed) to sidestep the attack where lamports pre-funded to the derived key make the runtime reject creation. Name rent/airdrop constants for their purpose (`CONTRIBUTOR_AIRDROP_LAMPORTS`, not `OWNER_RENT_EXEMPTION_LAMPORTS`) and factor magic lamport values into named constants. Consolidate the many near-duplicate account-creation helpers. **Enforce collection caps at the mutating instruction** *(reviewer-curated)*: a `Vec` stored on an account (allowlists, interfaces, parent devices, samples) must have its maximum size enforced at the instruction that grows it — not only in a `validate()` elsewhere. An over-grown vec makes borsh deserialization blow the 32KB program heap and panic *every* instruction that reads the account, bricking it. Every newly grown collection needs a cap at the mutating processor and a test exercising the near-cap boundary.
 
-**Why it matters:** A "close" that only reallocs leaves a funded, program-owned account alive — the caller thinks it is gone. The pre-funded-key attack can permanently block a create flow. Mis-named constants misrepresent what lamports are for; scattered creation helpers drift apart. An uncapped account collection is a latent brick: once it grows past what fits the 32KB heap, no instruction can deserialize the account again.
+**Why it matters:** An uncapped account `Vec` that outgrows the 32KB heap makes every instruction reading it panic on deserialize, permanently bricking the account.
 
 **What to look for in a diff:**
 - An instruction named `close`/`process_close_*` that reallocs to 0 without draining lamports (and reassigning owner).
@@ -223,7 +219,7 @@ Then apply the classes below one at a time against the diff, highest-signal firs
 
 **Current guidance (as of 2026-03-03):** Question whether an invariant check can ever actually fire and whether a data model is fragile. Ask "when would this ever be true?" for `validate()` branches that upstream instructions already guarantee (a code length already bounded at create; `MAX_PARENT_DEVICES` enforced at add time; a case `find_program_address` would already reject) — and, taken together, whether a `Validate` impl is even needed. Conversely, insist the invariant actually be enforced at the mutating instruction: the add-parent-device processor must enforce the `MAX_PARENT_DEVICES` cap itself; you cannot rely on a `validate` elsewhere. Flag fragile designs: deriving `Default` on an args/state struct risks silent bugs when it is reused with new fields, and a `From<u8>` path can silently misinterpret a future enum value.
 
-**Why it matters:** An invariant that can never fire is dead code that misleads reviewers; an invariant enforced only in `validate()` (not at the mutation) can be bypassed. `Default` on a struct with new fields compiles silently with wrong data. `From<u8>` on an enum turns an unknown future variant into a valid-looking wrong one — a real correctness hazard across builds.
+**Why it matters:** An invariant enforced only in `validate()`, not the mutating instruction, can be bypassed; `From<u8>` silently turns an unknown future enum value into a valid-looking wrong one.
 
 **What to look for in a diff:**
 - A `validate()` branch guarding a condition already guaranteed at create/add time.
@@ -243,7 +239,7 @@ Then apply the classes below one at a time against the diff, highest-signal firs
 
 **Current guidance (as of 2026-03-10):** Match the arithmetic guard to the real risk. Use `checked_add` / `checked_sub` with `.ok_or(err)` for add/sub that could over/underflow — on counts, seats, and lamports (`checked_sub` when decrementing, rather than `saturating_sub`, which silently clamps an underflow bug). **The converse applies too** and matches this skill's redundant-validation philosophy: question a `checked_*`/guard that can *never* fail ("seems impossible for this `checked_sub` to be `None`, right?"); question `wrapping_add`/`wrapping_*` where wrap-around isn't actually intended; and accept a bare `+= 1` where overflow is physically impossible (a u64 epoch or monotonic index counter). Also scrutinize off-by-one boundary conditions (`users_count` may equal `max_users`, so use `>` not `>=`) and prune redundant guards the inequality already covers (a separate `max_users == 0` check is unnecessary if the inequality already fails). *(The converse directions are reviewer-curated; the mined examples below lean toward adding checks.)*
 
-**Why it matters:** Unchecked arithmetic on seat/user counters can overflow and wrap, defeating a capacity limit; `saturating_sub` hides an underflow bug as a clamp. But reflexive `checked_*` on values an invariant already bounds adds compute and implies a risk that doesn't exist, and `wrapping_*` silently normalizes overflow. Off-by-one comparisons let one extra user in or reject a valid one; redundant guards obscure the real bound.
+**Why it matters:** `saturating_sub` clamps an underflow instead of catching it, and an off-by-one `>=` vs `>` lets one extra user past a capacity cap.
 
 **What to look for in a diff:**
 - Plain `+` / `-` on counts, seats, or lamports where over/underflow is possible.
@@ -265,7 +261,7 @@ Then apply the classes below one at a time against the diff, highest-signal firs
 
 **Current guidance (as of 2026-02-24):** CLAUDE.md Error Handling §1–§2 codify the on-chain rules (mark the error enum `#[repr(u32)]` + `as u32` and drop the `Custom(u32)` catch-all; error messages state the expected condition, e.g. "reference_count of {n} > 0", not a bare variant name) — diff-scan below. On top of that: avoid panicky patterns — `unwrap_err` after an assertion panics if the assertion is false. **In client/off-chain code `eyre` is the repo's standard error crate (not `anyhow`); when wrapping or converting a lower-level error, include the underlying error in the message — `eyre!("failed to create user: {e}")`, not `eyre!("failed to create user")` — so logs carry the actual cause** (use `{e}` Display for the readable chain, not `{e:?}`). Prefer `ok_or(eyre!(...))` over `ok_or_else` where the value isn't lazily computed.
 
-**Why it matters:** An opaque error forces integrators to reverse-engineer the enum from a numeric code. A catch-all `Custom` variant plus a hand-maintained `From` impl drifts every time a variant is added. `unwrap_err` on a maybe-true condition is a live panic path in on-chain code. An error wrapper that drops the source `e` throws away the actual cause, leaving an operator with a generic message and no lead.
+**Why it matters:** `unwrap_err` after a condition that can be false is a live on-chain panic path, and dropping the source `e` in a wrapped error erases the actual cause.
 
 **What to look for in a diff:**
 - Error variants / messages that name the value but not the required condition.
@@ -286,7 +282,7 @@ Then apply the classes below one at a time against the diff, highest-signal firs
 
 **Current guidance (as of 2025-07):** For client/off-chain RPC code (e.g. the payment tracker), do not swallow errors from RPC calls — if a `get_block` call errors, retry the fetch rather than filtering the failed block out, or a transient RPC error silently drops data. Push `RpcClient` in as a reference to each method rather than storing it on a struct. Remove thin wrapper methods that just re-expose an RPC client method (`get_epoch_info`, `get_blocks`) — they add latency and no value. When fetching per-validator data, fetch the whole leader schedule once and index into it by a slice of validator ids instead of one RPC call per validator, and sum lamports only where `reward_type == RewardType::Fee`. **Additional off-chain transaction/RPC hygiene** *(reviewer-curated)*: never `unwrap()`/`expect()` on RPC-derived data — a network blip becomes a process panic; `?`-propagate in `Result`-returning functions. Fetch the recent blockhash inside the send method, not as a staleable argument. Prefer `get_multiple_accounts` over N single fetches. Do pre-flight existence checks (account/ATA) and add the create instruction only when needed, rather than letting the tx revert (a bare revert is poor UX). Don't send zero-value/no-op transactions. Don't set a CU *price* on uncontended DZ-ledger transactions; build the CU *limit* from real measured costs with some headroom.
 
-**Why it matters:** Silently filtering a failed RPC call drops real data and skews aggregates (block rewards) without any signal. Per-validator RPC calls are slow and wasteful. An `unwrap` on RPC data turns a transient network error into a crashed process. A staleable blockhash argument leads to `BlockhashNotFound` preflight failures. Zero-value and always-create transactions waste fees and read as bugs.
+**Why it matters:** Filtering a failed RPC call instead of retrying silently drops real data and skews aggregates; `unwrap` on RPC data turns a transient network error into a crashed process.
 
 **What to look for in a diff:**
 - A `get_block`/RPC error handled by filtering/skipping instead of retrying.
@@ -313,8 +309,6 @@ Then apply the classes below one at a time against the diff, highest-signal firs
 
 **Current guidance (as of 2026-02-27):** Document non-obvious operational scenarios and keep the changelog current. Write documentation for edge-case operational flows (e.g. the agent-key rollover window across an epoch, so contributors know when to migrate keys). CI now enforces a changelog check (added Dec 2025) — PRs must update the changelog. Durable conventions (borsh deserialization, testing standards) are captured directly into `CLAUDE.md` so they are enforced going forward.
 
-**Why it matters:** Undocumented operational timing (key rollover across an epoch) leads contributors to migrate at the wrong moment and lose access. A stale changelog fails CI and loses the record of behavioral changes.
-
 **What to look for in a diff:**
 - A behavioral change with no changelog entry (CI will flag it).
 - A new operational edge case (timing windows, migration steps) with no accompanying docs.
@@ -331,8 +325,6 @@ Then apply the classes below one at a time against the diff, highest-signal firs
 
 **Current guidance (as of 2025-12-02):** Make debug output actually useful, or omit it. For instruction-arg structs, prefer deriving `Debug` (which shows field contents) over a custom `Display` that only prints a length — a bare len does not aid debugging — and if the args are never debugged, implement neither. Do not add `msg!`/print calls purely to suppress an unused-variable warning.
 
-**Why it matters:** A `Display` that prints only a length gives nothing useful in logs while implying the struct is debuggable. Log lines added to silence warnings are noise that will mislead future readers.
-
 **What to look for in a diff:**
 - A hand-written `Display` on an args struct that prints only a count/length.
 - `Debug`/`Display` impls on structs that are never logged.
@@ -348,8 +340,6 @@ Then apply the classes below one at a time against the diff, highest-signal firs
 ### Dependencies & build hygiene
 
 **Current guidance (as of 2026-02-24):** Centralize dependencies and reuse existing crates rather than reimplementing. New crate deps should be added to the workspace `Cargo.toml` (workspace-inherited) instead of being pinned per-package. Reuse published Solana crates instead of reimplementing framework functionality — e.g. parse the upgradeable loader state via `solana-loader-v3-interface`'s `UpgradeableLoaderState` rather than hand-parsing `ProgramData` bytes (CLAUDE.md Program Upgrades).
-
-**Why it matters:** Per-package version pins drift out of sync and cause duplicate/incompatible builds. Hand-parsing framework byte layouts is error-prone and breaks when the upstream format changes.
 
 **What to look for in a diff:**
 - A new dependency pinned in a package `Cargo.toml` rather than inherited from the workspace.

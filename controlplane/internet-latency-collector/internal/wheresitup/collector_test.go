@@ -936,9 +936,8 @@ func TestInternetLatency_Wheresitup_ExportJobResults_ErrorScenarios(t *testing.T
 
 		c := &Collector{
 			client: &MockWheresitupClient{
-				GetNearestSourcesForLocationsFunc: func(ctx context.Context, locations []collector.LocationMatch) ([]LocationSourceMatch, error) {
-					return []LocationSourceMatch{}, nil
-				},
+				// A usable mapping, or the pass stops before polling to protect the jobs.
+				GetNearestSourcesForLocationsFunc: exportTestClient(nil).GetNearestSourcesForLocationsFunc,
 				GetJobResultsFunc: func(ctx context.Context, jobID string) (*JobResultResponse, error) {
 					return &JobResultResponse{
 						Response: struct {
@@ -953,7 +952,7 @@ func TestInternetLatency_Wheresitup_ExportJobResults_ErrorScenarios(t *testing.T
 				},
 			},
 			log:              log,
-			getLocationsFunc: mockLocationsFetcher([]collector.LocationMatch{}),
+			getLocationsFunc: mockLocationsFetcher([]collector.LocationMatch{{LocationCode: "lax"}}),
 		}
 
 		// Save a job ID
@@ -1504,6 +1503,42 @@ func TestInternetLatency_Wheresitup_ExportJobResults_ExportsEveryCompletedJobInT
 
 	summary, _ := handler.only(t, "Operation completed: Wheresitup export_job_results")
 	require.Equal(t, int64(3), attr(t, summary, "processed_count").Int64())
+}
+
+// GetLocations fails open with an empty slice when the ledger fetch fails. Polling on would
+// label every record Unknown, the exporter would drop them without an error, and the jobs
+// would be removed as completed, so the pass has to stop with the jobs still tracked.
+func TestInternetLatency_Wheresitup_ExportJobResults_KeepsJobsWhenLocationMappingIsEmpty(t *testing.T) {
+	t.Parallel()
+
+	handler := newTestLogHandler()
+	log := slog.New(handler).With("test", t.Name())
+
+	jobIDsFile := filepath.Join(t.TempDir(), "jobs.json")
+	writeJobState(t, jobIDsFile, []JobEntry{
+		{JobID: "job-2m", CreatedAt: time.Now().Add(-2 * time.Minute)},
+	}, []string{"lax → nyc", "lax → sin"})
+
+	client := &MockWheresitupClient{
+		GetNearestSourcesForLocationsFunc: func(ctx context.Context, locations []collector.LocationMatch) ([]LocationSourceMatch, error) {
+			return nil, nil
+		},
+		GetJobResultsFunc: func(ctx context.Context, jobID string) (*JobResultResponse, error) {
+			t.Errorf("job %s must not be polled without a location mapping", jobID)
+			return nil, inProgressResults()
+		},
+	}
+
+	c := exportTestCollector(log, client, &MockExporter{})
+	require.Error(t, c.ExportJobResults(t.Context(), jobIDsFile), "an empty mapping must fail the cycle, not pass silently")
+
+	state := NewState(jobIDsFile)
+	require.NoError(t, state.Load())
+	require.Equal(t, []string{"job-2m"}, state.GetJobIDs(), "the job must stay tracked for the next cycle")
+
+	// The cycle still owes both circuits, and that has to be visible.
+	missing, _ := handler.only(t, "Wheresitup - Tracked missing samples")
+	require.Equal(t, int64(2), attr(t, missing, "missing_samples").Int64())
 }
 
 // A cancelled context must stop the pass rather than walk the remaining jobs issuing calls

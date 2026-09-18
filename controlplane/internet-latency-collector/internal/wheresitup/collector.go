@@ -524,6 +524,21 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 			return collector.NewValidationError("build_location_mapping", "failed to build location mapping", err).
 				WithContext("location_count", len(locations))
 		}
+
+		// GetLocations fails open with an empty slice when the ledger fetch fails, and every
+		// record would then be labelled Unknown, dropped by the exporter without an error, and
+		// its job removed as completed. Stopping here costs one cycle of polling; going on
+		// would consume every resident job's results, which at this retention is about ten
+		// cycles' worth.
+		if len(locationMap) == 0 {
+			c.log.Error("Wheresitup - No location mapping, keeping tracked jobs for the next cycle",
+				slog.Int("job_count", len(jobIDs)),
+				slog.Int("location_count", len(locations)))
+			c.trackMissingSamples(circuitExpectedSamples, nil)
+			return collector.NewValidationError("build_location_mapping", "empty location mapping", nil).
+				WithContext("job_count", len(jobIDs)).
+				WithContext("location_count", len(locations))
+		}
 	}
 
 	processedCount := 0
@@ -653,22 +668,7 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 			slog.Int("circuits", len(circuitActualSamples)))
 	}
 
-	// Outside the record-count guard, as in ripeatlas: job creation already incremented the
-	// expected counter for these circuits, so a cycle that exports nothing is precisely the
-	// one that has to report them missing.
-	missingSamples := 0
-	for circuit := range circuitExpectedSamples {
-		if _, exists := circuitActualSamples[circuit]; !exists {
-			metrics.LatencySamplesPerCollectionIntervalMissing.WithLabelValues(c.env, circuit, "wheresitup").Add(1)
-			missingSamples++
-		}
-	}
-	if missingSamples > 0 {
-		c.log.Info("Wheresitup - Tracked missing samples",
-			slog.Int("missing_samples", missingSamples),
-			slog.Int("expected_circuits", len(circuitExpectedSamples)),
-			slog.Int("actual_circuits", len(circuitActualSamples)))
-	}
+	c.trackMissingSamples(circuitExpectedSamples, circuitActualSamples)
 
 	if len(completedJobIDs) > 0 {
 		if err := state.RemoveJobIDs(completedJobIDs); err != nil {
@@ -716,6 +716,26 @@ func (c *Collector) ExportJobResults(ctx context.Context, jobIDsFile string) err
 	}
 
 	return nil
+}
+
+// trackMissingSamples reports the circuits job creation expected but the pass did not export.
+// Called outside any record-count guard, as in ripeatlas: the expected counter was already
+// incremented for these circuits, so a cycle that exports nothing is precisely the one that
+// has to report them missing.
+func (c *Collector) trackMissingSamples(expected map[string]bool, actual map[string]int) {
+	missingSamples := 0
+	for circuit := range expected {
+		if _, exists := actual[circuit]; !exists {
+			metrics.LatencySamplesPerCollectionIntervalMissing.WithLabelValues(c.env, circuit, "wheresitup").Add(1)
+			missingSamples++
+		}
+	}
+	if missingSamples > 0 {
+		c.log.Info("Wheresitup - Tracked missing samples",
+			slog.Int("missing_samples", missingSamples),
+			slog.Int("expected_circuits", len(expected)),
+			slog.Int("actual_circuits", len(actual)))
+	}
 }
 
 // circuitLabel orders the two exchanges alphabetically, so the expected, actual and missing

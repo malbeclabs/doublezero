@@ -2519,6 +2519,250 @@ func (failingExporter) WriteRecords(_ context.Context, _ []exporter.Record) erro
 }
 func (failingExporter) Close() error { return nil }
 
+// failOnceExporter fails its first batch and accepts every batch after it, standing in
+// for an exporter that cannot reach the ledger for one pass.
+type failOnceExporter struct {
+	failed bool
+}
+
+func (e *failOnceExporter) WriteRecords(_ context.Context, _ []exporter.Record) error {
+	if !e.failed {
+		e.failed = true
+		return errors.New("write failed")
+	}
+	return nil
+}
+
+func (e *failOnceExporter) Close() error { return nil }
+
+// TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LateUploads covers the
+// per-probe exclusion boundary: the measurement cursor routinely runs ahead of a slow
+// probe's result for an interval its peers already reported.
+func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LateUploads(t *testing.T) {
+	t.Parallel()
+
+	t1 := time.Now().Add(-30 * time.Minute).Truncate(time.Second)
+	t2 := t1.Add(10 * time.Minute)
+
+	answered := func(probeID int, at time.Time) map[string]any {
+		return map[string]any{
+			"prb_id":    float64(probeID),
+			"timestamp": float64(at.Unix()),
+			"result":    []any{map[string]any{"rtt": float64(26.0)}},
+		}
+	}
+
+	// newCollector returns a collector replaying one batch per export call, plus the
+	// startTimestamp each call was made with, so the lookback is asserted not inferred.
+	newCollector := func(t *testing.T, exp exporter.Exporter, batches [][]any) (*Collector, *MeasurementState, *[]int64) {
+		t.Helper()
+		outputDir := t.TempDir()
+		log := slog.New(slog.NewJSONHandler(io.Discard, nil))
+		if exp == nil {
+			e, err := exporter.NewCSVExporter(log, "ripe_atlas_measurements", outputDir)
+			require.NoError(t, err)
+			exp = e
+		}
+
+		var starts []int64
+		call := 0
+		mockClient := &MockClient{
+			GetMeasurementResultsIncrementalFunc: func(_ context.Context, _ int, startTimestamp int64) ([]any, error) {
+				starts = append(starts, startTimestamp)
+				if call >= len(batches) {
+					return []any{}, nil
+				}
+				batch := batches[call]
+				call++
+				return batch, nil
+			},
+		}
+		c := &Collector{client: mockClient, log: log, exporter: exp}
+
+		ms := NewMeasurementState(filepath.Join(outputDir, TimestampFileName))
+		ms.SetMetadata(1, MeasurementMeta{
+			TargetLocation: "cmh",
+			TargetProbeID:  12651,
+			Sources: []SourceProbeMeta{
+				{LocationCode: "nyc", ProbeID: 100},
+				{LocationCode: "chi", ProbeID: 101},
+				{LocationCode: "lon", ProbeID: 102},
+			},
+			CreatedAt: time.Now().Add(-2 * time.Hour).Unix(),
+		})
+		return c, ms, &starts
+	}
+
+	type sample struct {
+		source string
+		at     int64
+	}
+	samples := func(records []exporter.Record) []sample {
+		got := make([]sample, 0, len(records))
+		for _, r := range records {
+			got = append(got, sample{r.TargetExchangeCode, r.Timestamp.Unix()})
+		}
+		return got
+	}
+
+	t.Run("the first export fetches everything", func(t *testing.T) {
+		t.Parallel()
+
+		c, ms, starts := newCollector(t, nil, [][]any{{answered(100, t1), answered(101, t1)}})
+
+		count, records, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.NoError(t, err)
+		require.Equal(t, []int64{0}, *starts, "no cursor means no start filter")
+		require.Equal(t, 2, count)
+		require.Equal(t, []sample{{"chi", t1.Unix()}, {"nyc", t1.Unix()}}, samples(records))
+
+		cursor, ok := ms.GetLastTimestamp(1)
+		require.True(t, ok)
+		require.Equal(t, t1.Unix(), cursor)
+	})
+
+	t.Run("a late upload is recovered by the next pass", func(t *testing.T) {
+		t.Parallel()
+
+		// Probe 102 uploads its t1 result only after the cursor has moved to t1, and
+		// its t2 result on time. Gating on the cursor would drop the t1 result for good.
+		c, ms, starts := newCollector(t, nil, [][]any{
+			{answered(100, t1), answered(101, t1)},
+			{
+				answered(100, t1), answered(101, t1), answered(102, t1),
+				answered(100, t2), answered(101, t2), answered(102, t2),
+			},
+		})
+
+		_, _, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.NoError(t, err)
+		cursor, ok := ms.GetLastTimestamp(1)
+		require.True(t, ok)
+		require.Equal(t, t1.Unix(), cursor)
+
+		_, records, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.NoError(t, err)
+
+		require.Equal(t, []int64{0, t1.Unix() - int64(ResultLookback.Seconds())}, *starts,
+			"the second pass must re-read a lookback behind the cursor")
+		require.Equal(t, []sample{
+			{"chi", t2.Unix()},
+			{"lon", t1.Unix()},
+			{"lon", t2.Unix()},
+			{"nyc", t2.Unix()},
+		}, samples(records), "the late t1 sample is recovered, replays are not, and records are in partition order")
+
+		meta, ok := ms.GetMetadata(1)
+		require.True(t, ok)
+		for _, source := range meta.Sources {
+			require.Equal(t, t2.Unix(), source.LastResponseAt, "probe %d", source.ProbeID)
+			require.Equal(t, t2.Unix(), source.LastExportedAt, "probe %d", source.ProbeID)
+		}
+
+		cursor, ok = ms.GetLastTimestamp(1)
+		require.True(t, ok)
+		require.Equal(t, t2.Unix(), cursor)
+	})
+
+	t.Run("a probe absent from the metadata falls back to the measurement cursor", func(t *testing.T) {
+		t.Parallel()
+
+		c, ms, _ := newCollector(t, nil, [][]any{
+			{answered(100, t1)},
+			{answered(999, t1.Add(-time.Minute)), answered(999, t2)},
+		})
+
+		_, _, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.NoError(t, err)
+
+		_, records, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.NoError(t, err)
+		require.Equal(t, []sample{{"Unknown", t2.Unix()}}, samples(records),
+			"an unenlisted probe has no per-probe mark, so the cursor still excludes its older result")
+	})
+
+	t.Run("a failed write leaves liveness alone and does not consume the results", func(t *testing.T) {
+		t.Parallel()
+
+		// WriteRecords reaches the ledger, so an exporter outage must not freeze
+		// LastResponseAt: Step 4b would read the whole fleet as unresponsive an hour in.
+		c, ms, _ := newCollector(t, &failOnceExporter{}, [][]any{
+			{answered(100, t1), answered(101, t1)},
+			{answered(100, t1), answered(101, t1)},
+		})
+
+		_, _, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.Error(t, err)
+
+		meta, ok := ms.GetMetadata(1)
+		require.True(t, ok)
+		for _, source := range meta.Sources[:2] {
+			require.Equal(t, t1.Unix(), source.LastResponseAt, "probe %d reported", source.ProbeID)
+			require.Zero(t, source.LastExportedAt, "probe %d was never exported", source.ProbeID)
+		}
+		_, cursorSet := ms.GetLastTimestamp(1)
+		require.False(t, cursorSet, "an unwritten batch must not advance the cursor")
+
+		_, records, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.NoError(t, err)
+		require.Equal(t, []sample{{"chi", t1.Unix()}, {"nyc", t1.Unix()}}, samples(records),
+			"the retry exports the same results, once")
+
+		meta, ok = ms.GetMetadata(1)
+		require.True(t, ok)
+		for _, source := range meta.Sources[:2] {
+			require.Equal(t, t1.Unix(), source.LastExportedAt, "probe %d", source.ProbeID)
+		}
+	})
+
+	t.Run("a state file written before LastExportedAt gates on LastResponseAt", func(t *testing.T) {
+		t.Parallel()
+
+		c, ms, _ := newCollector(t, nil, [][]any{
+			{answered(100, t1.Add(-time.Minute)), answered(100, t2)},
+		})
+		ms.SetMetadata(1, MeasurementMeta{
+			TargetLocation: "cmh",
+			TargetProbeID:  12651,
+			Sources:        []SourceProbeMeta{{LocationCode: "nyc", ProbeID: 100, LastResponseAt: t1.Unix()}},
+			CreatedAt:      time.Now().Add(-2 * time.Hour).Unix(),
+			LastExportAt:   t1.Unix(),
+		})
+
+		_, records, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.NoError(t, err)
+		require.Equal(t, []sample{{"nyc", t2.Unix()}}, samples(records),
+			"the legacy mark excludes what the old rule had already exported")
+
+		meta, ok := ms.GetMetadata(1)
+		require.True(t, ok)
+		require.Equal(t, t2.Unix(), meta.Sources[0].LastExportedAt, "the export mark takes over from here")
+	})
+
+	t.Run("a future-dated result touches nothing", func(t *testing.T) {
+		t.Parallel()
+
+		// The timestamp is probe-reported. Letting a skewed one through would park the
+		// probe's marks and the cursor ahead of wall clock until the skew passed.
+		c, ms, _ := newCollector(t, nil, [][]any{
+			{answered(100, time.Now().Add(48*time.Hour))},
+		})
+
+		count, records, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.NoError(t, err)
+		require.Zero(t, count)
+		require.Empty(t, records)
+
+		meta, ok := ms.GetMetadata(1)
+		require.True(t, ok)
+		require.Zero(t, meta.Sources[0].LastResponseAt)
+		require.Zero(t, meta.Sources[0].LastExportedAt)
+		require.Zero(t, meta.TargetAttempts)
+		_, cursorSet := ms.GetLastTimestamp(1)
+		require.False(t, cursorSet)
+	})
+}
+
 func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_RecordsTargetLoss(t *testing.T) {
 	t.Parallel()
 
@@ -2571,6 +2815,7 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_RecordsTargetL
 			Sources: []SourceProbeMeta{
 				{LocationCode: "nyc", ProbeID: 100},
 				{LocationCode: "chi", ProbeID: 101},
+				{LocationCode: "lon", ProbeID: 102},
 			},
 			CreatedAt: time.Now().Add(-2 * time.Hour).Unix(),
 		})
@@ -2597,18 +2842,14 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_RecordsTargetL
 		require.Equal(t, base.Add(2*time.Second).Unix(), meta.TargetLossCursor)
 	})
 
-	t.Run("re-delivered trailing timeouts are not counted twice", func(t *testing.T) {
+	t.Run("a replayed timeout is not counted twice", func(t *testing.T) {
 		t.Parallel()
 
-		// The export cursor advances only past the success at base, so the two later
-		// timeouts come back on the next incremental query. Counting them again would
+		// A timeout leaves the export cursor where it was and the lookback re-reads
+		// behind it, so the same timeout comes back next pass. Counting it again would
 		// drive a target that merely lost its most recent pings toward the threshold.
-		firstBatch := []any{
-			answered(100, base),
-			timedOut(101, base.Add(time.Second)),
-			timedOut(100, base.Add(2*time.Second)),
-		}
-		batches := [][]any{firstBatch, firstBatch[1:]}
+		batch := []any{timedOut(100, base)}
+		batches := [][]any{batch, batch}
 		c, ms := newCollector(t, nil, &batches)
 
 		_, _, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
@@ -2618,8 +2859,30 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_RecordsTargetL
 
 		meta, ok := ms.GetMetadata(1)
 		require.True(t, ok)
-		require.Equal(t, int64(3), meta.TargetAttempts, "the replayed timeouts must not be recounted")
-		require.Equal(t, int64(1), meta.TargetSuccesses)
+		require.Equal(t, int64(1), meta.TargetAttempts, "the replayed timeout must not be recounted")
+		require.Zero(t, meta.TargetSuccesses)
+	})
+
+	t.Run("a late timeout is counted", func(t *testing.T) {
+		t.Parallel()
+
+		// Probe 102 uploads its timeout for the same ping a pass late. It is a real
+		// attempt against the target and has not been counted before.
+		batches := [][]any{
+			{timedOut(100, base)},
+			{timedOut(100, base), timedOut(102, base)},
+		}
+		c, ms := newCollector(t, nil, &batches)
+
+		_, _, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.NoError(t, err)
+		_, _, err = c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.NoError(t, err)
+
+		meta, ok := ms.GetMetadata(1)
+		require.True(t, ok)
+		require.Equal(t, int64(2), meta.TargetAttempts, "the late timeout is a new attempt")
+		require.Zero(t, meta.TargetSuccesses)
 	})
 
 	t.Run("a future-dated result does not park the cursor", func(t *testing.T) {
@@ -2757,9 +3020,11 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_LossyTargetIsRotated(t 
 	c.measurementState.SetMetadata(1001, MeasurementMeta{
 		TargetLocation: "cmh",
 		TargetProbeID:  lossyTargetProbe,
+		// The marks sit behind the seeded results, which span the last 40 minutes, since
+		// the export path excludes against them; still recent enough for Step 4b.
 		Sources: []SourceProbeMeta{
-			{LocationCode: "nyc", ProbeID: 100, LastResponseAt: time.Now().Unix()},
-			{LocationCode: "sea", ProbeID: 101, LastResponseAt: time.Now().Unix()},
+			{LocationCode: "nyc", ProbeID: 100, LastResponseAt: time.Now().Add(-45 * time.Minute).Unix()},
+			{LocationCode: "sea", ProbeID: 101, LastResponseAt: time.Now().Add(-45 * time.Minute).Unix()},
 		},
 		CreatedAt:    createdAt,
 		LastExportAt: time.Now().Unix(),

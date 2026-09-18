@@ -21,7 +21,11 @@ bench: docker-build-reflector
 
 .PHONY: fuzz
 fuzz:
-	go test -run=^$$ -fuzz=FuzzTWAMP_NTPTimestamp -fuzztime=10s -timeout=60s ./pkg/light
+# Budget by exec count, not wall time: a time budget builds a deadline context the
+# Go 1.25/1.26 fuzz engine races on, leaking "context deadline exceeded" on loaded
+# runners (golang/go#75804, fixed in 1.27). 150000 execs is about the 10s this ran
+# for on CI; -timeout is the only bound left now that wall time is unbounded.
+	go test -run=^$$ -fuzz=FuzzTWAMP_NTPTimestamp -fuzztime=150000x -timeout=120s ./pkg/light
 
 .PHONY: docker-build-reflector
 docker-build-reflector:

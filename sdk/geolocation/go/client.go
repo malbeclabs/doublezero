@@ -176,7 +176,11 @@ func (c *Client) GetGeolocationUserByCode(ctx context.Context, code string) (*Ge
 }
 
 // GetGeolocationUsers fetches all GeolocationUser accounts for the program,
-// returning each user paired with its onchain account pubkey.
+// returning each user paired with its onchain account pubkey. An empty result with
+// a nil error means the program genuinely holds no users; accounts that came back
+// but all failed to decode are an error instead, because callers act on emptiness
+// (a geoprobe stops probing and empties its inbound allowlist) and a layout change
+// or wrong-program reply would otherwise look identical to "no users".
 func (c *Client) GetGeolocationUsers(ctx context.Context) ([]KeyedGeolocationUser, error) {
 	opts := &solanarpc.GetProgramAccountsOpts{
 		Filters: []solanarpc.RPCFilter{
@@ -206,6 +210,9 @@ func (c *Client) GetGeolocationUsers(ctx context.Context) ([]KeyedGeolocationUse
 			continue
 		}
 		users = append(users, KeyedGeolocationUser{Pubkey: acct.Pubkey, GeolocationUser: *user})
+	}
+	if len(accounts) > 0 && len(users) == 0 {
+		return nil, fmt.Errorf("none of the %d GeolocationUser accounts returned could be decoded", len(accounts))
 	}
 	return users, nil
 }

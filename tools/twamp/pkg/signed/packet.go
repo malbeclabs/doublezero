@@ -184,6 +184,10 @@ func UnmarshalProbePacket(buf []byte) (*ProbePacket, error) {
 }
 
 func (p *ProbePacket) Verify() bool {
+	if hasZeroScalar(p.Signature) {
+		return false
+	}
+
 	var payload [probePayloadSize]byte
 	binary.BigEndian.PutUint32(payload[0:4], p.Seq)
 	binary.BigEndian.PutUint32(payload[4:8], p.Sec)
@@ -191,6 +195,23 @@ func (p *ProbePacket) Verify() bool {
 	copy(payload[12:44], p.SenderPubkey[:])
 
 	return ed25519.Verify(ed25519.PublicKey(p.SenderPubkey[:]), payload[:], p.Signature[:])
+}
+
+// hasZeroScalar reports whether an Ed25519 signature's S half is zero, which no
+// real signature has (S = r + k*sec mod L) and every forgery against a
+// small-order public key does.
+//
+// Both packets verify against a pubkey taken straight off the wire, and
+// ed25519.Verify does not screen small-order keys: with R and S zero the
+// equation collapses to identity = R + [k]A, which holds for the all-zero key on
+// ~24% of messages and for the identity encoding (0x01||00*31) on *every* one,
+// so an unsigned datagram verifies. Rejecting a zero S closes the class instead
+// of blacklisting keys: [S]B is in the prime-order subgroup and a small-order
+// R + [k]A is in the torsion subgroup, which meet only at the identity, so such
+// a forgery needs S ≡ 0 (mod L) — and Verify already requires S canonical,
+// making it exactly zero. A nonzero S is an ordinary forgery either way.
+func hasZeroScalar(sig [64]byte) bool {
+	return [32]byte(sig[32:64]) == [32]byte{}
 }
 
 // marshalPayload writes the signed portion of the reply (everything before the
@@ -327,6 +348,10 @@ func NewReplyPacket(probe *ProbePacket, signer Signer, geoprobePubkey [32]byte, 
 }
 
 func (r *ReplyPacket) Verify() bool {
+	if hasZeroScalar(r.Signature) {
+		return false
+	}
+
 	payloadSize := replyHeaderSize + len(r.Offsets)*LocationOffsetSize
 	payload := make([]byte, payloadSize)
 	if _, err := r.marshalPayload(payload); err != nil {

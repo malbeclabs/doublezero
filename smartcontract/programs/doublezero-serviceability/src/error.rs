@@ -257,6 +257,20 @@ pub enum DoubleZeroError {
     StakedFeedCannotBeDeleted, // variant 122
     #[error("This feed is not publishing, so it admits no new subscribers")]
     FeedNotActive, // variant 123
+    #[error("Only an active feed can be halted")]
+    FeedNotHaltable, // variant 124
+    #[error("Only a halted feed can be resumed")]
+    FeedNotResumable, // variant 125
+    #[error("This feed is already retiring or retired")]
+    FeedNotRetirable, // variant 126
+    #[error("This feed has no retirement to finish")]
+    FeedNotRetiring, // variant 127
+    #[error("The retirement notice has not elapsed")]
+    RetirementNoticeNotElapsed, // variant 128
+    #[error("A retiring feed must finish its notice before it can be deleted")]
+    RetiringFeedCannotBeDeleted, // variant 129
+    #[error("This feed has no conformance verdict outstanding")]
+    FeedNotActivatable, // variant 130
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -386,6 +400,13 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::StakeAlreadyBacksFeed => ProgramError::Custom(121),
             DoubleZeroError::StakedFeedCannotBeDeleted => ProgramError::Custom(122),
             DoubleZeroError::FeedNotActive => ProgramError::Custom(123),
+            DoubleZeroError::FeedNotHaltable => ProgramError::Custom(124),
+            DoubleZeroError::FeedNotResumable => ProgramError::Custom(125),
+            DoubleZeroError::FeedNotRetirable => ProgramError::Custom(126),
+            DoubleZeroError::FeedNotRetiring => ProgramError::Custom(127),
+            DoubleZeroError::RetirementNoticeNotElapsed => ProgramError::Custom(128),
+            DoubleZeroError::RetiringFeedCannotBeDeleted => ProgramError::Custom(129),
+            DoubleZeroError::FeedNotActivatable => ProgramError::Custom(130),
         }
     }
 }
@@ -516,6 +537,13 @@ impl From<u32> for DoubleZeroError {
             121 => DoubleZeroError::StakeAlreadyBacksFeed,
             122 => DoubleZeroError::StakedFeedCannotBeDeleted,
             123 => DoubleZeroError::FeedNotActive,
+            124 => DoubleZeroError::FeedNotHaltable,
+            125 => DoubleZeroError::FeedNotResumable,
+            126 => DoubleZeroError::FeedNotRetirable,
+            127 => DoubleZeroError::FeedNotRetiring,
+            128 => DoubleZeroError::RetirementNoticeNotElapsed,
+            129 => DoubleZeroError::RetiringFeedCannotBeDeleted,
+            130 => DoubleZeroError::FeedNotActivatable,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -550,7 +578,7 @@ mod tests {
         }
 
         // EnumIter generates Custom(0) by default, so we explicitly test values
-        // outside the known variant range (currently 0-123) to ensure the conversion
+        // outside the known variant range (currently 0-128) to ensure the conversion
         // logic handles arbitrary custom codes correctly.
         for code in [1000u32, 100_000, u32::MAX] {
             let err = DoubleZeroError::Custom(code);

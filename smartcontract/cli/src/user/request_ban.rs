@@ -108,7 +108,7 @@ mod tests {
 
         client
             .expect_delete_user()
-            .with(predicate::eq(DeleteUserCommand { pubkey: pda_pubkey }))
+            .with(predicate::eq(DeleteUserCommand::new(pda_pubkey)))
             .returning(move |_| Ok(signature));
         client
             .expect_list_foundation_allowlist()

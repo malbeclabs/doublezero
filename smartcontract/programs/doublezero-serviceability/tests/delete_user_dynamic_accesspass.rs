@@ -342,6 +342,7 @@ async fn test_delete_user_is_dynamic_pass() {
         .unwrap()
         .get_user()
         .unwrap();
+    assert_eq!(user_before_delete.accesspass_pk, accesspass_pubkey);
     let (user_tunnel_block_pda, _, _) =
         get_resource_extension_pda(&env.program_id, ResourceType::UserTunnelBlock);
     let (tunnel_ids_pda, _, _) = get_resource_extension_pda(

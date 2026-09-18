@@ -132,6 +132,7 @@ classDiagram
         u16 tunnel_id
         NetworkV4 tunnel_net
         UserStatus status
+        Pubkey accesspass_pk
     }
     class MulticastGroup {
         AccountType account_type
@@ -167,6 +168,7 @@ classDiagram
     Link --> Device : side_a_pk
     Link --> Device : side_z_pk
     User --> Device  : device_pk
+    User --> AccessPass : accesspass_pk
     AccessPass --> MulticastGroup: mgroup_pub_allowlist
     AccessPass --> MulticastGroup: mgroup_sub_allowlist
     User --> MulticastGroup : publishers
@@ -426,6 +428,7 @@ stateDiagram-v2
 | tunnel_id    | u16         | Tunnel ID         |
 | tunnel_net   | NetworkV4   | Tunnel network    |
 | status       | UserStatus  | User status       |
+| accesspass_pk | Pubkey     | Access pass public key |
 
 ## MulticastGroup
 

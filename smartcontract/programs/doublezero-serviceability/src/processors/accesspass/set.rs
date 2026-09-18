@@ -432,6 +432,7 @@ mod tests {
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
             feed_pks: vec![],
+            accesspass_pk: Pubkey::new_unique(),
         };
 
         // User with 1 subscriber only (publisher use case)
@@ -459,6 +460,7 @@ mod tests {
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
             feed_pks: vec![],
+            accesspass_pk: Pubkey::new_unique(),
         };
 
         // User with 1 publisher, 1 subscriber, and 1 feed seat (EdgeSeat both-roles create)
@@ -486,6 +488,7 @@ mod tests {
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
             feed_pks: vec![Pubkey::new_unique()],
+            accesspass_pk: Pubkey::new_unique(),
         };
 
         let size_with_publisher = borsh::object_length(&user_with_publisher).unwrap();
@@ -493,26 +496,26 @@ mod tests {
         let size_with_both = borsh::object_length(&user_with_both).unwrap();
 
         // Verify our understanding of the sizes
-        // Base User size (empty vecs) = 206 bytes (includes tunnel_flags, bgp_status, last_bgp_up_at,
-        // last_bgp_reported_at, bgp_rtt_ns, and the 4-byte empty feed_pks vec length prefix)
+        // Base User size (empty vecs) = 238 bytes (includes tunnel_flags, bgp_status, last_bgp_up_at,
+        // last_bgp_reported_at, bgp_rtt_ns, the feed_pks length prefix, and accesspass_pk)
         // Each Pubkey in publishers/subscribers/feed_pks adds 32 bytes
         assert_eq!(
-            size_with_publisher, 238,
-            "User with 1 publisher should be 238 bytes"
+            size_with_publisher, 270,
+            "User with 1 publisher should be 270 bytes"
         );
         assert_eq!(
-            size_with_subscriber, 238,
-            "User with 1 subscriber should be 238 bytes"
+            size_with_subscriber, 270,
+            "User with 1 subscriber should be 270 bytes"
         );
         assert_eq!(
-            size_with_both, 302,
-            "User with 1 publisher + 1 subscriber + 1 feed should be 302 bytes"
+            size_with_both, 334,
+            "User with 1 publisher + 1 subscriber + 1 feed should be 334 bytes"
         );
 
-        // The constant should be sized for 3 accounts with pub+sub+feed (302 * 3 = 906)
+        // The constant should be sized for 3 accounts with pub+sub+feed (334 * 3 = 1,002)
         assert_eq!(
             AIRDROP_USER_RENT_LAMPORTS_BYTES,
-            302 * 3,
+            334 * 3,
             "AIRDROP_USER_RENT_LAMPORTS_BYTES should be sized for 3 User accounts with pub+sub+feed"
         );
 

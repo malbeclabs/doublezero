@@ -448,11 +448,12 @@ mod tests {
         );
     }
 
+    #[cfg(target_os = "linux")]
     #[test]
     fn probe_skips_a_local_address_that_cannot_reach_the_destination() {
-        // The mirror of the localnet default, which is the case this arm exists for: a source
-        // the host owns but which is not a legal source for the route to the destination. No
-        // packet is sent and no name is resolved — the kernel rejects the route lookup itself.
+        // This test binds 127.0.0.1 and checks a route to 8.8.8.8.
+        // The UDP socket asks Linux for a route without sending a packet.
+        // Linux rejects the route, so the probe returns Unroutable.
         assert_eq!(
             probe_source_binding(Ipv4Addr::LOCALHOST, "http://8.8.8.8:80"),
             SourceBinding::Unroutable

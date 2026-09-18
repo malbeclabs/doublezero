@@ -1,26 +1,16 @@
 use crate::{
     doublezerocommand::CliCommand,
-    feed::{guard::unsubscribe_orphans, resolve::pubkey_or_code},
-    helpers::parse_or_resolve_exchange,
-    validators::{validate_code, validate_pubkey, validate_pubkey_or_code},
+    feed::{guard::unsubscribe_orphans, resolve::FeedTargetArgs},
 };
-use clap::{ArgGroup, Args};
+use clap::Args;
 use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
-use doublezero_sdk::commands::feed::{delete::DeleteFeedCommand, get::GetFeedCommand};
+use doublezero_sdk::commands::feed::delete::DeleteFeedCommand;
 use std::io::Write;
 
 #[derive(Args, Debug)]
-#[clap(group(ArgGroup::new("target").args(&["pubkey", "code"]).required(true)))]
 pub struct DeleteFeedCliCommand {
-    /// Feed pubkey to delete
-    #[arg(long, value_parser = validate_pubkey, conflicts_with = "exchange")]
-    pub pubkey: Option<String>,
-    /// Feed code to delete, which names one feed only together with its metro
-    #[arg(long, value_parser = validate_code, requires = "exchange")]
-    pub code: Option<String>,
-    /// Metro (exchange) pubkey or code carrying the feed named by --code
-    #[arg(long, value_parser = validate_pubkey_or_code)]
-    pub exchange: Option<String>,
+    #[command(flatten)]
+    pub target: FeedTargetArgs,
     /// Unsubscribe EdgeSeat users from the deleted feed's groups, instead of refusing the delete.
     /// Without it, a delete that would leave a user subscribed to a group outside their access
     /// pass's feeds fails and changes nothing.
@@ -40,15 +30,7 @@ impl DeleteFeedCliCommand {
             RequirementCheck::KEYPAIR | RequirementCheck::BALANCE
         );
 
-        let exchange = self
-            .exchange
-            .as_deref()
-            .map(|e| parse_or_resolve_exchange(client, e))
-            .transpose()?;
-        let (pubkey, feed) = client.get_feed(GetFeedCommand {
-            pubkey_or_code: pubkey_or_code(self.pubkey, self.code)?,
-            exchange,
-        })?;
+        let (pubkey, feed) = self.target.resolve(client)?;
 
         // Deleting the feed drops every group it carried, so the post-change set is empty. The
         // guard always runs — it re-derives the dropped set from its own fresh scan, so a group
@@ -70,7 +52,9 @@ impl DeleteFeedCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::{
-        feed::{delete::DeleteFeedCliCommand, guard::fixtures::GuardFixture},
+        feed::{
+            delete::DeleteFeedCliCommand, guard::fixtures::GuardFixture, resolve::FeedTargetArgs,
+        },
         tests::utils::create_test_client,
     };
     use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
@@ -102,9 +86,11 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             DeleteFeedCliCommand {
-                pubkey: Some(f.feed_pk.to_string()),
-                code: None,
-                exchange: None,
+                target: FeedTargetArgs {
+                    pubkey: Some(f.feed_pk.to_string()),
+                    code: None,
+                    exchange: None,
+                },
                 force_unsubscribe: false,
             }
             .execute(&ctx, &client, &mut output),
@@ -152,9 +138,11 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             DeleteFeedCliCommand {
-                pubkey: Some(f.feed_pk.to_string()),
-                code: None,
-                exchange: None,
+                target: FeedTargetArgs {
+                    pubkey: Some(f.feed_pk.to_string()),
+                    code: None,
+                    exchange: None,
+                },
                 force_unsubscribe: true,
             }
             .execute(&ctx, &client, &mut output),
@@ -240,9 +228,11 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             DeleteFeedCliCommand {
-                pubkey: None,
-                code: Some("feed01".to_string()),
-                exchange: Some("xchi".to_string()),
+                target: FeedTargetArgs {
+                    pubkey: None,
+                    code: Some("feed01".to_string()),
+                    exchange: Some("xchi".to_string()),
+                },
                 force_unsubscribe: false,
             }
             .execute(&ctx, &client, &mut output),

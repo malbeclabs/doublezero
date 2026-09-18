@@ -151,6 +151,14 @@ var (
 		Help: "Number of wheresitup jobs still pending (not yet completed or failed)",
 	})
 
+	// WheresitupExpiredJobsTotal counts jobs dropped from tracking with their results already
+	// discarded, each one a sample paid for and never collected. WheresitupPendingJobs cannot
+	// show this: a dropped job leaves that gauge, so a total stall reads as a falling count.
+	WheresitupExpiredJobsTotal = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "doublezero_internet_latency_collector_wheresitup_expired_jobs_total",
+		Help: "Total number of wheresitup jobs dropped from tracking with their results already discarded by the API",
+	})
+
 	WheresitupAPIResponseDuration = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name:    "doublezero_internet_latency_collector_wheresitup_api_response_duration_seconds",
 		Help:    "Duration of wheresitup GetJobResults API calls in seconds",

@@ -28,6 +28,9 @@ export OPENSSL_NO_VENDOR=1
 # ── Build ────────────────────────────────────────────────────────────────────
 
 echo "Build the program"
+# --tools-version is silently ignored unless the version is already installed,
+# see scripts/install-sbf-tools.sh.
+bash "$(dirname "$0")/../../scripts/install-sbf-tools.sh" "${SBF_TOOLS_VERSION:-v1.54}"
 cargo build-sbf --tools-version "${SBF_TOOLS_VERSION:-v1.54}" --manifest-path ../programs/doublezero-serviceability/Cargo.toml -- -Znext-lockfile-bump --target-dir ../../target/
 cp ../../target/deploy/doublezero_serviceability.so ./target/doublezero_serviceability.so
 

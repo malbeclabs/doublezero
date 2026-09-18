@@ -3,6 +3,7 @@ use crate::{
     helpers::parse_or_resolve_exchange,
     validators::{validate_code, validate_pubkey_or_code},
 };
+use chrono::{TimeZone, Utc};
 use clap::Args;
 use doublezero_cli_core::{render_collection, CliContext, OutputFormat};
 use doublezero_program_common::serializer;
@@ -42,6 +43,37 @@ pub struct FeedDisplay {
     pub group_codes: String,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
+    /// Where the feed sits in its lifecycle. Five verbs move a feed between these, so without it
+    /// an operator runs `halt` or `retire` and has no way to see that it landed.
+    pub status: String,
+    /// Who halted the feed, empty when it is not halted. An operator's halt is not the builder's
+    /// to lift, so which of them holds it is the difference between `resume` working and not.
+    pub halted_by: String,
+    /// When the retirement notice elapses, empty when the feed is not retiring. This is the date
+    /// `finalize-retirement` stops failing on, and nothing else reports it.
+    pub retires_at: String,
+}
+
+/// A unix timestamp as a readable UTC date, empty when unset. Zero means "not retiring" rather
+/// than 1970 here, and the feed's own docs say so.
+fn timestamp_or_empty(ts: i64) -> String {
+    if ts == 0 {
+        return String::new();
+    }
+    Utc.timestamp_opt(ts, 0).single().map_or_else(
+        || ts.to_string(),
+        |dt| dt.format("%Y-%m-%d %H:%M:%S UTC").to_string(),
+    )
+}
+
+/// A pubkey as a string, empty when it is the default. A zero key is "nobody", and printing
+/// thirty-two ones as a key reads as an answer rather than an absence.
+fn pubkey_or_empty(pubkey: Pubkey) -> String {
+    if pubkey == Pubkey::default() {
+        String::new()
+    } else {
+        pubkey.to_string()
+    }
 }
 
 impl ListFeedCliCommand {
@@ -86,6 +118,9 @@ impl ListFeedCliCommand {
                     .collect::<Vec<_>>()
                     .join(", "),
                 owner: feed.owner,
+                status: feed.status.to_string(),
+                halted_by: pubkey_or_empty(feed.halted_by),
+                retires_at: timestamp_or_empty(feed.retires_at),
             })
             .collect::<Vec<FeedDisplay>>();
 
@@ -107,6 +142,7 @@ mod tests {
         commands::exchange::get::GetExchangeCommand, AccountType, Exchange, ExchangeStatus, Feed,
         MulticastGroup, MulticastGroupStatus,
     };
+    use doublezero_serviceability::state::feed::FeedStatus;
     use mockall::predicate;
     use solana_sdk::pubkey::Pubkey;
     use std::collections::HashMap;
@@ -195,7 +231,76 @@ mod tests {
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
             output_str,
-            " account                                   | code        | name        | exchange | groups | group_codes                                     | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | qa-payments | QA Payments | xams     | 2      | mg01, 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo4 | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n"
+            " account                                   | code        | name        | exchange | groups | group_codes                                     | owner                                     | status  | halted_by | retires_at \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR | qa-payments | QA Payments | xams     | 2      | mg01, 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo4 | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | pending |           |            \n"
+        );
+    }
+
+    /// The three lifecycle columns are why they exist: a halted feed names who halted it, and a
+    /// retiring one names the date `finalize-retirement` stops failing on. A feed in neither state
+    /// leaves both blank rather than printing a zero key or 1970.
+    #[test]
+    fn test_cli_feed_list_shows_who_halted_a_feed_and_when_a_retirement_ends() {
+        let mut client = create_test_client();
+
+        let halted_pk = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR");
+        let retiring_pk = Pubkey::from_str_const("1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM");
+        let operator_pk = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9");
+
+        let halted = Feed {
+            account_type: AccountType::Feed,
+            code: "halted".to_string(),
+            name: "Halted".to_string(),
+            status: FeedStatus::Halted,
+            halted_by: operator_pk,
+            ..Default::default()
+        };
+        let retiring = Feed {
+            account_type: AccountType::Feed,
+            code: "retiring".to_string(),
+            name: "Retiring".to_string(),
+            status: FeedStatus::Retiring,
+            // 2026-10-01 00:00:00 UTC.
+            retires_at: 1_790_812_800,
+            ..Default::default()
+        };
+        client.expect_list_feed().returning(move |_| {
+            Ok(HashMap::from([
+                (halted_pk, halted.clone()),
+                (retiring_pk, retiring.clone()),
+            ]))
+        });
+        client
+            .expect_list_multicastgroup()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_exchange()
+            .returning(|_| Ok(HashMap::new()));
+
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(
+            ListFeedCliCommand {
+                code: None,
+                exchange: None,
+                json: true,
+                json_compact: true,
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok(), "{res:?}");
+
+        let rendered = String::from_utf8(output).unwrap();
+        assert!(
+            rendered.contains(&format!(
+                "\"status\": \"halted\",\n    \"halted_by\": \"{operator_pk}\",\n    \"retires_at\": \"\""
+            )),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains(
+                "\"status\": \"retiring\",\n    \"halted_by\": \"\",\n    \"retires_at\": \"2026-10-01 00:00:00 UTC\""
+            ),
+            "{rendered}"
         );
     }
 

@@ -27,7 +27,11 @@ use crate::processors::{
         create::ExchangeCreateArgs, delete::ExchangeDeleteArgs, resume::ExchangeResumeArgs,
         setdevice::ExchangeSetDeviceArgs, suspend::ExchangeSuspendArgs, update::ExchangeUpdateArgs,
     },
-    feed::{create::FeedCreateArgs, delete::FeedDeleteArgs, update::FeedUpdateArgs},
+    feed::{
+        activate::FeedActivateArgs, create::FeedCreateArgs, delete::FeedDeleteArgs,
+        finalize_retirement::FeedFinalizeRetirementArgs, halt::FeedHaltArgs,
+        resume::FeedResumeArgs, retire::FeedRetireArgs, update::FeedUpdateArgs,
+    },
     globalconfig::set::SetGlobalConfigArgs,
     globalstate::{
         setairdrop::SetAirdropArgs, setauthority::SetAuthorityArgs,
@@ -261,6 +265,12 @@ pub enum DoubleZeroInstruction {
     UnsubscribeFeed(UnsubscribeFeedArgs), // variant 118
 
     WriteStakeMirror(StakeMirrorWriteArgs), // variant 119
+
+    HaltFeed(FeedHaltArgs),                             // variant 120
+    ResumeFeed(FeedResumeArgs),                         // variant 121
+    RetireFeed(FeedRetireArgs),                         // variant 122
+    FinalizeFeedRetirement(FeedFinalizeRetirementArgs), // variant 123
+    ActivateFeed(FeedActivateArgs),                     // variant 124
 }
 
 impl DoubleZeroInstruction {
@@ -414,6 +424,15 @@ impl DoubleZeroInstruction {
             119 => Ok(Self::WriteStakeMirror(
                 StakeMirrorWriteArgs::try_from(rest).unwrap(),
             )),
+            120 => Ok(Self::HaltFeed(FeedHaltArgs::try_from(rest).unwrap())),
+            121 => Ok(Self::ResumeFeed(FeedResumeArgs::try_from(rest).unwrap())),
+            122 => Ok(Self::RetireFeed(FeedRetireArgs::try_from(rest).unwrap())),
+            123 => Ok(Self::FinalizeFeedRetirement(
+                FeedFinalizeRetirementArgs::try_from(rest).unwrap(),
+            )),
+            124 => Ok(Self::ActivateFeed(
+                FeedActivateArgs::try_from(rest).unwrap(),
+            )),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -561,6 +580,11 @@ impl DoubleZeroInstruction {
 
             Self::CreateFeed(_) => "CreateFeed".to_string(), // variant 112
             Self::WriteStakeMirror(_) => "WriteStakeMirror".to_string(), // variant 119
+            Self::HaltFeed(_) => "HaltFeed".to_string(),     // variant 120
+            Self::ResumeFeed(_) => "ResumeFeed".to_string(), // variant 121
+            Self::RetireFeed(_) => "RetireFeed".to_string(), // variant 122
+            Self::FinalizeFeedRetirement(_) => "FinalizeFeedRetirement".to_string(), // variant 123
+            Self::ActivateFeed(_) => "ActivateFeed".to_string(), // variant 124
             Self::UpdateFeed(_) => "UpdateFeed".to_string(), // variant 113
             Self::DeleteFeed(_) => "DeleteFeed".to_string(), // variant 114
             Self::SetAccessPassFeeds(_) => "SetAccessPassFeeds".to_string(), // variant 115
@@ -706,6 +730,11 @@ impl DoubleZeroInstruction {
 
             Self::CreateFeed(args) => format!("{args:?}"), // variant 112
             Self::WriteStakeMirror(args) => format!("{args:?}"), // variant 119
+            Self::HaltFeed(args) => format!("{args:?}"),   // variant 120
+            Self::ResumeFeed(args) => format!("{args:?}"), // variant 121
+            Self::RetireFeed(args) => format!("{args:?}"), // variant 122
+            Self::FinalizeFeedRetirement(args) => format!("{args:?}"), // variant 123
+            Self::ActivateFeed(args) => format!("{args:?}"), // variant 124
             Self::UpdateFeed(args) => format!("{args:?}"), // variant 113
             Self::DeleteFeed(args) => format!("{args:?}"), // variant 114
             Self::SetAccessPassFeeds(args) => format!("{args:?}"), // variant 115

@@ -8,7 +8,7 @@ use doublezero_serviceability::{
             set::SetAccessPassArgs,
             set_feeds::{FeedSeatConfig, SetAccessPassFeedsArgs, MAX_ACCESS_PASS_FEEDS},
         },
-        feed::create::FeedCreateArgs,
+        feed::{create::FeedCreateArgs, retire::FeedRetireArgs},
     },
     state::{
         accesspass::{AccessPass, AccessPassStatus, AccessPassType, FeedSeat},
@@ -967,4 +967,188 @@ async fn test_cannot_set_zero_max_users() {
     )
     .await;
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::FeedMaxUsersZero));
+}
+
+/// The seat config the feed tests below all use. Only the feed accounts differ between calls, so
+/// the config carries no meaning of its own.
+fn seat_config() -> FeedSeatConfig {
+    FeedSeatConfig {
+        max_users: 5,
+        max_future_users: 5,
+        anniversary_day: 15,
+        window_end: TEST_WINDOW_END,
+        terminates_at: TEST_TERMINATES_AT,
+    }
+}
+
+/// A retiring feed sells no new seat, and keeps the ones already sold.
+///
+/// The two halves belong in one test because the guard distinguishes them by the pass it is
+/// handed, not by the feed: the same `Retiring` feed is refused for one pass and kept for another
+/// in the same bank.
+#[tokio::test]
+async fn test_a_retiring_feed_keeps_its_seats_and_sells_no_new_one() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let live = create_feed(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        recent_blockhash,
+        "live",
+    )
+    .await;
+    let closing = create_feed(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        recent_blockhash,
+        "clsg",
+    )
+    .await;
+
+    let holder_ip = Ipv4Addr::new(100, 0, 0, 1);
+    let holder_payer = Pubkey::new_unique();
+    let holder_pass = create_edge_seat_pass(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        recent_blockhash,
+        holder_ip,
+        holder_payer,
+        AccessPassType::EdgeSeat(vec![]),
+    )
+    .await;
+
+    // The holder buys both seats while the feed is still open.
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPassFeeds(SetAccessPassFeedsArgs {
+            client_ip: holder_ip,
+            user_payer: holder_payer,
+            feeds: vec![seat_config(), seat_config()],
+        }),
+        vec![
+            AccountMeta::new(holder_pass, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(live, false),
+            AccountMeta::new(closing, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RetireFeed(FeedRetireArgs {}),
+        vec![
+            AccountMeta::new(closing, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    // Re-provisioning the holder's pass still names the retiring feed, and keeps it. This is the
+    // path that raises a seat cap or moves a billing window, so refusing it would strand the
+    // holder's other seats behind the one that is closing.
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPassFeeds(SetAccessPassFeedsArgs {
+            client_ip: holder_ip,
+            user_payer: holder_payer,
+            feeds: vec![seat_config(), seat_config()],
+        }),
+        vec![
+            AccountMeta::new(holder_pass, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(live, false),
+            AccountMeta::new(closing, false),
+        ],
+        &payer,
+    )
+    .await;
+    let accesspass = read_accesspass(&mut banks_client, holder_pass).await;
+    let AccessPassType::EdgeSeat(seats) = &accesspass.accesspass_type else {
+        panic!("expected an edge seat pass");
+    };
+    assert_eq!(
+        seats.iter().map(|s| s.feed_key).collect::<Vec<_>>(),
+        vec![live, closing]
+    );
+
+    // A pass that never held a seat on the retiring feed cannot buy one now.
+    let newcomer_ip = Ipv4Addr::new(100, 0, 0, 2);
+    let newcomer_payer = Pubkey::new_unique();
+    let newcomer_pass = create_edge_seat_pass(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        recent_blockhash,
+        newcomer_ip,
+        newcomer_payer,
+        AccessPassType::EdgeSeat(vec![]),
+    )
+    .await;
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::SetAccessPassFeeds(SetAccessPassFeedsArgs {
+            client_ip: newcomer_ip,
+            user_payer: newcomer_payer,
+            feeds: vec![seat_config()],
+        }),
+        vec![
+            AccountMeta::new(newcomer_pass, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(closing, false),
+        ],
+        &payer,
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::FeedNotActive));
+
+    // The live feed is still on sale, so the refusal is about the retiring feed and not about the
+    // newcomer's pass.
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPassFeeds(SetAccessPassFeedsArgs {
+            client_ip: newcomer_ip,
+            user_payer: newcomer_payer,
+            feeds: vec![seat_config()],
+        }),
+        vec![
+            AccountMeta::new(newcomer_pass, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(live, false),
+        ],
+        &payer,
+    )
+    .await;
+    let accesspass = read_accesspass(&mut banks_client, newcomer_pass).await;
+    let AccessPassType::EdgeSeat(seats) = &accesspass.accesspass_type else {
+        panic!("expected an edge seat pass");
+    };
+    assert_eq!(
+        seats.iter().map(|s| s.feed_key).collect::<Vec<_>>(),
+        vec![live]
+    );
 }

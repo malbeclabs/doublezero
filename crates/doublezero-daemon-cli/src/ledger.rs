@@ -48,7 +48,7 @@ pub trait LedgerClient: Send + Sync {
     fn list_user(&self) -> eyre::Result<HashMap<Pubkey, User>>;
 
     /// Delete the user account at `pubkey`.
-    fn delete_user(&self, pubkey: Pubkey) -> eyre::Result<()>;
+    fn delete_user(&self, pubkey: Pubkey, accesspass_pk: Option<Pubkey>) -> eyre::Result<()>;
 
     /// Fetch the user account at `pubkey` (used to poll for deletion).
     fn get_user(&self, pubkey: Pubkey) -> eyre::Result<User>;

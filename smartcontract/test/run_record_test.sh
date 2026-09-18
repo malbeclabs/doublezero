@@ -11,15 +11,16 @@ if pgrep -f "solana-test-validator" > /dev/null; then
 fi
 
 SMARTCONTRACT_DIR=$(cd "$(dirname "$0")/.."; pwd)
+ROOT_DIR=$SMARTCONTRACT_DIR/..
 
 echo "Build DoubleZero Record program"
 cd $SMARTCONTRACT_DIR/programs/doublezero-record
 # Pin platform-tools >= v1.52 (Cargo >= 1.85); the solana 3.0 dependency tree
 # pulls edition2024 crates that the default platform-tools (v1.51 / Cargo
-# 1.84.x) cannot parse.
+# 1.84.x) cannot parse. Install it first: --tools-version alone is silently
+# ignored when the version is not installed, see scripts/install-sbf-tools.sh.
+bash "$ROOT_DIR/scripts/install-sbf-tools.sh" "${SBF_TOOLS_VERSION:-v1.54}"
 cargo build-sbf --tools-version "${SBF_TOOLS_VERSION:-v1.54}"
-
-ROOT_DIR=$SMARTCONTRACT_DIR/..
 
 echo "Start Solana test validator"
 solana-test-validator -r \

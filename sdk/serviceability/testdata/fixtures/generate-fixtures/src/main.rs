@@ -1128,6 +1128,7 @@ fn generate_user(dir: &Path) {
     let validator_pubkey = pubkey_from_byte(0x65);
     let feed_pk_a = pubkey_from_byte(0x67);
     let feed_pk_b = pubkey_from_byte(0x68);
+    let accesspass_pk = pubkey_from_byte(0x69);
 
     let val = User {
         account_type: AccountType::User,
@@ -1153,6 +1154,7 @@ fn generate_user(dir: &Path) {
         last_bgp_reported_at: 1_700_000_100,
         bgp_rtt_ns: 5_500_000,
         feed_pks: vec![feed_pk_a, feed_pk_b],
+        accesspass_pk,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -1188,6 +1190,7 @@ fn generate_user(dir: &Path) {
             FieldValue { name: "FeedPksLen".into(), value: "2".into(), typ: "u32".into() },
             FieldValue { name: "FeedPks0".into(), value: pubkey_bs58(&feed_pk_a), typ: "pubkey".into() },
             FieldValue { name: "FeedPks1".into(), value: pubkey_bs58(&feed_pk_b), typ: "pubkey".into() },
+            FieldValue { name: "AccessPassPk".into(), value: pubkey_bs58(&accesspass_pk), typ: "pubkey".into() },
         ],
     };
 
@@ -1515,7 +1518,12 @@ fn generate_feed(dir: &Path) {
         spec_id: "top-of-book@v1.0.0".into(),
         sla_hash: [0xE6; 32],
         committed_rate_bits_per_sec: 1_000_000_000,
-        status: FeedStatus::Pending,
+        status: FeedStatus::Retiring,
+        halted_by: Pubkey::default(),
+        // A distinct nonzero timestamp, so a decoder that reads the wrong offset, the wrong width
+        // or drops the field cannot pass. Negative, because `retires_at` is an i64 and a positive
+        // value cannot tell a signed read from an unsigned one.
+        retires_at: -1_764_547_200,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -1538,7 +1546,9 @@ fn generate_feed(dir: &Path) {
             FieldValue { name: "SpecId".into(), value: "top-of-book@v1.0.0".into(), typ: "string".into() },
             FieldValue { name: "SlaHash".into(), value: "e6".repeat(32), typ: "string".into() },
             FieldValue { name: "CommittedRateBitsPerSec".into(), value: "1000000000".into(), typ: "u64".into() },
-            FieldValue { name: "Status".into(), value: "0".into(), typ: "u8".into() },
+            FieldValue { name: "Status".into(), value: "4".into(), typ: "u8".into() },
+            FieldValue { name: "HaltedBy".into(), value: pubkey_bs58(&Pubkey::default()), typ: "pubkey".into() },
+            FieldValue { name: "RetiresAt".into(), value: "-1764547200".into(), typ: "i64".into() },
         ],
     };
 

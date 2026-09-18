@@ -136,6 +136,11 @@
       "name": "FeedPks1",
       "value": "7zyQEWTmwxVFUwWKuUhS7NWmv1mARobHjD5MMHGVxfks",
       "typ": "pubkey"
+    },
+    {
+      "name": "AccessPassPk",
+      "value": "84sot1BrqnyxtddJQyxt1JG1B2Kw8khCK5PErUaVgURD",
+      "typ": "pubkey"
     }
   ]
 }

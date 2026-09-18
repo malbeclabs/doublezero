@@ -5,7 +5,7 @@ use crate::{
     serializer::try_acc_write,
     state::{
         accesspass::{AccessPass, AccessPassType, FeedSeat},
-        feed::Feed,
+        feed::{Feed, FeedStatus},
         globalstate::GlobalState,
         permission::permission_flags,
     },
@@ -146,7 +146,22 @@ pub fn process_set_access_pass_feeds(
         }
 
         // Confirm the account really is a Feed (owner checked above, discriminator here).
-        Feed::try_from(*feed_account)?;
+        let feed = Feed::try_from(*feed_account)?;
+
+        // No new seat on a feed that is closing. `require_feed_admits` lets a `Retiring` feed keep
+        // serving the holders it already has, which is what the notice is for; selling a seat into
+        // that window would hand someone thirty days of a service that is ending. A seat already on
+        // the pass is untouched, so this refuses adding one rather than keeping one.
+        if matches!(feed.status, FeedStatus::Retiring | FeedStatus::Retired)
+            && !prior_seats.iter().any(|s| s.feed_key == feed_key)
+        {
+            msg!(
+                "Feed {} is {}, so it takes no new seat",
+                feed_key,
+                feed.status
+            );
+            return Err(DoubleZeroError::FeedNotActive.into());
+        }
 
         let current_users = prior_seats
             .iter()

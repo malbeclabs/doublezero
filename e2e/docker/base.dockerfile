@@ -61,6 +61,7 @@ RUN apt update -qq && \
     apt install --no-install-recommends -y \
     ca-certificates \
     curl \
+    bzip2 \
     build-essential \
     pkg-config \
     mold \
@@ -147,6 +148,13 @@ FROM builder-base AS builder-rust-sbf
 # solana stage above.
 ARG SOLANA_VERSION=3.0.4
 
+# The platform-tools release every build-sbf in this stage asks for, and the one
+# the installer puts in the cache. One ARG because the two have to agree: bump a
+# build line and miss the install line and the version is not installed, so
+# cargo-build-sbf falls back to its built-in v1.51 and the build dies on
+# edition2024 many layers from the cause.
+ARG SBF_TOOLS_VERSION=v1.54
+
 # Hash of Cargo.lock for cache isolation (same as builder-rust stage).
 ARG CARGO_LOCK_HASH=default
 
@@ -175,17 +183,14 @@ RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=
 ENV BIN_DIR=/doublezero/bin
 RUN mkdir -p ${BIN_DIR}
 
-# Validate that the cached platform-tools installation is intact. If a previous build was
-# interrupted during the platform-tools download/extraction, the cache can contain a
-# partially extracted directory where rust/lib is not a valid directory. Removing the
-# corrupted directory allows cargo build-sbf to re-download platform-tools cleanly.
+# Install the platform-tools the builds below ask for. cargo build-sbf silently
+# ignores --tools-version unless that version is already installed and would
+# otherwise build with its own v1.51, whose Cargo cannot parse this tree; see
+# scripts/install-sbf-tools.sh. This also subsumes the rust/lib check that stood
+# here: a cache left half-extracted by an interrupted build reads as absent and
+# is replaced, rather than being deleted and re-downloaded by the build itself.
 RUN --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
-    for pt_dir in /root/.cache/solana/*/platform-tools; do \
-        if [ -e "$pt_dir" ] && [ ! -d "$pt_dir/rust/lib" ]; then \
-            echo "Removing corrupted platform-tools cache: $pt_dir"; \
-            rm -rf "$pt_dir"; \
-        fi; \
-    done
+    scripts/install-sbf-tools.sh ${SBF_TOOLS_VERSION}
 
 # Build the Solana programs with build-sbf (rust)
 # Note that we don't use mold here.
@@ -193,21 +198,21 @@ RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=
     --mount=type=cache,id=sbf-target-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/target-sbf \
     --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-serviceability && \
-    cargo build-sbf --tools-version v1.54 && \
+    cargo build-sbf --tools-version ${SBF_TOOLS_VERSION} && \
     cp /target-sbf/deploy/doublezero_serviceability.so ${BIN_DIR}/doublezero_serviceability.so
 
 RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/cargo-sbf \
     --mount=type=cache,id=sbf-target-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/target-sbf \
     --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-telemetry && \
-    cargo build-sbf --tools-version v1.54 --features localnet && \
+    cargo build-sbf --tools-version ${SBF_TOOLS_VERSION} --features localnet && \
     cp /target-sbf/deploy/doublezero_telemetry.so ${BIN_DIR}/doublezero_telemetry.so
 
 RUN --mount=type=cache,id=sbf-cargo-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/cargo-sbf \
     --mount=type=cache,id=sbf-target-${SOLANA_VERSION}-${CARGO_LOCK_HASH},target=/target-sbf \
     --mount=type=cache,id=sbf-solana-${SOLANA_VERSION},target=/root/.cache/solana \
     cd smartcontract/programs/doublezero-geolocation && \
-    cargo build-sbf --tools-version v1.54 && \
+    cargo build-sbf --tools-version ${SBF_TOOLS_VERSION} && \
     cp /target-sbf/deploy/doublezero_geolocation.so ${BIN_DIR}/doublezero_geolocation.so
 
 # Force COPY in later stages to always copy the programs, even if they appear to be the same.

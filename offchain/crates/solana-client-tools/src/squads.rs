@@ -1,3 +1,5 @@
+use std::io::Write;
+
 use anyhow::{Context, Result, bail, ensure};
 use clap::Args;
 use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
@@ -299,19 +301,33 @@ pub fn try_print_vault_transaction(
     vault_key: &Pubkey,
     instructions: &[Instruction],
 ) -> Result<()> {
+    try_write_vault_transaction(&mut std::io::stdout(), connection, vault_key, instructions)
+}
+
+/// Write a base58 encoded transaction for import into the Squads UI. The encoded
+/// payload is alone on its own line, so a copy of that line takes exactly the payload.
+pub fn try_write_vault_transaction(
+    out: &mut impl Write,
+    connection: &SolanaConnection,
+    vault_key: &Pubkey,
+    instructions: &[Instruction],
+) -> Result<()> {
     let encoded = try_encode_vault_transaction(vault_key, instructions)?;
     let rpc_url = connection.url();
 
-    println!("Import this base58 encoded transaction into Squads:");
-    println!("{encoded}");
-    println!();
-    println!("Read it back first:");
-    println!("{}", inspector_url(&encoded, &rpc_url));
+    writeln!(out, "Import this base58 encoded transaction into Squads:")?;
+    writeln!(out, "{encoded}")?;
+    writeln!(out)?;
+    writeln!(out, "Read it back first:")?;
+    writeln!(out, "{}", inspector_url(&encoded, &rpc_url))?;
 
     if !is_public_solana_endpoint(&rpc_url) {
-        println!();
-        println!("WARNING: that link carries the endpoint this command was given.");
-        println!("Do not share it anywhere that endpoint should not go.");
+        writeln!(out)?;
+        writeln!(
+            out,
+            "WARNING: that link carries the endpoint this command was given."
+        )?;
+        writeln!(out, "Do not share it anywhere that endpoint should not go.")?;
     }
 
     Ok(())
@@ -358,6 +374,28 @@ pub fn vault_transaction_payload_budget(instruction_count: usize) -> usize {
     // Const subtraction on purpose, so a reserve raised past the transaction limit is a
     // build failure rather than a budget of zero that refuses every payload.
     (MAX_TRANSACTION_SIZE - VAULT_TRANSACTION_RESERVED_BYTES).saturating_sub(instruction_count)
+}
+
+// What a memo typed into the Squads import dialog spends out of a payload's own
+// headroom. Nothing bounds the text, so this is an allowance rather than a reserve: a
+// payload packed against it survives a memo of up to 32 bytes, and a longer one is on
+// the operator who types it.
+const SQUADS_IMPORT_MEMO_TEXT_BYTES: usize = 32;
+pub const SQUADS_IMPORT_MEMO_RESERVE_BYTES: usize = 4 // borsh length prefix, on vault_transaction_create
+    + SQUADS_IMPORT_MEMO_TEXT_BYTES // the text, on vault_transaction_create
+    + 4 // borsh length prefix, again on proposal_approve
+    + SQUADS_IMPORT_MEMO_TEXT_BYTES; // the text, again on proposal_approve
+const _: () = assert!(SQUADS_IMPORT_MEMO_RESERVE_BYTES == 72);
+
+/// What a caller packing instructions into a payload should aim at, being
+/// `vault_transaction_payload_budget` less an allowance for a memo typed at import.
+///
+/// The budget is the hard ceiling `try_encode_vault_transaction` enforces, and a payload
+/// sized to it imports only so long as nobody types a memo. This is the looser figure
+/// that leaves that room, so packing against it and encoding against the budget agree.
+pub fn vault_transaction_packing_budget(instruction_count: usize) -> usize {
+    vault_transaction_payload_budget(instruction_count)
+        .saturating_sub(SQUADS_IMPORT_MEMO_RESERVE_BYTES)
 }
 
 /// Encode instructions as the base58 payload the Squads UI imports, refusing one
@@ -529,6 +567,21 @@ mod tests {
     }
 
     #[test]
+    fn test_write_vault_transaction_puts_the_payload_alone_on_its_own_line() {
+        let instructions = [instruction_with_data_len(3)];
+        let encoded = try_encode_vault_transaction(&VAULT_KEY, &instructions).unwrap();
+        let connection = SolanaConnection::new(NetworkEnvironment::PUBLIC_SOLANA_DEVNET_URL.into());
+
+        let mut out = Vec::new();
+        try_write_vault_transaction(&mut out, &connection, &VAULT_KEY, &instructions).unwrap();
+        let written = String::from_utf8(out).unwrap();
+
+        assert!(written.lines().any(|line| line == encoded), "{written}");
+        assert!(written.contains(&inspector_url(&encoded, connection.url().as_str())));
+        assert!(!written.contains("WARNING"));
+    }
+
+    #[test]
     fn test_inspector_url_carries_the_message_squads_takes() {
         let encoded =
             try_encode_vault_transaction(&VAULT_KEY, &[instruction_with_data_len(3)]).unwrap();
@@ -666,6 +719,29 @@ mod tests {
         assert_eq!(vault_transaction_payload_budget(0), 848);
         assert_eq!(vault_transaction_payload_budget(1), 847);
         assert_eq!(vault_transaction_payload_budget(4), 844);
+    }
+
+    #[test]
+    fn test_packing_budget_leaves_the_encoder_room_for_a_memo() {
+        // A payload packed to the packing budget survives a 32-byte memo typed at
+        // import, which the encoder's own budget leaves no room for.
+        for instruction_count in [0, 1, 4] {
+            let packing = vault_transaction_packing_budget(instruction_count);
+            let budget = vault_transaction_payload_budget(instruction_count);
+            assert!(packing < budget);
+            assert_eq!(packing + SQUADS_IMPORT_MEMO_RESERVE_BYTES, budget);
+        }
+
+        // A payload filled to the packing budget encodes, and still has the memo's
+        // room left against the budget the encoder enforces.
+        let data_len = vault_transaction_packing_budget(1) - AROUND_INSTRUCTION_DATA - 2;
+        let instructions = [instruction_with_data_len(data_len)];
+        let payload = payload_len(&instructions);
+        assert_eq!(payload, vault_transaction_packing_budget(1));
+        assert_eq!(
+            payload + SQUADS_IMPORT_MEMO_RESERVE_BYTES,
+            vault_transaction_payload_budget(1)
+        );
     }
 
     #[test]

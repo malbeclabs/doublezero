@@ -39,8 +39,10 @@ use doublezero_sdk::{
             update::UpdateExchangeCommand,
         },
         feed::{
-            create::CreateFeedCommand, delete::DeleteFeedCommand, get::GetFeedCommand,
-            list::ListFeedCommand, update::UpdateFeedCommand,
+            activate::ActivateFeedCommand, create::CreateFeedCommand, delete::DeleteFeedCommand,
+            finalize_retirement::FinalizeFeedRetirementCommand, get::GetFeedCommand,
+            halt::HaltFeedCommand, list::ListFeedCommand, resume::ResumeFeedCommand,
+            retire::RetireFeedCommand, update::UpdateFeedCommand,
         },
         globalconfig::set::SetGlobalConfigCommand,
         globalstate::{
@@ -192,6 +194,14 @@ pub trait CliCommand {
     fn list_feed(&self, cmd: ListFeedCommand) -> eyre::Result<HashMap<Pubkey, Feed>>;
     fn update_feed(&self, cmd: UpdateFeedCommand) -> eyre::Result<Signature>;
     fn delete_feed(&self, cmd: DeleteFeedCommand) -> eyre::Result<Signature>;
+    fn activate_feed(&self, cmd: ActivateFeedCommand) -> eyre::Result<Signature>;
+    fn halt_feed(&self, cmd: HaltFeedCommand) -> eyre::Result<Signature>;
+    fn resume_feed(&self, cmd: ResumeFeedCommand) -> eyre::Result<Signature>;
+    fn retire_feed(&self, cmd: RetireFeedCommand) -> eyre::Result<Signature>;
+    fn finalize_feed_retirement(
+        &self,
+        cmd: FinalizeFeedRetirementCommand,
+    ) -> eyre::Result<Signature>;
 
     fn create_contributor(
         &self,
@@ -524,6 +534,24 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn delete_feed(&self, cmd: DeleteFeedCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn activate_feed(&self, cmd: ActivateFeedCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn halt_feed(&self, cmd: HaltFeedCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn resume_feed(&self, cmd: ResumeFeedCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn retire_feed(&self, cmd: RetireFeedCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn finalize_feed_retirement(
+        &self,
+        cmd: FinalizeFeedRetirementCommand,
+    ) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn create_contributor(

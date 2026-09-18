@@ -46,8 +46,9 @@ pub struct FeedSubscriptionContext<'a, 'b> {
 
 /// Parse and validate `[accesspass, user, globalstate, device, ..variable.., payer, system, perm?]`.
 ///
-/// Applies every check both instructions share: the pass exists and is EdgeSeat, the user is
-/// Multicast, and the device is the user's own.
+/// This function validates requirements shared by both feed instructions.
+/// The pass must match the user and support feeds.
+/// The user must use Multicast on their assigned device.
 pub fn load_context<'a, 'b>(
     program_id: &Pubkey,
     accounts: &'a [AccountInfo<'b>],
@@ -108,14 +109,21 @@ pub fn load_context<'a, 'b>(
     let device = Device::try_from(device_account)?;
 
     let accesspass = AccessPass::try_from(accesspass_account)?;
-    let (accesspass_pda, _) = get_accesspass_pda(program_id, &user.client_ip, &user.owner);
-    let (accesspass_dynamic_pda, _) =
-        get_accesspass_pda(program_id, &Ipv4Addr::UNSPECIFIED, &user.owner);
-    assert!(
-        accesspass_account.key == &accesspass_pda
-            || accesspass_account.key == &accesspass_dynamic_pda,
-        "Invalid AccessPass PDA",
-    );
+    if user.accesspass_pk == Pubkey::default() {
+        let (accesspass_pda, _) = get_accesspass_pda(program_id, &user.client_ip, &user.owner);
+        let (accesspass_dynamic_pda, _) =
+            get_accesspass_pda(program_id, &Ipv4Addr::UNSPECIFIED, &user.owner);
+        assert!(
+            accesspass_account.key == &accesspass_pda
+                || accesspass_account.key == &accesspass_dynamic_pda,
+            "Invalid AccessPass PDA",
+        );
+    } else {
+        assert_eq!(
+            accesspass_account.key, &user.accesspass_pk,
+            "AccessPass does not match the User",
+        );
+    }
     if !matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_)) {
         msg!(
             "AccessPass type {:?} carries no feeds; use UpdateMulticastGroupRoles",

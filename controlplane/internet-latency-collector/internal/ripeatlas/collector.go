@@ -1735,8 +1735,8 @@ func (c *Collector) Run(ctx context.Context, dryRun bool, probesPerLocation int,
 		return fmt.Errorf("RIPE Atlas export interval must be positive, got %v", exportInterval)
 	}
 
-	// Seeds the state both goroutines share. A load failure holds off the cycles, not the
-	// process, so it is logged rather than returned.
+	// Seeds the state both goroutines share. A load failure must hold off the cycles, not
+	// kill the process, so it is logged rather than returned.
 	if _, err := c.ensureMeasurementStateLoaded(stateDir); err != nil {
 		c.log.Error("Failed to load measurement state at startup, measurement management and export are held off until it loads",
 			slog.String("error", err.Error()))

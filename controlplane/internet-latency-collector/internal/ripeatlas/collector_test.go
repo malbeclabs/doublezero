@@ -1375,6 +1375,8 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_RemoveUnwanted(t *testi
 
 	tempDir := t.TempDir()
 	stateDir := filepath.Join(tempDir, "state")
+	// configureMeasurements is called directly here, bypassing the load gate that creates this.
+	require.NoError(t, os.MkdirAll(stateDir, 0755))
 	outputDir := filepath.Join(tempDir, "output")
 
 	// Track what gets removed and exported
@@ -1502,6 +1504,8 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_UnresponsiveSourceProbe
 	}
 
 	stateDir := filepath.Join(t.TempDir(), "state")
+	// configureMeasurements is called directly here, bypassing the load gate that creates this.
+	require.NoError(t, os.MkdirAll(stateDir, 0755))
 
 	c := &Collector{client: mockClient, log: log, env: "testnet", getLocationsFunc: func(ctx context.Context) []collector.LocationMatch {
 		return []collector.LocationMatch{}
@@ -1923,6 +1927,8 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_UnresponsiveTargetDoesN
 	}
 
 	stateDir := filepath.Join(t.TempDir(), "state")
+	// configureMeasurements is called directly here, bypassing the load gate that creates this.
+	require.NoError(t, os.MkdirAll(stateDir, 0755))
 
 	c := &Collector{client: mockClient, log: log, env: "testnet", getLocationsFunc: func(ctx context.Context) []collector.LocationMatch {
 		return []collector.LocationMatch{}
@@ -3093,4 +3099,215 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_DryRunDoesNotPersistMar
 	require.NoError(t, c.configureMeasurements(t.Context(), locationMatches, true, 1, stateDir, 10*time.Minute))
 
 	require.NoFileExists(t, stateFile, "--dry-run must not write the daemon's state file")
+}
+
+// TestInternetLatency_RIPEAtlas_ConfigureMeasurements_GetAllMeasurementsError verifies that a
+// failed measurement fetch skips the cycle. Read as "no measurements exist", it recreated
+// every wanted measurement and deleted every tracked one (#4169).
+func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_GetAllMeasurementsError(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+	stateDir := t.TempDir()
+
+	state := NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
+	state.SetMetadata(1001, MeasurementMeta{
+		TargetLocation: "lon",
+		TargetProbeID:  200,
+		Sources:        []SourceProbeMeta{{LocationCode: "nyc", ProbeID: 100}},
+		CreatedAt:      time.Now().Unix(),
+	})
+	require.NoError(t, state.Save())
+
+	var created, stopped int
+	var mu sync.Mutex
+	apiErr := errors.New("failed to get measurements (endpoint: /measurements/my/?status=Ongoing,Scheduled&tags=mainnet-beta): 401")
+	mockClient := &MockClient{
+		GetAllMeasurementsFunc: func(ctx context.Context, env string) ([]Measurement, error) {
+			return nil, apiErr
+		},
+		CreateMeasurementFunc: func(ctx context.Context, request MeasurementRequest) (*MeasurementResponse, error) {
+			mu.Lock()
+			created++
+			mu.Unlock()
+			return &MeasurementResponse{Measurements: []int{2001}}, nil
+		},
+		StopMeasurementFunc: func(ctx context.Context, measurementID int) error {
+			mu.Lock()
+			stopped++
+			mu.Unlock()
+			return nil
+		},
+	}
+
+	c := &Collector{
+		client:                 mockClient,
+		log:                    log,
+		env:                    "mainnet-beta",
+		measurementState:       state,
+		measurementStateLoaded: true,
+		getLocationsFunc: func(ctx context.Context) []collector.LocationMatch {
+			return []collector.LocationMatch{}
+		},
+	}
+
+	locationMatches := []LocationProbeMatch{
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "nyc", Latitude: 40.7128, Longitude: -74.0060},
+			NearbyProbes:  []Probe{{ID: 100, Address: "1.1.1.1", Latitude: 40.7128, Longitude: -74.0060}},
+			ProbeCount:    1,
+		},
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "lon", Latitude: 51.5074, Longitude: -0.1278},
+			NearbyProbes:  []Probe{{ID: 200, Address: "2.2.2.2", Latitude: 51.5074, Longitude: -0.1278}},
+			ProbeCount:    1,
+		},
+	}
+
+	err := c.configureMeasurements(t.Context(), locationMatches, false, 1, stateDir, 1*time.Minute)
+	require.Error(t, err, "a failed measurement fetch should fail the cycle")
+	require.EqualError(t, err, "failed to get existing measurements: "+apiErr.Error(),
+		"the cycle must fail at the fetch, not later with a message that merely mentions it")
+	require.ErrorIs(t, err, apiErr)
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Zero(t, created, "no measurement should be created when the existing fleet is unknown")
+	require.Zero(t, stopped, "no measurement should be removed when the existing fleet is unknown")
+
+	// Metadata must survive the failed cycle; losing it is what armed the next wipe.
+	require.Len(t, state.GetAllMetadata(), 1)
+	require.Equal(t, "lon", state.GetAllMetadata()[1001].TargetLocation)
+
+	reloaded := NewMeasurementState(filepath.Join(stateDir, TimestampFileName))
+	require.NoError(t, reloaded.Load())
+	require.Len(t, reloaded.GetAllMetadata(), 1)
+	require.Equal(t, "lon", reloaded.GetAllMetadata()[1001].TargetLocation)
+}
+
+// TestInternetLatency_RIPEAtlas_MeasurementCreation_GatedOnStateLoad verifies that an
+// unreadable state file holds off measurement management entirely, and that a repaired file
+// resumes it without a restart. An empty tracker deleted the whole fleet (#4131).
+func TestInternetLatency_RIPEAtlas_MeasurementCreation_GatedOnStateLoad(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+	stateDir := t.TempDir()
+	stateFile := filepath.Join(stateDir, TimestampFileName)
+	require.NoError(t, os.WriteFile(stateFile, []byte("{truncated"), 0644))
+
+	var apiCalls, locationLookups int
+	var mu sync.Mutex
+	countCall := func(n *int) {
+		mu.Lock()
+		*n++
+		mu.Unlock()
+	}
+	mockClient := &MockClient{
+		GetProbesForLocationsFunc: func(ctx context.Context, locations []LocationProbeMatch) ([]LocationProbeMatch, error) {
+			countCall(&apiCalls)
+			result := make([]LocationProbeMatch, len(locations))
+			for i, loc := range locations {
+				probe := Probe{
+					ID:        100 + i,
+					Address:   fmt.Sprintf("%d.%d.%d.%d", i+1, i+1, i+1, i+1),
+					Latitude:  loc.Latitude,
+					Longitude: loc.Longitude,
+				}
+				probe.Geometry.Coordinates = []float64{loc.Longitude, loc.Latitude}
+				result[i] = LocationProbeMatch{
+					LocationMatch: loc.LocationMatch,
+					NearbyProbes:  []Probe{probe},
+					ProbeCount:    1,
+				}
+			}
+			return result, nil
+		},
+		GetAllMeasurementsFunc: func(ctx context.Context, env string) ([]Measurement, error) {
+			countCall(&apiCalls)
+			return []Measurement{}, nil
+		},
+		CreateMeasurementFunc: func(ctx context.Context, request MeasurementRequest) (*MeasurementResponse, error) {
+			countCall(&apiCalls)
+			return &MeasurementResponse{Measurements: []int{2001}}, nil
+		},
+		StopMeasurementFunc: func(ctx context.Context, measurementID int) error {
+			countCall(&apiCalls)
+			return nil
+		},
+	}
+
+	c := &Collector{
+		client:          mockClient,
+		log:             log,
+		env:             "mainnet-beta",
+		probeToLocation: make(map[int]string),
+		getLocationsFunc: func(ctx context.Context) []collector.LocationMatch {
+			countCall(&locationLookups)
+			return []collector.LocationMatch{
+				{LocationCode: "nyc", Latitude: 40.7128, Longitude: -74.0060},
+				{LocationCode: "lon", Latitude: 51.5074, Longitude: -0.1278},
+			}
+		},
+	}
+
+	err := c.RunRipeAtlasMeasurementCreation(t.Context(), false, 1, stateDir, 1*time.Minute)
+	require.Error(t, err, "a corrupt state file should hold off measurement management")
+	require.ErrorContains(t, err, "failed to load measurement state: failed to decode timestamp file:",
+		"management must stop at the state load, not later with a message that merely mentions it")
+
+	mu.Lock()
+	require.Zero(t, apiCalls, "no RIPE Atlas call should be made while the state file is unreadable")
+	require.Zero(t, locationLookups, "management should stop before it enumerates locations")
+	mu.Unlock()
+
+	require.NoError(t, os.WriteFile(stateFile, []byte(`{"metadata": {}}`), 0644))
+
+	require.NoError(t, c.RunRipeAtlasMeasurementCreation(t.Context(), false, 1, stateDir, 1*time.Minute))
+
+	mu.Lock()
+	defer mu.Unlock()
+	require.Positive(t, apiCalls, "management should reach the API once the state file loads")
+	require.Equal(t, 1, locationLookups)
+}
+
+// TestInternetLatency_RIPEAtlas_ExportMeasurementResults_GatedOnStateLoad verifies that an
+// unreadable state file holds off export as well as management, so an ungated export cannot
+// write an empty tracker over it and cause the fleet wipe one interval later (#4131, #4169).
+func TestInternetLatency_RIPEAtlas_ExportMeasurementResults_GatedOnStateLoad(t *testing.T) {
+	t.Parallel()
+
+	log := logger.With("test", t.Name())
+	stateDir := t.TempDir()
+	stateFile := filepath.Join(stateDir, TimestampFileName)
+	corrupt := []byte("{truncated")
+	require.NoError(t, os.WriteFile(stateFile, corrupt, 0644))
+
+	var apiCalls int
+	var mu sync.Mutex
+	mockClient := &MockClient{
+		GetAllMeasurementsFunc: func(ctx context.Context, env string) ([]Measurement, error) {
+			mu.Lock()
+			apiCalls++
+			mu.Unlock()
+			return []Measurement{}, nil
+		},
+	}
+
+	c := &Collector{client: mockClient, log: log, env: "mainnet-beta", getLocationsFunc: func(ctx context.Context) []collector.LocationMatch {
+		return []collector.LocationMatch{}
+	}}
+
+	err := c.ExportMeasurementResults(t.Context(), stateDir)
+	require.Error(t, err, "a corrupt state file should hold off export")
+	require.ErrorContains(t, err, "failed to load measurement state: failed to decode timestamp file:",
+		"export must stop at the state load, not later with a message that merely mentions it")
+
+	mu.Lock()
+	require.Zero(t, apiCalls, "no RIPE Atlas call should be made while the state file is unreadable")
+	mu.Unlock()
+
+	onDisk, err := os.ReadFile(stateFile)
+	require.NoError(t, err)
+	require.Equal(t, corrupt, onDisk, "export must not overwrite the unreadable state file")
 }

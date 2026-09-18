@@ -1084,3 +1084,31 @@ pub async fn try_execute_and_get_error(
         .expect("banks client failed")
         .result
 }
+
+/// True when nothing is left at `pubkey`: either no account at all, or one drained of its
+/// lamports. `get_account_data` cannot answer this, because it returns `None` both for an
+/// account that is gone and for one that is still there but no longer decodes, so a change that
+/// corrupted a pass instead of closing it would pass an `is_none()` assertion.
+#[allow(dead_code)]
+pub async fn account_is_closed(banks_client: &mut BanksClient, pubkey: Pubkey) -> bool {
+    match banks_client.get_account(pubkey).await {
+        Ok(None) => true,
+        Ok(Some(account)) => account.lamports == 0,
+        Err(e) => panic!("banks client failed reading {pubkey}: {e:?}"),
+    }
+}
+
+/// Asserts a failed transaction was rejected with the `ProgramError::Custom` code that
+/// `expected` maps to. Takes the expected error as a parameter rather than hardcoding one, so
+/// any test in this crate can use it to check any `DoubleZeroError`.
+#[allow(dead_code)]
+pub fn assert_custom_error(err: &BanksClientError, expected: DoubleZeroError) {
+    let ProgramError::Custom(want) = ProgramError::from(expected.clone()) else {
+        panic!("{expected:?} must map to ProgramError::Custom");
+    };
+    assert_eq!(
+        custom_error_code(err),
+        Some(want),
+        "expected Custom({want}), got {err:?}"
+    );
+}

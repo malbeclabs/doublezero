@@ -15,6 +15,9 @@ All notable changes to this project will be documented in this file.
   - Target selection ranks probes carrying an unresponsive-target mark last rather than dropping them, so a metro whose every candidate is marked keeps its measurement pointed at the nearest one. Dropping them emptied the metro's candidate set, and reconciliation then read the absent target as unwanted and deleted the measurement, trading partial data for none until the marks expired up to 24h later. (malbeclabs/doublezero#4182)
   - Rotate a RIPE Atlas target probe that replies but drops most pings. The staleness check only asked whether a measurement exported anything in the last hour, so a target answering a small fraction of the time looked healthy indefinitely while its circuits took turns falling out of the freshness window. Ping outcomes now accumulate in a hourly window per measurement, and a target above the loss threshold is marked, which ranks it behind any healthier candidate.
 
+- Serviceability
+  - Ten new instructions remove an access pass or a user for one specific `AccessPassType`: `ClosePrepaidAccessPass`, `CloseSolanaValidatorAccessPass`, `CloseSolanaRPCAccessPass`, `CloseOthersAccessPass`, `CloseEdgeSeatAccessPass`, and `DeletePrepaidUser`, `DeleteSolanaValidatorUser`, `DeleteSolanaRPCUser`, `DeleteOthersUser`, `DeleteEdgeSeatUser`. Each reads the access pass and refuses with `InvalidAccessPassType` unless the pass matches the instruction. `CloseAccessPass` and `DeleteUser` keep working unchanged; a follow-up change deprecates them and moves every caller. (#2470)
+
 ## [v0.41.0](https://github.com/malbeclabs/doublezero/compare/client/v0.40.0...client/v0.41.0) - 2026-09-16
 
 ### Breaking

@@ -9,8 +9,8 @@ All notable changes to this project will be documented in this file.
 - Serviceability
   - `CloseAccessPass` (variant 69) and `DeleteUser` (variant 42) now return `Deprecated`. Callers must use the per-pass-type instructions instead: `ClosePrepaidAccessPass`, `CloseSolanaValidatorAccessPass`, `CloseSolanaRPCAccessPass`, `CloseOthersAccessPass`, `CloseEdgeSeatAccessPass` for close; `DeletePrepaidUser`, `DeleteSolanaValidatorUser`, `DeleteSolanaRPCUser`, `DeleteOthersUser`, `DeleteEdgeSeatUser` for delete. Each new instruction reads the access pass and refuses unless the pass matches the instruction. (#2470)
   - The oracle in `doublezero-shreds` must ship its matching change with this program deploy. Its user removals fail until it names the pass type on each instruction. (#2470)
-  - `doublezero access-pass close` requires a new flag `--type` with one of `prepaid`, `solana-validator`, `solana-rpc`, `others`, `edge-seat`. (#2470)
-  - `doublezero user delete` requires a new flag `--access-pass-type` with the same values. (#2470)
+  - `doublezero access-pass close` requires a new flag `--accesspass-type` with one of `prepaid`, `solana-validator`, `solana-rpc`, `others`, `edge-seat`. (#2470)
+  - `doublezero user delete` requires the same new flag `--accesspass-type`. Both spell it the way `access-pass set` already does. (#2470)
 
 ### Changes
 
@@ -23,6 +23,8 @@ All notable changes to this project will be documented in this file.
 
 - Serviceability
   - Ten new instructions remove an access pass or a user for one specific `AccessPassType`: `ClosePrepaidAccessPass`, `CloseSolanaValidatorAccessPass`, `CloseSolanaRPCAccessPass`, `CloseOthersAccessPass`, `CloseEdgeSeatAccessPass`, and `DeletePrepaidUser`, `DeleteSolanaValidatorUser`, `DeleteSolanaRPCUser`, `DeleteOthersUser`, `DeleteEdgeSeatUser`. Each reads the access pass and refuses with `InvalidAccessPassType` unless the pass matches the instruction. (#2470)
+- SDK
+  - `DeleteUserCommand` refuses a declared pass type that does not match the pass it read, before it builds a transaction. The program makes the same check and is the one that counts; locally it names both types instead of charging the caller for a transaction that comes back as a bare custom error code. (#2470)
 
 ## [v0.41.0](https://github.com/malbeclabs/doublezero/compare/client/v0.40.0...client/v0.41.0) - 2026-09-16
 

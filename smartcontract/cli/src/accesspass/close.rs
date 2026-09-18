@@ -16,7 +16,7 @@ pub struct CloseAccessPassCliCommand {
     pub pubkey: Pubkey,
     /// The kind of access pass being closed. Required: the program refuses the call when the
     /// pass is a different kind, so stating it here is what makes the close targeted.
-    #[arg(long = "type")]
+    #[arg(long)]
     pub accesspass_type: CliAccessPassType,
 }
 
@@ -132,7 +132,7 @@ mod tests {
             Close(CloseAccessPassCliCommand),
         }
 
-        // Omitting --type is a parse error: there is no default, so an operator who
+        // Omitting --accesspass-type is a parse error: there is no default, so an operator who
         // forgets the flag is stopped here rather than the program guessing a kind.
         let missing_type = TestCli::try_parse_from([
             "test",
@@ -147,7 +147,7 @@ mod tests {
             "close",
             "--pubkey",
             &Pubkey::new_unique().to_string(),
-            "--type",
+            "--accesspass-type",
             "prepaid",
         ]);
         assert!(with_type.is_ok(), "{with_type:?}");

@@ -1263,12 +1263,26 @@ func runWriteWorkflows(
 
 		// Start all 4 delete streams: user1 delete, user2 ban, WAN link wait, DZX link wait.
 		// cascadeKnownFail on user_delete: when an older CLI cannot send the required
-		// --access-pass-type flag, every later delete phase depends on that user being
+		// --accesspass-type flag, every later delete phase depends on that user being
 		// gone (user_wait_removed polls for it, and the access pass cannot close while
 		// the user still holds it). Cascading skips them rather than letting each fail
 		// on its own for a reason that is already recorded here. See malbeclabs/infra#2470.
+		//
+		// This gives up coverage permanently, not just until the next release. A cascade
+		// sets phaseFailed, which skips every remaining phase and not only the ones that
+		// need the user gone, so for every CLI below the gate these stop running:
+		// user_delete_2, accesspass_close, accesspass_close_2, device_interface_delete_1
+		// to _4, iface_wait_removed_1 and _2, exchange_clear_devices, device_drain_1 and
+		// _2, device_delete_1 and _2, device_wait_removed_1 and _2, exchange_delete,
+		// contributor_delete and location_delete. Those passed from 0.19.0 up, and an old
+		// binary can never gain the flag, so they will not pass again. Two knock-ons: the
+		// accesspass_close and user_delete_2 entries in knownIncompatibilities are now
+		// unreachable, and the device_interface_delete_* entries lose the execStep guard
+		// that fails a step which passes while listed as incompatible. Keeping the
+		// teardown alive would mean running this one delete with the current CLI, which
+		// stops the phase testing the old binary at all. Accepted rather than fixed.
 		{name: "delete_start", parallel: true, steps: []writeStep{
-			{name: "user_delete", cascadeKnownFail: true, cmd: cli + " user delete --access-pass-type prepaid --pubkey " +
+			{name: "user_delete", cascadeKnownFail: true, cmd: cli + " user delete --accesspass-type prepaid --pubkey " +
 				fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP)},
 			{name: "user_request_ban_2", cmd: cli + " user request-ban --pubkey " +
 				fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s ' | awk '{print $1}')", user2ClientIP), noCascade: true},
@@ -1282,7 +1296,7 @@ func runWriteWorkflows(
 				`count=$(doublezero user list 2>/dev/null | grep '` + userClientIP + `' | wc -l); ` +
 				`[ "$count" -eq 0 ] && exit 0; sleep 1; done; ` +
 				`echo "user1 not removed after 30s"; exit 1`},
-			{name: "user_delete_2", cmd: cli + " user delete --access-pass-type prepaid --pubkey " +
+			{name: "user_delete_2", cmd: cli + " user delete --accesspass-type prepaid --pubkey " +
 				fmt.Sprintf("$(doublezero user list 2>/dev/null | grep '%s ' | awk '{print $1}')", user2ClientIP)},
 			{name: "link_drain", cascadeKnownFail: true, cmd: cli + " link update --pubkey " + lookupPubkeyByCode("link list", linkCode) + " --status soft-drained"},
 			{name: "link_drain_dzx", cascadeKnownFail: true, cmd: cli + " link update --pubkey " + lookupPubkeyByCode("link list", dzxLinkCode) + " --status soft-drained"},
@@ -1296,7 +1310,7 @@ func runWriteWorkflows(
 
 		// Finish user streams + multicast delete + start interface wait.
 		{name: "delete_users_done", parallel: true, steps: []writeStep{
-			{name: "accesspass_close", cmd: cli + " access-pass close --type prepaid --pubkey " +
+			{name: "accesspass_close", cmd: cli + " access-pass close --accesspass-type prepaid --pubkey " +
 				fmt.Sprintf("$(doublezero access-pass list 2>/dev/null | grep '%s' | awk '{print $1}')", userClientIP)},
 			{name: "user_wait_removed_2", cmd: `for i in $(seq 1 30); do ` +
 				`count=$(doublezero user list 2>/dev/null | grep '` + user2ClientIP + ` ' | wc -l); ` +
@@ -1311,7 +1325,7 @@ func runWriteWorkflows(
 
 		// Close accesspass2 + delete all interfaces.
 		{name: "delete_interfaces", parallel: true, steps: []writeStep{
-			{name: "accesspass_close_2", cmd: cli + " access-pass close --type prepaid --pubkey " +
+			{name: "accesspass_close_2", cmd: cli + " access-pass close --accesspass-type prepaid --pubkey " +
 				fmt.Sprintf("$(doublezero access-pass list 2>/dev/null | grep '%s ' | awk '{print $1}')", user2ClientIP)},
 			{name: "device_interface_delete", cmd: cli + " device interface delete " + deviceCode + " " + ifaceName},
 			{name: "device_interface_delete_2", cmd: cli + " device interface delete " + deviceCode2 + " " + ifaceName},

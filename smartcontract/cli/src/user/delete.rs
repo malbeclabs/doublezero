@@ -20,7 +20,7 @@ pub struct DeleteUserCliCommand {
     pub access_pass: Option<String>,
     /// The kind of access pass the user holds. Required: the program refuses the call when the
     /// pass is a different kind, so stating it here is what makes the delete targeted.
-    #[arg(long = "access-pass-type")]
+    #[arg(long)]
     pub accesspass_type: CliAccessPassType,
 }
 
@@ -160,7 +160,7 @@ mod tests {
             Delete(DeleteUserCliCommand),
         }
 
-        // Omitting --access-pass-type is a parse error: there is no default, so an
+        // Omitting --accesspass-type is a parse error: there is no default, so an
         // operator who forgets the flag is stopped here rather than the program
         // guessing a kind.
         let missing_type = TestCli::try_parse_from([
@@ -176,7 +176,7 @@ mod tests {
             "delete",
             "--pubkey",
             &Pubkey::new_unique().to_string(),
-            "--access-pass-type",
+            "--accesspass-type",
             "prepaid",
         ]);
         assert!(with_type.is_ok(), "{with_type:?}");

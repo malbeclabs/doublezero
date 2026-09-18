@@ -44,6 +44,10 @@ impl DeleteTenantCommand {
                 // kind would turn "delete every user under this tenant" into "delete only
                 // users of one kind", stranding the tenant record, since the code below
                 // waits for reference_count to reach 0.
+                //
+                // DeleteUserCommand reads the pass again, so each user costs two fetches. The
+                // alternative is a command that derives its own kind, which is the thing the
+                // declared kind exists to prevent. Two reads is the cheaper mistake.
                 let (_, accesspass) = resolve_user_accesspass(client, *user_pk, user, None)?;
 
                 let result = DeleteUserCommand {

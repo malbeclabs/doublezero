@@ -439,15 +439,57 @@ func TestNewOffsetSigner_ZeroSenderPubkey(t *testing.T) {
 	require.Contains(t, err.Error(), "sender pubkey must not be zero")
 }
 
-// An unsigned offset is what an attacker sends when they cannot sign at all,
-// and ed25519.Verify accepts the all-zero (pubkey, signature) pair for a
-// fraction of messages: the zero pubkey decodes to a point of order 4 rather
-// than to nothing, so the equation holds whenever the message hash lands on the
-// right residue — roughly one message in four. Slot 2 is one such message with
-// these field values, which is why the slot is pinned: at slot 1 the pair is
-// rejected by the math and the test would pass without the guard.
-func TestVerifyOffset_ZeroPubkeyAndSignature(t *testing.T) {
+// An unsigned offset is what an attacker sends when they cannot sign at all.
+// ed25519.Verify does not screen small-order public keys, so an all-zero
+// (pubkey, signature) pair verifies on roughly one message in four and the
+// identity encoding verifies on every message. Both leave S zero, which is what
+// verification rejects.
+func TestVerifyOffset_SmallOrderPubkeyForgery(t *testing.T) {
 	t.Parallel()
+
+	identity := [32]byte{1} // 0x01||00*31, the identity point encoding
+
+	tests := []struct {
+		name            string
+		authorityPubkey [32]byte
+		signature       [64]byte
+	}{
+		// Slot 2 is pinned because acceptance of the all-zero pair is
+		// message-dependent; at slot 1 the math rejects it and the test would
+		// pass without the guard.
+		{"all-zero pubkey and signature", [32]byte{}, [64]byte{}},
+		{"identity pubkey, R=identity S=0", identity, [64]byte{1}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			offset := &LocationOffset{
+				Version:         LocationOffsetVersion,
+				AuthorityPubkey: tt.authorityPubkey,
+				Signature:       tt.signature,
+				MeasurementSlot: 2,
+				Lat:             1.0,
+				Lng:             2.0,
+				MeasuredRttNs:   1000,
+				RttNs:           1000,
+			}
+
+			require.ErrorContains(t, VerifyOffset(offset), "signature scalar is zero")
+			require.ErrorContains(t, VerifyOffsetChain(offset), "signature scalar is zero")
+		})
+	}
+}
+
+// A real signature must still verify: the guard rejects a zero S, not a
+// legitimate one.
+func TestVerifyOffset_RealSignatureStillVerifies(t *testing.T) {
+	t.Parallel()
+
+	keypair := solana.NewWallet().PrivateKey
+	signer, err := NewOffsetSigner(keypair, solana.NewWallet().PublicKey())
+	require.NoError(t, err)
 
 	offset := &LocationOffset{
 		Version:         LocationOffsetVersion,
@@ -457,9 +499,6 @@ func TestVerifyOffset_ZeroPubkeyAndSignature(t *testing.T) {
 		MeasuredRttNs:   1000,
 		RttNs:           1000,
 	}
-
-	// Assert the specific failure: without it a later change that made some
-	// other check fire first would leave this passing while the guard rotted.
-	require.ErrorContains(t, VerifyOffset(offset), "authority pubkey is zero")
-	require.ErrorContains(t, VerifyOffsetChain(offset), "authority pubkey is zero")
+	require.NoError(t, signer.SignOffset(offset))
+	require.NoError(t, VerifyOffset(offset))
 }

@@ -982,3 +982,65 @@ func TestTargetDiscovery_EmptyScanPropagates(t *testing.T) {
 		t.Error("expected an empty ICMP target update to be sent for a delinquent user")
 	}
 }
+
+// A dropped send must be retried, not silently forgotten. The caches feed the
+// change detection, so recording one before the send lands makes the loss
+// permanent — and the update that stops probing a delinquent user is one-shot.
+func TestTargetDiscovery_DroppedUpdateRetriesNextTick(t *testing.T) {
+	probePK := testProbePubkey()
+	client := &mockGeolocationUserClient{
+		users: []geolocation.KeyedGeolocationUser{
+			makeUser(geolocation.GeolocationUserStatusActivated, geolocation.GeolocationPaymentStatusPaid, "user1", []geolocation.GeolocationTarget{
+				outboundTarget([4]uint8{44, 0, 0, 1}, 9000, probePK),
+				inboundTarget(solana.NewWallet().PublicKey(), probePK),
+				outboundIcmpTarget([4]uint8{44, 0, 0, 2}, 0, probePK),
+			}),
+		},
+	}
+
+	td := newTestTargetDiscovery(client)
+
+	// Channels pre-filled so every send hits the default arm and is dropped.
+	targetCh := make(chan TargetUpdate, 1)
+	keyCh := make(chan InboundKeyUpdate, 1)
+	icmpCh := make(chan ICMPTargetUpdate, 1)
+	targetCh <- TargetUpdate{}
+	keyCh <- InboundKeyUpdate{}
+	icmpCh <- ICMPTargetUpdate{}
+
+	td.Tick(context.Background(), targetCh, keyCh, icmpCh)
+
+	// Drain the placeholders; the real updates were dropped.
+	<-targetCh
+	<-keyCh
+	<-icmpCh
+
+	td.Tick(context.Background(), targetCh, keyCh, icmpCh)
+
+	select {
+	case update := <-targetCh:
+		if len(update.Targets) != 1 {
+			t.Errorf("expected the dropped target update to be retried, got %d targets", len(update.Targets))
+		}
+	default:
+		t.Error("expected the dropped target update to be retried on the next tick")
+	}
+
+	select {
+	case update := <-keyCh:
+		if len(update.Keys) != 1 {
+			t.Errorf("expected the dropped inbound key update to be retried, got %d keys", len(update.Keys))
+		}
+	default:
+		t.Error("expected the dropped inbound key update to be retried on the next tick")
+	}
+
+	select {
+	case update := <-icmpCh:
+		if len(update.Targets) != 1 {
+			t.Errorf("expected the dropped ICMP update to be retried, got %d targets", len(update.Targets))
+		}
+	default:
+		t.Error("expected the dropped ICMP target update to be retried on the next tick")
+	}
+}

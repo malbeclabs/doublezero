@@ -157,6 +157,9 @@ pub enum DoubleZeroInstruction {
     UpdateUser(UserUpdateArgs), // variant 39
     SuspendUser(),              // variant 40
     ResumeUser(),               // variant 41
+    /// Still live, and performs no pass type check. New callers send `Delete<Kind>User`
+    /// (variants 130-134) instead; deprecating this one is a follow-up, once the
+    /// `doublezero-shreds` oracle has moved. See malbeclabs/infra#2470.
     DeleteUser(UserDeleteArgs), // variant 42
     /// Deprecated: handler returns DoubleZeroError::Deprecated. See #3622.
     CloseAccountUser(), // variant 43
@@ -194,7 +197,10 @@ pub enum DoubleZeroInstruction {
     AcceptLink(LinkAcceptArgs),               // variant 66
     SetAccessPass(SetAccessPassArgs),         // variant 67
     SetAirdrop(SetAirdropArgs),               // variant 68
-    CloseAccessPass(CloseAccessPassArgs),     // variant 69
+    /// Still live, and performs no pass type check. New callers send
+    /// `Close<Kind>AccessPass` (variants 125-129) instead; deprecating this one is a
+    /// follow-up, once the `doublezero-shreds` oracle has moved. See malbeclabs/infra#2470.
+    CloseAccessPass(CloseAccessPassArgs), // variant 69
     CheckStatusAccessPass(CheckStatusAccessPassArgs), // variant 70
     CheckUserAccessPass(CheckUserAccessPassArgs), // variant 71
 

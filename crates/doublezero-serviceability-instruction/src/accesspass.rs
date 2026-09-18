@@ -53,7 +53,7 @@ pub fn set_access_pass(
     )
 }
 
-/// `Close<Kind>AccessPass` (variants 119-123), chosen by `kind`. The program refuses the call
+/// `Close<Kind>AccessPass` (variants 125-129), chosen by `kind`. The program refuses the call
 /// when the stored pass is a different kind, so `kind` must be what the caller intends to
 /// close, not a value read back from the pass. Accounts: `[accesspass, globalstate]`.
 pub fn close_access_pass(

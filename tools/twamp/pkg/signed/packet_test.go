@@ -670,13 +670,10 @@ func TestParseOffsetInfo(t *testing.T) {
 	})
 }
 
-// An unsigned datagram is what an attacker sends when they cannot sign at all.
-// ed25519.Verify does not screen small-order public keys: the all-zero key
-// verifies on roughly one message in four, and the identity encoding
-// (0x01||00*31) with R=identity verifies on every message. Both leave S zero,
-// which is what verification rejects. The zero-key cases pin their otherwise-zero
-// fields to a message the unguarded code accepts (probe seq 1), since acceptance
-// there is message-dependent and an arbitrary choice would pass regardless.
+// An unsigned datagram is what an attacker sends when they cannot sign at all: the
+// all-zero key verifies on ~1 message in 4 and the identity encoding on every one
+// (see hasZeroScalar). The all-zero cases pin probe seq 1 because acceptance there
+// is message-dependent, and an arbitrary choice would pass without the guard.
 func TestProbePacket_Verify_SmallOrderPubkeyForgery(t *testing.T) {
 	t.Parallel()
 
@@ -732,8 +729,6 @@ func TestReplyPacket_Verify_SmallOrderPubkeyForgery(t *testing.T) {
 	}
 }
 
-// A real signature must still verify: the guard rejects a zero S, not a
-// legitimate one.
 func TestReplyPacket_Verify_RealSignatureStillVerifies(t *testing.T) {
 	t.Parallel()
 

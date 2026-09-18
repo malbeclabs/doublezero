@@ -44,31 +44,26 @@ const (
 	defaultDeliveryDNSRefreshInterval = 5 * time.Minute
 	defaultDeliveryDNSTTL             = defaultDeliveryDNSRefreshInterval * 5 / 2
 
-	// dzSlotDuration is the nominal DoubleZero Ledger slot time.
 	dzSlotDuration = 400 * time.Millisecond
 
-	// maxSlotReferenceAge bounds how stale our cached ledger slot may be before
-	// it stops counting as "now" for the replay check. The slot getter falls back
-	// to its cache when RPC fails, so without this bound an outage freezes the
-	// acceptance window around an old slot and replays near that slot stay
-	// acceptable for as long as the outage lasts. Two refresh periods, so a
-	// single missed refresh does not stop ingestion.
+	// Past this age the cached slot stops counting as "now" for the replay check:
+	// the getter serves its cache when RPC fails, and an unbounded fallback
+	// freezes the acceptance window around an old slot, keeping replays near it
+	// acceptable for the length of the outage. Two refresh periods, so one missed
+	// refresh does not stop ingestion.
 	maxSlotReferenceAge = 2 * geoprobe.SlotCacheTTL
 
 	// Acceptance window for an inbound offset's MeasurementSlot, RFC-16's replay
 	// mitigation, measured against our reference slot.
 	//
-	// The window is asymmetric because the two staleness sources push opposite
-	// ways. Our own reference may lag reality by up to maxSlotReferenceAge, which
-	// makes a DZD stamping the current slot look that far *ahead* of us — so the
-	// lead tolerance is derived from that bound rather than set independently.
-	// Anything tighter kills ingestion across the very band maxSlotReferenceAge
-	// exists to keep alive, and it fails looking like a replay in the logs. The
-	// lead costs nothing against replays: a captured offset carries an old slot,
-	// and a future one would have to be signed by the DZD itself.
+	// The lead is derived from maxSlotReferenceAge, not set independently: a
+	// reference that lags reality by that much makes a DZD stamping the current
+	// slot look equally far ahead, and anything tighter rejects those as replays
+	// across the very band the bound exists to keep alive. It costs nothing
+	// against real replays, which carry an old slot.
 	//
-	// On the lag side a DZD stamps from its own geoprobe.SlotCacheTTL cache, so
-	// 15m covers that plus RPC and finalization jitter.
+	// The lag covers the DZD stamping from its own geoprobe.SlotCacheTTL cache,
+	// plus RPC and finalization jitter.
 	maxOffsetSlotLag  = uint64(15 * time.Minute / dzSlotDuration)
 	maxOffsetSlotLead = uint64(maxSlotReferenceAge / dzSlotDuration)
 )
@@ -541,16 +536,13 @@ func main() {
 		return slot, nil
 	}
 
-	// Offset ingestion needs a slot it can still treat as "now", which the
-	// stale-cache fallback above does not guarantee. It reads the cache without
-	// ever issuing RPC: the caller is the only goroutine draining the offset
-	// socket, and a blocking GetSlot carrying the shared retry defaults would
-	// stall reads long enough to overflow the socket buffer — and would re-run
-	// the whole retry for every packet, since a failed fetch leaves the cache
-	// timestamp untouched. slotRefresher keeps the cache warm; when it stops
-	// succeeding the age bound makes ingestion fail closed rather than trust a
-	// frozen slot. Composite offsets keep using getCurrentSlot directly, off
-	// this path: stamping a slightly stale slot beats emitting nothing.
+	// Reads the cache and never issues RPC: the caller is the only goroutine
+	// draining the offset socket, and a blocking GetSlot with the shared retry
+	// defaults would stall reads long enough to overflow the socket buffer, then
+	// re-run the whole retry for the next packet. When slotRefresher stops
+	// succeeding, the age bound fails ingestion closed rather than trusting a
+	// frozen slot. Composite offsets keep calling getCurrentSlot, off this path:
+	// stamping a slightly stale slot beats emitting nothing.
 	getSlotReference := func() (uint64, error) {
 		slotMu.RLock()
 		slot, cachedAt := cachedSlot, slotCachedAt
@@ -582,7 +574,6 @@ func main() {
 		}
 	}()
 
-	// Keep the slot cache warm off the offset receive path.
 	go slotRefresher(ctx, log, getCurrentSlot)
 
 	// Run UDP offset listener.
@@ -810,11 +801,9 @@ func runOffsetListener(
 
 		log.Debug("signature verification successful", "authority_pubkey", authorityPK)
 
-		// RFC-16 replay mitigation. A signature stays valid forever, and the
-		// only other freshness bound is receipt wall-clock, which a replay
-		// refreshes by definition — so MeasurementSlot has to be checked against
-		// the current ledger slot or a captured offset can be replayed
-		// indefinitely to pin this probe's attested reference point.
+		// RFC-16 replay mitigation: a signature never expires and receipt
+		// wall-clock is refreshed by the replay itself, so MeasurementSlot is the
+		// only thing standing between a captured offset and an indefinite replay.
 		currentSlot, err := getSlotReference()
 		if err != nil {
 			log.Warn("Rejecting offset, no usable slot reference",

@@ -104,10 +104,9 @@ func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- T
 	}
 
 	// Each cache is updated only once its send succeeds. Recording it up front
-	// would make a dropped send permanent: the cache would already compare equal,
-	// so no later tick — forced full refresh included — would retry it, and these
-	// updates are one-shot. An empty update lost that way leaves a delinquent
-	// user probed until the process restarts.
+	// would make a dropped send permanent — the cache would compare equal, so no
+	// later tick would retry — and these updates are one-shot: an empty one lost
+	// that way leaves a delinquent user probed until the process restarts.
 	if !probeAddressSlicesEqual(targets, d.cachedTargets) || !deliveryAddrsEqual(outboundDelivery, d.cachedOutboundDelivery) {
 		select {
 		case targetCh <- TargetUpdate{Targets: targets, DeliveryAddrs: outboundDelivery}:
@@ -139,11 +138,9 @@ func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- T
 }
 
 // discover performs a single discovery cycle: fetch users, filter, extract targets/keys,
-// merge with CLI values. The first return value reports whether the scan actually ran,
-// and is meaningful only when err is nil: it is false when the scan was skipped
-// (target_update_count unchanged), which callers must not confuse with a scan that ran
-// and matched nothing. On error every other return value is unset, so callers check err
-// first.
+// merge with CLI values. The first return value reports whether the scan ran, and is
+// meaningful only when err is nil: false means skipped (target_update_count unchanged),
+// which callers must not confuse with a scan that ran and matched nothing.
 // The returned delivery maps map measurement target → result destination for targets
 // whose user has a non-empty ResultDestination, split by target type.
 func (d *TargetDiscovery) discover(ctx context.Context) (bool, []ProbeAddress, []ProbeAddress, [][32]byte, map[ProbeAddress]string, map[ProbeAddress]string, error) {

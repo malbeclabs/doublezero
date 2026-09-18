@@ -20,10 +20,10 @@ const (
 	defaultReadTimeout = 1 * time.Second
 	stalePairTimeout   = 5 * time.Second
 
-	// minUnverifiedReplyInterval floors the rate limit on replies to probes that
-	// fail signature verification. verifyInterval of 0 disables pair rate
-	// limiting, which is fine for probes we authenticated but would leave the
-	// unverified reply path — an order of magnitude of amplification — uncapped.
+	// Floor for the unverified-reply rate limit. verifyInterval of 0 disables pair
+	// rate limiting, which is fine for probes we authenticated but would leave the
+	// unverified reply path uncapped — a reply is an order of magnitude larger
+	// than the probe, so that path is a reflection amplifier.
 	minUnverifiedReplyInterval = 1 * time.Second
 )
 
@@ -234,17 +234,13 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 			raw, _ := r.senderStates.LoadOrStore(probe.SenderPubkey, &senderState{})
 			state := raw.(*senderState)
 
-			// RFC-16 leaves per-probe signature verification to the target, so an
-			// unverified probe still gets a reply — but it must not touch the pair
-			// state a legitimate sender depends on. target_pk is public onchain,
-			// so spoofed probes would otherwise consume the sender's pair budget,
-			// repoint pairSourceIP, and clear its challenge nonce, denying it
-			// inbound geolocation. Reply off a throwaway state instead: the nonce
-			// it carries is never stored, so it authenticates nothing.
+			// RFC-16 leaves per-probe verification to the target, so an unverified
+			// probe still gets a reply — but target_pk is public onchain, so it
+			// must not touch the pair state a legitimate sender depends on, or
+			// spoofed probes deny that sender inbound geolocation. Replying off a
+			// throwaway state also means the nonce it carries is never stored, so
+			// it authenticates nothing.
 			if !probe.Verify() {
-				// Cap unverified replies at one per window per pubkey: the reply
-				// is an order of magnitude larger than the probe, so an unlimited
-				// reply path is a reflection amplifier.
 				interval := max(r.verifyInterval, minUnverifiedReplyInterval)
 				if !state.lastUnverifiedRx.IsZero() && now.Sub(state.lastUnverifiedRx) < interval {
 					continue

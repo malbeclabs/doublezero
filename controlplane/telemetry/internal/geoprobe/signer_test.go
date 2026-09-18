@@ -439,11 +439,9 @@ func TestNewOffsetSigner_ZeroSenderPubkey(t *testing.T) {
 	require.Contains(t, err.Error(), "sender pubkey must not be zero")
 }
 
-// An unsigned offset is what an attacker sends when they cannot sign at all.
-// ed25519.Verify does not screen small-order public keys, so an all-zero
-// (pubkey, signature) pair verifies on roughly one message in four and the
-// identity encoding verifies on every message. Both leave S zero, which is what
-// verification rejects.
+// An unsigned offset is what an attacker sends when they cannot sign at all: the
+// all-zero pubkey verifies on ~1 message in 4 and the identity encoding on every
+// one. See VerifyOffset for why rejecting a zero S covers both.
 func TestVerifyOffset_SmallOrderPubkeyForgery(t *testing.T) {
 	t.Parallel()
 
@@ -482,8 +480,6 @@ func TestVerifyOffset_SmallOrderPubkeyForgery(t *testing.T) {
 	}
 }
 
-// A real signature must still verify: the guard rejects a zero S, not a
-// legitimate one.
 func TestVerifyOffset_RealSignatureStillVerifies(t *testing.T) {
 	t.Parallel()
 

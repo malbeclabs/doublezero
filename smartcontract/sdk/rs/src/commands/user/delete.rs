@@ -55,7 +55,7 @@ impl DeleteUserCommand {
         let stored = AccessPassKind::from(&accesspass.accesspass_type);
         if stored != self.kind {
             eyre::bail!(
-                "User {}'s access pass is {stored}, not {}. Pass --accesspass-type {stored}.",
+                "User {}'s access pass is {stored}, not {}",
                 self.pubkey,
                 self.kind,
             );
@@ -1141,9 +1141,10 @@ mod tests {
         .execute(&client)
         .expect_err("a declared kind that does not match the stored pass must be refused");
 
-        let msg = err.to_string();
-        assert!(msg.contains("prepaid"), "{msg}");
-        assert!(msg.contains("edge_seat"), "{msg}");
+        assert_eq!(
+            err.to_string(),
+            format!("User {user_pubkey}'s access pass is prepaid, not edge_seat"),
+        );
     }
 
     #[test]

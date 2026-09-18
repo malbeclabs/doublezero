@@ -169,7 +169,14 @@ mod tests {
             "--pubkey",
             &Pubkey::new_unique().to_string(),
         ]);
-        assert!(missing_type.is_err(), "{missing_type:?}");
+        // The specific kind matters: is_err() alone would also pass if some other validation
+        // failed first, or if the flag became optional and something else rejected the call.
+        assert_eq!(
+            missing_type
+                .expect_err("omitting the flag must fail")
+                .kind(),
+            clap::error::ErrorKind::MissingRequiredArgument,
+        );
 
         let with_type = TestCli::try_parse_from([
             "test",

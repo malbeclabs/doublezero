@@ -158,7 +158,7 @@ pub enum DoubleZeroInstruction {
     SuspendUser(),              // variant 40
     ResumeUser(),               // variant 41
     /// Deprecated: handler returns DoubleZeroError::Deprecated. Use `Delete<Kind>User`
-    /// (variants 124-128). See malbeclabs/infra#2470.
+    /// (variants 130-134). See malbeclabs/infra#2470.
     DeleteUser(), // variant 42
     /// Deprecated: handler returns DoubleZeroError::Deprecated. See #3622.
     CloseAccountUser(), // variant 43
@@ -197,7 +197,7 @@ pub enum DoubleZeroInstruction {
     SetAccessPass(SetAccessPassArgs),         // variant 67
     SetAirdrop(SetAirdropArgs),               // variant 68
     /// Deprecated: handler returns DoubleZeroError::Deprecated. Use
-    /// `Close<Kind>AccessPass` (variants 119-123). See malbeclabs/infra#2470.
+    /// `Close<Kind>AccessPass` (variants 125-129). See malbeclabs/infra#2470.
     CloseAccessPass(), // variant 69
     CheckStatusAccessPass(CheckStatusAccessPassArgs), // variant 70
     CheckUserAccessPass(CheckUserAccessPassArgs), // variant 71

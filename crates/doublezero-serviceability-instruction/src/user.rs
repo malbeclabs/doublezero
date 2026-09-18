@@ -310,7 +310,7 @@ pub fn update_user(
     )
 }
 
-/// `Delete<Kind>User` (variants 124-128), chosen by `kind`. The program refuses the call when
+/// `Delete<Kind>User` (variants 130-134), chosen by `kind`. The program refuses the call when
 /// the stored access pass is a different kind, so `kind` must be what the caller intends to
 /// delete, not a value read back from the pass.
 ///

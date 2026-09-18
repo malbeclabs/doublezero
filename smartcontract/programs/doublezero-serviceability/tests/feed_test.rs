@@ -257,8 +257,8 @@ async fn test_feed_migrate_writes_chain_once() {
     )
     .await;
 
-    let feed = get_feed(&mut banks_client, feed_pubkey).await;
-    assert_eq!(feed.feed_chain, FeedChain::Unspecified);
+    let before = get_feed(&mut banks_client, feed_pubkey).await;
+    assert_eq!(before.feed_chain, FeedChain::Unspecified);
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     execute_transaction(
@@ -273,9 +273,9 @@ async fn test_feed_migrate_writes_chain_once() {
     )
     .await;
 
-    let feed = get_feed(&mut banks_client, feed_pubkey).await;
-    assert_eq!(feed.feed_chain, FeedChain::Solana);
-    assert_eq!(feed.name, "Shreds NY");
+    let mut expected = before;
+    expected.feed_chain = FeedChain::Solana;
+    assert_eq!(get_feed(&mut banks_client, feed_pubkey).await, expected);
 
     let result = try_execute_and_get_error(
         &mut banks_client,
@@ -332,6 +332,50 @@ async fn test_feed_migrate_refuses_unspecified() {
     )
     .await;
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::InvalidFeedChain));
+}
+
+#[tokio::test]
+async fn test_feed_migrate_unauthorized_caller_rejected() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "shreds", &exchange);
+    let accounts = vec![
+        AccountMeta::new(feed_pubkey, false),
+        AccountMeta::new(globalstate_pubkey, false),
+    ];
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
+            code: "shreds".to_string(),
+            name: "Shreds".to_string(),
+            exchange,
+            groups: vec![Pubkey::new_unique()],
+            ..Default::default()
+        }),
+        accounts.clone(),
+        &payer,
+    )
+    .await;
+
+    let unauthorized = test_payer();
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::MigrateFeed(FeedMigrateArgs {
+            feed_chain: FeedChain::Solana,
+        }),
+        accounts,
+        &unauthorized,
+        &[],
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
 }
 
 #[tokio::test]

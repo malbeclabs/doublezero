@@ -152,9 +152,39 @@ mod tests {
         }
         .execute(&client)
         .unwrap_err();
-        assert!(
-            err.to_string().contains("unspecified"),
-            "unexpected error: {err}"
+        assert_eq!(
+            err.to_string(),
+            "unspecified is not a chain to migrate to; pass solana or hyperliquid"
+        );
+    }
+
+    #[test]
+    fn test_commands_feed_migrate_refuses_an_empty_list() {
+        let client = create_test_client();
+        let err = MigrateFeedCommand {
+            pubkeys: vec![],
+            feed_chain: FeedChain::Solana,
+        }
+        .execute(&client)
+        .unwrap_err();
+        assert_eq!(err.to_string(), "at least one feed is required");
+    }
+
+    #[test]
+    fn test_commands_feed_migrate_refuses_a_ninth_feed() {
+        let client = create_test_client();
+        let err = MigrateFeedCommand {
+            pubkeys: vec![Pubkey::new_unique(); MAX_FEEDS_PER_TRANSACTION + 1],
+            feed_chain: FeedChain::Solana,
+        }
+        .execute(&client)
+        .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "{} feeds exceed the {MAX_FEEDS_PER_TRANSACTION}-feed transaction limit; send one transaction per chunk",
+                MAX_FEEDS_PER_TRANSACTION + 1
+            )
         );
     }
 

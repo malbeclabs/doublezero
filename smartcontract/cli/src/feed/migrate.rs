@@ -13,7 +13,10 @@ use doublezero_sdk::{
     Feed, FeedChain,
 };
 use solana_sdk::pubkey::Pubkey;
-use std::{collections::HashMap, io::Write};
+use std::{
+    collections::{HashMap, HashSet},
+    io::Write,
+};
 
 #[derive(Args, Debug)]
 pub struct MigrateFeedCliCommand {
@@ -43,9 +46,11 @@ impl MigrateFeedCliCommand {
 
         let mut listed = None;
         let mut pending = Vec::new();
+        let mut seen = HashSet::new();
         for arg in &self.feeds {
             let (pubkey, feed) = resolve_feed(client, arg, &mut listed)?;
-            if pending.iter().any(|(pk, _)| pk == &pubkey) {
+            if !seen.insert(pubkey) {
+                writeln!(out, "skipping {}: already listed", feed.name)?;
                 continue;
             }
             if feed.feed_chain != FeedChain::Unspecified {
@@ -105,7 +110,11 @@ mod tests {
     use crate::tests::utils::create_test_client;
     use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{
-        commands::feed::{get::GetFeedCommand, list::ListFeedCommand, migrate::MigrateFeedCommand},
+        commands::feed::{
+            get::GetFeedCommand,
+            list::ListFeedCommand,
+            migrate::{MigrateFeedCommand, MAX_FEEDS_PER_TRANSACTION},
+        },
         AccountType, Feed, FeedChain,
     };
     use mockall::predicate;
@@ -268,9 +277,9 @@ mod tests {
             .execute(&ctx, &client, &mut output),
         );
         let err = res.unwrap_err();
-        assert!(
-            err.to_string().contains("matches 2 feeds"),
-            "unexpected error: {err}"
+        assert_eq!(
+            err.to_string(),
+            "feed name Shreds matches 2 feeds; pass a pubkey from `doublezero feed list`"
         );
     }
 
@@ -290,9 +299,110 @@ mod tests {
             .execute(&ctx, &client, &mut output),
         );
         let err = res.unwrap_err();
-        assert!(
-            err.to_string().contains("unspecified"),
-            "unexpected error: {err}"
+        assert_eq!(
+            err.to_string(),
+            "--chain unspecified is not a migration; pass solana or hyperliquid"
+        );
+    }
+
+    #[test]
+    fn test_cli_feed_migrate_logs_a_repeated_feed() {
+        let mut client = create_test_client();
+        client.expect_check_requirements().returning(|_| Ok(()));
+
+        let feed_pk = Pubkey::new_unique();
+        let feed = test_feed("Shreds NY", FeedChain::Unspecified);
+        let signature = Signature::new_unique();
+
+        client
+            .expect_get_feed()
+            .with(predicate::eq(GetFeedCommand {
+                pubkey_or_code: feed_pk.to_string(),
+                exchange: None,
+            }))
+            .times(2)
+            .returning(move |_| Ok((feed_pk, feed.clone())));
+        client
+            .expect_migrate_feed()
+            .with(predicate::eq(MigrateFeedCommand {
+                pubkeys: vec![feed_pk],
+                feed_chain: FeedChain::Solana,
+            }))
+            .times(1)
+            .returning(move |_| Ok(signature));
+
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(
+            MigrateFeedCliCommand {
+                chain: FeedChain::Solana,
+                feeds: vec![feed_pk.to_string(), feed_pk.to_string()],
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            format!("skipping Shreds NY: already listed\nSignature: {signature}\n")
+        );
+    }
+
+    #[test]
+    fn test_cli_feed_migrate_sends_a_second_batch_after_eight() {
+        let mut client = create_test_client();
+        client.expect_check_requirements().returning(|_| Ok(()));
+
+        let keys: Vec<Pubkey> = (0..MAX_FEEDS_PER_TRANSACTION + 1)
+            .map(|_| Pubkey::new_unique())
+            .collect();
+        let first = Signature::new_unique();
+        let second = Signature::new_unique();
+
+        for key in &keys {
+            let feed_pk = *key;
+            let feed = test_feed("Shreds NY", FeedChain::Unspecified);
+            client
+                .expect_get_feed()
+                .with(predicate::eq(GetFeedCommand {
+                    pubkey_or_code: feed_pk.to_string(),
+                    exchange: None,
+                }))
+                .times(1)
+                .returning(move |_| Ok((feed_pk, feed.clone())));
+        }
+
+        let first_batch = keys[..MAX_FEEDS_PER_TRANSACTION].to_vec();
+        let last = vec![keys[MAX_FEEDS_PER_TRANSACTION]];
+        client
+            .expect_migrate_feed()
+            .with(predicate::eq(MigrateFeedCommand {
+                pubkeys: first_batch,
+                feed_chain: FeedChain::Solana,
+            }))
+            .times(1)
+            .returning(move |_| Ok(first));
+        client
+            .expect_migrate_feed()
+            .with(predicate::eq(MigrateFeedCommand {
+                pubkeys: last,
+                feed_chain: FeedChain::Solana,
+            }))
+            .times(1)
+            .returning(move |_| Ok(second));
+
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(
+            MigrateFeedCliCommand {
+                chain: FeedChain::Solana,
+                feeds: keys.iter().map(ToString::to_string).collect(),
+            }
+            .execute(&ctx, &client, &mut output),
+        );
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            format!("Signature: {first}\nSignature: {second}\n")
         );
     }
 }

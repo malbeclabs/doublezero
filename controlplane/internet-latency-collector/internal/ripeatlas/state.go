@@ -124,11 +124,9 @@ type MeasurementMeta struct {
 	TargetAttempts    int64 `json:"target_attempts,omitempty"`
 	TargetSuccesses   int64 `json:"target_successes,omitempty"`
 
-	// TargetLossCursor is the newest result timestamp already counted into the tallies.
-	// It is separate from the export cursor, which advances only past results carrying
-	// a latency: a timeout newer than the last success is refetched by every incremental
-	// query until a later success arrives, and counting those repeats would inflate the
-	// loss ratio for a target that is merely losing its most recent pings.
+	// TargetLossCursor is the newest result timestamp counted into the tallies. Replays
+	// are dropped per source probe at export time, against LastResponseAt, so this no
+	// longer gates counting; it is kept for logging and so existing state files decode.
 	TargetLossCursor int64 `json:"target_loss_cursor,omitempty"`
 }
 
@@ -494,9 +492,10 @@ func (ms *MeasurementState) UpdateSourceProbeResponse(measurementID int, probeID
 
 // RecordTargetResults adds a batch of ping outcomes against a measurement's target
 // probe to the current window, starting one if none is open, and advances the loss
-// cursor to newestResult so the same outcomes are not counted twice.
+// cursor to newestResult, which records how far the tallies have reached.
 //
-// The caller is responsible for counting only results newer than TargetLossCursor.
+// The caller is responsible for not counting a result twice; it gates each result on
+// the reporting probe's LastResponseAt.
 func (ms *MeasurementState) RecordTargetResults(measurementID int, attempts, successes, newestResult, now int64) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()

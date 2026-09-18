@@ -55,6 +55,13 @@ type LocationProbeMatch struct {
 	collector.LocationMatch
 	NearbyProbes []Probe
 	ProbeCount   int
+
+	// FallbackTargetProbes holds the wider non-anchor fetch made when every known probe
+	// for the location is marked unresponsive as a target. Only target selection reads
+	// it. Merging these into NearbyProbes instead would feed source selection too, so a
+	// target-only mark could still swap the metro's source probe and tear down every
+	// measurement it feeds, which is the cascade the role split exists to stop.
+	FallbackTargetProbes []Probe
 }
 
 type ProbeDistance struct {
@@ -201,6 +208,35 @@ func filterValidProbes(log *slog.Logger, probes []Probe) []Probe {
 		}
 	}
 	return validProbes
+}
+
+// filterSelectableTargets ignores the unresponsive-target marks by design; rankTargets
+// handles those by ordering instead.
+func filterSelectableTargets(probes []Probe) []Probe {
+	var selectable []Probe
+	for _, probe := range probes {
+		if probe.Address != "" {
+			selectable = append(selectable, probe)
+		}
+	}
+	return selectable
+}
+
+// rankTargets ranks marked probes last rather than excluding them, so a location whose
+// every candidate is marked keeps a target instead of losing its measurement (#4182).
+func rankTargets(probes []Probe, latitude, longitude float64, measurementState *MeasurementState) []Probe {
+	var unmarked, marked []Probe
+	for _, probe := range probes {
+		if measurementState.IsTargetUnresponsive(probe.ID) {
+			marked = append(marked, probe)
+		} else {
+			unmarked = append(unmarked, probe)
+		}
+	}
+	return append(
+		getNearestProbesSorted(unmarked, latitude, longitude, len(unmarked)),
+		getNearestProbesSorted(marked, latitude, longitude, len(marked))...,
+	)
 }
 
 func filterResponsiveProbes(probes []Probe, measurementState *MeasurementState) []Probe {
@@ -609,11 +645,42 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	var maxTimestamp time.Time
 	processedResults := 0
 
+	// Tally every ping aimed at the target so a target that replies steadily but
+	// rarely can be told apart from a healthy one. Both look identical to the
+	// staleness check, which only asks whether anything came back at all.
+	//
+	// Counting is gated on the loss cursor rather than the export cursor. The export
+	// cursor advances only past results carrying a latency, so every timeout newer
+	// than the last success comes back from each incremental query until a later
+	// success arrives; counting those repeats would inflate the ratio.
+	var targetAttempts, targetSuccesses, newestResult int64
+	lossCursor := meta.TargetLossCursor
+	countedUpTo := time.Now().Unix()
+
 	// Process results - use slice to preserve all samples
 	var records []exporter.Record
 	for _, result := range results {
 		// Parse latency from result (now also returns probe ID)
 		latency, timestamp, probeID := c.parseLatencyFromResult(result)
+
+		// Results are counted at one second granularity, so a result sharing the
+		// cursor's second is skipped. Undercounting biases away from blacklisting a
+		// usable target, which is the safe direction to err in.
+		//
+		// A future-dated result is skipped outright rather than counted. The timestamp
+		// is probe-reported, and only a latency advances the export cursor, so one
+		// timeout from a clock-skewed probe would otherwise park TargetLossCursor ahead
+		// of wall clock and every later result would fail the comparison, disabling
+		// loss counting for the life of the measurement.
+		if resultAt := timestamp.Unix(); resultAt > lossCursor && resultAt <= countedUpTo {
+			targetAttempts++
+			if latency > 0 {
+				targetSuccesses++
+			}
+			if resultAt > newestResult {
+				newestResult = resultAt
+			}
+		}
 
 		// A result the probe uploaded proves it ran the measurement even if nothing came
 		// back, and LastResponseAt aging out rotates the probe (Step 4b) and recreates
@@ -652,6 +719,11 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 			return 0, nil, fmt.Errorf("failed to write records: %w", err)
 		}
 	}
+
+	// Counted only once the batch is durable. A failed write leaves both cursors where
+	// they were, so the same results come back next time and are counted then; counting
+	// before the write would tally them on every failed attempt.
+	measurementState.RecordTargetResults(measurement.ID, targetAttempts, targetSuccesses, newestResult, countedUpTo)
 
 	// Update the timestamp tracker with the newest timestamp seen
 	if maxTimestamp.After(lastTimestamp) {
@@ -806,16 +878,16 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		}
 	}
 
-	// Step 2: Augment locations where all known probes are unresponsive with non-anchor
-	// fallback probes, then generate the list of measurements we want.
+	// Step 2: Augment locations where all known probes are marked unresponsive with
+	// non-anchor fallback probes, then generate the list of measurements we want.
 	//
 	// fetchProbesWithErrorHandling already falls back to non-anchor probes when the
 	// RIPE Atlas API returns no anchors at all. But that covers only the "no anchors in
 	// area" case. Here we handle a different failure mode: RIPE Atlas still reports the
 	// anchor as "Connected" (so fetchProbesWithErrorHandling sees it and returns it), but
 	// the probe has stopped responding to our measurements and was marked unresponsive in
-	// the local measurement state. Without this pass, generateWantedMeasurements would log
-	// "No responsive probes found for location" and skip the location entirely.
+	// the local measurement state. Without this pass the location keeps targeting the
+	// marked anchor when a working probe is a wider fetch away.
 	locationMatches = c.fetchFallbackProbesForUnresponsiveLocations(ctx, locationMatches, measurementState)
 
 	// Step 3: Generate the list of measurements we want, skipping unresponsive probes
@@ -852,6 +924,10 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 	}
 
 	// Step 4: Prune expired unresponsive probes so they get retried
+	if pruned := measurementState.PruneExpiredUnresponsiveTargets(); pruned > 0 {
+		c.log.Info("Pruned expired unresponsive targets",
+			slog.Int("pruned_count", pruned))
+	}
 	if pruned := measurementState.PruneExpiredUnresponsiveProbes(); pruned > 0 {
 		c.log.Info("Pruned expired unresponsive probes",
 			slog.Int("pruned_count", pruned))
@@ -861,6 +937,12 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 	currentTime := time.Now().Unix()
 	probeTimeout := currentTime - 3600 // 1 hour
 	newUnresponsiveProbes := 0
+
+	// Measurements whose target was judged stale or lossy in this cycle. Step 4b uses
+	// this rather than a standing probe-level mark: under rank-last a marked target
+	// keeps its measurement, so a probe-level check is re-satisfied every cycle and
+	// would exempt that measurement's sources from inspection permanently.
+	targetFailedThisCycle := make(map[int]bool)
 	for _, measurement := range doubleZeroMeasurements {
 		if meta, hasMeta := measurementState.GetMetadata(measurement.ID); hasMeta {
 			// Check if measurement is stale - either never exported, or last export was too long ago
@@ -878,14 +960,69 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 			}
 
 			if isStale {
+				// never_exported is the offline case: the measurement has produced
+				// nothing at all in its first hour, and a probe that is offline while
+				// RIPE still reports it Connected cannot source either, so it leaves
+				// both pools. no_recent_exports is the NAT-like case — a probe that
+				// used to answer and stopped — where the target list alone is right.
+				//
+				// This is the only route out of the source pool for such a probe, since
+				// its LastResponseAt never leaves zero and Step 4b deliberately skips
+				// that. It misses a probe that is nobody's target, which is just the
+				// alphabetically last metro; that one is covered by no_recent_responses
+				// once it has uploaded anything at all.
+				markedSource := reason == "never_exported"
+				measurementState.AddUnresponsiveTarget(meta.TargetProbeID)
+				if markedSource {
+					measurementState.AddUnresponsiveProbe(meta.TargetProbeID)
+				}
 				c.log.Warn("Marking probe as unresponsive - no exports after 1 hour",
 					slog.Int("measurement_id", measurement.ID),
 					slog.Int("probe_id", meta.TargetProbeID),
 					slog.String("target_location", meta.TargetLocation),
 					slog.String("reason", reason),
+					slog.Bool("marked_target_list", true),
+					slog.Bool("marked_source_list", markedSource),
 					slog.Time("created_at", time.Unix(meta.CreatedAt, 0)),
 					slog.Time("last_export_at", time.Unix(meta.LastExportAt, 0)))
-				measurementState.AddUnresponsiveProbe(meta.TargetProbeID)
+				targetFailedThisCycle[measurement.ID] = true
+				newUnresponsiveProbes++
+				continue
+			}
+
+			// The ratio pools every source's outcomes but charges the verdict to the
+			// target, with no per-source attribution. With one source it is that single
+			// circuit's reachability, so a broken path would rotate a target that
+			// answered everything which reached it. Two sources contributing equally cap
+			// one dead path at exactly 0.5, which does not clear MaxTargetLossRatio.
+			// Sources come only from locations sorting after the target, so the
+			// alphabetically penultimate metro has exactly one. Per-source tallying
+			// would do better and is left to its own change.
+			if len(meta.Sources) < 2 {
+				c.log.Debug("Skipping target loss check, too few sources to attribute loss to the target",
+					slog.Int("measurement_id", measurement.ID),
+					slog.String("target_location", meta.TargetLocation),
+					slog.Int("source_count", len(meta.Sources)))
+				continue
+			}
+
+			// A target can reply often enough to clear the staleness check above and
+			// still drop most of what is aimed at it. The surviving samples arrive too
+			// sparsely to keep every circuit fresh, so circuits take turns falling out
+			// of the freshness window and the location looks intermittently absent
+			// rather than plainly broken.
+			if lossy, attempts, successes := measurementState.EvaluateTargetLoss(measurement.ID, currentTime); lossy {
+				c.log.Warn("Marking probe as unresponsive - target loss above threshold",
+					slog.Int("measurement_id", measurement.ID),
+					slog.Int("probe_id", meta.TargetProbeID),
+					slog.String("target_location", meta.TargetLocation),
+					slog.String("reason", "excessive_target_loss"),
+					slog.Int64("attempts", attempts),
+					slog.Int64("successes", successes),
+					slog.Float64("loss_ratio", 1-float64(successes)/float64(attempts)),
+					slog.Float64("max_loss_ratio", MaxTargetLossRatio))
+				measurementState.AddUnresponsiveTarget(meta.TargetProbeID)
+				targetFailedThisCycle[measurement.ID] = true
 				newUnresponsiveProbes++
 			}
 		}
@@ -895,10 +1032,10 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 	// This catches probes that are still "Connected" per RIPE Atlas but stopped sending pings
 	for _, measurement := range doubleZeroMeasurements {
 		if meta, hasMeta := measurementState.GetMetadata(measurement.ID); hasMeta {
-			// Skip measurements whose target is already marked unresponsive —
-			// source probes in these measurements will have stale LastResponseAt
-			// because the target isn't replying, not because the sources are broken
-			if measurementState.IsProbeUnresponsive(meta.TargetProbeID) {
+			// Skip measurements whose target failed in this cycle — their sources
+			// will have stale LastResponseAt because the target isn't replying, not
+			// because the sources are broken.
+			if targetFailedThisCycle[measurement.ID] {
 				continue
 			}
 			for _, source := range meta.Sources {
@@ -910,9 +1047,14 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 				if meta.CreatedAt == 0 || meta.CreatedAt >= probeTimeout {
 					continue
 				}
-				// Skip probes where LastResponseAt hasn't been populated yet —
-				// on first deploy, all existing source probes have 0 and need
-				// at least one export cycle to populate the field
+				// A source that has uploaded nothing at all is Step 4c's population,
+				// which is observed and not rotated on purpose: per #4153 those drops
+				// have recovered unaided, and rotating one is expensive because the
+				// probe is a source in every measurement whose target sorts before it,
+				// all of which would be stopped and recreated. Rotating here would also
+				// zero LastResponseAt for the other sources in those measurements and
+				// restart their clocks. An offline target leaves the source pool through
+				// the never_exported branch in Step 4 instead.
 				if source.LastResponseAt == 0 {
 					continue
 				}
@@ -961,9 +1103,18 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 			slog.Any("sample", silentSample))
 	}
 
-	// Save state if we detected any new unresponsive probes
+	// Save state if we detected any new unresponsive probes.
+	//
+	// Not under --dry-run. The flag promises to log what would be created without
+	// changing anything, and create-measurements builds the collector with a nil state,
+	// so configureMeasurements loads the running daemon's own file from --state-dir.
+	// Persisting here would let an operator inspecting intent blacklist probes and write
+	// the windows EvaluateTargetLoss just zeroed back over the file the daemon shares.
 	if newUnresponsiveProbes > 0 {
-		if err := measurementState.Save(); err != nil {
+		if dryRun {
+			c.log.Info("Would save unresponsive probe state (dry run), marks not persisted",
+				slog.Int("new_unresponsive_probes", newUnresponsiveProbes))
+		} else if err := measurementState.Save(); err != nil {
 			c.log.Warn("Failed to save measurement state after detecting unresponsive probes", slog.String("error", err.Error()))
 		} else {
 			c.log.Info("Saved unresponsive probe state",
@@ -1123,6 +1274,18 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		slog.Int("to_create", len(toCreate)),
 		slog.Int("to_remove", len(toRemove)))
 
+	// A recreation writes fresh metadata under a new measurement ID, so the loss window
+	// would be lost. Snapshot it per target location before the removals so Step 8 can
+	// carry it over. Step 5 recreates on any source-set change, not only a target
+	// change, so without this one unrelated metro's probe flapping resets windows
+	// fleet-wide and the loss check silently never fires in a churning deployment.
+	windowsByTargetLocation := make(map[string]MeasurementMeta, len(toRemove))
+	for _, measurement := range toRemove {
+		if meta, hasMeta := measurementState.GetMetadata(measurement.ID); hasMeta {
+			windowsByTargetLocation[meta.TargetLocation] = meta
+		}
+	}
+
 	// Step 7: Remove unwanted measurements
 	if len(toRemove) > 0 {
 
@@ -1278,6 +1441,16 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 					CreatedAt:      time.Now().Unix(),
 				}
 
+				// Only when the target probe is unchanged. A new target starts clean:
+				// the old one's loss says nothing about it.
+				if old, ok := windowsByTargetLocation[spec.TargetLocationCode]; ok &&
+					old.TargetProbeID == spec.TargetProbe.ID {
+					meta.TargetWindowStart = old.TargetWindowStart
+					meta.TargetAttempts = old.TargetAttempts
+					meta.TargetSuccesses = old.TargetSuccesses
+					meta.TargetLossCursor = old.TargetLossCursor
+				}
+
 				measurementState.SetMetadata(measurementID, meta)
 				if err := measurementState.Save(); err != nil {
 					c.log.Warn("Failed to save measurement metadata", slog.String("error", err.Error()))
@@ -1347,10 +1520,11 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 }
 
 // fetchFallbackProbesForUnresponsiveLocations returns a copy of locationMatches where
-// locations that have probes but all are marked unresponsive in measurementState are
-// augmented with non-anchor Connected probes fetched from the RIPE Atlas API.
+// locations whose every known probe is marked unresponsive as a target in
+// measurementState carry non-anchor Connected probes fetched from the RIPE Atlas API
+// in FallbackTargetProbes. NearbyProbes is left alone so source selection is unaffected.
 //
-// This prevents a location from going dark when its anchor probe stops responding while
+// This finds a location a working target when its anchor probe stops responding while
 // RIPE Atlas still reports it as "Connected" — a lag that means fetchProbesWithErrorHandling
 // always sees the anchor and never triggers its own fallback.
 func (c *Collector) fetchFallbackProbesForUnresponsiveLocations(ctx context.Context, locationMatches []LocationProbeMatch, measurementState *MeasurementState) []LocationProbeMatch {
@@ -1361,12 +1535,17 @@ func (c *Collector) fetchFallbackProbesForUnresponsiveLocations(ctx context.Cont
 		if len(match.NearbyProbes) == 0 {
 			continue
 		}
-		if len(filterResponsiveProbes(match.NearbyProbes, measurementState)) > 0 {
-			continue // at least one probe is still responsive — no fallback needed
+		hasUnmarked := false
+		for _, probe := range filterSelectableTargets(match.NearbyProbes) {
+			if !measurementState.IsTargetUnresponsive(probe.ID) {
+				hasUnmarked = true
+				break
+			}
+		}
+		if hasUnmarked {
+			continue
 		}
 
-		// All known probes for this location are unresponsive. Fetch non-anchor
-		// Connected probes as a fallback.
 		c.log.Info("All known probes unresponsive for location, fetching non-anchor fallback probes",
 			slog.String("location", match.LocationCode))
 
@@ -1383,8 +1562,7 @@ func (c *Collector) fetchFallbackProbesForUnresponsiveLocations(ctx context.Cont
 			c.log.Info("Using non-anchor fallback probes for location",
 				slog.String("location", match.LocationCode),
 				slog.Int("count", len(fallbackProbes)))
-			result[i].NearbyProbes = fallbackProbes
-			result[i].ProbeCount = len(fallbackProbes)
+			result[i].FallbackTargetProbes = fallbackProbes
 		} else {
 			c.log.Warn("No non-anchor fallback probes found for location",
 				slog.String("location", match.LocationCode))
@@ -1399,10 +1577,21 @@ func (c *Collector) fetchFallbackProbesForUnresponsiveLocations(ctx context.Cont
 func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMatch, probesPerLocation int, measurementState *MeasurementState) []MeasurementSpec {
 	var wantedMeasurements []MeasurementSpec
 
-	// Get list of unresponsive probes to skip
+	// Target selection demotes the union of both lists, so neither count alone says how
+	// many probes are ranked last.
 	unresponsiveProbes := measurementState.GetUnresponsiveProbes()
+	unresponsiveTargets := measurementState.GetUnresponsiveTargets()
+	demoted := make(map[int]struct{}, len(unresponsiveProbes)+len(unresponsiveTargets))
+	for _, probeID := range unresponsiveProbes {
+		demoted[probeID] = struct{}{}
+	}
+	for _, probeID := range unresponsiveTargets {
+		demoted[probeID] = struct{}{}
+	}
 	c.log.Info("Generating wanted measurements",
-		slog.Int("unresponsive_probe_count", len(unresponsiveProbes)))
+		slog.Int("unresponsive_probe_count", len(unresponsiveProbes)),
+		slog.Int("unresponsive_target_count", len(unresponsiveTargets)),
+		slog.Int("demoted_target_count", len(demoted)))
 
 	// Sort locations alphabetically by location code to ensure deterministic ordering
 	sortedLocations := make([]LocationProbeMatch, len(locationMatches))
@@ -1418,19 +1607,31 @@ func (c *Collector) generateWantedMeasurements(locationMatches []LocationProbeMa
 			continue
 		}
 
-		responsiveProbes := filterResponsiveProbes(targetLocation.NearbyProbes, measurementState)
-		if len(responsiveProbes) == 0 {
-			c.log.Warn("No responsive probes found for location",
+		targetCandidates := targetLocation.NearbyProbes
+		if len(targetLocation.FallbackTargetProbes) > 0 {
+			targetCandidates = append(append([]Probe{}, targetCandidates...),
+				targetLocation.FallbackTargetProbes...)
+		}
+
+		selectableTargets := filterSelectableTargets(targetCandidates)
+		if len(selectableTargets) == 0 {
+			c.log.Warn("No selectable target probes found for location",
 				slog.String("location", targetLocation.LocationCode))
 			continue
 		}
 
-		targetProbes := getNearestProbesSorted(responsiveProbes,
-			targetLocation.Latitude, targetLocation.Longitude, probesPerLocation)
+		targetProbes := rankTargets(selectableTargets,
+			targetLocation.Latitude, targetLocation.Longitude, measurementState)
 		if len(targetProbes) == 0 {
 			continue
 		}
 		targetProbe := targetProbes[0]
+		if measurementState.IsTargetUnresponsive(targetProbe.ID) {
+			c.log.Warn("Every target candidate for location is marked unresponsive, keeping the nearest",
+				slog.String("location", targetLocation.LocationCode),
+				slog.Int("target_probe_id", targetProbe.ID),
+				slog.Int("candidate_count", len(selectableTargets)))
+		}
 
 		// Collect source probes from all other locations
 		// Since we're iterating in alphabetical order and only need to measure once between any pair,
@@ -1497,6 +1698,10 @@ func (c *Collector) Run(ctx context.Context, dryRun bool, probesPerLocation int,
 	c.measurementState = NewMeasurementState(timestampFile)
 	if err := c.measurementState.Load(); err != nil {
 		c.log.Warn("Failed to load measurement state at startup", slog.String("error", err.Error()))
+	}
+	if moved := c.measurementState.MigratedTargetMarks(); moved > 0 {
+		c.log.Info("Reclassified target failures out of the unresponsive source list",
+			slog.Int("moved_count", moved))
 	}
 
 	var wg sync.WaitGroup

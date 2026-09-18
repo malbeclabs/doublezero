@@ -247,7 +247,9 @@ mod tests {
     fn test_commands_feed_update_refuses_a_ninth_feed() {
         let client = create_test_client();
         let err = UpdateFeedCommand {
-            pubkeys: vec![Pubkey::new_unique(); MAX_FEEDS_PER_TRANSACTION + 1],
+            pubkeys: (0..MAX_FEEDS_PER_TRANSACTION + 1)
+                .map(|_| Pubkey::new_unique())
+                .collect(),
             name: None,
             groups: None,
             feed_chain: Some(FeedChain::Solana),

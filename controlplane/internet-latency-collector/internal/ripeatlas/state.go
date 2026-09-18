@@ -125,7 +125,7 @@ type MeasurementMeta struct {
 	TargetSuccesses   int64 `json:"target_successes,omitempty"`
 
 	// TargetLossCursor is the newest result timestamp counted into the tallies. Replays
-	// are dropped per source probe at export time, against LastResponseAt, so this no
+	// are dropped per source probe at export time, against LastExportedAt, so this no
 	// longer gates counting; it is kept for logging and so existing state files decode.
 	TargetLossCursor int64 `json:"target_loss_cursor,omitempty"`
 }
@@ -134,6 +134,14 @@ type SourceProbeMeta struct {
 	LocationCode   string `json:"location_code"`
 	ProbeID        int    `json:"probe_id"`
 	LastResponseAt int64  `json:"last_response_at,omitempty"`
+
+	// LastExportedAt is the newest result timestamp already consumed by a durable
+	// export for this probe, and is the per-probe exclusion boundary for the lookback
+	// fetch. Deliberately not LastResponseAt, which means liveness and must advance
+	// from the RIPE fetch alone: tying it to a successful write would freeze it for
+	// every probe whenever the exporter cannot reach the ledger, and Step 4b would
+	// then mark the whole fleet unresponsive an hour into an exporter outage.
+	LastExportedAt int64 `json:"last_exported_at,omitempty"`
 }
 
 func NewMeasurementState(filename string) *MeasurementState {
@@ -490,12 +498,36 @@ func (ms *MeasurementState) UpdateSourceProbeResponse(measurementID int, probeID
 	ms.tracker.Metadata[measurementID] = meta
 }
 
+// UpdateSourceProbeExported advances the probe's export mark, the boundary the next
+// lookback fetch excludes against. Callers apply it only once the batch is durable: a
+// mark advanced past a batch that failed to write would exclude those same results
+// from the retry and lose them.
+func (ms *MeasurementState) UpdateSourceProbeExported(measurementID int, probeID int, timestamp int64) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	meta, exists := ms.tracker.Metadata[measurementID]
+	if !exists {
+		return
+	}
+
+	for i, source := range meta.Sources {
+		if source.ProbeID == probeID {
+			if timestamp > source.LastExportedAt {
+				meta.Sources[i].LastExportedAt = timestamp
+			}
+			break
+		}
+	}
+	ms.tracker.Metadata[measurementID] = meta
+}
+
 // RecordTargetResults adds a batch of ping outcomes against a measurement's target
 // probe to the current window, starting one if none is open, and advances the loss
 // cursor to newestResult, which records how far the tallies have reached.
 //
 // The caller is responsible for not counting a result twice; it gates each result on
-// the reporting probe's LastResponseAt.
+// the reporting probe's LastExportedAt.
 func (ms *MeasurementState) RecordTargetResults(measurementID int, attempts, successes, newestResult, now int64) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()

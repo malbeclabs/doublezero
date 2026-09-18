@@ -616,10 +616,11 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 
 	targetLocation := meta.TargetLocation
 	probeToLocationLocal := make(map[int]string, len(meta.Sources))
-	sourceLastResponse := make(map[int]int64, len(meta.Sources))
+	// Snapshot of the per-probe marks, taken once so the gate cannot move mid-pass.
+	sourceMarks := make(map[int]SourceProbeMeta, len(meta.Sources))
 	for _, source := range meta.Sources {
 		probeToLocationLocal[source.ProbeID] = source.LocationCode
-		sourceLastResponse[source.ProbeID] = source.LastResponseAt
+		sourceMarks[source.ProbeID] = source
 	}
 
 	// Re-read behind the cursor so a probe that uploaded after it moved past its ping is
@@ -667,7 +668,7 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 	var targetAttempts, targetSuccesses, newestResult int64
 	countedUpTo := time.Now().Unix()
 
-	responded := make(map[int]int64, len(meta.Sources))
+	exported := make(map[int]int64, len(meta.Sources))
 
 	// Process results - use slice to preserve all samples
 	var records []exporter.Record
@@ -678,15 +679,27 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 
 		// Exclude per probe, not per measurement. The measurement cursor is the newest
 		// timestamp any probe reached, so gating on it permanently discards a slow
-		// probe's result for an interval its peers already reported. LastResponseAt is
-		// that same high-water mark kept per probe, so it drops the lookback's replays
-		// without dropping late uploads.
+		// probe's result for an interval its peers already reported.
+		//
+		// Three sources for the boundary, in order. LastExportedAt is the real one.
+		// LastResponseAt covers a state file written before that field existed: until
+		// then every fetched result advanced it and every fetched success was exported,
+		// so a result newer than it was never exported. That reasoning only holds once
+		// the measurement has exported at all, which is why the fallback is gated on
+		// the cursor: without it, a first pass whose write failed would have advanced
+		// LastResponseAt and excluded its own retry. A probe absent from the metadata
+		// has neither mark and falls back to the measurement cursor.
 		//
 		// The comparison is inclusive: a result sharing the mark's second is skipped,
 		// which undercounts rather than risks blacklisting a usable target.
 		gate := lastTimestampUnix
-		if lastResponse, ok := sourceLastResponse[probeID]; ok {
-			gate = lastResponse
+		if mark, ok := sourceMarks[probeID]; ok {
+			switch {
+			case mark.LastExportedAt > 0:
+				gate = mark.LastExportedAt
+			case exists:
+				gate = mark.LastResponseAt
+			}
 		}
 		if resultAt <= gate {
 			continue
@@ -705,8 +718,14 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 			}
 		}
 
-		if resultAt > responded[probeID] {
-			responded[probeID] = resultAt
+		// A result the probe uploaded proves it ran the measurement even if nothing came
+		// back, and LastResponseAt aging out rotates the probe (Step 4b) and recreates
+		// measurements. It tracks liveness, so it advances from the fetch alone and
+		// never waits on the exporter.
+		measurementState.UpdateSourceProbeResponse(measurement.ID, probeID, resultAt)
+
+		if resultAt > exported[probeID] {
+			exported[probeID] = resultAt
 		}
 
 		if latency > 0 {
@@ -755,13 +774,11 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 		}
 	}
 
-	// A result the probe uploaded proves it ran the measurement even if nothing came
-	// back, and LastResponseAt aging out rotates the probe (Step 4b) and recreates
-	// measurements. Applied only once the batch is durable, because it is also the
-	// exclusion boundary above: advancing it for a failed write would gate those same
-	// results out of the retry.
-	for probeID, at := range responded {
-		measurementState.UpdateSourceProbeResponse(measurement.ID, probeID, at)
+	// The export marks move only once the batch is durable: they are the exclusion
+	// boundary above, so advancing one for a failed write would gate those same results
+	// out of the retry.
+	for probeID, at := range exported {
+		measurementState.UpdateSourceProbeExported(measurement.ID, probeID, at)
 	}
 
 	// Counted only once the batch is durable. A failed write leaves every cursor where

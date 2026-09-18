@@ -2519,6 +2519,22 @@ func (failingExporter) WriteRecords(_ context.Context, _ []exporter.Record) erro
 }
 func (failingExporter) Close() error { return nil }
 
+// failOnceExporter fails its first batch and accepts every batch after it, standing in
+// for an exporter that cannot reach the ledger for one pass.
+type failOnceExporter struct {
+	failed bool
+}
+
+func (e *failOnceExporter) WriteRecords(_ context.Context, _ []exporter.Record) error {
+	if !e.failed {
+		e.failed = true
+		return errors.New("write failed")
+	}
+	return nil
+}
+
+func (e *failOnceExporter) Close() error { return nil }
+
 // TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LateUploads covers the
 // per-probe exclusion boundary: the measurement cursor routinely runs ahead of a slow
 // probe's result for an interval its peers already reported.
@@ -2538,12 +2554,15 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LateUploads(t 
 
 	// newCollector returns a collector replaying one batch per export call, plus the
 	// startTimestamp each call was made with, so the lookback is asserted not inferred.
-	newCollector := func(t *testing.T, batches [][]any) (*Collector, *MeasurementState, *[]int64) {
+	newCollector := func(t *testing.T, exp exporter.Exporter, batches [][]any) (*Collector, *MeasurementState, *[]int64) {
 		t.Helper()
 		outputDir := t.TempDir()
 		log := slog.New(slog.NewJSONHandler(io.Discard, nil))
-		e, err := exporter.NewCSVExporter(log, "ripe_atlas_measurements", outputDir)
-		require.NoError(t, err)
+		if exp == nil {
+			e, err := exporter.NewCSVExporter(log, "ripe_atlas_measurements", outputDir)
+			require.NoError(t, err)
+			exp = e
+		}
 
 		var starts []int64
 		call := 0
@@ -2558,7 +2577,7 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LateUploads(t 
 				return batch, nil
 			},
 		}
-		c := &Collector{client: mockClient, log: log, exporter: e}
+		c := &Collector{client: mockClient, log: log, exporter: exp}
 
 		ms := NewMeasurementState(filepath.Join(outputDir, TimestampFileName))
 		ms.SetMetadata(1, MeasurementMeta{
@@ -2589,7 +2608,7 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LateUploads(t 
 	t.Run("the first export fetches everything", func(t *testing.T) {
 		t.Parallel()
 
-		c, ms, starts := newCollector(t, [][]any{{answered(100, t1), answered(101, t1)}})
+		c, ms, starts := newCollector(t, nil, [][]any{{answered(100, t1), answered(101, t1)}})
 
 		count, records, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
 		require.NoError(t, err)
@@ -2607,7 +2626,7 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LateUploads(t 
 
 		// Probe 102 uploads its t1 result only after the cursor has moved to t1, and
 		// its t2 result on time. Gating on the cursor would drop the t1 result for good.
-		c, ms, starts := newCollector(t, [][]any{
+		c, ms, starts := newCollector(t, nil, [][]any{
 			{answered(100, t1), answered(101, t1)},
 			{
 				answered(100, t1), answered(101, t1), answered(102, t1),
@@ -2637,6 +2656,7 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LateUploads(t 
 		require.True(t, ok)
 		for _, source := range meta.Sources {
 			require.Equal(t, t2.Unix(), source.LastResponseAt, "probe %d", source.ProbeID)
+			require.Equal(t, t2.Unix(), source.LastExportedAt, "probe %d", source.ProbeID)
 		}
 
 		cursor, ok = ms.GetLastTimestamp(1)
@@ -2647,7 +2667,7 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LateUploads(t 
 	t.Run("a probe absent from the metadata falls back to the measurement cursor", func(t *testing.T) {
 		t.Parallel()
 
-		c, ms, _ := newCollector(t, [][]any{
+		c, ms, _ := newCollector(t, nil, [][]any{
 			{answered(100, t1)},
 			{answered(999, t1.Add(-time.Minute)), answered(999, t2)},
 		})
@@ -2659,6 +2679,64 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LateUploads(t 
 		require.NoError(t, err)
 		require.Equal(t, []sample{{"Unknown", t2.Unix()}}, samples(records),
 			"an unenlisted probe has no per-probe mark, so the cursor still excludes its older result")
+	})
+
+	t.Run("a failed write leaves liveness alone and does not consume the results", func(t *testing.T) {
+		t.Parallel()
+
+		// WriteRecords reaches the ledger, so an exporter outage must not freeze
+		// LastResponseAt: Step 4b would read the whole fleet as unresponsive an hour in.
+		c, ms, _ := newCollector(t, &failOnceExporter{}, [][]any{
+			{answered(100, t1), answered(101, t1)},
+			{answered(100, t1), answered(101, t1)},
+		})
+
+		_, _, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.Error(t, err)
+
+		meta, ok := ms.GetMetadata(1)
+		require.True(t, ok)
+		for _, source := range meta.Sources[:2] {
+			require.Equal(t, t1.Unix(), source.LastResponseAt, "probe %d reported", source.ProbeID)
+			require.Zero(t, source.LastExportedAt, "probe %d was never exported", source.ProbeID)
+		}
+		_, cursorSet := ms.GetLastTimestamp(1)
+		require.False(t, cursorSet, "an unwritten batch must not advance the cursor")
+
+		_, records, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.NoError(t, err)
+		require.Equal(t, []sample{{"chi", t1.Unix()}, {"nyc", t1.Unix()}}, samples(records),
+			"the retry exports the same results, once")
+
+		meta, ok = ms.GetMetadata(1)
+		require.True(t, ok)
+		for _, source := range meta.Sources[:2] {
+			require.Equal(t, t1.Unix(), source.LastExportedAt, "probe %d", source.ProbeID)
+		}
+	})
+
+	t.Run("a state file written before LastExportedAt gates on LastResponseAt", func(t *testing.T) {
+		t.Parallel()
+
+		c, ms, _ := newCollector(t, nil, [][]any{
+			{answered(100, t1.Add(-time.Minute)), answered(100, t2)},
+		})
+		ms.SetMetadata(1, MeasurementMeta{
+			TargetLocation: "cmh",
+			TargetProbeID:  12651,
+			Sources:        []SourceProbeMeta{{LocationCode: "nyc", ProbeID: 100, LastResponseAt: t1.Unix()}},
+			CreatedAt:      time.Now().Add(-2 * time.Hour).Unix(),
+			LastExportAt:   t1.Unix(),
+		})
+
+		_, records, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.NoError(t, err)
+		require.Equal(t, []sample{{"nyc", t2.Unix()}}, samples(records),
+			"the legacy mark excludes what the old rule had already exported")
+
+		meta, ok := ms.GetMetadata(1)
+		require.True(t, ok)
+		require.Equal(t, t2.Unix(), meta.Sources[0].LastExportedAt, "the export mark takes over from here")
 	})
 }
 

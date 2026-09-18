@@ -571,13 +571,15 @@ mod tests {
     use super::*;
     use strum::IntoEnumIterator;
 
+    /// Pins the wire code. `test_error_enum_conversions` below round-trips every variant, so it
+    /// would still pass if this one were renumbered; an offchain reader matching on 131 would
+    /// not. Rebasing this work over the RFC-28 feed lifecycle already moved it once.
     #[test]
-    fn test_invalid_access_pass_type_roundtrip() {
-        let err = DoubleZeroError::InvalidAccessPassType;
-        assert_eq!(ProgramError::from(err.clone()), ProgramError::Custom(131));
-        let pe: ProgramError = ProgramError::Custom(131);
-        let err2: DoubleZeroError = pe.into();
-        assert_eq!(err2, err);
+    fn test_invalid_access_pass_type_code() {
+        assert_eq!(
+            ProgramError::from(DoubleZeroError::InvalidAccessPassType),
+            ProgramError::Custom(131)
+        );
     }
 
     #[test]

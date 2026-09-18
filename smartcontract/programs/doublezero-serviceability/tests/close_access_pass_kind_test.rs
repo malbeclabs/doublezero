@@ -163,9 +163,7 @@ async fn close_refuses_a_pass_of_another_kind() {
         .await;
 
         assert!(
-            get_account_data(&mut banks_client, accesspass_pubkey)
-                .await
-                .is_none(),
+            account_is_closed(&mut banks_client, accesspass_pubkey).await,
             "the matching close must remove the pass: {pass_type}"
         );
     }

@@ -372,9 +372,7 @@ async fn delete_refuses_a_user_of_another_kind() {
         .await;
 
         assert!(
-            get_account_data(&mut env.context.banks_client, user_pubkey)
-                .await
-                .is_none(),
+            account_is_closed(&mut env.context.banks_client, user_pubkey).await,
             "the matching delete must remove the user: {pass_type}"
         );
 

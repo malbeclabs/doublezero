@@ -420,3 +420,32 @@ func fastRetryOpt(max int) *RetryOptions {
 		MaxBackoff:  2 * time.Millisecond,
 	}
 }
+
+// TestRateLimitCarrier distinguishes which hop refused the call. An HTTP 429 status
+// is edge-shaped and also visible to the transport; a 429 inside a JSON-RPC envelope
+// on an otherwise-successful response is origin-shaped and invisible to every
+// HTTP-level metric. Being unable to tell these apart is what left a 4.5h
+// getTransaction rate limit unattributable.
+func TestRateLimitCarrier(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want string
+	}{
+		{"nil", nil, ""},
+		{"http 429", &jsonrpc.HTTPError{Code: 429}, "http_status"},
+		{"http 503 is not a rate limit", &jsonrpc.HTTPError{Code: 503}, ""},
+		{"envelope 429", &jsonrpc.RPCError{Code: 429, Message: "Too many requests for a specific RPC call"}, "jsonrpc_error"},
+		{"envelope -32429", &jsonrpc.RPCError{Code: -32429}, "jsonrpc_error"},
+		{"envelope -32005 is not a rate limit", &jsonrpc.RPCError{Code: -32005}, ""},
+		{"wrapped envelope 429", fmt.Errorf("get transaction: %w", &jsonrpc.RPCError{Code: 429}), "jsonrpc_error"},
+		{"unrelated", errors.New("connection reset by peer"), ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := rateLimitCarrier(tt.err); got != tt.want {
+				t.Errorf("rateLimitCarrier() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

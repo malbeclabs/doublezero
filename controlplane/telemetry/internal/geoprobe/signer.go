@@ -50,14 +50,16 @@ func (s *OffsetSigner) SignOffset(offset *LocationOffset) error {
 func VerifyOffset(offset *LocationOffset) error {
 	pubkey := solana.PublicKeyFromBytes(offset.AuthorityPubkey[:])
 
-	// ed25519.Verify accepts the all-zero (pubkey, signature) pair for a
-	// fraction of messages: the zero key decodes to a valid point of order 4
-	// rather than being rejected, and with S and R also zero the verification
-	// equation holds whenever the message hash lands on the right residue —
-	// about one message in four, which an attacker reaches by varying any field.
-	// No signer has the zero pubkey, so reject it before verifying.
-	if pubkey.IsZero() {
-		return fmt.Errorf("authority pubkey is zero")
+	// No real signature has a zero S half (S = r + k*sec mod L), and every
+	// forgery against a small-order authority pubkey does: ed25519.Verify does
+	// not screen small-order keys, so with S and R zero the equation reduces to
+	// identity = R + [k]A, which holds for the all-zero key on ~24% of messages
+	// and for the identity encoding (0x01||00*31) on every message — an unsigned
+	// offset would verify. Rejecting a zero S covers the whole class, because
+	// [S]B lies in the prime-order subgroup while a small-order R + [k]A lies in
+	// the torsion subgroup, and they meet only at the identity.
+	if [32]byte(offset.Signature[32:64]) == [32]byte{} {
+		return fmt.Errorf("signature scalar is zero")
 	}
 
 	signingBytes, err := offset.GetSigningBytes()

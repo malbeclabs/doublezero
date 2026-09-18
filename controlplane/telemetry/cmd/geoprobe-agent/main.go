@@ -47,24 +47,30 @@ const (
 	// dzSlotDuration is the nominal DoubleZero Ledger slot time.
 	dzSlotDuration = 400 * time.Millisecond
 
-	// Acceptance window for an inbound offset's MeasurementSlot, RFC-16's replay
-	// mitigation. A DZD stamps offsets with a slot it caches for
-	// geoprobe.SlotCacheTTL (5m) and this agent compares against its own slot
-	// cache with the same TTL, so a legitimate offset can sit ~5m either side of
-	// our view before any RPC or finalization lag. maxOffsetSlotLag allows 15m of
-	// that skew in the past; maxOffsetSlotLead allows 5m in the future, for when
-	// our own cached slot is the stale one.
-	maxOffsetSlotLag  = uint64(15 * time.Minute / dzSlotDuration)
-	maxOffsetSlotLead = uint64(5 * time.Minute / dzSlotDuration)
-
-	// maxSlotReferenceAge bounds how stale the cached ledger slot may be before
-	// it stops counting as "now" for the replay check. getCurrentSlot falls back
-	// to its cache indefinitely when RPC fails, so without this bound an outage
-	// freezes the acceptance window around an old slot: replays near that slot
-	// stay acceptable for as long as the outage lasts, and genuinely fresh
-	// offsets eventually fall outside maxOffsetSlotLead. Two refresh periods, so
-	// a single missed refresh does not stop ingestion.
+	// maxSlotReferenceAge bounds how stale our cached ledger slot may be before
+	// it stops counting as "now" for the replay check. The slot getter falls back
+	// to its cache when RPC fails, so without this bound an outage freezes the
+	// acceptance window around an old slot and replays near that slot stay
+	// acceptable for as long as the outage lasts. Two refresh periods, so a
+	// single missed refresh does not stop ingestion.
 	maxSlotReferenceAge = 2 * geoprobe.SlotCacheTTL
+
+	// Acceptance window for an inbound offset's MeasurementSlot, RFC-16's replay
+	// mitigation, measured against our reference slot.
+	//
+	// The window is asymmetric because the two staleness sources push opposite
+	// ways. Our own reference may lag reality by up to maxSlotReferenceAge, which
+	// makes a DZD stamping the current slot look that far *ahead* of us — so the
+	// lead tolerance is derived from that bound rather than set independently.
+	// Anything tighter kills ingestion across the very band maxSlotReferenceAge
+	// exists to keep alive, and it fails looking like a replay in the logs. The
+	// lead costs nothing against replays: a captured offset carries an old slot,
+	// and a future one would have to be signed by the DZD itself.
+	//
+	// On the lag side a DZD stamps from its own geoprobe.SlotCacheTTL cache, so
+	// 15m covers that plus RPC and finalization jitter.
+	maxOffsetSlotLag  = uint64(15 * time.Minute / dzSlotDuration)
+	maxOffsetSlotLead = uint64(maxSlotReferenceAge / dzSlotDuration)
 )
 
 var (
@@ -239,6 +245,29 @@ func (c *offsetCache) Evict() int {
 		}
 	}
 	return evicted
+}
+
+// slotRefresher keeps the ledger slot cache warm so readers on latency-sensitive
+// paths never have to issue RPC themselves. It ticks at half the cache TTL, so a
+// fetch that fails is retried well inside maxSlotReferenceAge.
+func slotRefresher(ctx context.Context, log *slog.Logger, getCurrentSlot func(context.Context) (uint64, error)) {
+	refresh := func() {
+		if _, err := getCurrentSlot(ctx); err != nil && ctx.Err() == nil {
+			log.Warn("Failed to refresh ledger slot cache", "error", err)
+		}
+	}
+	refresh()
+
+	ticker := time.NewTicker(geoprobe.SlotCacheTTL / 2)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			refresh()
+		}
+	}
 }
 
 // slotReference returns slot only while the value cached at cachedAt is recent
@@ -513,16 +542,18 @@ func main() {
 	}
 
 	// Offset ingestion needs a slot it can still treat as "now", which the
-	// stale-cache fallback above does not guarantee. Composite offsets keep
-	// using getCurrentSlot: stamping a slightly stale slot is better than the
-	// probe emitting nothing during an RPC blip.
-	getSlotReference := func(ctx context.Context) (uint64, error) {
-		slot, err := getCurrentSlot(ctx)
-		if err != nil {
-			return 0, err
-		}
+	// stale-cache fallback above does not guarantee. It reads the cache without
+	// ever issuing RPC: the caller is the only goroutine draining the offset
+	// socket, and a blocking GetSlot carrying the shared retry defaults would
+	// stall reads long enough to overflow the socket buffer — and would re-run
+	// the whole retry for every packet, since a failed fetch leaves the cache
+	// timestamp untouched. slotRefresher keeps the cache warm; when it stops
+	// succeeding the age bound makes ingestion fail closed rather than trust a
+	// frozen slot. Composite offsets keep using getCurrentSlot directly, off
+	// this path: stamping a slightly stale slot beats emitting nothing.
+	getSlotReference := func() (uint64, error) {
 		slotMu.RLock()
-		cachedAt := slotCachedAt
+		slot, cachedAt := cachedSlot, slotCachedAt
 		slotMu.RUnlock()
 		return slotReference(slot, cachedAt, time.Now())
 	}
@@ -550,6 +581,9 @@ func main() {
 			errCh <- fmt.Errorf("signed TWAMP reflector: %w", err)
 		}
 	}()
+
+	// Keep the slot cache warm off the offset receive path.
+	go slotRefresher(ctx, log, getCurrentSlot)
 
 	// Run UDP offset listener.
 	go func() {
@@ -715,7 +749,7 @@ func runOffsetListener(
 	parents *parentState,
 	signedReflector signed.Reflector,
 	m *geoprobe.Metrics,
-	getCurrentSlot func(ctx context.Context) (uint64, error),
+	getSlotReference func() (uint64, error),
 ) {
 	log.Info("Starting offset listener", "addr", conn.LocalAddr().String())
 
@@ -781,9 +815,9 @@ func runOffsetListener(
 		// refreshes by definition — so MeasurementSlot has to be checked against
 		// the current ledger slot or a captured offset can be replayed
 		// indefinitely to pin this probe's attested reference point.
-		currentSlot, err := getCurrentSlot(ctx)
+		currentSlot, err := getSlotReference()
 		if err != nil {
-			log.Warn("Rejecting offset, current slot unavailable",
+			log.Warn("Rejecting offset, no usable slot reference",
 				"sender_pubkey", senderPK, "addr", addr, "error", err)
 			m.OffsetsRejected.WithLabelValues(geoprobe.RejectSlotUnavailable).Inc()
 			continue

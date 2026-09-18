@@ -278,8 +278,13 @@ func (r *LinuxReflector) Run(ctx context.Context) error {
 			}
 
 			// Pair integrity: both probes must come from the same source IP.
-			// Only verified probes reach this state, so a spoofed source cannot
-			// claim or repoint the pair.
+			// Only probes whose signature verified reach this state, so a forged
+			// probe cannot claim or repoint the pair. A *replayed* one still can:
+			// ProbePacket covers only Seq/Sec/Frac/SenderPubkey and carries no
+			// freshness, so a captured probe resent from another address verifies,
+			// takes the pair-0 slot, and gets the real sender's next probe dropped
+			// here for source mismatch. Closing that needs a freshness field in
+			// the probe, which is a wire-format change.
 			fromAddr, ok := from.(*unix.SockaddrInet4)
 			if !ok {
 				continue

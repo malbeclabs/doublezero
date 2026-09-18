@@ -373,6 +373,10 @@ func TestOffsetSlotFresh(t *testing.T) {
 		{"replay past window", current - maxOffsetSlotLag - 1, false},
 		{"leading within window", current + maxOffsetSlotLead, true},
 		{"leading past window", current + maxOffsetSlotLead + 1, false},
+		// The lead has to cover a reference that is itself maxSlotReferenceAge
+		// stale, or ingestion dies across the band that bound exists to preserve.
+		{"fresh offset against a maximally stale reference",
+			current + uint64(maxSlotReferenceAge/dzSlotDuration), true},
 		{"zero slot", 0, false},
 	}
 
@@ -446,7 +450,7 @@ func TestRunOffsetListener_RejectsOffsetOutsideSlotWindow(t *testing.T) {
 	go func() {
 		defer close(done)
 		runOffsetListener(ctx, slog.New(slog.NewTextHandler(io.Discard, nil)), listener, cache, parents,
-			&stubSignedReflector{}, metrics, func(context.Context) (uint64, error) { return currentSlot, nil })
+			&stubSignedReflector{}, metrics, func() (uint64, error) { return currentSlot, nil })
 	}()
 	defer func() {
 		cancel()

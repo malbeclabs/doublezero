@@ -103,32 +103,37 @@ func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- T
 		return
 	}
 
+	// Each cache is updated only once its send succeeds. Recording it up front
+	// would make a dropped send permanent: the cache would already compare equal,
+	// so no later tick — forced full refresh included — would retry it, and these
+	// updates are one-shot. An empty update lost that way leaves a delinquent
+	// user probed until the process restarts.
 	if !probeAddressSlicesEqual(targets, d.cachedTargets) || !deliveryAddrsEqual(outboundDelivery, d.cachedOutboundDelivery) {
-		d.cachedTargets = targets
-		d.cachedOutboundDelivery = outboundDelivery
 		select {
 		case targetCh <- TargetUpdate{Targets: targets, DeliveryAddrs: outboundDelivery}:
+			d.cachedTargets = targets
+			d.cachedOutboundDelivery = outboundDelivery
 		default:
-			d.log.Warn("Target update channel full, skipping update")
+			d.log.Warn("Target update channel full, will retry next tick")
 		}
 	}
 
 	if !keySlicesEqual(inboundKeys, d.cachedInboundKeys) {
-		d.cachedInboundKeys = inboundKeys
 		select {
 		case keyCh <- InboundKeyUpdate{Keys: inboundKeys}:
+			d.cachedInboundKeys = inboundKeys
 		default:
-			d.log.Warn("Inbound key update channel full, skipping update")
+			d.log.Warn("Inbound key update channel full, will retry next tick")
 		}
 	}
 
 	if !probeAddressSlicesEqual(icmpTargets, d.cachedIcmpTargets) || !deliveryAddrsEqual(icmpDelivery, d.cachedIcmpDelivery) {
-		d.cachedIcmpTargets = icmpTargets
-		d.cachedIcmpDelivery = icmpDelivery
 		select {
 		case icmpTargetCh <- ICMPTargetUpdate{Targets: icmpTargets, DeliveryAddrs: icmpDelivery}:
+			d.cachedIcmpTargets = icmpTargets
+			d.cachedIcmpDelivery = icmpDelivery
 		default:
-			d.log.Warn("ICMP target update channel full, skipping update")
+			d.log.Warn("ICMP target update channel full, will retry next tick")
 		}
 	}
 }

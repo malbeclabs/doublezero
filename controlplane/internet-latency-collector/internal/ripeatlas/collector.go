@@ -214,9 +214,8 @@ func filterValidProbes(log *slog.Logger, probes []Probe) []Probe {
 	return validProbes
 }
 
-// measurementStaleReason reports whether a measurement has gone quiet: created over an
-// hour ago with nothing exported yet, or last exported over an hour ago. Shared so the
-// keep-the-target check in Step 5 cannot drift from the rule Step 4 marks probes on.
+// measurementStaleReason reports whether a measurement has gone quiet, and why. Shared
+// so Step 5's keep-the-target check cannot drift from the rule Step 4 marks probes on.
 func measurementStaleReason(meta MeasurementMeta, probeTimeout int64) (bool, string) {
 	switch {
 	case meta.LastExportAt == 0 && meta.CreatedAt > 0 && meta.CreatedAt < probeTimeout:
@@ -1171,12 +1170,10 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 	}
 
 	// Step 4c: Keep a target that is still working. rankTargets knows only distance and
-	// the marks, so a nearer probe whose 24h mark just expired ranks first again and the
-	// pick flips to a probe whose quality then has to be re-learned by running it — one
-	// to two hours to trip never_exported, about two to trip excessive loss. Columbus
-	// lost about four hours of telemetry a day going around that loop. Rotate only when
-	// the target in use has stopped being a valid choice: marked, stale, or no longer a
-	// candidate for its location (malbeclabs/doublezero#4362).
+	// the marks, so a nearer probe whose 24h mark just expired ranks first again — and a
+	// newly adopted probe's quality is only learned by running it, one to two hours to
+	// trip never_exported and about two to trip excessive loss. Columbus lost roughly
+	// four hours of telemetry a day to that loop (malbeclabs/doublezero#4362).
 	selectableByLocation := make(map[string]map[int]Probe, len(locationMatches))
 	for _, match := range locationMatches {
 		candidates := match.NearbyProbes
@@ -1218,10 +1215,8 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 			slog.Int("skipped_probe_id", wanted.TargetProbe.ID),
 			slog.Time("last_export_at", time.Unix(meta.LastExportAt, 0)))
 
-		// The rest of Step 5 and the metadata Step 8 writes are computed from the spec,
-		// so the kept probe has to replace the ranked pick here rather than only
-		// suppressing the recreation: a source-set change still recreates, and must
-		// recreate onto the target that was kept.
+		// Replace the pick rather than only skipping the recreation: a source-set change
+		// still recreates, and Steps 5 and 8 both read the target off the spec.
 		wanted.TargetProbe = keptProbe
 	}
 

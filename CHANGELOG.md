@@ -11,6 +11,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Collector
+  - A RIPE Atlas measurement keeps the target probe it is using unless that probe has stopped being a valid choice: it is marked unresponsive as a target, the measurement has not exported for over an hour, or the probe is no longer among the location's candidates. Target selection ranks only on distance and the marks, so when a nearer probe's 24h mark expired the ranked pick flipped back to it and the measurement was rebuilt onto a probe whose quality then had to be re-learned by running it — one to two hours to trip `never_exported`, about two to trip excessive loss. Columbus (`cmh`) went around that loop every day and lost roughly four hours of telemetry to it. A measurement younger than the staleness timeout that has not exported yet is not treated as stale. Skipping a higher-ranked candidate is logged at Info with both probe ids. (malbeclabs/doublezero#4362)
 - CLI
   - `doublezero connect --client-ip <ip>` is honored again. The flag is accepted only for an AccessPass at the exact `(client_ip, user_payer)` PDA, not flagged `allow_multiple_ip` and with no dynamic pass alongside it — the predicate `create_user` applies, so a refusal arrives up front rather than as a late `IpOwnershipProofRequired` — and only for an address that is globally routable and assigned to an interface that is up on this host. A daemon that refuses the pin fails the connect, rather than leaving an onchain user no tunnel can be built for.
 - Client

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -3310,4 +3311,360 @@ func TestInternetLatency_RIPEAtlas_ExportMeasurementResults_GatedOnStateLoad(t *
 	onDisk, err := os.ReadFile(stateFile)
 	require.NoError(t, err)
 	require.Equal(t, corrupt, onDisk, "export must not overwrite the unreadable state file")
+}
+
+// The cmh shape from malbeclabs/doublezero#4362: 12651 sits on top of the metro and
+// answers almost nothing, 55128 is further out and exports 27 of 27 every poll. Every
+// time 12651's 24h mark expires it ranks first again, so the ranked pick and the target
+// actually in use differ on the next cycle.
+const (
+	cmhNearProbe    = 12651
+	cmhNearAddr     = "107.192.62.177"
+	cmhHealthyProbe = 55128
+	cmhHealthyAddr  = "69.58.112.238"
+)
+
+// targetRotationFixture drives configureMeasurements over that shape. The nyc
+// measurement is present and correct so the cycle's create/remove counts are entirely
+// about cmh.
+type targetRotationFixture struct {
+	collector *Collector
+	state     *MeasurementState
+	logs      *bytes.Buffer
+	locations []LocationProbeMatch
+	stateDir  string
+
+	mu      sync.Mutex
+	created []MeasurementRequest
+	stopped []int
+}
+
+// newTargetRotationFixture builds the fixture with cmh targeting 55128 while both cmh
+// probes are candidates. Callers adjust cmh's probe list and the seeded metadata before
+// calling run.
+func newTargetRotationFixture(t *testing.T) *targetRotationFixture {
+	t.Helper()
+
+	now := time.Now().Unix()
+	f := &targetRotationFixture{logs: &bytes.Buffer{}}
+
+	existing := []Measurement{
+		{
+			ID:          1001,
+			Description: "DoubleZero [testnet] to cmh probe 55128",
+			Target:      cmhHealthyAddr,
+			Status: struct {
+				Name string `json:"name"`
+				ID   int    `json:"id"`
+			}{Name: "Ongoing"},
+			Type: "ping",
+		},
+		{
+			ID:          1002,
+			Description: "DoubleZero [testnet] to nyc probe 100",
+			Target:      "162.255.145.7",
+			Status: struct {
+				Name string `json:"name"`
+				ID   int    `json:"id"`
+			}{Name: "Ongoing"},
+			Type: "ping",
+		},
+	}
+
+	mockClient := &MockClient{
+		GetAllMeasurementsFunc: func(_ context.Context, _ string) ([]Measurement, error) {
+			return existing, nil
+		},
+		CreateMeasurementFunc: func(_ context.Context, request MeasurementRequest) (*MeasurementResponse, error) {
+			f.mu.Lock()
+			f.created = append(f.created, request)
+			id := 2000 + len(f.created)
+			f.mu.Unlock()
+			return &MeasurementResponse{Measurements: []int{id}}, nil
+		},
+		StopMeasurementFunc: func(_ context.Context, measurementID int) error {
+			f.mu.Lock()
+			f.stopped = append(f.stopped, measurementID)
+			f.mu.Unlock()
+			return nil
+		},
+		GetMeasurementResultsIncrementalFunc: func(_ context.Context, _ int, _ int64) ([]any, error) {
+			return []any{}, nil
+		},
+	}
+
+	f.stateDir = filepath.Join(t.TempDir(), "state")
+	require.NoError(t, os.MkdirAll(f.stateDir, 0o755))
+
+	f.collector = &Collector{
+		client: mockClient,
+		log:    slog.New(slog.NewJSONHandler(f.logs, &slog.HandlerOptions{Level: slog.LevelInfo})),
+		env:    "testnet",
+		getLocationsFunc: func(_ context.Context) []collector.LocationMatch {
+			return []collector.LocationMatch{}
+		},
+	}
+
+	f.state = NewMeasurementState(filepath.Join(f.stateDir, TimestampFileName))
+	f.collector.measurementState = f.state
+
+	// Exporting steadily 20 minutes ago: not stale by any margin, so only the ranked
+	// pick differing can move it.
+	f.state.SetMetadata(1001, MeasurementMeta{
+		TargetLocation: "cmh",
+		TargetProbeID:  cmhHealthyProbe,
+		Sources: []SourceProbeMeta{
+			{LocationCode: "nyc", ProbeID: 100, LastResponseAt: now},
+			{LocationCode: "sea", ProbeID: 101, LastResponseAt: now},
+		},
+		CreatedAt:    now - 3*3600,
+		LastExportAt: now - 20*60,
+	})
+	f.state.SetMetadata(1002, MeasurementMeta{
+		TargetLocation: "nyc",
+		TargetProbeID:  100,
+		Sources:        []SourceProbeMeta{{LocationCode: "sea", ProbeID: 101, LastResponseAt: now}},
+		CreatedAt:      now - 3*3600,
+		LastExportAt:   now - 20*60,
+	})
+
+	f.locations = []LocationProbeMatch{
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "cmh", Latitude: 40.11, Longitude: -83.00},
+			NearbyProbes: []Probe{
+				{ID: cmhNearProbe, Address: cmhNearAddr, Latitude: 40.11, Longitude: -83.00},
+				{ID: cmhHealthyProbe, Address: cmhHealthyAddr, Latitude: 40.30, Longitude: -83.20},
+			},
+			ProbeCount: 2,
+		},
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "nyc", Latitude: 40.77, Longitude: -74.07},
+			NearbyProbes:  []Probe{{ID: 100, Address: "162.255.145.7", Latitude: 40.77, Longitude: -74.07}},
+			ProbeCount:    1,
+		},
+		{
+			LocationMatch: collector.LocationMatch{LocationCode: "sea", Latitude: 47.61, Longitude: -122.33},
+			NearbyProbes:  []Probe{{ID: 101, Address: "198.48.19.2", Latitude: 47.61, Longitude: -122.33}},
+			ProbeCount:    1,
+		},
+	}
+
+	return f
+}
+
+// cmhLocation returns the cmh entry so a test can change its candidate probes.
+func (f *targetRotationFixture) cmhLocation() *LocationProbeMatch {
+	return &f.locations[0]
+}
+
+func (f *targetRotationFixture) run(t *testing.T) {
+	t.Helper()
+	require.NoError(t, f.collector.configureMeasurements(
+		t.Context(), f.locations, false, 1, f.stateDir, 10*time.Minute))
+}
+
+// cmhTargets returns the target address of every measurement created for cmh.
+func (f *targetRotationFixture) cmhTargets() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+
+	var targets []string
+	for _, req := range f.created {
+		for _, def := range req.Definitions {
+			if strings.Contains(def.Description, "to cmh") {
+				targets = append(targets, def.Target)
+			}
+		}
+	}
+	return targets
+}
+
+func (f *targetRotationFixture) stoppedIDs() []int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return slices.Clone(f.stopped)
+}
+
+// logRecords decodes the captured log lines with the given message.
+func (f *targetRotationFixture) logRecords(t *testing.T, msg string) []map[string]any {
+	t.Helper()
+
+	var matched []map[string]any
+	for line := range strings.SplitSeq(strings.TrimSpace(f.logs.String()), "\n") {
+		if line == "" {
+			continue
+		}
+		var record map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &record))
+		if record["msg"] == msg {
+			matched = append(matched, record)
+		}
+	}
+	return matched
+}
+
+const keptTargetMsg = "Keeping the target probe in use, it is unmarked and exporting"
+
+func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_HealthyTargetSurvivesNearerCandidate(t *testing.T) {
+	t.Parallel()
+
+	f := newTargetRotationFixture(t)
+	f.run(t)
+
+	require.Empty(t, f.stoppedIDs(), "a target that is exporting must not be torn down")
+	require.Empty(t, f.cmhTargets(), "nothing to recreate, cmh keeps the measurement it has")
+
+	kept := f.logRecords(t, keptTargetMsg)
+	require.Len(t, kept, 1, "the skipped candidate should be logged once for the measurement")
+	require.EqualValues(t, 1001, kept[0]["measurement_id"])
+	require.Equal(t, "cmh", kept[0]["target"])
+	require.EqualValues(t, cmhHealthyProbe, kept[0]["kept_probe_id"])
+	require.EqualValues(t, cmhNearProbe, kept[0]["skipped_probe_id"])
+	require.NotEmpty(t, kept[0]["last_export_at"])
+
+	summary := f.logRecords(t, "Measurement configuration summary")
+	require.Len(t, summary, 1)
+	require.EqualValues(t, 0, summary[0]["to_create"])
+	require.EqualValues(t, 0, summary[0]["to_remove"])
+}
+
+// A kept target has to reach the spec, not just suppress the recreation: any other
+// reason to recreate — here a source that moved — must recreate onto the probe that was
+// kept, or the rotation comes back through the source path.
+func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_KeptTargetIsUsedWhenSourcesForceRecreation(t *testing.T) {
+	t.Parallel()
+
+	f := newTargetRotationFixture(t)
+
+	meta, ok := f.state.GetMetadata(1001)
+	require.True(t, ok)
+	meta.Sources[1] = SourceProbeMeta{LocationCode: "sea", ProbeID: 999, LastResponseAt: time.Now().Unix()}
+	f.state.SetMetadata(1001, meta)
+
+	f.run(t)
+
+	require.Len(t, f.logRecords(t, keptTargetMsg), 1)
+	require.Contains(t, f.stoppedIDs(), 1001)
+	require.Equal(t, []string{cmhHealthyAddr}, f.cmhTargets(),
+		"the recreation must use the kept target, not the higher-ranked pick")
+
+	var recreated MeasurementMeta
+	for id, m := range f.state.GetAllMetadata() {
+		if m.TargetLocation == "cmh" {
+			require.NotEqual(t, 1001, id)
+			recreated = m
+		}
+	}
+	require.Equal(t, cmhHealthyProbe, recreated.TargetProbeID,
+		"step 8 metadata must record the kept probe")
+}
+
+func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_MarkedTargetIsRotated(t *testing.T) {
+	t.Parallel()
+
+	f := newTargetRotationFixture(t)
+	f.state.AddUnresponsiveTarget(cmhHealthyProbe)
+
+	f.run(t)
+
+	require.Empty(t, f.logRecords(t, keptTargetMsg))
+	require.Contains(t, f.stoppedIDs(), 1001)
+	require.Equal(t, []string{cmhNearAddr}, f.cmhTargets())
+}
+
+// Step 4 marks a target this stale in the same cycle, so both the mark and the staleness
+// rule bar it from being kept. The assertion is that a stale export is not what keeps a
+// measurement alive.
+func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_StaleTargetIsRotated(t *testing.T) {
+	t.Parallel()
+
+	f := newTargetRotationFixture(t)
+
+	meta, ok := f.state.GetMetadata(1001)
+	require.True(t, ok)
+	meta.LastExportAt = time.Now().Add(-70 * time.Minute).Unix()
+	f.state.SetMetadata(1001, meta)
+
+	f.run(t)
+
+	require.Empty(t, f.logRecords(t, keptTargetMsg))
+	require.Contains(t, f.stoppedIDs(), 1001)
+	require.Equal(t, []string{cmhNearAddr}, f.cmhTargets())
+}
+
+func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_UnselectableTargetIsRotated(t *testing.T) {
+	t.Parallel()
+
+	f := newTargetRotationFixture(t)
+	// 55128 dropped out of the radius, so it is no longer a candidate for cmh at all.
+	f.cmhLocation().NearbyProbes = []Probe{
+		{ID: cmhNearProbe, Address: cmhNearAddr, Latitude: 40.11, Longitude: -83.00},
+	}
+	f.cmhLocation().ProbeCount = 1
+
+	f.run(t)
+
+	require.Empty(t, f.logRecords(t, keptTargetMsg))
+	require.Contains(t, f.stoppedIDs(), 1001)
+	require.Equal(t, []string{cmhNearAddr}, f.cmhTargets())
+}
+
+// A measurement younger than the staleness timeout has not had time to export yet, so
+// its silence says nothing about the target.
+func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_YoungTargetWithoutExportsIsKept(t *testing.T) {
+	t.Parallel()
+
+	f := newTargetRotationFixture(t)
+
+	meta, ok := f.state.GetMetadata(1001)
+	require.True(t, ok)
+	meta.CreatedAt = time.Now().Add(-20 * time.Minute).Unix()
+	meta.LastExportAt = 0
+	f.state.SetMetadata(1001, meta)
+
+	f.run(t)
+
+	require.Empty(t, f.stoppedIDs())
+	require.Empty(t, f.cmhTargets())
+	require.Len(t, f.logRecords(t, keptTargetMsg), 1)
+}
+
+// The daily loop from malbeclabs/doublezero#4362: cmh runs on 55128, the 24h mark on the
+// nearer 12651 expires, 12651 ranks first again and the measurement was rebuilt onto a
+// probe that then took hours to fail. The cycle must leave 55128 alone.
+func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_Issue4362_ExpiredMarkDoesNotRotateHealthyTarget(t *testing.T) {
+	t.Parallel()
+
+	f := newTargetRotationFixture(t)
+
+	stateFile := filepath.Join(f.stateDir, TimestampFileName)
+	tracker := MetadataTracker{
+		Metadata: map[int]MeasurementMeta{},
+		UnresponsiveTargets: []UnresponsiveProbeEntry{
+			{ProbeID: cmhNearProbe, MarkedAt: time.Now().Add(-25 * time.Hour).Unix()},
+		},
+	}
+	encoded, err := json.Marshal(tracker)
+	require.NoError(t, err)
+	require.NoError(t, os.WriteFile(stateFile, encoded, 0o644))
+
+	seeded := NewMeasurementState(stateFile)
+	require.NoError(t, seeded.Load())
+	for id, meta := range f.state.GetAllMetadata() {
+		seeded.SetMetadata(id, meta)
+	}
+	f.state = seeded
+	f.collector.measurementState = seeded
+
+	require.False(t, seeded.IsTargetUnresponsive(cmhNearProbe), "the mark is already expired")
+
+	f.run(t)
+
+	require.Empty(t, f.stoppedIDs(), "cmh must stay on the probe that is exporting")
+	require.Empty(t, f.cmhTargets())
+
+	kept := f.logRecords(t, keptTargetMsg)
+	require.Len(t, kept, 1)
+	require.EqualValues(t, cmhHealthyProbe, kept[0]["kept_probe_id"])
+	require.EqualValues(t, cmhNearProbe, kept[0]["skipped_probe_id"])
 }

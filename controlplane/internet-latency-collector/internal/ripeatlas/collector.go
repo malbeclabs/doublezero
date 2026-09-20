@@ -214,6 +214,19 @@ func filterValidProbes(log *slog.Logger, probes []Probe) []Probe {
 	return validProbes
 }
 
+// measurementStaleReason reports whether a measurement has gone quiet: created over an
+// hour ago with nothing exported yet, or last exported over an hour ago. Shared so the
+// keep-the-target check in Step 5 cannot drift from the rule Step 4 marks probes on.
+func measurementStaleReason(meta MeasurementMeta, probeTimeout int64) (bool, string) {
+	switch {
+	case meta.LastExportAt == 0 && meta.CreatedAt > 0 && meta.CreatedAt < probeTimeout:
+		return true, "never_exported"
+	case meta.LastExportAt > 0 && meta.LastExportAt < probeTimeout:
+		return true, "no_recent_exports"
+	}
+	return false, ""
+}
+
 // filterSelectableTargets ignores the unresponsive-target marks by design; rankTargets
 // handles those by ordering instead.
 func filterSelectableTargets(probes []Probe) []Probe {
@@ -988,18 +1001,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 	for _, measurement := range doubleZeroMeasurements {
 		if meta, hasMeta := measurementState.GetMetadata(measurement.ID); hasMeta {
 			// Check if measurement is stale - either never exported, or last export was too long ago
-			isStale := false
-			var reason string
-
-			if meta.LastExportAt == 0 && meta.CreatedAt > 0 && meta.CreatedAt < probeTimeout {
-				// Case 1: Created > 1 hour ago but never exported
-				isStale = true
-				reason = "never_exported"
-			} else if meta.LastExportAt > 0 && meta.LastExportAt < probeTimeout {
-				// Case 2: Last export was > 1 hour ago
-				isStale = true
-				reason = "no_recent_exports"
-			}
+			isStale, reason := measurementStaleReason(meta, probeTimeout)
 
 			if isStale {
 				// never_exported is the offline case: the measurement has produced
@@ -1166,6 +1168,61 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		// Regenerate wanted measurements now that new probes are marked unresponsive,
 		// so the reconciliation below uses updated probe selections
 		wantedMeasurements = c.generateWantedMeasurements(locationMatches, probesPerLocation, measurementState)
+	}
+
+	// Step 4c: Keep a target that is still working. rankTargets knows only distance and
+	// the marks, so a nearer probe whose 24h mark just expired ranks first again and the
+	// pick flips to a probe whose quality then has to be re-learned by running it — one
+	// to two hours to trip never_exported, about two to trip excessive loss. Columbus
+	// lost about four hours of telemetry a day going around that loop. Rotate only when
+	// the target in use has stopped being a valid choice: marked, stale, or no longer a
+	// candidate for its location (malbeclabs/doublezero#4362).
+	selectableByLocation := make(map[string]map[int]Probe, len(locationMatches))
+	for _, match := range locationMatches {
+		candidates := match.NearbyProbes
+		if len(match.FallbackTargetProbes) > 0 {
+			candidates = append(append([]Probe{}, candidates...), match.FallbackTargetProbes...)
+		}
+		byID := make(map[int]Probe, len(candidates))
+		for _, probe := range filterSelectableTargets(candidates) {
+			byID[probe.ID] = probe
+		}
+		selectableByLocation[match.LocationCode] = byID
+	}
+
+	for i := range wantedMeasurements {
+		wanted := &wantedMeasurements[i]
+		existing, exists := existingByTarget[wanted.TargetLocationCode]
+		if !exists {
+			continue
+		}
+		meta, hasMeta := measurementState.GetMetadata(existing.ID)
+		if !hasMeta || meta.TargetProbeID == wanted.TargetProbe.ID {
+			continue
+		}
+		if measurementState.IsTargetUnresponsive(meta.TargetProbeID) {
+			continue
+		}
+		if stale, _ := measurementStaleReason(meta, probeTimeout); stale {
+			continue
+		}
+		keptProbe, selectable := selectableByLocation[wanted.TargetLocationCode][meta.TargetProbeID]
+		if !selectable {
+			continue
+		}
+
+		c.log.Info("Keeping the target probe in use, it is unmarked and exporting",
+			slog.Int("measurement_id", existing.ID),
+			slog.String("target", wanted.TargetLocationCode),
+			slog.Int("kept_probe_id", meta.TargetProbeID),
+			slog.Int("skipped_probe_id", wanted.TargetProbe.ID),
+			slog.Time("last_export_at", time.Unix(meta.LastExportAt, 0)))
+
+		// The rest of Step 5 and the metadata Step 8 writes are computed from the spec,
+		// so the kept probe has to replace the ranked pick here rather than only
+		// suppressing the recreation: a source-set change still recreates, and must
+		// recreate onto the target that was kept.
+		wanted.TargetProbe = keptProbe
 	}
 
 	// Step 5: Determine what to create and what to remove

@@ -2867,9 +2867,8 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_RecordsTargetL
 	t.Run("a replayed timeout from an unlisted probe is not counted twice", func(t *testing.T) {
 		t.Parallel()
 
-		// Probe 999 is not in meta.Sources, so it has no mark to persist and its gate is
-		// the measurement cursor, which a timeout never advances. The loss cursor is
-		// what stops the lookback re-counting it every pass.
+		// Probe 999 is not in meta.Sources, so its gate is the measurement cursor, which
+		// a timeout never advances; the loss cursor is what stops the re-count.
 		batch := []any{timedOut(999, base)}
 		batches := [][]any{batch, batch}
 		c, ms := newCollector(t, nil, &batches)

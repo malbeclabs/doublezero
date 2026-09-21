@@ -714,10 +714,10 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 			continue
 		}
 
-		// An unlisted probe has no per-probe mark to persist, so its gate is the
-		// measurement cursor, which a timeout never advances: without the loss cursor
-		// every lookback pass would tally the same timeout again and walk the target
-		// toward rotation. A listed probe's mark already made the result unrepeatable.
+		// An unlisted probe has no mark to persist, so its gate is the measurement
+		// cursor, which a timeout never advances: without the loss cursor every lookback
+		// pass would tally the same timeout again and walk the target toward rotation.
+		// A listed probe's own mark already dropped its replays.
 		if listed || resultAt > meta.TargetLossCursor {
 			targetAttempts++
 			if latency > 0 {

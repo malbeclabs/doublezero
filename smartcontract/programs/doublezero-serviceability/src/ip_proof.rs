@@ -71,8 +71,11 @@ pub fn split_trailing_instructions_sysvar<'a, 'info>(
 /// `payer_is_sentinel` and `accesspass_is_ip_bound`.
 ///
 /// `accesspass_is_ip_bound` waives the *requirement* for a pass whose address an issuing authority
-/// pinned: one stored at its own `client_ip` PDA and not flagged `allow_multiple_ip`, which the
-/// caller has already matched against the `client_ip` being created. Such a pass is itself an
+/// pinned: one at the PDA seeded on the `client_ip` being created, which the caller has already
+/// matched, and not flagged `allow_multiple_ip`. The flag is not what makes such a pass authorize
+/// another address — the PDA it sits at settles which address it names — but a pass its issuer
+/// marked reusable across addresses is a weaker statement about any one of them, so the waiver
+/// declines it and takes only a pass pinned to a single address. Such a pass is itself an
 /// attestation — `SetAccessPass` is permissioned, so a registrant cannot self-issue one, and a pass
 /// at `(client_ip, user_payer)` means a privileged party asserted that this payer may use this
 /// address. It is the same reasoning by which RFC-27 scopes its threat to wildcard passes, where

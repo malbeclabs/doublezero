@@ -231,9 +231,15 @@ pub fn create_user_core(
     // is keyed on (`accesspass.user_payer` above). On the ordinary path the two are the same
     // account.
     //
-    // A pass at the UNSPECIFIED PDA authorizes any address, and `allow_multiple_ip` says the same
-    // of a pass stored at one, so neither attests the address being claimed and neither waives the
-    // proof. The remaining shape is a pass pinned to exactly this address.
+    // A pass at the UNSPECIFIED PDA authorizes any address, so it attests none and waives nothing.
+    //
+    // `allow_multiple_ip` is a weaker case than that, not the same one: the assert above admits
+    // only PDA(client_ip) or PDA(0.0.0.0), so a pass presented at the former is seeded on the
+    // address being claimed whatever the flag says, and the flag cannot make it authorize a
+    // different one. It is read here as an issuer opt-out — a pass marked reusable across
+    // addresses is a weaker statement about any one of them than a pass pinned to a single
+    // address, and the waiver takes only the stronger. Clearing the flag on the pass is what
+    // restores it.
     //
     // The seed is what an issuing authority chose, so the PDA is the attestation; the stored
     // `client_ip` field is not, on its own. Between #1608 and #3859 `create_user` wrote the first

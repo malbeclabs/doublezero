@@ -233,10 +233,11 @@ impl Fixture {
         .await;
     }
 
-    /// Re-issues the fixture's pass with `allow_multiple_ip` set, which is what makes a pass
-    /// stored at a specific address authorize any address instead — the shape that still requires
-    /// a proof once the flag is on. Same PDA, so the accounts every test builds are unchanged, and
-    /// `SetAccessPass` preserves the multicast allowlists it does not own.
+    /// Re-issues the fixture's pass with `allow_multiple_ip` set: the issuer marking it reusable
+    /// across addresses rather than pinned to this one, which is the shape that still requires a
+    /// proof once the flag is on. Same PDA — the pass still names this address, which is why the
+    /// flag and not the seed is what decides here — so the accounts every test builds are
+    /// unchanged, and `SetAccessPass` preserves the multicast allowlists it does not own.
     async fn allow_multiple_ip(&mut self) {
         let payer = self.payer.insecure_clone();
         let (program_id, globalstate, accesspass) =

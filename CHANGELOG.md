@@ -20,12 +20,6 @@ All notable changes to this project will be documented in this file.
 - Serviceability
   - With `RequireIpOwnershipProof` set, a user creation carrying no RFC-27 proof is accepted when its AccessPass sits at the PDA of the address being claimed and is not flagged `allow_multiple_ip`. `SetAccessPass` is permissioned, so such a pass is an issuing authority's attestation of that address, and the flag and the pass together otherwise left a host unable to connect when no proof was obtainable for it. The waiver is keyed on the PDA seed rather than the stored `client_ip` field, which a legacy wildcard pass can carry without any authority behind it. It covers absence only: a supplied proof is still validated in full, and wildcard passes still require one. The trust boundary moves onto issuance, which `SetAccessPass` extends to tenant administrators as well as `ACCESS_PASS_ADMIN` holders. RFC-27 is amended to match.
 
-## [v0.41.0](https://github.com/malbeclabs/doublezero/compare/client/v0.40.0...client/v0.41.0) - 2026-09-16
-
-### Breaking
-
-### Changes
-
 ## [v0.42.0](https://github.com/malbeclabs/doublezero/compare/client/v0.41.0...client/v0.42.0) - 2026-09-18
 
 ### Breaking

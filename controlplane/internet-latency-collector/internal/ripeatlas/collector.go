@@ -690,7 +690,8 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 		// The comparison is inclusive: a result sharing the mark's second is skipped,
 		// which undercounts rather than risks blacklisting a usable target.
 		gate := lastTimestampUnix
-		if mark, ok := sourceMarks[probeID]; ok {
+		mark, listed := sourceMarks[probeID]
+		if listed {
 			switch {
 			case mark.LastExportedAt > 0:
 				gate = mark.LastExportedAt
@@ -713,12 +714,18 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 			continue
 		}
 
-		targetAttempts++
-		if latency > 0 {
-			targetSuccesses++
-		}
-		if resultAt > newestResult {
-			newestResult = resultAt
+		// An unlisted probe has no per-probe mark to persist, so its gate is the
+		// measurement cursor, which a timeout never advances: without the loss cursor
+		// every lookback pass would tally the same timeout again and walk the target
+		// toward rotation. A listed probe's mark already made the result unrepeatable.
+		if listed || resultAt > meta.TargetLossCursor {
+			targetAttempts++
+			if latency > 0 {
+				targetSuccesses++
+			}
+			if resultAt > newestResult {
+				newestResult = resultAt
+			}
 		}
 
 		// A result the probe uploaded proves it ran the measurement even if nothing came

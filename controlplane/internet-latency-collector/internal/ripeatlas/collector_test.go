@@ -2692,7 +2692,8 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LateUploads(t 
 		})
 
 		_, _, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
-		require.Error(t, err)
+		require.EqualError(t, err, "failed to write records: write failed",
+			"the pass must fail on the write, after liveness and before the export marks")
 
 		meta, ok := ms.GetMetadata(1)
 		require.True(t, ok)
@@ -2849,6 +2850,27 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_RecordsTargetL
 		// behind it, so the same timeout comes back next pass. Counting it again would
 		// drive a target that merely lost its most recent pings toward the threshold.
 		batch := []any{timedOut(100, base)}
+		batches := [][]any{batch, batch}
+		c, ms := newCollector(t, nil, &batches)
+
+		_, _, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.NoError(t, err)
+		_, _, err = c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.NoError(t, err)
+
+		meta, ok := ms.GetMetadata(1)
+		require.True(t, ok)
+		require.Equal(t, int64(1), meta.TargetAttempts, "the replayed timeout must not be recounted")
+		require.Zero(t, meta.TargetSuccesses)
+	})
+
+	t.Run("a replayed timeout from an unlisted probe is not counted twice", func(t *testing.T) {
+		t.Parallel()
+
+		// Probe 999 is not in meta.Sources, so it has no mark to persist and its gate is
+		// the measurement cursor, which a timeout never advances. The loss cursor is
+		// what stops the lookback re-counting it every pass.
+		batch := []any{timedOut(999, base)}
 		batches := [][]any{batch, batch}
 		c, ms := newCollector(t, nil, &batches)
 

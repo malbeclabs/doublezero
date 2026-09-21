@@ -114,6 +114,22 @@ impl<C: CliCommand + Sync> doublezero_daemon_cli::LedgerClient for LedgerAdapter
             .map(|(_, accesspass)| accesspass))
     }
 
+    fn get_accesspass_exact(
+        &self,
+        client_ip: std::net::Ipv4Addr,
+        user_payer: solana_sdk::pubkey::Pubkey,
+    ) -> eyre::Result<Option<doublezero_serviceability::state::accesspass::AccessPass>> {
+        Ok(self
+            .client
+            .get_accesspass_exact(
+                doublezero_sdk::commands::accesspass::get::GetExactAccessPassCommand {
+                    client_ip,
+                    user_payer,
+                },
+            )?
+            .map(|(_, accesspass)| accesspass))
+    }
+
     fn get_device(&self, pubkey_or_code: String) -> eyre::Result<doublezero_sdk::Device> {
         let (_, device) =
             self.client

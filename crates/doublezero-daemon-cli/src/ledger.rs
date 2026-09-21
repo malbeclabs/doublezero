@@ -79,6 +79,19 @@ pub trait LedgerClient: Send + Sync {
         user_payer: Pubkey,
     ) -> eyre::Result<Option<AccessPass>>;
 
+    /// Fetch the AccessPass stored at the exact `(client_ip, user_payer)` PDA, or `None` if
+    /// there is none.
+    ///
+    /// Distinct from [`LedgerClient::get_accesspass`], which prefers the dynamic (0.0.0.0) pass
+    /// and falls back to the exact one. `connect --client-ip` must not accept a dynamic pass:
+    /// it authorizes any address, so honoring a caller-chosen IP against it would let the
+    /// caller bind an address nobody vouched for.
+    fn get_accesspass_exact(
+        &self,
+        client_ip: Ipv4Addr,
+        user_payer: Pubkey,
+    ) -> eyre::Result<Option<AccessPass>>;
+
     /// Fetch a device by pubkey or code.
     fn get_device(&self, pubkey_or_code: String) -> eyre::Result<Device>;
 

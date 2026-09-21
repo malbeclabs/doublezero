@@ -258,8 +258,9 @@ The program MUST reject when any of the following holds:
 - no verifier public key is configured in global state;
 - the proof is malformed.
 
-A proof that is *absent* is rejected only when the flag is set and the payer is not the sentinel
-authority; see Backward Compatibility.
+A proof that is *absent* is rejected only when the flag is set, the payer is not the sentinel
+authority, and the AccessPass does not itself name the address being claimed; see Backward
+Compatibility.
 
 Each class has its own `DoubleZeroError` variant, so an operator can tell a stale proof from a
 rotated verifier key from a client that never attached the Ed25519 instruction.
@@ -276,8 +277,8 @@ This proof does **not** replace AccessPass. AccessPass continues to gate *who* m
 they may do (epoch validity, multicast allowlists, seat caps). The proof governs *which IP* a user
 may bind:
 
-- **Specific‑IP passes** already bind the IP onchain; the proof is redundant there (it MAY still be
-  required uniformly for simplicity).
+- **Specific‑IP passes** already bind the IP onchain; the proof is redundant there, and such a pass
+  waives the requirement (see Backward Compatibility).
 - **Wildcard / `EdgeSeat` passes** accept any IP today; the proof is the per‑IP control that closes
   the squatting/misdirection gap for them.
 
@@ -330,9 +331,13 @@ set per environment through the existing `SetFeatureFlags` instruction.
 - **Flag clear.** A creation that supplies no proof is accepted, so clients built before RFC-27 keep
   working. A creation that *does* supply one is still validated in full: a client attaching a broken
   proof is broken now, not at rollout, and letting it through would hide that until the flag flips.
-- **Flag set.** Every user creation requires a valid proof — wildcard and specific-IP passes alike,
-  and on the idempotent rerun path as well as on first creation. One exception: a creation paid for
-  by `globalstate.sentinel_authority_pk` may omit the proof.
+- **Flag set.** A user creation requires a valid proof, on the idempotent rerun path as well as on
+  first creation. Two creations may omit one: a creation paid for by
+  `globalstate.sentinel_authority_pk`, and a creation whose AccessPass is bound to the address being
+  claimed — stored at *that address's* PDA and not flagged `allow_multiple_ip`. The PDA seed is
+  what an issuing authority chose, so it is the attestation; the stored `client_ip` field is not,
+  on its own, because a pass predating this RFC may carry an address its own holder first
+  connected from.
 
 **The sentinel exemption.** The shred-oracle provisions multicast publishers owned by validators, so
 the proof would have to name the validator for an address the verification service never sees a
@@ -345,6 +350,39 @@ IP, and that `InitGlobalState` seeds `sentinel_authority_pk` to whoever initiali
 in a fresh environment the exemption belongs to the deployer until the key is rotated. Replacing it
 is tracked in issue #4215.
 
+**The IP-bound pass exemption.** A pass that names the address is already an attestation of it:
+`SetAccessPass` is permissioned, so a privileged party asserted that this payer may use this
+address. The exemption exists because an attested address is not always one a proof can be
+obtained for: the verification service signs the source it observes, so a host that reaches it
+from some other address — multi-homed, asymmetrically routed, or egressing through a NAT other
+than the one the pass names — gets a proof for an address it cannot use, and a host that cannot
+reach the service from that source at all gets none. The pass and the flag together left such a
+host unable to connect. It waives the *requirement* only; a supplied proof is still validated in
+full.
+
+At the program level the exemption rests on issuance alone. The PDA seed names the address and
+only an authorized issuer can create a pass at it, and nothing else about the caller is checked —
+in particular the program does not know, and MUST NOT be assumed to enforce, that the host asking
+holds the address. `doublezero connect --client-ip` does require that, on a local interface that is
+up, so through that path a caller cannot claim an attested address its host does not carry; but
+that is a property of the client daemon's CLI, and `doublezero user create --client-ip` and any SDK
+caller reach the exemption without it.
+
+**Which path a host reaches the exemption by.** The hosts listed above — behind an unexpected NAT,
+or unable to reach the verification service from the attested source — are by construction hosts
+that may not hold the attested address locally, and `connect --client-ip` refuses exactly that. So
+the exemption is not reached through the flag. It is reached through the address the daemon is
+configured with (`doublezerod -client-ip`) or the one it discovers, neither of which is a
+caller-chosen claim made per connection. The flag serves a different host: one that does hold
+several addresses and needs to say which. This is not an oversight in the flag — for plain IBRL the
+client IP becomes the GRE tunnel source verbatim, so an address the kernel does not hold cannot
+carry a tunnel whatever the ledger says.
+
+The exemption also moves the trust boundary onto issuance: a tenant administrator may issue
+passes, so one could pin a third party's address to their own payer and create a user there with
+no proof. That is accepted deliberately; a per-pass waiver flag, set by a narrower authority, is
+the lever if it needs tightening.
+
 The proof is optional on the wire rather than on the instruction: `BorshDeserializeIncremental`
 decodes an older client's shorter payload as `None`, and whether `None` is acceptable is the flag's
 decision, not the decoder's.
@@ -355,10 +393,10 @@ simply uses the legacy path. A flag makes the transition an operator decision wi
 per-environment moment of enforcement, rather than a property of whatever client version happens to
 be in the field.
 
-Uniform enforcement is otherwise deliberate. The proof is redundant for a specific-IP pass, whose
-address the issuing authority already chose, but "required except when redundant" is a second code
-path through the most security-sensitive check in user creation, and the redundant check costs
-roughly 650 CU against a 1,400,000 budget.
+Uniform enforcement was the original choice, on the grounds that "required except when redundant"
+is a second code path through this check and the redundant check is cheap (~650 CU). Cost was never
+the obstacle; an unobtainable proof is. The second path is confined to the *absence* of a proof, and
+to a pass the program has already matched against the address being created.
 
 ## Non-Goals
 

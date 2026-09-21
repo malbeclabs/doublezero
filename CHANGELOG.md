@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- CLI
+  - `doublezero connect --client-ip <ip>` fails when it cannot be honored, where it was previously accepted and discarded. An invocation that names an address this host does not hold, or whose payer holds a dynamic AccessPass, now aborts the connect instead of quietly proceeding on the discovered address.
+
 ### Changes
 
 - CLI

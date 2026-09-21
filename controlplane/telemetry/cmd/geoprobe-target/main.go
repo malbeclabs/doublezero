@@ -46,6 +46,18 @@ const (
 	// without slack that would silently stop the sender's ingestion.
 	maxSlotRegression = uint64(2 * time.Minute / dzSlotDuration)
 
+	// minSlotDuration is the fastest sustained block time the ledger is assumed
+	// to reach. Used only to bound how far a floor may advance, so it is
+	// deliberately well under the nominal dzSlotDuration: the ceiling is a
+	// sanity check against an implausible jump, not an accurate clock.
+	minSlotDuration = 200 * time.Millisecond
+
+	// maxFloorAdvanceSlack is how far a floor may jump with no wall time behind
+	// it. A probe stamps MeasurementSlot from its own geoprobe.SlotCacheTTL
+	// cache, so consecutive offers can straddle a cache refresh and step
+	// forward without the target seeing matching elapsed time.
+	maxFloorAdvanceSlack = uint64(2 * geoprobe.SlotCacheTTL / dzSlotDuration)
+
 	// maxFloorStall is how long the floor may stand still before repeats stop
 	// counting as live. A healthy sender stamps from geoprobe.SlotCacheTTL, so
 	// the floor advances every ~5m and the steady-state replay window is ~7m.
@@ -69,7 +81,21 @@ const (
 const (
 	rejectSlotRegressed = "slot_regressed"
 	rejectFloorStalled  = "floor_stalled"
+	rejectSlotJumped    = "slot_jumped"
 )
+
+// maxFloorAdvance is the largest jump a floor may make after elapsed wall time.
+// Without a ceiling the floor is a ratchet with nothing above it: one offer
+// carrying an anomalous slot — a probe pointed at the wrong ledger RPC needs no
+// attacker — would raise the floor out of reach and every later genuine offer
+// from that key would fail maxSlotRegression forever, recoverable only by
+// restarting the process.
+func maxFloorAdvance(elapsed time.Duration) uint64 {
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	return maxFloorAdvanceSlack + uint64(elapsed/minSlotDuration)
+}
 
 // signatureUnverifiedMarker records in signature_error that no verification ran
 // at all, distinguishing a -verify-signatures=false row from a historical row
@@ -304,7 +330,9 @@ func newSlotFloor(ttl time.Duration) *slotFloor {
 // A never-seen key seeds its floor from its own first offer, so one stale
 // capture is accepted per key per process restart; the live stream raises the
 // floor past it within minutes. A rejected offer still refreshes lastSeen, so a
-// sustained replay cannot outlive the entry and reseed from itself.
+// sustained replay cannot outlive the entry and reseed from itself. Seeding is
+// the one place with no reference to check against, so it is also the one place
+// an anomalous slot can still stick until the process restarts.
 func (f *slotFloor) accept(authority [32]byte, slot uint64) (ok bool, reason string, floorSlot uint64, floorAge time.Duration) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -320,6 +348,11 @@ func (f *slotFloor) accept(authority [32]byte, slot uint64) (ok bool, reason str
 	age := now.Sub(entry.advancedAt)
 	switch {
 	case slot > entry.slot:
+		if slot-entry.slot > maxFloorAdvance(age) {
+			// Reject the datagram rather than absorb it: an implausible slot
+			// must not become the floor, or it wedges this key permanently.
+			return false, rejectSlotJumped, entry.slot, age
+		}
 		entry.slot = slot
 		entry.advancedAt = now
 		age = 0

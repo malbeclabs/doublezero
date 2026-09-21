@@ -324,3 +324,90 @@ func TestHandleOffset_UnverifiedRowIsNotLabelledValid(t *testing.T) {
 		t.Errorf("expected a verified offset to be labelled valid with no error, got %+v", rows2)
 	}
 }
+
+// The regression test for the wedge: without an advance ceiling the floor is a
+// ratchet with nothing above it, so one anomalous slot locks a real sender out
+// of location_offsets until the process restarts. slot_regressed short-circuits
+// before the floor_stalled escape hatch, and rejections refresh lastSeen, so
+// nothing else recovers it.
+func TestSlotFloor_RejectsImplausibleJumpAndKeepsSenderIngesting(t *testing.T) {
+	floor := newSlotFloor(floorEntryTTL)
+	now := time.Now()
+	floor.nowFunc = func() time.Time { return now }
+	key := [32]byte{1}
+
+	floor.accept(key, 1_000_000)
+	now = now.Add(time.Minute)
+
+	// One cycle against the wrong ledger RPC stamps a Solana-L1-height slot.
+	const anomalous = 400_000_000
+	ok, reason, floorSlot, _ := floor.accept(key, anomalous)
+	if ok {
+		t.Fatal("expected an implausible jump to be rejected, not absorbed into the floor")
+	}
+	if reason != rejectSlotJumped {
+		t.Errorf("reason = %q, want %q", reason, rejectSlotJumped)
+	}
+	if floorSlot != 1_000_000 {
+		t.Errorf("floor moved to %d; the bad slot must not become the floor", floorSlot)
+	}
+
+	// The sender keeps being ingested afterwards, which is the whole point.
+	now = now.Add(time.Minute)
+	if ok, reason, _, _ := floor.accept(key, 1_000_150); !ok {
+		t.Fatalf("sender wedged out after one anomalous slot: %s", reason)
+	}
+}
+
+// The ceiling must not reject honest catch-up: a probe that rode out its own
+// RPC outage on a frozen cached slot jumps forward by roughly the outage, and
+// the same wall time has passed at the target.
+func TestSlotFloor_AllowsCatchUpAfterSenderRPCOutage(t *testing.T) {
+	floor := newSlotFloor(floorEntryTTL)
+	now := time.Now()
+	floor.nowFunc = func() time.Time { return now }
+	key := [32]byte{1}
+
+	floor.accept(key, 1_000_000)
+
+	outage := 25 * time.Minute
+	now = now.Add(outage)
+	caughtUp := uint64(1_000_000) + uint64(outage/dzSlotDuration)
+	if ok, reason, _, _ := floor.accept(key, caughtUp); !ok {
+		t.Fatalf("honest catch-up after a %s outage rejected: %s", outage, reason)
+	}
+}
+
+// Slot times can drop below the 400ms nominal rate, so the ceiling is computed
+// against minSlotDuration; a cluster running at full speed must not trip it.
+func TestSlotFloor_ToleratesFastBlockTimes(t *testing.T) {
+	floor := newSlotFloor(floorEntryTTL)
+	now := time.Now()
+	floor.nowFunc = func() time.Time { return now }
+	key := [32]byte{1}
+
+	floor.accept(key, 1_000_000)
+
+	elapsed := 30 * time.Minute
+	now = now.Add(elapsed)
+	fast := uint64(1_000_000) + uint64(elapsed/minSlotDuration)
+	if ok, reason, _, _ := floor.accept(key, fast); !ok {
+		t.Fatalf("a cluster sustaining %s slots tripped the ceiling: %s", minSlotDuration, reason)
+	}
+}
+
+// Consecutive offers can straddle the sender's slot-cache refresh with almost
+// no wall time at the target, which the fixed slack covers.
+func TestSlotFloor_AllowsCacheRefreshStepWithNoElapsedTime(t *testing.T) {
+	floor := newSlotFloor(floorEntryTTL)
+	now := time.Now()
+	floor.nowFunc = func() time.Time { return now }
+	key := [32]byte{1}
+
+	floor.accept(key, 1_000_000)
+
+	step := uint64(geoprobe.SlotCacheTTL / dzSlotDuration)
+	if ok, reason, _, _ := floor.accept(key, 1_000_000+step); !ok {
+		t.Fatalf("a slot-cache refresh step rejected with no elapsed time: %s", reason)
+	}
+}

@@ -124,9 +124,9 @@ type MeasurementMeta struct {
 	TargetAttempts    int64 `json:"target_attempts,omitempty"`
 	TargetSuccesses   int64 `json:"target_successes,omitempty"`
 
-	// TargetLossCursor is the newest result timestamp counted into the tallies. Replays
-	// are dropped per source probe at export time, against LastExportedAt, so this no
-	// longer gates counting; it is kept for logging and so existing state files decode.
+	// TargetLossCursor is the newest result timestamp counted into the tallies. An
+	// enlisted probe's replays are dropped against its own LastExportedAt, so this only
+	// still gates counting for a probe absent from Sources, which has no mark to keep.
 	TargetLossCursor int64 `json:"target_loss_cursor,omitempty"`
 }
 

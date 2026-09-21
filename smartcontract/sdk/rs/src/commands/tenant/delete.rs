@@ -32,7 +32,20 @@ impl DeleteTenantCommand {
                 .collect();
 
             for (user_pk, user) in &tenant_users {
-                let result = DeleteUserCommand::new(*user_pk).execute(client);
+                // This cascade removes every user under the tenant, whatever kind of access
+                // pass each one holds, so there is no single operator-declared kind to state
+                // here: `None` tells the command to take the kind from the pass it resolves.
+                // Forcing one declared kind would turn "delete every user under this tenant"
+                // into "delete only users of one kind", stranding the tenant record, since
+                // the code below waits for reference_count to reach 0. The program's per-kind
+                // refusal cannot fire on this path, because both sides then come from the one
+                // account the transaction names.
+                let result = DeleteUserCommand {
+                    pubkey: *user_pk,
+                    accesspass_pk: None,
+                    kind: None,
+                }
+                .execute(client);
                 if user.accesspass_pk == Pubkey::default() {
                     result.wrap_err_with(|| {
                         format!(
@@ -135,7 +148,7 @@ mod tests {
             user::delete::UserDeleteArgs,
         },
         state::{
-            accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+            accesspass::{AccessPass, AccessPassKind, AccessPassStatus, AccessPassType},
             accountdata::AccountData,
             accounttype::AccountType,
             device::Device,
@@ -327,6 +340,7 @@ mod tests {
             1,
             Some(tenant_pubkey),
             &payer,
+            AccessPassKind::Prepaid,
             UserDeleteArgs {
                 dz_prefix_count: 1,
                 multicast_publisher_count: 1,

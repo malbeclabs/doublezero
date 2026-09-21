@@ -240,6 +240,39 @@ func TestFixtureFeed(t *testing.T) {
 	require.Len(t, feed.Groups, 2)
 	assert.Equal(t, byte(0xE2), feed.Groups[0][0])
 	assert.Equal(t, byte(0xE3), feed.Groups[1][0])
+	assert.Equal(t, serviceability.FeedStatusRetiring, feed.Status)
+	assert.Equal(t, int64(-1_764_547_200), feed.RetiresAt)
+	assert.Equal(t, serviceability.FeedChainHyperliquid, feed.FeedChain)
+}
+
+func TestFixtureFeedWithoutChainByteDefaultsUnspecified(t *testing.T) {
+	data, _ := loadFixture(t, "feed")
+	data = data[:len(data)-1]
+
+	var feed serviceability.Feed
+	serviceability.DeserializeFeed(serviceability.NewByteReader(data), &feed)
+
+	assert.Equal(t, serviceability.FeedStatusRetiring, feed.Status)
+	assert.Equal(t, serviceability.FeedChainUnspecified, feed.FeedChain)
+}
+
+func TestFixtureFeedLegacy(t *testing.T) {
+	data, meta := loadFixture(t, "feed_legacy")
+	require.Equal(t, "FeedLegacy", meta.Name)
+
+	var feed serviceability.Feed
+	serviceability.DeserializeFeed(serviceability.NewByteReader(data), &feed)
+
+	assert.Equal(t, "legacy", feed.Code)
+	assert.Equal(t, "Legacy", feed.Name)
+	require.Len(t, feed.Groups, 1)
+	assert.Equal(t, serviceability.FeedStatusActive, feed.Status)
+	assert.Equal(t, [32]byte{}, feed.Builder)
+	assert.Equal(t, [32]byte{}, feed.StakeRef)
+	assert.Equal(t, "", feed.SpecId)
+	assert.Equal(t, [32]byte{}, feed.SlaHash)
+	assert.Equal(t, uint64(0), feed.CommittedRateBitsPerSec)
+	assert.Equal(t, serviceability.FeedChainUnspecified, feed.FeedChain)
 }
 
 func fixtureFieldValue(t *testing.T, meta fixtureMeta, name string) string {

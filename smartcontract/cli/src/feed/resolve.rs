@@ -8,7 +8,10 @@ use clap::{ArgGroup, Args};
 use doublezero_sdk::{commands::feed::get::GetFeedCommand, Exchange, Feed};
 use doublezero_serviceability::{pda::get_stake_mirror_pda, state::accountdata::AccountData};
 use solana_sdk::pubkey::Pubkey;
-use std::collections::HashMap;
+use std::{
+    collections::{HashMap, HashSet},
+    str::FromStr,
+};
 
 /// How every feed verb names the feed it acts on.
 ///
@@ -18,9 +21,9 @@ use std::collections::HashMap;
 #[derive(Args, Debug, Default)]
 #[clap(group(ArgGroup::new("target").args(&["pubkey", "code"]).required(true)))]
 pub struct FeedTargetArgs {
-    /// Feed pubkey
+    /// Feed pubkey. Repeatable on `feed update`.
     #[arg(long, value_parser = validate_pubkey, conflicts_with = "exchange")]
-    pub pubkey: Option<String>,
+    pub pubkey: Vec<String>,
     /// Feed code, which names one feed only together with its metro
     #[arg(long, value_parser = validate_code, requires = "exchange")]
     pub code: Option<String>,
@@ -33,6 +36,9 @@ impl FeedTargetArgs {
     /// The feed this names, read from the ledger. Resolves the metro first, because a code is
     /// ambiguous without it.
     pub(crate) fn resolve<C: CliCommand>(self, client: &C) -> eyre::Result<(Pubkey, Feed)> {
+        if self.pubkey.len() > 1 {
+            eyre::bail!("this command takes one --pubkey");
+        }
         let exchange = self
             .exchange
             .as_deref()
@@ -43,12 +49,42 @@ impl FeedTargetArgs {
             exchange,
         })
     }
+
+    /// The feeds `--pubkey` names, in first-seen order, read in one `getMultipleAccounts`. A
+    /// `--code` path still names one feed and goes through [`Self::resolve`].
+    pub(crate) fn resolve_many<C: CliCommand>(
+        self,
+        client: &C,
+    ) -> eyre::Result<Vec<(Pubkey, Feed)>> {
+        if self.pubkey.is_empty() {
+            return Ok(vec![self.resolve(client)?]);
+        }
+
+        let mut seen = HashSet::new();
+        let mut keys = Vec::new();
+        for arg in &self.pubkey {
+            let key = Pubkey::from_str(arg)?;
+            if seen.insert(key) {
+                keys.push(key);
+            }
+        }
+
+        let found = get_feeds(client, &keys)?;
+        let mut feeds = Vec::with_capacity(keys.len());
+        for key in keys {
+            let Some(feed) = found.get(&key).cloned() else {
+                eyre::bail!("account {key} is not a feed");
+            };
+            feeds.push((key, feed));
+        }
+        Ok(feeds)
+    }
 }
 
-fn pubkey_or_code(pubkey: Option<String>, code: Option<String>) -> eyre::Result<String> {
-    match (pubkey, code) {
-        (Some(pubkey), None) => Ok(pubkey),
-        (None, Some(code)) => Ok(code),
+fn pubkey_or_code(pubkey: Vec<String>, code: Option<String>) -> eyre::Result<String> {
+    match (pubkey.len(), code) {
+        (1, None) => Ok(pubkey.into_iter().next().unwrap()),
+        (0, Some(code)) => Ok(code),
         _ => eyre::bail!("pass --pubkey <PUBKEY>, or --code <CODE> with --exchange <EXCHANGE>"),
     }
 }
@@ -161,7 +197,7 @@ impl FeedLabels {
 #[cfg(test)]
 mod tests {
     use crate::{
-        feed::resolve::{resolve_feed_labels, FeedLabels},
+        feed::resolve::{resolve_feed_labels, FeedLabels, FeedTargetArgs},
         tests::utils::create_test_client,
     };
     use doublezero_sdk::{AccountType, Exchange, ExchangeStatus, Feed};
@@ -330,5 +366,21 @@ mod tests {
         let labels = resolve_feed_labels(&client, &[]).unwrap();
         assert!(labels.feeds.is_empty());
         assert!(labels.exchanges.is_empty());
+    }
+
+    #[test]
+    fn test_feed_target_resolve_refuses_a_second_pubkey() {
+        let client = create_test_client();
+        let err = FeedTargetArgs {
+            pubkey: vec![
+                Pubkey::new_unique().to_string(),
+                Pubkey::new_unique().to_string(),
+            ],
+            code: None,
+            exchange: None,
+        }
+        .resolve(&client)
+        .unwrap_err();
+        assert_eq!(err.to_string(), "this command takes one --pubkey");
     }
 }

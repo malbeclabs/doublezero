@@ -19,7 +19,7 @@ use doublezero_sdk::{
     },
     Device, Exchange, Feed, GlobalState, MulticastGroup, Tenant, User,
 };
-use doublezero_serviceability::state::accesspass::AccessPass;
+use doublezero_serviceability::state::accesspass::{AccessPass, AccessPassKind};
 use mockall::automock;
 use solana_sdk::pubkey::Pubkey;
 
@@ -47,8 +47,15 @@ pub trait LedgerClient: Send + Sync {
     /// List all users on the ledger.
     fn list_user(&self) -> eyre::Result<HashMap<Pubkey, User>>;
 
-    /// Delete the user account at `pubkey`.
-    fn delete_user(&self, pubkey: Pubkey, accesspass_pk: Option<Pubkey>) -> eyre::Result<()>;
+    /// Delete the user account at `pubkey`. `kind` is the kind of access pass the caller means
+    /// to remove; `None` takes it from the pass the delete resolves, which is what a self
+    /// delete wants since no operator is there to declare one.
+    fn delete_user(
+        &self,
+        pubkey: Pubkey,
+        accesspass_pk: Option<Pubkey>,
+        kind: Option<AccessPassKind>,
+    ) -> eyre::Result<()>;
 
     /// Fetch the user account at `pubkey` (used to poll for deletion).
     fn get_user(&self, pubkey: Pubkey) -> eyre::Result<User>;

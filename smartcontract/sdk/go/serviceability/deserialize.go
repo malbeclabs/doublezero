@@ -513,5 +513,21 @@ func DeserializeFeed(reader *ByteReader, feed *Feed) {
 	// groups.
 	feed.Exchange = reader.ReadPubkey()
 	feed.Groups = reader.ReadPubkeySlice()
+	hasRfc28Tail := reader.Remaining() > 0
+	feed.Builder = reader.ReadPubkey()
+	feed.StakeRef = reader.ReadPubkey()
+	feed.SpecId = reader.ReadString()
+	if slaHash := reader.ReadBytes(32); len(slaHash) == 32 {
+		copy(feed.SlaHash[:], slaHash)
+	}
+	feed.CommittedRateBitsPerSec = reader.ReadU64()
+	if hasRfc28Tail {
+		feed.Status = FeedStatus(reader.ReadU8())
+	} else {
+		feed.Status = FeedStatusActive
+	}
+	feed.HaltedBy = reader.ReadPubkey()
+	feed.RetiresAt = reader.ReadI64()
+	feed.FeedChain = FeedChain(reader.ReadU8())
 	// Note: feed.PubKey is set from the account address in client.go after deserialization
 }

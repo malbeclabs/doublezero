@@ -1270,6 +1270,7 @@ export interface Feed {
   // When the retirement notice elapses, zero when the feed is not retiring. Appended after
   // haltedBy, so a feed written before it reads as not retiring, which is right.
   retiresAt: bigint;
+  feedChain: number;
 }
 
 // Feed lifecycle. Matches FeedStatus in the Rust program.
@@ -1278,6 +1279,10 @@ export const FEED_STATUS_ACTIVE = 1;
 export const FEED_STATUS_HALTED = 2;
 export const FEED_STATUS_RETIRED = 3;
 export const FEED_STATUS_RETIRING = 4;
+
+export const FEED_CHAIN_UNSPECIFIED = 0;
+export const FEED_CHAIN_SOLANA = 1;
+export const FEED_CHAIN_HYPERLIQUID = 2;
 
 export function deserializeFeed(data: Uint8Array): Feed {
   const r = new DefensiveReader(data);
@@ -1304,6 +1309,7 @@ export function deserializeFeed(data: Uint8Array): Feed {
   const haltedBy = readPubkey(r);
   // readU64 is unsigned; reinterpret the sign bit, as the seat timestamps above do.
   const retiresAt = BigInt.asIntN(64, r.readU64());
+  const feedChain = r.readU8();
   return {
     accountType,
     owner,
@@ -1320,5 +1326,6 @@ export function deserializeFeed(data: Uint8Array): Feed {
     status,
     haltedBy,
     retiresAt,
+    feedChain,
   };
 }

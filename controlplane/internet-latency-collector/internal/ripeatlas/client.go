@@ -36,11 +36,32 @@ type Probe struct {
 		Name  string `json:"name"`
 		Since string `json:"since"`
 	} `json:"status"`
+	Tags []struct {
+		Name string `json:"name"`
+		Slug string `json:"slug"`
+	} `json:"tags"`
 	Type     string `json:"type"`
 	Geometry struct {
 		Type        string    `json:"type"`
 		Coordinates []float64 `json:"coordinates"`
 	} `json:"geometry"`
+}
+
+// tagIPv4DoesntWork is RIPE's system tag for a probe that cannot measure over IPv4.
+// The collector only ever measures IPv4, so a tagged probe is unusable everywhere.
+//
+// The mirror tag system-ipv4-works is deliberately not required: RIPE leaves working
+// probes untagged, so only the explicit negative is a safe exclusion.
+const tagIPv4DoesntWork = "system-ipv4-doesnt-work"
+
+// hasTag reports whether the probe carries the given RIPE tag slug.
+func (p Probe) hasTag(slug string) bool {
+	for _, tag := range p.Tags {
+		if tag.Slug == slug {
+			return true
+		}
+	}
+	return false
 }
 
 // GetCoordinates implements the collector.CoordinatesGetter interface
@@ -140,7 +161,7 @@ func (c *Client) fetchProbesWithErrorHandling(ctx context.Context, lat, lng floa
 		return []Probe{}, nil
 	}
 
-	valid := filterValidProbes(probes)
+	valid := filterValidProbes(c.log, probes)
 
 	// Fall back to any Connected probe in radius when no anchors are available.
 	// A single-anchor location otherwise goes dark the moment that anchor becomes unresponsive.
@@ -156,7 +177,7 @@ func (c *Client) fetchProbesWithErrorHandling(ctx context.Context, lat, lng floa
 				slog.String("error", err.Error()))
 			return []Probe{}, nil
 		}
-		valid = filterValidProbes(probes)
+		valid = filterValidProbes(c.log, probes)
 	}
 
 	return valid, nil

@@ -377,6 +377,7 @@ async fn create_staked_feed(
             spec_id: "top-of-book@v1.0.0".to_string(),
             sla_hash: [9u8; 32],
             committed_rate_bits_per_sec: 1_000_000_000,
+            ..Default::default()
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),

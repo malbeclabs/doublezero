@@ -16,12 +16,48 @@ import (
 )
 
 const (
-	instructionCreateUser       = 36
-	instructionDeleteUser       = 42
-	instructionSetDeviceHealth  = 83
-	instructionSetLinkHealth    = 84
-	instructionSetUserBGPStatus = 106
+	instructionCreateUser                = 36
+	instructionSetDeviceHealth           = 83
+	instructionSetLinkHealth             = 84
+	instructionSetUserBGPStatus          = 106
+	instructionDeletePrepaidUser         = 130
+	instructionDeleteSolanaValidatorUser = 131
+	instructionDeleteSolanaRPCUser       = 132
+	instructionDeleteOthersUser          = 133
+	instructionDeleteEdgeSeatUser        = 134
 )
+
+// AccessPassKind is the AccessPassType variant without its payload. DeleteUser is split one
+// instruction per kind, and the program refuses a call aimed at a pass of another kind, so the
+// caller states the kind it means to delete — its own intent, not a value read back from the
+// pass the program is about to check. See malbeclabs/infra#2470.
+type AccessPassKind uint8
+
+const (
+	AccessPassKindUnspecified AccessPassKind = iota
+	AccessPassKindPrepaid
+	AccessPassKindSolanaValidator
+	AccessPassKindSolanaRPC
+	AccessPassKindOthers
+	AccessPassKindEdgeSeat
+)
+
+func deleteUserInstructionFor(kind AccessPassKind) (byte, error) {
+	switch kind {
+	case AccessPassKindPrepaid:
+		return instructionDeletePrepaidUser, nil
+	case AccessPassKindSolanaValidator:
+		return instructionDeleteSolanaValidatorUser, nil
+	case AccessPassKindSolanaRPC:
+		return instructionDeleteSolanaRPCUser, nil
+	case AccessPassKindOthers:
+		return instructionDeleteOthersUser, nil
+	case AccessPassKindEdgeSeat:
+		return instructionDeleteEdgeSeatUser, nil
+	default:
+		return 0, fmt.Errorf("unknown access pass kind %d", kind)
+	}
+}
 
 var (
 	ErrNoPrivateKey      = errors.New("no private key configured")
@@ -217,17 +253,27 @@ func (e *Executor) CreateUser(ctx context.Context, args UserCreateArgs) (solana.
 	return sig, userPDA, nil
 }
 
-// DeleteUser submits a DeleteUser instruction (variant 42) and waits for the user
-// PDA to disappear from chain. The function reads the user account first so it
-// can derive the device-dependent PDAs and the multicast-publisher flag.
+// DeleteUser submits the DeleteUser instruction for kind (variants 130 to 134) and
+// waits for the user PDA to disappear from chain. The function reads the user
+// account first so it can derive the device-dependent PDAs and the
+// multicast-publisher flag, but kind is not read from that account: the program
+// refuses a call whose instruction does not match the pass it loads, so kind must
+// carry the caller's own intent rather than a value derived from the pass under
+// check.
 // NOTE: this function does not unsubscribe multicast groups first. That should be
 // handled externally./
-func (e *Executor) DeleteUser(ctx context.Context, userPubkey solana.PublicKey) (solana.Signature, error) {
+func (e *Executor) DeleteUser(ctx context.Context, userPubkey solana.PublicKey, kind AccessPassKind) (solana.Signature, error) {
 	if e.signer == nil {
 		return solana.Signature{}, ErrNoPrivateKey
 	}
 	if e.programID.IsZero() {
 		return solana.Signature{}, ErrNoProgramID
+	}
+	// Checked here rather than where the instruction is built, so a caller that forgot the
+	// kind hears about it before the round trip. Go cannot make a parameter required, so the
+	// zero value has to fail rather than quietly mean Prepaid.
+	if _, err := deleteUserInstructionFor(kind); err != nil {
+		return solana.Signature{}, err
 	}
 
 	info, err := e.rpc.GetAccountInfo(ctx, userPubkey)
@@ -255,7 +301,7 @@ func (e *Executor) DeleteUser(ctx context.Context, userPubkey solana.PublicKey) 
 	const dzPrefixCount uint8 = 1
 	const multicastPublisherCount uint8 = 1
 
-	instr, err := e.buildDeleteUserInstruction(userPubkey, user, dzPrefixCount, multicastPublisherCount)
+	instr, err := e.buildDeleteUserInstruction(userPubkey, user, dzPrefixCount, multicastPublisherCount, kind)
 	if err != nil {
 		return solana.Signature{}, fmt.Errorf("build DeleteUser instruction: %w", err)
 	}
@@ -343,19 +389,28 @@ func (e *Executor) buildCreateUserInstruction(args UserCreateArgs) (solana.Instr
 	}, userPDA, nil
 }
 
-// buildDeleteUserInstruction packs the variant-42 payload and assembles the account
-// list in the order the on-chain processor expects:
+// buildDeleteUserInstruction packs the payload for the DeleteUser variant that
+// matches kind (130 to 134) and assembles the account list in the order the
+// onchain processor expects:
 //
 //	[user, accesspass, globalstate, device,
 //	 user_tunnel_block, multicast_publisher_block, device_tunnel_ids,
 //	 dz_prefix_block[0..N], optional_tenant, owner, payer, system]
 //
-// `multicastPublisherCount` mirrors the Rust SDK's behavior: the on-chain processor
-// consumes the MulticastPublisherBlock slot unconditionally for the variant-42
-// layout, so DeleteUser's caller passes 1 even when the user was not created as a
+// kind is the caller's stated intent, never a value read from the pass: the
+// processor loads the pass itself and refuses the call if it is a different
+// kind, so deriving kind from that same pass would make the refusal a no-op.
+//
+// `multicastPublisherCount` mirrors the Rust SDK's behavior: the onchain processor
+// consumes the MulticastPublisherBlock slot unconditionally for this instruction
+// family, so DeleteUser's caller passes 1 even when the user was not created as a
 // publisher. Exposed as a parameter so the byte-encoding can be tested independently.
-func (e *Executor) buildDeleteUserInstruction(userPubkey solana.PublicKey, user User, dzPrefixCount, multicastPublisherCount uint8) (solana.Instruction, error) {
-	data := []byte{instructionDeleteUser, dzPrefixCount, multicastPublisherCount}
+func (e *Executor) buildDeleteUserInstruction(userPubkey solana.PublicKey, user User, dzPrefixCount, multicastPublisherCount uint8, kind AccessPassKind) (solana.Instruction, error) {
+	instruction, err := deleteUserInstructionFor(kind)
+	if err != nil {
+		return nil, err
+	}
+	data := []byte{instruction, dzPrefixCount, multicastPublisherCount}
 
 	accessPassPDA, _, err := GetAccessPassPDA(e.programID, user.ClientIp, user.Owner)
 	if err != nil {

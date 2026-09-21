@@ -4,7 +4,7 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
-use std::fmt;
+use std::{fmt, str::FromStr};
 
 /// Where a feed sits in the RFC-28 deployment lifecycle.
 ///
@@ -43,6 +43,43 @@ impl fmt::Display for FeedStatus {
             FeedStatus::Retiring => "retiring",
         };
         write!(f, "{s}")
+    }
+}
+
+/// The chain a feed publishes for.
+#[repr(u8)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Eq, Clone, Copy, Default)]
+#[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum FeedChain {
+    /// A feed written before this field, or created without a chain.
+    #[default]
+    Unspecified = 0,
+    Solana = 1,
+    Hyperliquid = 2,
+}
+
+impl fmt::Display for FeedChain {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            FeedChain::Unspecified => "unspecified",
+            FeedChain::Solana => "solana",
+            FeedChain::Hyperliquid => "hyperliquid",
+        };
+        write!(f, "{s}")
+    }
+}
+
+impl FromStr for FeedChain {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "unspecified" => Ok(FeedChain::Unspecified),
+            "solana" => Ok(FeedChain::Solana),
+            "hyperliquid" => Ok(FeedChain::Hyperliquid),
+            _ => Err(format!("Invalid feed chain: {s}")),
+        }
     }
 }
 
@@ -125,6 +162,7 @@ pub struct Feed {
     /// date that arrives. A feed that never sold a seat gets `now`, because the notice exists for
     /// seat holders and a feed that was never `Active` has none.
     pub retires_at: i64, // 8
+    pub feed_chain: FeedChain, // 1
 }
 
 impl Feed {
@@ -186,6 +224,8 @@ impl TryFrom<&[u8]> for Feed {
             // Zero on a feed written before this field, which reads as "not retiring" and is
             // right: such a feed cannot have started a notice.
             retires_at: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            // Unspecified on a feed written before this field.
+            feed_chain: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Feed {
@@ -284,6 +324,7 @@ mod tests {
         assert_eq!(feed.spec_id, "");
         assert_eq!(feed.sla_hash, [0u8; 32]);
         assert_eq!(feed.committed_rate_bits_per_sec, 0);
+        assert_eq!(feed.feed_chain, FeedChain::Unspecified);
     }
 
     /// The RFC-28 tail round-trips, and a staked feed keeps the Pending it was created with.
@@ -330,9 +371,9 @@ mod tests {
         assert_eq!(decoded.retires_at, -1_764_547_200);
         assert_eq!(decoded.halted_by, feed.halted_by);
 
-        // The status byte sits immediately before `halted_by` and `retires_at`, the last three
-        // fields, so index from the end rather than counting the variable-length ones.
-        let status_index = bytes.len() - 32 - 8 - 1;
+        // The status byte sits immediately before `halted_by`, `retires_at`, and `feed_chain`,
+        // so index from the end rather than counting the variable-length ones.
+        let status_index = bytes.len() - 1 - 32 - 8 - 1;
         assert_eq!(
             bytes[status_index], 4,
             "Retiring is discriminant 4; changing it reinterprets every stored feed"
@@ -352,9 +393,56 @@ mod tests {
             let mut feed = feed_with(Pubkey::new_unique(), vec![]);
             feed.status = status;
             let bytes = borsh::to_vec(&feed).unwrap();
-            let status_index = bytes.len() - 32 - 8 - 1;
+            let status_index = bytes.len() - 1 - 32 - 8 - 1;
             assert_eq!(bytes[status_index], byte, "{status} must stay byte {byte}");
             assert_eq!(Feed::try_from(&bytes[..]).unwrap().status, status);
+        }
+    }
+
+    /// A feed written before `feed_chain` has no trailing byte. It must still decode as Unspecified.
+    #[test]
+    fn test_pre_chain_feed_decodes_unspecified() {
+        let mut feed = feed_with(Pubkey::new_unique(), vec![Pubkey::new_unique()]);
+        feed.status = FeedStatus::Active;
+        let mut bytes = borsh::to_vec(&feed).unwrap();
+        bytes.pop();
+
+        let decoded = Feed::try_from(&bytes[..]).unwrap();
+        assert_eq!(decoded.feed_chain, FeedChain::Unspecified);
+        assert_eq!(decoded.status, FeedStatus::Active);
+    }
+
+    #[test]
+    fn test_feed_chain_parses_from_display() {
+        for chain in [
+            FeedChain::Unspecified,
+            FeedChain::Solana,
+            FeedChain::Hyperliquid,
+        ] {
+            assert_eq!(chain.to_string().parse::<FeedChain>().unwrap(), chain);
+        }
+        assert_eq!(
+            "ethereum".parse::<FeedChain>(),
+            Err("Invalid feed chain: ethereum".to_string())
+        );
+    }
+
+    #[test]
+    fn test_every_chain_holds_its_discriminant() {
+        for (chain, byte) in [
+            (FeedChain::Unspecified, 0u8),
+            (FeedChain::Solana, 1),
+            (FeedChain::Hyperliquid, 2),
+        ] {
+            let mut feed = feed_with(Pubkey::new_unique(), vec![]);
+            feed.feed_chain = chain;
+            let bytes = borsh::to_vec(&feed).unwrap();
+            assert_eq!(
+                bytes[bytes.len() - 1],
+                byte,
+                "{chain} must stay byte {byte}"
+            );
+            assert_eq!(Feed::try_from(&bytes[..]).unwrap().feed_chain, chain);
         }
     }
 }

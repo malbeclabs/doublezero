@@ -368,6 +368,16 @@ up, so through that path a caller cannot claim an attested address its host does
 that is a property of the client daemon's CLI, and `doublezero user create --client-ip` and any SDK
 caller reach the exemption without it.
 
+**Which path a host reaches the exemption by.** The hosts listed above — behind an unexpected NAT,
+or unable to reach the verification service from the attested source — are by construction hosts
+that may not hold the attested address locally, and `connect --client-ip` refuses exactly that. So
+the exemption is not reached through the flag. It is reached through the address the daemon is
+configured with (`doublezerod -client-ip`) or the one it discovers, neither of which is a
+caller-chosen claim made per connection. The flag serves a different host: one that does hold
+several addresses and needs to say which. This is not an oversight in the flag — for plain IBRL the
+client IP becomes the GRE tunnel source verbatim, so an address the kernel does not hold cannot
+carry a tunnel whatever the ledger says.
+
 The exemption also moves the trust boundary onto issuance: a tenant administrator may issue
 passes, so one could pin a third party's address to their own payer and create a user there with
 no proof. That is accepted deliberately; a per-pass waiver flag, set by a narrower authority, is

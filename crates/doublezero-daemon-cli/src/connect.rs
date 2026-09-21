@@ -114,7 +114,10 @@ pub struct Connect {
 
     /// Client IP address to provision, instead of the one the daemon discovered. Requires an
     /// AccessPass pinned to this exact address, and the address must be assigned to an
-    /// interface that is up on this host.
+    /// interface that is up on this host: for plain IBRL it becomes the tunnel source
+    /// verbatim. A host that does not hold the address it connects from — behind NAT, say —
+    /// cannot use this flag, and reaches its pass through the address the daemon discovers or
+    /// through doublezerod's own -client-ip instead.
     #[arg(long, global = true)]
     pub client_ip: Option<Ipv4Addr>,
 

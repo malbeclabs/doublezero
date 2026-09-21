@@ -8,7 +8,10 @@
 use crate::{
     accesspass::{
         desired::AccessPassDocument,
-        plan::{build_plan, render_plan, AccessPassPlan, IbrlChange, Op, PlannedChange, Role},
+        plan::{
+            blocked_result, build_plan, render_plan, AccessPassPlan, IbrlChange, Op, PlannedChange,
+            Role,
+        },
     },
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
@@ -103,7 +106,14 @@ impl ApplyAccessPassCliCommand {
         out: &mut W,
         input: &mut R,
     ) -> eyre::Result<()> {
-        client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
+        // A dry run sends nothing, so it must work for an operator who holds no keypair and no
+        // credits — which is most of the people who would preview a document, and the same
+        // audience `plan` already serves without a requirement check. Anything the run does need
+        // a signer for still fails with its own message: a document saying `user_payer: me` is
+        // refused by `resolve` rather than silently planned against the default pubkey.
+        if !self.dry_run {
+            client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
+        }
 
         // A JSON consumer has no terminal to answer the prompt on, so make the caller say up
         // front that no one is watching rather than hanging on a read that never returns.
@@ -237,22 +247,15 @@ impl ApplyAccessPassCliCommand {
         }
 
         if failed > 0 {
-            eyre::bail!("{failed} of {} allowlist changes failed", results.len());
+            // Both kinds of write are counted, not just the allowlist ones: an IBRL-only run
+            // that failed would otherwise report "1 of 0 changes failed".
+            eyre::bail!(
+                "{failed} of {} changes failed",
+                results.len() + ibrl_results.len()
+            );
         }
         blocked_result(&plan)
     }
-}
-
-/// The blocked items are the part of the document this run deliberately did not do, so the exit
-/// code has to say so even when everything else succeeded.
-fn blocked_result(plan: &AccessPassPlan) -> eyre::Result<()> {
-    if plan.blocked.is_empty() {
-        return Ok(());
-    }
-    eyre::bail!(
-        "{} declared access pass(es) could not be reconciled; see the blocked items above",
-        plan.blocked.len()
-    )
 }
 
 fn send<C: CliCommand>(client: &C, change: &PlannedChange) -> eyre::Result<String> {
@@ -353,8 +356,17 @@ fn emit_json<W: Write>(
     let applied = results.iter().filter(|r| r.state == "applied").count()
         + ibrl_results.iter().filter(|r| r.state == "applied").count();
     let total = results.len() + ibrl_results.len();
+    // With no results this run wrote nothing — it was a dry run, or the plan was empty — so
+    // `changed` answers the only question left, whether anything *would* move. That is what a
+    // configuration-management driver reads `apply --dry-run --json` for, and it is the same
+    // meaning `plan --json` gives the field. After a real run it reports what actually landed.
+    let changed = if total == 0 {
+        !plan.is_empty()
+    } else {
+        applied > 0
+    };
     let json = serde_json::to_string_pretty(&ApplyJson {
-        changed: applied > 0,
+        changed,
         counts: Counts {
             applied,
             failed: total - applied,
@@ -403,15 +415,31 @@ mod tests {
         Pubkey,
         tempfile::NamedTempFile,
     ) {
+        fixture_with(sub_allow_has_g1, true)
+    }
+
+    /// `expect_requirements` false sets no expectation for `check_requirements`, so mockall fails
+    /// the test if the command calls it at all — which is how the dry-run test asserts that a
+    /// preview needs neither a keypair nor credits.
+    fn fixture_with(
+        sub_allow_has_g1: bool,
+        expect_requirements: bool,
+    ) -> (
+        crate::doublezerocommand::MockCliCommand,
+        Pubkey,
+        tempfile::NamedTempFile,
+    ) {
         let mut client = create_test_client();
         let payer = Pubkey::new_unique();
         let group_pk = Pubkey::new_unique();
 
         client.expect_get_payer().returning(move || payer);
-        client
-            .expect_check_requirements()
-            .with(mockall::predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
-            .returning(|_| Ok(()));
+        if expect_requirements {
+            client
+                .expect_check_requirements()
+                .with(mockall::predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+                .returning(|_| Ok(()));
+        }
         client.expect_list_multicastgroup().returning(move |_| {
             Ok(HashMap::from([(
                 group_pk,
@@ -810,5 +838,192 @@ mod tests {
         assert!(text.contains("NotAllowed"), "{text}");
         assert!(text.contains("0 applied, 1 failed"), "{text}");
         assert!(err.to_string().contains("1 of 1"), "{err}");
+    }
+
+    /// A preview writes nothing, so it must work for the operator most likely to run one: no
+    /// keypair, no credits. The fixture sets no `check_requirements` expectation, so mockall
+    /// fails this test if the command asks.
+    #[test]
+    fn dry_run_needs_no_keypair_or_balance() {
+        let (mut client, _payer, file) = fixture_with(false, false);
+        client.expect_add_multicastgroup_sub_allowlist().never();
+
+        let mut out = Vec::new();
+        let mut input = Cursor::new(Vec::new());
+        let res = block_on(
+            ApplyAccessPassCliCommand {
+                file: file.path().to_path_buf(),
+                dry_run: true,
+                auto_approve: false,
+                verbose: false,
+                json: false,
+            }
+            .execute(
+                &cli_context_default_for_tests(),
+                &client,
+                &mut out,
+                &mut input,
+            ),
+        );
+
+        assert!(res.is_ok(), "{res:?}");
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.contains("+ subscriber  g1"), "{text}");
+        assert!(text.contains("[dry-run] nothing was sent."), "{text}");
+    }
+
+    /// What a configuration-management driver reads `apply --dry-run --json` for is drift, and
+    /// nothing else in the object answers that question: the run wrote nothing either way, so
+    /// `changed` has to describe the plan rather than the (empty) results.
+    #[test]
+    fn dry_run_json_reports_changed_from_the_plan() {
+        let (mut client, _payer, file) = fixture(false);
+        client.expect_add_multicastgroup_sub_allowlist().never();
+
+        let mut out = Vec::new();
+        let mut input = Cursor::new(Vec::new());
+        let res = block_on(
+            ApplyAccessPassCliCommand {
+                file: file.path().to_path_buf(),
+                dry_run: true,
+                auto_approve: false,
+                verbose: false,
+                json: true,
+            }
+            .execute(
+                &cli_context_default_for_tests(),
+                &client,
+                &mut out,
+                &mut input,
+            ),
+        );
+
+        assert!(res.is_ok(), "{res:?}");
+        let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        assert_eq!(json["changed"], true);
+        assert_eq!(json["counts"]["applied"], 0);
+        assert_eq!(json["plan"]["changes"][0]["group"], "g1");
+    }
+
+    /// A converged document is still not a change, dry run or not.
+    #[test]
+    fn dry_run_json_reports_unchanged_for_a_converged_document() {
+        let (client, _payer, file) = fixture(true);
+
+        let mut out = Vec::new();
+        let mut input = Cursor::new(Vec::new());
+        let res = block_on(
+            ApplyAccessPassCliCommand {
+                file: file.path().to_path_buf(),
+                dry_run: true,
+                auto_approve: false,
+                verbose: false,
+                json: true,
+            }
+            .execute(
+                &cli_context_default_for_tests(),
+                &client,
+                &mut out,
+                &mut input,
+            ),
+        );
+
+        assert!(res.is_ok(), "{res:?}");
+        let json: serde_json::Value = serde_json::from_slice(&out).unwrap();
+        assert_eq!(json["changed"], false);
+    }
+
+    /// The denominator counts both kinds of write. An IBRL-only run that failed used to report
+    /// "1 of 0 allowlist changes failed", because only the allowlist results were counted.
+    #[test]
+    fn a_failed_ibrl_write_is_counted_in_the_total() {
+        use doublezero_serviceability::state::tenant::{
+            Tenant, TenantBillingConfig, TenantPaymentStatus,
+        };
+
+        let mut client = create_test_client();
+        let payer = Pubkey::new_unique();
+        let tenant_pk = Pubkey::new_unique();
+
+        client.expect_get_payer().returning(move || payer);
+        client.expect_check_requirements().returning(|_| Ok(()));
+        client
+            .expect_list_multicastgroup()
+            .returning(|_| Ok(HashMap::new()));
+        client.expect_list_tenant().returning(move |_| {
+            Ok(HashMap::from([(
+                tenant_pk,
+                Tenant {
+                    account_type: AccountType::Tenant,
+                    owner: Pubkey::new_unique(),
+                    bump_seed: 0,
+                    code: "solana".to_string(),
+                    vrf_id: 100,
+                    reference_count: 1,
+                    administrators: vec![],
+                    token_account: Pubkey::default(),
+                    payment_status: TenantPaymentStatus::Paid,
+                    metro_routing: false,
+                    route_liveness: false,
+                    billing: TenantBillingConfig::default(),
+                    include_topologies: vec![],
+                },
+            )]))
+        });
+
+        let pass = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 255,
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: IP,
+            user_payer: payer,
+            last_access_epoch: u64::MAX,
+            connection_count: 0,
+            status: AccessPassStatus::Connected,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
+            owner: Pubkey::new_unique(),
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
+        };
+        client
+            .expect_get_accesspass()
+            .returning(move |_| Ok(Some((Pubkey::new_unique(), pass.clone()))));
+        client
+            .expect_set_accesspass()
+            .returning(|_| Err(eyre::eyre!("NotAllowed")));
+
+        let doc = format!(
+            "access_passes:\n  - client_ip: {IP}\n    user_payer: {payer}\n    ibrl: solana\n"
+        );
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(&mut file, doc.as_bytes()).unwrap();
+
+        let mut out = Vec::new();
+        let mut input = Cursor::new(Vec::new());
+        let err = block_on(
+            ApplyAccessPassCliCommand {
+                file: file.path().to_path_buf(),
+                dry_run: false,
+                auto_approve: true,
+                verbose: false,
+                json: false,
+            }
+            .execute(
+                &cli_context_default_for_tests(),
+                &client,
+                &mut out,
+                &mut input,
+            ),
+        )
+        .unwrap_err();
+
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.contains("0 applied, 1 failed"), "{text}");
+        assert!(err.to_string().contains("1 of 1 changes failed"), "{err}");
     }
 }

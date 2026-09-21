@@ -126,6 +126,18 @@ impl AccessPassDocument {
                 })?;
 
             let user_payer = if raw_payer.eq_ignore_ascii_case("me") {
+                // `me` is the signer, and with no keypair configured there is no signer:
+                // `get_payer` answers with the default pubkey, which is a real PDA seed and so
+                // would resolve quietly to passes nobody holds. Every entry would read as
+                // blocked or as a grant to make, and the document would look wrong rather than
+                // unresolvable.
+                if payer == Pubkey::default() {
+                    eyre::bail!(
+                        "access_passes[{index}] ({}) says user_payer: me, but no signer is \
+                         configured; pass --keypair, or name the pubkey in the document",
+                        entry.client_ip
+                    );
+                }
                 payer
             } else {
                 Pubkey::from_str(raw_payer).map_err(|_| {
@@ -244,6 +256,43 @@ access_passes:
         .unwrap();
 
         assert_eq!(doc.resolve(payer).unwrap()[0].user_payer, payer);
+    }
+
+    /// With no keypair configured `get_payer` answers with the default pubkey, which is a
+    /// perfectly good PDA seed — so `me` would resolve to passes nobody holds and the whole
+    /// document would read as blocked rather than as unresolvable.
+    #[test]
+    fn me_is_refused_when_there_is_no_signer() {
+        let doc = AccessPassDocument::from_yaml(
+            r#"
+access_passes:
+  - client_ip: 203.0.113.10
+    user_payer: me
+"#,
+        )
+        .unwrap();
+
+        let err = doc.resolve(Pubkey::default()).unwrap_err().to_string();
+        assert!(err.contains("no signer is configured"), "{err}");
+        assert!(err.contains("--keypair"), "{err}");
+    }
+
+    /// The same check has to cover the defaults block, which is where a document that names one
+    /// payer for every entry puts it.
+    #[test]
+    fn me_in_defaults_is_refused_when_there_is_no_signer() {
+        let doc = AccessPassDocument::from_yaml(
+            r#"
+defaults:
+  user_payer: me
+access_passes:
+  - client_ip: 203.0.113.10
+"#,
+        )
+        .unwrap();
+
+        let err = doc.resolve(Pubkey::default()).unwrap_err().to_string();
+        assert!(err.contains("no signer is configured"), "{err}");
     }
 
     #[test]

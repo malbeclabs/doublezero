@@ -518,6 +518,22 @@ pub fn render_plan<W: Write>(
     Ok(())
 }
 
+/// The blocked items are the part of the document a run deliberately did not do, so the exit
+/// code has to say so even when everything else succeeded.
+///
+/// Shared by both verbs. `plan` gates `apply` in a CI job, and a preview that exits zero on a
+/// document `apply` will refuse would let that job proceed to the failure it ran the preview to
+/// avoid.
+pub fn blocked_result(plan: &AccessPassPlan) -> eyre::Result<()> {
+    if plan.blocked.is_empty() {
+        return Ok(());
+    }
+    eyre::bail!(
+        "{} declared access pass(es) could not be reconciled; see the blocked items above",
+        plan.blocked.len()
+    )
+}
+
 /// Reads an access-pass definition document and reports what would change, writing nothing.
 #[derive(Args, Debug)]
 pub struct PlanAccessPassCliCommand {
@@ -561,14 +577,15 @@ impl PlanAccessPassCliCommand {
             render_plan(out, &plan, self.verbose)?;
         }
 
-        Ok(())
+        blocked_result(&plan)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{build_plan, render_plan, Op, Role};
+    use super::{build_plan, render_plan, Op, PlanAccessPassCliCommand, Role};
     use crate::{accesspass::desired::DesiredAccessPass, tests::utils::create_test_client};
+    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{AccountType, Feed, MulticastGroup, MulticastGroupStatus};
     use doublezero_serviceability::state::accesspass::{
         AccessPass, AccessPassStatus, AccessPassType, FeedSeat,
@@ -1078,5 +1095,77 @@ mod tests {
         assert!(text.contains("+ subscriber  g-add"), "{text}");
         assert!(text.contains("- subscriber  g-drop"), "{text}");
         assert!(text.contains("Plan: 1 to add, 1 to remove"), "{text}");
+    }
+
+    /// `plan` gates `apply` in a CI job, so a document `apply` would refuse has to fail the
+    /// preview too — printing the blocked item and exiting zero is what lets the job proceed to
+    /// the failure it ran the preview to avoid. The docs already say both verbs exit non-zero.
+    #[test]
+    fn plan_exits_non_zero_when_an_item_is_blocked() {
+        let mut client = create_test_client();
+        let payer = Pubkey::new_unique();
+        with_groups(&mut client, &["g1"]);
+        // No pass at that PDA: the document does not create passes, so this is blocked.
+        client.expect_get_payer().returning(move || payer);
+        client.expect_get_accesspass().returning(|_| Ok(None));
+
+        let doc = format!(
+            "access_passes:\n  - client_ip: {}\n    user_payer: {payer}\n    multicast:\n      subscribe: [g1]\n",
+            Ipv4Addr::from(IP)
+        );
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(&mut file, doc.as_bytes()).unwrap();
+
+        let mut out = Vec::new();
+        let err = block_on(
+            PlanAccessPassCliCommand {
+                file: file.path().to_path_buf(),
+                verbose: false,
+                json: false,
+            }
+            .execute(&cli_context_default_for_tests(), &client, &mut out),
+        )
+        .unwrap_err();
+
+        // The blocked item is still reported: the exit code is added to the output, not
+        // substituted for it.
+        let text = String::from_utf8(out).unwrap();
+        assert!(text.contains("Blocked"), "{text}");
+        assert!(text.contains("1 blocked"), "{text}");
+        assert!(err.to_string().contains("could not be reconciled"), "{err}");
+    }
+
+    /// The exit code says "blocked", not "there is work to do": an ordinary plan with changes in
+    /// it is a success, or no CI job could ever use the gate.
+    #[test]
+    fn plan_exits_zero_when_nothing_is_blocked() {
+        let mut client = create_test_client();
+        let payer = Pubkey::new_unique();
+        with_groups(&mut client, &["g1"]);
+        let existing = pass(IP.into(), payer, vec![], vec![]);
+        client.expect_get_payer().returning(move || payer);
+        client
+            .expect_get_accesspass()
+            .returning(move |_| Ok(Some((Pubkey::new_unique(), existing.clone()))));
+
+        let doc = format!(
+            "access_passes:\n  - client_ip: {}\n    user_payer: {payer}\n    multicast:\n      subscribe: [g1]\n",
+            Ipv4Addr::from(IP)
+        );
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(&mut file, doc.as_bytes()).unwrap();
+
+        let mut out = Vec::new();
+        let res = block_on(
+            PlanAccessPassCliCommand {
+                file: file.path().to_path_buf(),
+                verbose: false,
+                json: false,
+            }
+            .execute(&cli_context_default_for_tests(), &client, &mut out),
+        );
+
+        assert!(res.is_ok(), "{res:?}");
+        assert!(String::from_utf8(out).unwrap().contains("+ subscriber  g1"),);
     }
 }

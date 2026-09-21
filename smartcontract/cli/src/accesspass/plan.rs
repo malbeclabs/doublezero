@@ -798,6 +798,11 @@ mod tests {
                     name: "QA payments".to_string(),
                     exchange: Pubkey::new_unique(),
                     groups: vec![group_pk],
+                    // Only `groups` and `code` matter here — what a feed grants and what the
+                    // plan calls it. The RFC-28 lifecycle fields are defaulted rather than
+                    // spelled out, as the other feed fixtures in this crate do, so the next
+                    // field added to the account does not break a test that never read one.
+                    ..Default::default()
                 },
             )]))
         });

@@ -1175,13 +1175,11 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 	// trip never_exported and about two to trip excessive loss. Columbus lost roughly
 	// four hours of telemetry a day to that loop (malbeclabs/doublezero#4362).
 	//
-	// The mark test below reads the target list alone rather than calling
-	// IsTargetUnresponsive, which is the union of both lists. A source mark says the
-	// probe failed to send pings, which is why #4331 split the lists: it says nothing
-	// about whether the probe answers them. On 2026-09-17 one measurement's late uploads
-	// put false source marks on six healthy anchors and four were torn down as targets.
-	// Neither offline case is lost by ignoring them: never_exported marks the target
-	// list as well as the source list, and excessive_target_loss marks the target list.
+	// The check below reads the target list alone, not IsTargetUnresponsive, which ORs
+	// in the source list. A source mark means the probe failed to send pings, which
+	// #4331 split out because it says nothing about answering them; on 2026-09-17 that
+	// conflation tore down four healthy anchors. Offline targets still rotate, since
+	// never_exported marks both lists and excessive_target_loss marks the target list.
 	markedTargets := make(map[int]struct{})
 	for _, probeID := range measurementState.GetUnresponsiveTargets() {
 		markedTargets[probeID] = struct{}{}

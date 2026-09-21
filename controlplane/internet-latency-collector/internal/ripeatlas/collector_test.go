@@ -3572,10 +3572,8 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_MarkedTargetIsRotated(t
 	require.Equal(t, []string{cmhNearAddr}, f.cmhTargets())
 }
 
-// A mark on the source list alone must not rotate a target that is answering. #4331
-// split the lists because failing to send pings says nothing about answering them, and
-// on 2026-09-17 six healthy anchors picked up false source marks from one measurement's
-// late uploads.
+// A source-only mark must not rotate a target that is answering; the reasoning is on
+// the mark check in configureMeasurements Step 4d.
 func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_SourceOnlyMarkedTargetIsKept(t *testing.T) {
 	t.Parallel()
 

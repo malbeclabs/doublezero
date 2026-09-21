@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Collector
+  - The RIPE Atlas export excludes results per source probe rather than per measurement, and each pass re-reads the hour behind the measurement cursor. That cursor is the newest timestamp any probe reported, so an export landing shortly after a ping interval advanced it past the probes that upload slowly, and their result for that interval was never fetched — repeated every interval, because the phase between the export tick and the measurement's schedule only changes when the collector restarts. Their `last_response_at` then froze and Step 4b marked them unresponsive as sources an hour later, which changes that metro's source probe in every measurement it feeds: one mainnet-beta cycle marked six healthy anchors off a single measurement and rebuilt 30. An operator should now see each measurement's `result_count` back at its source count on every interval whatever the restart phase, and no `Marking source probe as unresponsive` for probes that are healthy in every other measurement. The boundary is a new per-probe `last_exported_at`, kept separate from `last_response_at` so that liveness still advances from the RIPE fetch alone and an exporter outage cannot make the whole fleet read as unresponsive. (malbeclabs/doublezero#4153)
+
 ## [v0.42.0](https://github.com/malbeclabs/doublezero/compare/client/v0.41.0...client/v0.42.0) - 2026-09-18
 
 ### Breaking

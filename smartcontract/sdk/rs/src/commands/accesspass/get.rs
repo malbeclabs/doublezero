@@ -66,26 +66,30 @@ impl GetExactAccessPassCommand {
         }
         let program_id = client.get_program_id();
         let (pubkey, _) = get_accesspass_pda(&program_id, &self.client_ip, &self.user_payer);
-        match client.get(pubkey) {
-            Ok(AccountData::AccessPass(accesspass)) => Ok(Some((pubkey, accesspass))),
-            Ok(_) => Ok(None),
-            // `GetAccessPassCommand` can fold an error into `None` because a second lookup
-            // follows it; here the lookup *is* the answer, so an unreachable or misconfigured
-            // ledger would otherwise render as "this payer holds no pass" and send an operator
-            // off to have one reissued. Only a genuinely absent account is `None`. The RPC
-            // reports that as `AccountNotFound` and offers no typed form of it through this
-            // trait, so the string is what there is to match; misreading one as absent is the
-            // behaviour this replaces, and the transport errors worth retrying have already
-            // been retried by the client.
-            Err(err) => {
-                if format!("{err:#}").contains("AccountNotFound") {
-                    Ok(None)
-                } else {
-                    Err(err).wrap_err_with(|| {
-                        format!("reading the AccessPass at {pubkey} for {}", self.user_payer)
-                    })
-                }
-            }
+
+        // `get_multiple_accounts` rather than `get`, because absence has to be told apart from
+        // failure here and only this one reports it as a value. `GetAccessPassCommand` can fold
+        // an error into `None` because a second lookup follows it; here the lookup *is* the
+        // answer, so an unreachable or wrong-cluster ledger would otherwise render as "this payer
+        // holds no pass" and send an operator off to have one reissued. `None` in the returned
+        // vector is the RPC saying the account does not exist; an `Err` is the read itself
+        // failing, and it propagates.
+        let account = client
+            .get_multiple_accounts(vec![pubkey])?
+            .into_iter()
+            .next()
+            .flatten();
+        let Some(account) = account else {
+            return Ok(None);
+        };
+        if account.owner != program_id {
+            return Ok(None);
+        }
+        match AccountData::try_from(&account.data[..])
+            .wrap_err_with(|| format!("decoding the AccessPass at {pubkey}"))?
+        {
+            AccountData::AccessPass(accesspass) => Ok(Some((pubkey, accesspass))),
+            _ => Ok(None),
         }
     }
 }
@@ -199,7 +203,7 @@ mod tests {
         },
     };
     use mockall::predicate;
-    use solana_sdk::pubkey::Pubkey;
+    use solana_sdk::{account::Account, pubkey::Pubkey};
     use std::net::Ipv4Addr;
 
     fn sample_accesspass(client_ip: Ipv4Addr, user_payer: Pubkey) -> AccessPass {
@@ -224,6 +228,17 @@ mod tests {
         }
     }
 
+    /// Wraps a pass in the account shape the RPC returns it in.
+    fn accesspass_account(program_id: Pubkey, pass: &AccessPass) -> Account {
+        Account {
+            lamports: 1,
+            data: borsh::to_vec(pass).unwrap(),
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        }
+    }
+
     /// The whole point of the exact command: a dynamic pass must not answer for an address.
     #[test]
     fn test_get_exact_accesspass_never_resolves_the_dynamic_pass() {
@@ -235,10 +250,10 @@ mod tests {
         let (exact_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &payer);
         // Only the exact PDA is ever queried, and it holds nothing.
         client
-            .expect_get()
-            .with(predicate::eq(exact_pubkey))
+            .expect_get_multiple_accounts()
+            .with(predicate::eq(vec![exact_pubkey]))
             .times(1)
-            .returning(|_| Ok(AccountData::None));
+            .returning(|_| Ok(vec![None]));
 
         let res = GetExactAccessPassCommand {
             client_ip,
@@ -259,11 +274,12 @@ mod tests {
         let (exact_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &payer);
         let pass = sample_accesspass(client_ip, payer);
         let expected = pass.clone();
+        let account = accesspass_account(program_id, &pass);
         client
-            .expect_get()
-            .with(predicate::eq(exact_pubkey))
+            .expect_get_multiple_accounts()
+            .with(predicate::eq(vec![exact_pubkey]))
             .times(1)
-            .returning(move |_| Ok(AccountData::AccessPass(pass.clone())));
+            .returning(move |_| Ok(vec![Some(account.clone())]));
 
         let (pubkey, found) = GetExactAccessPassCommand {
             client_ip,
@@ -277,7 +293,8 @@ mod tests {
     }
 
     /// An unreachable or misconfigured ledger must not read as "this payer holds no pass" —
-    /// that is the answer that sends an operator to have a live pass reissued.
+    /// that is the answer that sends an operator to have a live pass reissued. Absence is a
+    /// `None` in the returned vector, so nothing else has to be inferred from an error.
     #[test]
     fn test_get_exact_accesspass_propagates_a_transport_error() {
         let mut client = create_test_client();
@@ -285,7 +302,7 @@ mod tests {
         let payer = Pubkey::new_unique();
 
         client
-            .expect_get()
+            .expect_get_multiple_accounts()
             .times(1)
             .returning(|_| Err(eyre::eyre!("error sending request for url (http://ledger)")));
 
@@ -296,30 +313,34 @@ mod tests {
         .execute(&client)
         .expect_err("a transport failure must not be reported as an absent pass");
         assert!(
-            format!("{err:#}").contains("reading the AccessPass at"),
+            format!("{err:#}").contains("error sending request"),
             "unexpected error: {err:#}"
         );
     }
 
-    /// The RPC's own way of saying the account is not there still means "no pass".
+    /// An account at the PDA that another program owns is not this payer's pass. It cannot
+    /// happen for a PDA derived from this program's id, but deciding it on the owner rather
+    /// than on a successful decode is what keeps that true.
     #[test]
-    fn test_get_exact_accesspass_treats_account_not_found_as_absent() {
+    fn test_get_exact_accesspass_ignores_an_account_owned_by_another_program() {
         let mut client = create_test_client();
+        let program_id = client.get_program_id();
         let client_ip: Ipv4Addr = [203, 0, 113, 9].into();
         let payer = Pubkey::new_unique();
 
-        client.expect_get().times(1).returning(|pk| {
-            Err(eyre::eyre!(
-                "AccountNotFound: pubkey={pk}: RPC response error"
-            ))
-        });
+        let mut account = accesspass_account(program_id, &sample_accesspass(client_ip, payer));
+        account.owner = Pubkey::new_unique();
+        client
+            .expect_get_multiple_accounts()
+            .times(1)
+            .returning(move |_| Ok(vec![Some(account.clone())]));
 
         let res = GetExactAccessPassCommand {
             client_ip,
             user_payer: payer,
         }
         .execute(&client)
-        .expect("AccountNotFound is absence, not failure");
+        .expect("a foreign account is absence, not failure");
         assert!(res.is_none());
     }
 

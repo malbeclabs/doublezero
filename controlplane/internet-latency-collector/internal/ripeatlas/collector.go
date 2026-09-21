@@ -1169,11 +1169,24 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		wantedMeasurements = c.generateWantedMeasurements(locationMatches, probesPerLocation, measurementState)
 	}
 
-	// Step 4c: Keep a target that is still working. rankTargets knows only distance and
+	// Step 4d: Keep a target that is still working. rankTargets knows only distance and
 	// the marks, so a nearer probe whose 24h mark just expired ranks first again — and a
 	// newly adopted probe's quality is only learned by running it, one to two hours to
 	// trip never_exported and about two to trip excessive loss. Columbus lost roughly
 	// four hours of telemetry a day to that loop (malbeclabs/doublezero#4362).
+	//
+	// The mark test below reads the target list alone rather than calling
+	// IsTargetUnresponsive, which is the union of both lists. A source mark says the
+	// probe failed to send pings, which is why #4331 split the lists: it says nothing
+	// about whether the probe answers them. On 2026-09-17 one measurement's late uploads
+	// put false source marks on six healthy anchors and four were torn down as targets.
+	// Neither offline case is lost by ignoring them: never_exported marks the target
+	// list as well as the source list, and excessive_target_loss marks the target list.
+	markedTargets := make(map[int]struct{})
+	for _, probeID := range measurementState.GetUnresponsiveTargets() {
+		markedTargets[probeID] = struct{}{}
+	}
+
 	selectableByLocation := make(map[string]map[int]Probe, len(locationMatches))
 	for _, match := range locationMatches {
 		candidates := match.NearbyProbes
@@ -1197,7 +1210,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		if !hasMeta || meta.TargetProbeID == wanted.TargetProbe.ID {
 			continue
 		}
-		if measurementState.IsTargetUnresponsive(meta.TargetProbeID) {
+		if _, marked := markedTargets[meta.TargetProbeID]; marked {
 			continue
 		}
 		if stale, _ := measurementStaleReason(meta, probeTimeout); stale {

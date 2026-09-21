@@ -3572,6 +3572,28 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_MarkedTargetIsRotated(t
 	require.Equal(t, []string{cmhNearAddr}, f.cmhTargets())
 }
 
+// A mark on the source list alone must not rotate a target that is answering. #4331
+// split the lists because failing to send pings says nothing about answering them, and
+// on 2026-09-17 six healthy anchors picked up false source marks from one measurement's
+// late uploads.
+func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_SourceOnlyMarkedTargetIsKept(t *testing.T) {
+	t.Parallel()
+
+	f := newTargetRotationFixture(t)
+	f.state.AddUnresponsiveProbe(cmhHealthyProbe)
+
+	f.run(t)
+
+	require.NotContains(t, f.stoppedIDs(), 1001,
+		"a source mark must not tear down a target that is exporting")
+	require.Empty(t, f.cmhTargets(), "cmh keeps the measurement it has")
+
+	kept := f.logRecords(t, keptTargetMsg)
+	require.Len(t, kept, 1)
+	require.EqualValues(t, cmhHealthyProbe, kept[0]["kept_probe_id"])
+	require.EqualValues(t, cmhNearProbe, kept[0]["skipped_probe_id"])
+}
+
 // Step 4 marks a target this stale in the same cycle, so both the mark and the staleness
 // rule bar it from being kept. The assertion is that a stale export is not what keeps a
 // measurement alive.

@@ -34,11 +34,7 @@ const (
 	// dzSlotDuration is the nominal DoubleZero Ledger slot time.
 	dzSlotDuration = 400 * time.Millisecond
 
-	// RFC-16's replay bound, derived from the offset stream instead of a ledger
-	// clock: geoprobe-target holds no RPC connection by design, so the only
-	// time reference it has is the highest MeasurementSlot a signing key has
-	// proven. A replay can repeat that floor but cannot push it forward without
-	// the corresponding private key.
+	// Tuning for RFC-16's replay bound; see slotFloor for the mechanism.
 	//
 	// maxSlotRegression is how far below the floor an offer may sit and still be
 	// accepted. A probe re-reads the slot from a load-balanced RPC pool, so a
@@ -46,16 +42,15 @@ const (
 	// without slack that would silently stop the sender's ingestion.
 	maxSlotRegression = uint64(2 * time.Minute / dzSlotDuration)
 
-	// minSlotDuration is the fastest sustained block time the ledger is assumed
-	// to reach. Used only to bound how far a floor may advance, so it is
-	// deliberately well under the nominal dzSlotDuration: the ceiling is a
-	// sanity check against an implausible jump, not an accurate clock.
+	// minSlotDuration is the fastest sustained block time assumed when bounding
+	// a floor's advance. Deliberately well under dzSlotDuration: the ceiling is
+	// a sanity check against an implausible jump, not an accurate clock.
 	minSlotDuration = 200 * time.Millisecond
 
 	// maxFloorAdvanceSlack is how far a floor may jump with no wall time behind
-	// it. A probe stamps MeasurementSlot from its own geoprobe.SlotCacheTTL
-	// cache, so consecutive offers can straddle a cache refresh and step
-	// forward without the target seeing matching elapsed time.
+	// it. A probe stamps MeasurementSlot from its own slot cache, so
+	// consecutive offers can straddle a refresh and step forward without the
+	// target seeing matching elapsed time.
 	maxFloorAdvanceSlack = uint64(2 * geoprobe.SlotCacheTTL / dzSlotDuration)
 
 	// maxFloorStall is how long the floor may stand still before repeats stop
@@ -85,11 +80,9 @@ const (
 )
 
 // maxFloorAdvance is the largest jump a floor may make after elapsed wall time.
-// Without a ceiling the floor is a ratchet with nothing above it: one offer
-// carrying an anomalous slot — a probe pointed at the wrong ledger RPC needs no
-// attacker — would raise the floor out of reach and every later genuine offer
-// from that key would fail maxSlotRegression forever, recoverable only by
-// restarting the process.
+// Without a ceiling the floor is a ratchet with nothing above it: one anomalous
+// slot raises it out of reach and every later genuine offer from that key fails
+// maxSlotRegression until the process restarts.
 func maxFloorAdvance(elapsed time.Duration) uint64 {
 	if elapsed < 0 {
 		elapsed = 0
@@ -330,9 +323,9 @@ func newSlotFloor(ttl time.Duration) *slotFloor {
 // A never-seen key seeds its floor from its own first offer, so one stale
 // capture is accepted per key per process restart; the live stream raises the
 // floor past it within minutes. A rejected offer still refreshes lastSeen, so a
-// sustained replay cannot outlive the entry and reseed from itself. Seeding is
-// the one place with no reference to check against, so it is also the one place
-// an anomalous slot can still stick until the process restarts.
+// sustained replay cannot outlive the entry and reseed from itself. Seeding has
+// nothing to check against, so it is also the one place an anomalous high slot
+// still sticks until restart.
 func (f *slotFloor) accept(authority [32]byte, slot uint64) (ok bool, reason string, floorSlot uint64, floorAge time.Duration) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -349,8 +342,8 @@ func (f *slotFloor) accept(authority [32]byte, slot uint64) (ok bool, reason str
 	switch {
 	case slot > entry.slot:
 		if slot-entry.slot > maxFloorAdvance(age) {
-			// Reject the datagram rather than absorb it: an implausible slot
-			// must not become the floor, or it wedges this key permanently.
+			// Reject rather than absorb: an implausible slot must not become
+			// the floor, or it wedges this key.
 			return false, rejectSlotJumped, entry.slot, age
 		}
 		entry.slot = slot
@@ -360,7 +353,7 @@ func (f *slotFloor) accept(authority [32]byte, slot uint64) (ok bool, reason str
 		return false, rejectSlotRegressed, entry.slot, age
 	case age > maxFloorStall:
 		// The floor has not moved in maxFloorStall, so repeats no longer
-		// evidence a live sender. Only a strictly higher slot does.
+		// evidence a live sender.
 		return false, rejectFloorStalled, entry.slot, age
 	}
 

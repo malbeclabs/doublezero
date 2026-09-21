@@ -2554,6 +2554,27 @@ func TestServeEnable_AcceptsPinMatchingClientIPFlag(t *testing.T) {
 	}
 }
 
+// A unit file can spell the flag's address in a form net.IP canonicalizes differently — the
+// IPv4-in-IPv6 form is the one that reaches here, since DiscoverClientIP refuses the spellings
+// net.ParseIP rejects outright. Comparing the raw string would 409 a pin naming the very
+// address the flag already carries, and send the operator off to edit systemd for nothing.
+func TestServeEnable_FlagConflictComparesAddressesNotStrings(t *testing.T) {
+	withAssignedIPs(t, "9.10.11.12")
+	dir := t.TempDir()
+	n := newTestNLMForHTTP(dir, WithClientIPFlag("::ffff:9.10.11.12"))
+
+	req := httptest.NewRequest(http.MethodPost, "/enable", strings.NewReader(`{"client_ip":"9.10.11.12"}`))
+	w := httptest.NewRecorder()
+	n.ServeEnable(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := n.ClientIP().String(); got != "9.10.11.12" {
+		t.Fatalf("expected the pin adopted, got %s", got)
+	}
+}
+
 // The flag constrains pins, not the body-less enable every pre-pin client sends.
 func TestServeEnable_NoBodyUnaffectedByClientIPFlag(t *testing.T) {
 	dir := t.TempDir()

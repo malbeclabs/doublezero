@@ -80,11 +80,14 @@ func WithPinnedClientIP(ip string) Option {
 }
 
 // WithClientIPFlag records the address the daemon's own -client-ip flag was given, so /enable
-// can refuse a pin that startup would overrule. Empty means the flag is unset, which is the
-// case where a pin is free to take effect.
+// can refuse a pin that startup would overrule. An empty or unparseable value leaves the flag
+// unset, which is the case where a pin is free to take effect: the daemon does not start on a
+// flag DiscoverClientIP cannot parse, so there is no address here that could outrank a pin.
 func WithClientIPFlag(ip string) Option {
 	return func(n *NetlinkManager) {
-		n.flagClientIP = ip
+		if parsed := net.ParseIP(ip); parsed != nil {
+			n.flagClientIP = parsed
+		}
 	}
 }
 
@@ -162,8 +165,11 @@ type NetlinkManager struct {
 	// startup, leaving a pin recorded but dormant.
 	pinnedClientIP string
 	clientIPMu     sync.RWMutex
-	// flagClientIP is the address given to the daemon's own -client-ip flag, or empty when the
-	// flag is unset. Immutable after construction, so it needs no lock.
+	// flagClientIP is the address given to the daemon's own -client-ip flag, nil when the flag
+	// is unset. Parsed at construction and compared with net.IP.Equal rather than kept as the
+	// raw string: `::ffff:1.2.3.4` in a unit file names the same address as `1.2.3.4` and must
+	// not 409 a pin that matches it, and a false positive here sends the operator off to edit
+	// systemd. Immutable after construction, so it needs no lock.
 	//
 	// It is here so /enable can refuse a pin the flag would overrule. The flag wins at startup
 	// and a pin wins at runtime, so without this a pin was adopted, persisted and reported as
@@ -171,7 +177,7 @@ type NetlinkManager struct {
 	// host whose unit file carries the flag, which is exactly the population `connect
 	// --client-ip` exists for, since the flag was the only previous way to connect from an
 	// address discovery did not find.
-	flagClientIP   string
+	flagClientIP   net.IP
 	fetcher        Fetcher
 	pollInterval   time.Duration
 	fetchTimeout   time.Duration

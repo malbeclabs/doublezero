@@ -185,7 +185,7 @@ func (n *NetlinkManager) ServeEnable(w http.ResponseWriter, r *http.Request) {
 		// reported by /v2/status, until a restart puts the flag's address back and the host
 		// matches no onchain user. Naming the flag is the whole value of the message — the
 		// operator has to edit the unit file, and nothing else would say so.
-		if n.flagClientIP != "" && n.flagClientIP != clientIP.String() {
+		if n.flagClientIP != nil && !n.flagClientIP.Equal(clientIP) {
 			w.WriteHeader(http.StatusConflict)
 			json.NewEncoder(w).Encode(map[string]string{"status": "error", "description": fmt.Sprintf("client_ip %s conflicts with the daemon's -client-ip %s, which takes precedence at startup; remove -client-ip from the doublezerod unit to pin a different address", clientIP, n.flagClientIP)}) //nolint:errcheck
 			return

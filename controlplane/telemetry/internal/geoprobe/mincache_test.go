@@ -56,9 +56,9 @@ func TestMinCache_LowerRTTReplacesBest(t *testing.T) {
 	}
 }
 
-// Replacing best on an equal RTT also resets best's receivedAt clock, so a
-// replayed measurement could pin best past its TTL indefinitely. Only a
-// strictly lower RTT may restart the clock.
+// Only a strictly lower RTT may restart best's receivedAt clock, matching the
+// geoprobe agent's cache. Not a replay bound on its own: an equal repeat still
+// reaches best through the backup promote.
 func TestMinCache_EqualRTTDoesNotReplaceBest(t *testing.T) {
 	c, now := newTestCache(time.Hour)
 	c.Update(testMeasurement{rttNs: 1000, label: "first"})

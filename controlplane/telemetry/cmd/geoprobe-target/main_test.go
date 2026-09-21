@@ -359,9 +359,8 @@ func TestSlotFloor_RejectsImplausibleJumpAndKeepsSenderIngesting(t *testing.T) {
 	}
 }
 
-// The ceiling must not reject honest catch-up: a probe that rode out its own
-// RPC outage on a frozen cached slot jumps forward by roughly the outage, and
-// the same wall time has passed at the target.
+// A probe that rode out its own RPC outage on a frozen cached slot jumps
+// forward by roughly the outage, which the ceiling must not reject.
 func TestSlotFloor_AllowsCatchUpAfterSenderRPCOutage(t *testing.T) {
 	floor := newSlotFloor(floorEntryTTL)
 	now := time.Now()
@@ -378,8 +377,7 @@ func TestSlotFloor_AllowsCatchUpAfterSenderRPCOutage(t *testing.T) {
 	}
 }
 
-// Slot times can drop below the 400ms nominal rate, so the ceiling is computed
-// against minSlotDuration; a cluster running at full speed must not trip it.
+// A cluster sustaining the fastest assumed block time must not trip the ceiling.
 func TestSlotFloor_ToleratesFastBlockTimes(t *testing.T) {
 	floor := newSlotFloor(floorEntryTTL)
 	now := time.Now()
@@ -396,8 +394,7 @@ func TestSlotFloor_ToleratesFastBlockTimes(t *testing.T) {
 	}
 }
 
-// Consecutive offers can straddle the sender's slot-cache refresh with almost
-// no wall time at the target, which the fixed slack covers.
+// A cache-refresh step arrives with almost no wall time behind it at the target.
 func TestSlotFloor_AllowsCacheRefreshStepWithNoElapsedTime(t *testing.T) {
 	floor := newSlotFloor(floorEntryTTL)
 	now := time.Now()

@@ -118,11 +118,10 @@ func (c *MinCache[T]) Update(value T) UpdateInfo {
 		return info
 	}
 	if rttNs < c.best.rttNs {
-		// New record low: reset best's clock, clear backup. Strictly-less, so
-		// an equal-RTT value falls through to the backup path instead of
-		// restarting best's receivedAt clock, matching the geoprobe agent's
-		// cache. This is not a replay bound — an equal repeat still reaches
-		// best through the backup promote — only the callers' slot checks are.
+		// New record low: reset best's clock, clear backup. Strictly-less so an
+		// equal repeat cannot restart the clock, matching the geoprobe agent's
+		// cache. Not a replay bound — an equal repeat still reaches best via
+		// the backup promote — only the callers' slot checks are.
 		c.best = entry
 		c.backup = nil
 		info.Result = UpdateBest

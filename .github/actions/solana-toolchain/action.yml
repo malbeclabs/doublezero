@@ -1,0 +1,140 @@
+name: Solana toolchain
+description: >
+  Install the Agave release named by `version` and put it on PATH.
+
+  Exists because eight workflow steps installed it the same way, one `curl` with
+  no retry, so any transient reset from release.anza.xyz failed a job before it
+  ran anything. Fixing that in eight places would have left the ninth copy to be
+  written wrong.
+
+inputs:
+  version:
+    description: Agave release to install, for example v3.0.12.
+    required: true
+  attempts:
+    description: How many times to try the download before giving up.
+    required: false
+    default: "3"
+
+runs:
+  using: composite
+  steps:
+    - name: Install Agave ${{ inputs.version }}
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        # Every wait here is bounded. A retry only helps a failure that arrives:
+        # a stalled handshake or a hung transfer would otherwise sit until the
+        # job's own timeout and never reach the backoff below.
+        readonly CONNECT_TIMEOUT=15   # seconds to establish the connection
+        readonly FETCH_TIMEOUT=120    # seconds for the whole script download
+        readonly INSTALL_TIMEOUT=600  # seconds for the installer, which downloads on our behalf
+
+        readonly ATTEMPTS="${{ inputs.attempts }}"
+        readonly SOLANA_HOME="$HOME/.local/share/solana"
+        readonly SOLANA_BIN="$SOLANA_HOME/install/active_release/bin"
+
+        # One file reused by every attempt, so a failed attempt leaves nothing behind.
+        installer="$(mktemp)"
+        trap 'rm -f "$installer"' EXIT
+
+        # Every runner here is Ubuntu, so coreutils `timeout` is present. Degrade rather than
+        # fail if that ever stops being true: an unbounded install is worse than no install only
+        # if it hangs, and a missing `timeout` would otherwise fail every job outright.
+        if command -v timeout >/dev/null 2>&1; then
+          run_installer() { timeout "$INSTALL_TIMEOUT" sh "$installer"; }
+        else
+          echo "coreutils timeout not found; the installer will run unbounded" >&2
+          run_installer() { sh "$installer"; }
+        fi
+
+        install_once() {
+          # Fetch and run as two steps rather than `sh -c "$(curl ...)"`. That form
+          # swallows a failed fetch: the substitution is empty, `sh -c ""` exits 0,
+          # and the step passes having installed nothing.
+          curl -sSfL \
+            --connect-timeout "$CONNECT_TIMEOUT" \
+            --max-time "$FETCH_TIMEOUT" \
+            "https://release.anza.xyz/${{ inputs.version }}/install" \
+            -o "$installer" || return 1
+
+          # The installer does its own downloading, which this cannot pass a timeout
+          # into, so bound the whole thing from outside.
+          run_installer || return 1
+
+          # It can fail after the fetch succeeded. Only a runnable binary proves the
+          # install landed.
+          "$SOLANA_BIN/solana" --version || return 1
+        }
+
+        for ((attempt = 1; attempt <= ATTEMPTS; attempt++)); do
+          if install_once; then
+            echo "$SOLANA_BIN" >> "$GITHUB_PATH"
+            exit 0
+          fi
+
+          # Whatever failed leaves partial state, so start the next attempt clean.
+          rm -rf "$SOLANA_HOME"
+
+          if ((attempt < ATTEMPTS)); then
+            echo "Agave install failed, retrying in $((attempt * 5))s" >&2
+            sleep $((attempt * 5))
+          fi
+        done
+
+        echo "Agave ${{ inputs.version }} would not install after $ATTEMPTS attempts" >&2
+        exit 1
+
+    # Cargo looks for a subcommand in $CARGO_HOME/bin before it looks at PATH, and
+    # Swatinem/rust-cache carries that directory from run to run, so a cargo-build-sbf
+    # left there would quietly shadow the one this action installs. No run has been
+    # observed carrying one, so this is a guard rather than a fix for anything seen;
+    # what earns its place is the last two lines, which put the resolved path and
+    # version in the log. The same build has come out both ways on this repo -- one
+    # run driving the host Cargo, the next driving the platform-tools Cargo, which
+    # fails on edition2024 -- and the logs could not say which binary ran.
+    - name: Pin and report the SBF build tools
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        cargo_bin="${CARGO_HOME:-$HOME/.cargo}/bin"
+        for tool in cargo-build-sbf cargo-test-sbf; do
+          stale="$cargo_bin/$tool"
+          if [ -e "$stale" ]; then
+            echo "Removing $stale, which would shadow the Agave ${{ inputs.version }} $tool"
+            rm -f "$stale"
+          else
+            echo "No $stale to remove"
+          fi
+        done
+
+        echo "cargo build-sbf now resolves to: $(command -v cargo-build-sbf)"
+
+        # Not `cargo build-sbf --version`. Agave formats that banner from the
+        # compile-time DEFAULT_PLATFORM_TOOLS_VERSION before it parses any
+        # argument, so it reads "platform-tools v1.51" on a run this action fixed
+        # and on a broken one alike, and its rustc line goes blank when v1.51 is
+        # not the version installed. Reporting the cache directly says what a
+        # build would actually pick up.
+        #
+        # Reading the binaries by path also keeps this step from invoking cargo at
+        # all. A composite action does not inherit a workflow's
+        # `defaults.run.working-directory`, so a `cargo` here runs at the
+        # repository root and makes rustup fetch the root toolchain for jobs that
+        # pin their own and never need it.
+        shopt -s nullglob
+        found=0
+        for tools in "$HOME"/.cache/solana/*/platform-tools; do
+          found=1
+          version="$(basename "$(dirname "$tools")")"
+          if [ -x "$tools/rust/bin/rustc" ]; then
+            echo "platform-tools $version: $("$tools/rust/bin/rustc" --version)"
+          else
+            echo "platform-tools $version: incomplete, no rust/bin/rustc"
+          fi
+        done
+        if [ "$found" -eq 0 ]; then
+          echo "no platform-tools installed under $HOME/.cache/solana"
+        fi

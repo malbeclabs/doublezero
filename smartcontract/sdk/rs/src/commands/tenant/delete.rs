@@ -12,6 +12,7 @@ use doublezero_serviceability::{
     processors::tenant::delete::TenantDeleteArgs, state::accountdata::AccountData,
 };
 use doublezero_serviceability_instruction::tenant::delete_tenant;
+use eyre::WrapErr;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 #[derive(Debug, PartialEq, Clone)]
@@ -25,14 +26,35 @@ impl DeleteTenantCommand {
         if self.allow_delete_users {
             // 1. List all users belonging to this tenant and delete them
             let users = ListUserCommand.execute(client)?;
-            let tenant_users: Vec<Pubkey> = users
+            let tenant_users: Vec<_> = users
                 .into_iter()
                 .filter(|(_, user)| user.tenant_pk == self.tenant_pubkey)
-                .map(|(pk, _)| pk)
                 .collect();
 
-            for user_pk in &tenant_users {
-                DeleteUserCommand { pubkey: *user_pk }.execute(client)?;
+            for (user_pk, user) in &tenant_users {
+                // This cascade removes every user under the tenant, whatever kind of access
+                // pass each one holds, so there is no single operator-declared kind to state
+                // here: `None` tells the command to take the kind from the pass it resolves.
+                // Forcing one declared kind would turn "delete every user under this tenant"
+                // into "delete only users of one kind", stranding the tenant record, since
+                // the code below waits for reference_count to reach 0. The program's per-kind
+                // refusal cannot fire on this path, because both sides then come from the one
+                // account the transaction names.
+                let result = DeleteUserCommand {
+                    pubkey: *user_pk,
+                    accesspass_pk: None,
+                    kind: None,
+                }
+                .execute(client);
+                if user.accesspass_pk == Pubkey::default() {
+                    result.wrap_err_with(|| {
+                        format!(
+                            "Delete legacy user {user_pk} individually, then retry tenant deletion"
+                        )
+                    })?;
+                } else {
+                    result?;
+                }
             }
 
             // 2. Clean up access passes before waiting for reference_count to reach 0
@@ -126,7 +148,7 @@ mod tests {
             user::delete::UserDeleteArgs,
         },
         state::{
-            accesspass::{AccessPass, AccessPassStatus, AccessPassType},
+            accesspass::{AccessPass, AccessPassKind, AccessPassStatus, AccessPassType},
             accountdata::AccountData,
             accounttype::AccountType,
             device::Device,
@@ -186,7 +208,7 @@ mod tests {
         let payer = client.get_payer();
         let client_ip = Ipv4Addr::new(192, 168, 1, 10);
 
-        let user = User {
+        let mut user = User {
             account_type: AccountType::User,
             owner: client.get_payer(),
             bump_seed: 0,
@@ -217,6 +239,7 @@ mod tests {
             &Ipv4Addr::UNSPECIFIED,
             &client.get_payer(),
         );
+        user.accesspass_pk = accesspass_pubkey;
         let accesspass = AccessPass {
             account_type: AccountType::AccessPass,
             bump_seed: 0,
@@ -317,6 +340,7 @@ mod tests {
             1,
             Some(tenant_pubkey),
             &payer,
+            AccessPassKind::Prepaid,
             UserDeleteArgs {
                 dz_prefix_count: 1,
                 multicast_publisher_count: 1,

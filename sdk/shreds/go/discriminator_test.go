@@ -1,6 +1,7 @@
 package shreds
 
 import (
+	"fmt"
 	"testing"
 )
 
@@ -16,6 +17,7 @@ func TestDiscriminatorsAreUnique(t *testing.T) {
 		"WithdrawSeatRequest":          DiscriminatorWithdrawSeatRequest,
 		"MetroHistory":                 DiscriminatorMetroHistory,
 		"DeviceHistory":                DiscriminatorDeviceHistory,
+		"FeedDistribution":             DiscriminatorFeedDistribution,
 	}
 
 	seen := make(map[[8]byte]string)
@@ -41,5 +43,15 @@ func TestValidateDiscriminator(t *testing.T) {
 
 	if err := validateDiscriminator(data[:4], DiscriminatorProgramConfig); err == nil {
 		t.Fatal("expected error for short data")
+	}
+}
+
+// The seed string is hashed at runtime, so pin the result against the value the
+// deployed program uses. A ::v3 bump upstream then fails here rather than
+// quietly matching nothing on chain.
+func TestDiscriminatorFeedDistributionMatchesOnchainSeed(t *testing.T) {
+	const want = "38677e51559a48dc"
+	if got := fmt.Sprintf("%x", DiscriminatorFeedDistribution); got != want {
+		t.Errorf("DiscriminatorFeedDistribution = %s, want %s", got, want)
 	}
 }

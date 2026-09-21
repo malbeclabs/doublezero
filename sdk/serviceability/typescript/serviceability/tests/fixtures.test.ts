@@ -20,6 +20,11 @@ import {
   deserializeAccessPass,
   deserializeTenant,
   deserializeFeed,
+  FEED_CHAIN_HYPERLIQUID,
+  FEED_CHAIN_UNSPECIFIED,
+  FEED_STATUS_ACTIVE,
+  FEED_STATUS_PENDING,
+  FEED_STATUS_RETIRING,
 } from "../state.js";
 
 const FIXTURES_DIR = join(
@@ -406,28 +411,35 @@ describe("User fixture", () => {
       expect(expected).toBeDefined();
       expect(u.feedPks[i].toBase58()).toBe(expected!);
     }
+    const expectedAccessPass = meta.fields.find(
+      (f) => f.name === "AccessPassPk",
+    )?.value;
+    expect(expectedAccessPass).toBeDefined();
+    expect(u.accessPassPubKey.toBase58()).toBe(expectedAccessPass!);
   });
 
   test("backward compat: old layout yields zero for new fields", () => {
     const [data] = loadFixture("user");
     // Remove feed_pks (4 + 2*32 = 68) + bgp_rtt_ns (8) + last_bgp_reported_at (8)
-    // + last_bgp_up_at (8) + bgp_status (1) = 93 bytes
-    const truncated = data.slice(0, data.length - 93);
+    // + last_bgp_up_at (8) + bgp_status (1) + accesspass_pk (32) = 125 bytes
+    const truncated = data.slice(0, data.length - 125);
     const u = deserializeUser(truncated);
     expect(u.bgpStatus).toBe(0);
     expect(u.lastBgpUpAt).toBe(0n);
     expect(u.lastBgpReportedAt).toBe(0n);
     expect(u.bgpRttNs).toBe(0n);
     expect(u.feedPks).toEqual([]);
+    expect(u.accessPassPubKey.equals(PublicKey.default)).toBe(true);
   });
 
   test("old layout: zeroed scalar feed slot reads as empty feedPks", () => {
     const [data] = loadFixture("user");
-    // Replace feed_pks (4 + 2*32 = 68 bytes) with the old 32-zero-byte scalar slot.
-    const old = new Uint8Array(data.length - 68 + 32);
-    old.set(data.slice(0, data.length - 68));
+    // Remove accesspass_pk and replace feed_pks with the old 32-zero-byte scalar slot.
+    const old = new Uint8Array(data.length - 100 + 32);
+    old.set(data.slice(0, data.length - 100));
     const u = deserializeUser(old);
     expect(u.feedPks).toEqual([]);
+    expect(u.accessPassPubKey.equals(PublicKey.default)).toBe(true);
   });
 });
 
@@ -632,6 +644,15 @@ describe("Feed fixture", () => {
       GroupsLen: feed.groups.length,
       Group0: feed.groups[0],
       Group1: feed.groups[1],
+      Builder: feed.builder,
+      StakeRef: feed.stakeRef,
+      SpecId: feed.specId,
+      SlaHash: Buffer.from(feed.slaHash).toString("hex"),
+      CommittedRateBitsPerSec: feed.committedRateBitsPerSec,
+      Status: feed.status,
+      HaltedBy: feed.haltedBy,
+      RetiresAt: feed.retiresAt,
+      FeedChain: feed.feedChain,
     });
 
     expect(feed.accountType).toBe(18);
@@ -639,6 +660,33 @@ describe("Feed fixture", () => {
     expect(feed.code).toBe("shreds");
     expect(feed.name).toBe("Shreds");
     expect(feed.groups).toHaveLength(2);
+    expect(feed.status).toBe(FEED_STATUS_RETIRING);
+    expect(feed.feedChain).toBe(FEED_CHAIN_HYPERLIQUID);
+    // Negative on purpose: it is the only value that makes the asIntN reinterpretation in the
+    // decoder meaningful. Read as unsigned this would be a very large positive number.
+    expect(feed.retiresAt).toBe(-1764547200n);
+  });
+
+  // A feed written before RFC-28 ends after groups. The stake fields default, and the status reads
+  // active: reading it as pending would show every live catalog feed as out of service.
+  test("legacy deserialize", () => {
+    const [data, meta] = loadFixture("feed_legacy");
+    const feed = deserializeFeed(data);
+    assertFields(meta.fields, {
+      Code: feed.code,
+      Exchange: feed.exchange,
+      GroupsLen: feed.groups.length,
+      Group0: feed.groups[0],
+      Status: feed.status,
+    });
+
+    expect(feed.status).toBe(FEED_STATUS_ACTIVE);
+    expect(feed.builder.equals(PublicKey.default)).toBe(true);
+    expect(feed.stakeRef.equals(PublicKey.default)).toBe(true);
+    expect(feed.specId).toBe("");
+    expect(feed.slaHash).toEqual(new Uint8Array(32));
+    expect(feed.committedRateBitsPerSec).toBe(0n);
+    expect(feed.feedChain).toBe(FEED_CHAIN_UNSPECIFIED);
   });
 });
 

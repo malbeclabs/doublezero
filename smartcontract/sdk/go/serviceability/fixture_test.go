@@ -240,6 +240,39 @@ func TestFixtureFeed(t *testing.T) {
 	require.Len(t, feed.Groups, 2)
 	assert.Equal(t, byte(0xE2), feed.Groups[0][0])
 	assert.Equal(t, byte(0xE3), feed.Groups[1][0])
+	assert.Equal(t, serviceability.FeedStatusRetiring, feed.Status)
+	assert.Equal(t, int64(-1_764_547_200), feed.RetiresAt)
+	assert.Equal(t, serviceability.FeedChainHyperliquid, feed.FeedChain)
+}
+
+func TestFixtureFeedWithoutChainByteDefaultsUnspecified(t *testing.T) {
+	data, _ := loadFixture(t, "feed")
+	data = data[:len(data)-1]
+
+	var feed serviceability.Feed
+	serviceability.DeserializeFeed(serviceability.NewByteReader(data), &feed)
+
+	assert.Equal(t, serviceability.FeedStatusRetiring, feed.Status)
+	assert.Equal(t, serviceability.FeedChainUnspecified, feed.FeedChain)
+}
+
+func TestFixtureFeedLegacy(t *testing.T) {
+	data, meta := loadFixture(t, "feed_legacy")
+	require.Equal(t, "FeedLegacy", meta.Name)
+
+	var feed serviceability.Feed
+	serviceability.DeserializeFeed(serviceability.NewByteReader(data), &feed)
+
+	assert.Equal(t, "legacy", feed.Code)
+	assert.Equal(t, "Legacy", feed.Name)
+	require.Len(t, feed.Groups, 1)
+	assert.Equal(t, serviceability.FeedStatusActive, feed.Status)
+	assert.Equal(t, [32]byte{}, feed.Builder)
+	assert.Equal(t, [32]byte{}, feed.StakeRef)
+	assert.Equal(t, "", feed.SpecId)
+	assert.Equal(t, [32]byte{}, feed.SlaHash)
+	assert.Equal(t, uint64(0), feed.CommittedRateBitsPerSec)
+	assert.Equal(t, serviceability.FeedChainUnspecified, feed.FeedChain)
 }
 
 func fixtureFieldValue(t *testing.T, meta fixtureMeta, name string) string {
@@ -284,6 +317,7 @@ func TestFixtureUser(t *testing.T) {
 	require.Len(t, u.FeedPks, 2)
 	assert.Equal(t, fixtureFieldValue(t, meta, "FeedPks0"), base58.Encode(u.FeedPks[0][:]))
 	assert.Equal(t, fixtureFieldValue(t, meta, "FeedPks1"), base58.Encode(u.FeedPks[1][:]))
+	assert.Equal(t, fixtureFieldValue(t, meta, "AccessPassPk"), base58.Encode(u.AccessPassPubKey[:]))
 }
 
 // Old on-disk layout: account ends after tunnel_flags — no bgp fields, no feed_pks. New fields
@@ -291,8 +325,8 @@ func TestFixtureUser(t *testing.T) {
 func TestFixtureUserLegacyDefaults(t *testing.T) {
 	data, _ := loadFixture(t, "user")
 	// Strip feed_pks (4 + 2*32 = 68) + bgp_rtt_ns (8) + last_bgp_reported_at (8)
-	// + last_bgp_up_at (8) + bgp_status (1) = 93 bytes.
-	legacy := data[:len(data)-93]
+	// + last_bgp_up_at (8) + bgp_status (1) + accesspass_pk (32) = 125 bytes.
+	legacy := data[:len(data)-125]
 
 	var u serviceability.User
 	serviceability.DeserializeUser(serviceability.NewByteReader(legacy), &u)
@@ -302,6 +336,7 @@ func TestFixtureUserLegacyDefaults(t *testing.T) {
 	assert.Equal(t, uint64(0), u.LastBgpReportedAt)
 	assert.Equal(t, uint64(0), u.BgpRttNs)
 	assert.Empty(t, u.FeedPks)
+	assert.Equal(t, [32]byte{}, u.AccessPassPubKey)
 }
 
 // An account written by the previous layout carries a 32-zero-byte scalar feed_pk slot where
@@ -309,14 +344,15 @@ func TestFixtureUserLegacyDefaults(t *testing.T) {
 // an empty slice, with the 28 leftover zero bytes ignored as trailing data.
 func TestFixtureUserOldLayoutZeroFeedSlot(t *testing.T) {
 	data, _ := loadFixture(t, "user")
-	// Replace feed_pks (4 + 2*32 = 68 bytes) with the old 32-zero-byte scalar slot.
-	old := append([]byte{}, data[:len(data)-68]...)
+	// Remove accesspass_pk and replace feed_pks with the old 32-zero-byte scalar slot.
+	old := append([]byte{}, data[:len(data)-100]...)
 	old = append(old, make([]byte, 32)...)
 
 	var u serviceability.User
 	serviceability.DeserializeUser(serviceability.NewByteReader(old), &u)
 
 	assert.Empty(t, u.FeedPks)
+	assert.Equal(t, [32]byte{}, u.AccessPassPubKey)
 }
 
 // A pre-migration account (lacking the 8 trailing cap bytes) decodes with counts 0 and caps 1,

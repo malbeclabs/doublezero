@@ -12,6 +12,11 @@ from serviceability.state import (
     Contributor,
     Device,
     Exchange,
+    FEED_CHAIN_HYPERLIQUID,
+    FEED_CHAIN_UNSPECIFIED,
+    FEED_STATUS_ACTIVE,
+    FEED_STATUS_PENDING,
+    FEED_STATUS_RETIRING,
     Feed,
     GlobalConfig,
     GlobalState,
@@ -369,29 +374,32 @@ class TestFixtureUser:
         assert len(u.feed_pks) == feed_pks_len
         for i in range(feed_pks_len):
             assert u.feed_pks[i] == Pubkey.from_string(fields[f"FeedPks{i}"])
+        assert u.access_pass_pub_key == Pubkey.from_string(fields["AccessPassPk"])
 
     def test_backward_compat_old_layout(self):
         # Deserializing an account binary that predates the BGP fields must
         # return zero values for those fields rather than failing.
         data, _ = _load_fixture("user")
         # Remove feed_pks (4 + 2*32 = 68) + bgp_rtt_ns (8) + last_bgp_reported_at (8)
-        # + last_bgp_up_at (8) + bgp_status (1) = 93 bytes.
-        truncated = data[:-93]
+        # + last_bgp_up_at (8) + bgp_status (1) + accesspass_pk (32) = 125 bytes.
+        truncated = data[:-125]
         u = User.from_bytes(truncated)
         assert u.bgp_status == BGPStatus.UNKNOWN
         assert u.last_bgp_up_at == 0
         assert u.last_bgp_reported_at == 0
         assert u.bgp_rtt_ns == 0
         assert u.feed_pks == []
+        assert u.access_pass_pub_key == Pubkey.default()
 
     def test_old_layout_zero_feed_slot_reads_as_empty_vec(self):
         # An account written by the previous layout carries a 32-zero-byte scalar
         # feed_pk slot where feed_pks now lives (never written with a real feed on
         # any cluster). It must read as an empty list, trailing zeros ignored.
         data, _ = _load_fixture("user")
-        old = data[:-68] + bytes(32)  # replace feed_pks (4 + 2*32) with the old slot
+        old = data[:-100] + bytes(32)
         u = User.from_bytes(old)
         assert u.feed_pks == []
+        assert u.access_pass_pub_key == Pubkey.default()
 
 
 class TestFixtureMulticastGroup:
@@ -616,6 +624,15 @@ class TestFixtureFeed:
                 "GroupsLen": len(feed.groups),
                 "Group0": feed.groups[0],
                 "Group1": feed.groups[1],
+                "Builder": feed.builder,
+                "StakeRef": feed.stake_ref,
+                "SpecId": feed.spec_id,
+                "SlaHash": feed.sla_hash.hex(),
+                "CommittedRateBitsPerSec": feed.committed_rate_bits_per_sec,
+                "Status": feed.status,
+                "HaltedBy": feed.halted_by,
+                "RetiresAt": feed.retires_at,
+                "FeedChain": feed.feed_chain,
             },
         )
         assert feed.account_type == 18
@@ -623,6 +640,34 @@ class TestFixtureFeed:
         assert feed.code == "shreds"
         assert feed.name == "Shreds"
         assert len(feed.groups) == 2
+        assert feed.status == FEED_STATUS_RETIRING
+        assert feed.feed_chain == FEED_CHAIN_HYPERLIQUID
+        # Negative on purpose: retires_at is an i64, and a positive value cannot tell a signed
+        # read from an unsigned one.
+        assert feed.retires_at == -1_764_547_200
+
+    def test_legacy_deserialize(self):
+        # A feed written before RFC-28 ends after groups. The stake fields default, and the status
+        # reads Active: reading it as Pending would show every live catalog feed as out of service.
+        data, meta = _load_fixture("feed_legacy")
+        feed = Feed.from_bytes(data)
+        _assert_fields(
+            meta["fields"],
+            {
+                "Code": feed.code,
+                "Exchange": feed.exchange,
+                "GroupsLen": len(feed.groups),
+                "Group0": feed.groups[0],
+                "Status": feed.status,
+            },
+        )
+        assert feed.status == FEED_STATUS_ACTIVE
+        assert feed.builder == Pubkey.default()
+        assert feed.stake_ref == Pubkey.default()
+        assert feed.spec_id == ""
+        assert feed.sla_hash == b"\x00" * 32
+        assert feed.committed_rate_bits_per_sec == 0
+        assert feed.feed_chain == FEED_CHAIN_UNSPECIFIED
 
 
 class TestFixtureAccessPassLegacyCapDefaults:

@@ -85,6 +85,7 @@ mod tests {
             name: code.to_string(),
             exchange,
             groups: vec![Pubkey::new_unique()],
+            ..Default::default()
         }
     }
 

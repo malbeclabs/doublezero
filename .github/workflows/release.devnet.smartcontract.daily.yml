@@ -4,6 +4,11 @@ on:
   workflow_call:
   workflow_dispatch:
 
+# The platform-tools release the install step places and every build-sbf below
+# asks for. Keep it in step with release.testnet.yml and e2e/docker/base.dockerfile.
+env:
+  SBF_TOOLS_VERSION: v1.54
+
 jobs:
   release:
     runs-on: ubuntu-24.04-16c-64gb
@@ -29,10 +34,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@1.97.1
       - uses: Swatinem/rust-cache@v2
-      - name: Install agave solana tools
-        run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/v3.0.4/install)"
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+      - name: Solana toolchain
+        uses: ./.github/actions/solana-toolchain
+        with:
+          version: v3.0.4
       - name: Set up keypairs
         run: |
           echo "${{ secrets.DEVNET_KEYPAIR }}" > id.json
@@ -43,9 +48,16 @@ jobs:
             --url https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16 \
             --ws wss://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16/whirligig
           solana balance -k id.json
+      # --tools-version is silently ignored unless the version is already
+      # installed, see scripts/install-sbf-tools.sh. The install and the build
+      # read one variable because they have to agree: a build asking for a
+      # version the install did not place falls back to v1.51 and dies on
+      # edition2024.
+      - name: Install platform-tools
+        run: scripts/install-sbf-tools.sh "$SBF_TOOLS_VERSION"
       - name: Build ${{ matrix.program }} program
         run: |
-          cargo build-sbf --tools-version v1.54 ${{ matrix.build_features }}
+          cargo build-sbf --tools-version "$SBF_TOOLS_VERSION" ${{ matrix.build_features }}
         working-directory: ${{ matrix.directory }}
       - name: Deploy ${{ matrix.program }} program to DevNet
         run: |

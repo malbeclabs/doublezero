@@ -1,8 +1,9 @@
 use crate::{
+    accesspass::types::CliAccessPassType,
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
 };
-use clap::{Args, ValueEnum};
+use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::accesspass::{
     set::SetAccessPassCommand, set_flags::SetAccessPassFlagsCommand,
@@ -13,15 +14,6 @@ use doublezero_serviceability::{
 };
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr, str::FromStr};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
-pub enum CliAccessPassType {
-    Prepaid,
-    SolanaValidator,
-    SolanaRPC,
-    Others,
-    EdgeSeat,
-}
 
 #[derive(Args, Debug)]
 pub struct SetAccessPassCliCommand {

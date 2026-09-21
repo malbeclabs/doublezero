@@ -4,7 +4,84 @@ use crate::{
 };
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
-use std::fmt;
+use std::{fmt, str::FromStr};
+
+/// Where a feed sits in the RFC-28 deployment lifecycle.
+///
+/// A feed created without a stake is `Active` on creation: the pre-RFC-28 catalog feeds have no
+/// builder to attest and sell seats today. A staked feed starts `Pending` and an attestor verdict
+/// moves it to `Active`.
+#[repr(u8)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Eq, Clone, Copy, Default)]
+#[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum FeedStatus {
+    /// Staked and created, waiting on a conformance verdict. No seats sell.
+    #[default]
+    Pending = 0,
+    /// Publishing and sellable.
+    Active = 1,
+    /// Publication stopped by the builder. Resumable.
+    Halted = 2,
+    /// Terminal. Set after the notice elapses.
+    Retired = 3,
+    /// Retiring, with the notice to seat holders running. Not resumable: the only way out is
+    /// `Retired`.
+    ///
+    /// Discriminant 4 rather than a value between `Halted` and `Retired`, because those are
+    /// written into live accounts and renumbering them would reinterpret every stored feed.
+    Retiring = 4,
+}
+
+impl fmt::Display for FeedStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            FeedStatus::Pending => "pending",
+            FeedStatus::Active => "active",
+            FeedStatus::Halted => "halted",
+            FeedStatus::Retired => "retired",
+            FeedStatus::Retiring => "retiring",
+        };
+        write!(f, "{s}")
+    }
+}
+
+/// The chain a feed publishes for.
+#[repr(u8)]
+#[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Eq, Clone, Copy, Default)]
+#[borsh(use_discriminant = true)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum FeedChain {
+    /// A feed written before this field, or created without a chain.
+    #[default]
+    Unspecified = 0,
+    Solana = 1,
+    Hyperliquid = 2,
+}
+
+impl fmt::Display for FeedChain {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            FeedChain::Unspecified => "unspecified",
+            FeedChain::Solana => "solana",
+            FeedChain::Hyperliquid => "hyperliquid",
+        };
+        write!(f, "{s}")
+    }
+}
+
+impl FromStr for FeedChain {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "unspecified" => Ok(FeedChain::Unspecified),
+            "solana" => Ok(FeedChain::Solana),
+            "hyperliquid" => Ok(FeedChain::Hyperliquid),
+            _ => Err(format!("Invalid feed chain: {s}")),
+        }
+    }
+}
 
 /// A serviceability catalog entry: one SKU scoped to a single metro (`exchange`), holding the
 /// multicast groups joinable there.
@@ -30,6 +107,62 @@ pub struct Feed {
     pub name: String,              // 4 + len
     pub exchange: Pubkey,          // 32 (PDA seed, immutable) - the metro this feed serves
     pub groups: Vec<Pubkey>,       // 4 + 32*len - multicast groups joinable in this metro
+
+    // RFC-28 fields. Everything below is absent from feeds created before RFC-28, so every one of
+    // them decodes to a default on a short account and is written back on the next update.
+    /// The builder that deployed this feed and posted its bond, zero for a catalog feed with no
+    /// builder. The `StakeMirror` is keyed on `stake_ref`, not on this, so that one bond backs
+    /// one feed.
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
+        )
+    )]
+    pub builder: Pubkey, // 32
+    /// The `BuilderStake` PDA on Solana holding this feed's bond. A record, not a check: the DZ
+    /// ledger cannot read a Solana account, so the covering check runs against `StakeMirror`.
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
+        )
+    )]
+    pub stake_ref: Pubkey, // 32
+    /// The `edge-feed-spec` wire format this feed conforms to, as `<spec>@<version>`
+    /// (e.g. `top-of-book@v1.0.0`). A string, not an enum: specs are added in `edge-feed-spec`
+    /// without a program upgrade.
+    pub spec_id: String, // 4 + len
+    /// SHA-256 of the service level the builder declared at deployment. The declaration lives
+    /// offchain; slashing measures against it, so the hash pins which text was declared.
+    pub sla_hash: [u8; 32], // 32
+    /// The rate this feed committed to, in bits per second. `u64::MAX` is the unmetered tier.
+    /// Not basis points: `bps` means basis points elsewhere in DoubleZero.
+    pub committed_rate_bits_per_sec: u64, // 8
+    pub status: FeedStatus, // 1
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
+        )
+    )]
+    /// Who halted this feed, zero when it is not halted.
+    ///
+    /// A halt by an operator is not the builder's to lift. Without this the builder resumes the
+    /// moment an operator halts, and with `Retired` unreachable and `DeleteFeed` refusing a staked
+    /// feed, nothing else stops one.
+    pub halted_by: Pubkey, // 32
+    /// When this feed's retirement notice elapses, as a unix timestamp, zero when it is not
+    /// retiring.
+    ///
+    /// Set when retirement starts and never moved, so the date a seat holder was given is the
+    /// date that arrives. A feed that never sold a seat gets `now`, because the notice exists for
+    /// seat holders and a feed that was never `Active` has none.
+    pub retires_at: i64, // 8
+    pub feed_chain: FeedChain, // 1
 }
 
 impl Feed {
@@ -48,14 +181,18 @@ impl fmt::Display for Feed {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, bump_seed: {}, code: {}, name: {}, exchange: {}, groups: {}",
+            "account_type: {}, owner: {}, bump_seed: {}, code: {}, name: {}, exchange: {}, groups: {}, builder: {}, spec_id: {}, committed_rate_bits_per_sec: {}, status: {}",
             self.account_type,
             self.owner,
             self.bump_seed,
             self.code,
             self.name,
             self.exchange,
-            self.groups.len()
+            self.groups.len(),
+            self.builder,
+            self.spec_id,
+            self.committed_rate_bits_per_sec,
+            self.status
         )
     }
 }
@@ -72,6 +209,23 @@ impl TryFrom<&[u8]> for Feed {
             name: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             exchange: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             groups: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            builder: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            stake_ref: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            spec_id: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            sla_hash: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            committed_rate_bits_per_sec: BorshDeserialize::deserialize(&mut data)
+                .unwrap_or_default(),
+            // Not `Pending`: a feed account written before RFC-28 has no status byte, and reading
+            // one as Pending would pull every live catalog feed out of service.
+            status: BorshDeserialize::deserialize(&mut data).unwrap_or(FeedStatus::Active),
+            // Zero on a feed written before this field existed, which reads as "not halted by
+            // anyone" and is right: such a feed cannot have been halted at all.
+            halted_by: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            // Zero on a feed written before this field, which reads as "not retiring" and is
+            // right: such a feed cannot have started a notice.
+            retires_at: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            // Unspecified on a feed written before this field.
+            feed_chain: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::Feed {
@@ -118,6 +272,7 @@ mod tests {
             name: "Shreds".to_string(),
             exchange,
             groups,
+            ..Default::default()
         }
     }
 
@@ -146,11 +301,148 @@ mod tests {
         assert_eq!(feed.groups_for(&Pubkey::new_unique()), &[] as &[Pubkey]);
     }
 
+    /// A feed account written before RFC-28 has no tail. It must still decode, and it must decode
+    /// as Active: reading it as Pending would pull every live catalog feed out of service.
+    #[test]
+    fn test_pre_rfc28_feed_decodes_active_with_defaults() {
+        let exchange = Pubkey::new_unique();
+        let group = Pubkey::new_unique();
+        let mut pre_rfc28 = Vec::new();
+        AccountType::Feed.serialize(&mut pre_rfc28).unwrap();
+        Pubkey::new_unique().serialize(&mut pre_rfc28).unwrap();
+        1u8.serialize(&mut pre_rfc28).unwrap();
+        "shreds".to_string().serialize(&mut pre_rfc28).unwrap();
+        "Shreds".to_string().serialize(&mut pre_rfc28).unwrap();
+        exchange.serialize(&mut pre_rfc28).unwrap();
+        vec![group].serialize(&mut pre_rfc28).unwrap();
+
+        let feed = Feed::try_from(&pre_rfc28[..]).unwrap();
+        assert_eq!(feed.groups_for(&exchange), &[group]);
+        assert_eq!(feed.status, FeedStatus::Active);
+        assert_eq!(feed.builder, Pubkey::default());
+        assert_eq!(feed.stake_ref, Pubkey::default());
+        assert_eq!(feed.spec_id, "");
+        assert_eq!(feed.sla_hash, [0u8; 32]);
+        assert_eq!(feed.committed_rate_bits_per_sec, 0);
+        assert_eq!(feed.feed_chain, FeedChain::Unspecified);
+    }
+
+    /// The RFC-28 tail round-trips, and a staked feed keeps the Pending it was created with.
+    #[test]
+    fn test_staked_feed_roundtrip_keeps_pending() {
+        let mut val = feed_with(Pubkey::new_unique(), vec![Pubkey::new_unique()]);
+        val.builder = Pubkey::new_unique();
+        val.stake_ref = Pubkey::new_unique();
+        val.spec_id = "top-of-book@v1.0.0".to_string();
+        val.sla_hash = [7u8; 32];
+        val.committed_rate_bits_per_sec = 1_000_000_000;
+        val.status = FeedStatus::Pending;
+
+        let data = borsh::to_vec(&val).unwrap();
+        assert_eq!(Feed::try_from(&data[..]).unwrap(), val);
+        assert_eq!(data.len(), borsh::object_length(&val).unwrap());
+    }
+
     #[test]
     fn test_feed_wrong_account_type_rejected() {
         let mut val = feed_with(Pubkey::new_unique(), vec![Pubkey::new_unique()]);
         val.account_type = AccountType::Exchange;
         let data = borsh::to_vec(&val).unwrap();
         assert!(Feed::try_from(&data[..]).is_err());
+    }
+
+    /// `Retiring` must serialize as byte 4 and survive a round trip, and `retires_at` must survive
+    /// a negative value.
+    ///
+    /// The doc on `Retiring` calls discriminant 4 the load-bearing compatibility decision, since
+    /// renumbering `Halted` or `Retired` would reinterpret every stored feed. Nothing pinned that
+    /// byte, so this does, at the byte rather than through the enum.
+    #[test]
+    fn test_retiring_round_trips_and_holds_discriminant_four() {
+        let mut feed = feed_with(Pubkey::new_unique(), vec![Pubkey::new_unique()]);
+        feed.status = FeedStatus::Retiring;
+        feed.halted_by = Pubkey::new_unique();
+        feed.retires_at = -1_764_547_200;
+
+        let bytes = borsh::to_vec(&feed).unwrap();
+        let decoded = Feed::try_from(&bytes[..]).unwrap();
+        assert_eq!(decoded, feed);
+        assert_eq!(decoded.status, FeedStatus::Retiring);
+        assert_eq!(decoded.retires_at, -1_764_547_200);
+        assert_eq!(decoded.halted_by, feed.halted_by);
+
+        // The status byte sits immediately before `halted_by`, `retires_at`, and `feed_chain`,
+        // so index from the end rather than counting the variable-length ones.
+        let status_index = bytes.len() - 1 - 32 - 8 - 1;
+        assert_eq!(
+            bytes[status_index], 4,
+            "Retiring is discriminant 4; changing it reinterprets every stored feed"
+        );
+    }
+
+    /// Every status round trips at its own discriminant, so none can be renumbered quietly.
+    #[test]
+    fn test_every_status_holds_its_discriminant() {
+        for (status, byte) in [
+            (FeedStatus::Pending, 0u8),
+            (FeedStatus::Active, 1),
+            (FeedStatus::Halted, 2),
+            (FeedStatus::Retired, 3),
+            (FeedStatus::Retiring, 4),
+        ] {
+            let mut feed = feed_with(Pubkey::new_unique(), vec![]);
+            feed.status = status;
+            let bytes = borsh::to_vec(&feed).unwrap();
+            let status_index = bytes.len() - 1 - 32 - 8 - 1;
+            assert_eq!(bytes[status_index], byte, "{status} must stay byte {byte}");
+            assert_eq!(Feed::try_from(&bytes[..]).unwrap().status, status);
+        }
+    }
+
+    /// A feed written before `feed_chain` has no trailing byte. It must still decode as Unspecified.
+    #[test]
+    fn test_pre_chain_feed_decodes_unspecified() {
+        let mut feed = feed_with(Pubkey::new_unique(), vec![Pubkey::new_unique()]);
+        feed.status = FeedStatus::Active;
+        let mut bytes = borsh::to_vec(&feed).unwrap();
+        bytes.pop();
+
+        let decoded = Feed::try_from(&bytes[..]).unwrap();
+        assert_eq!(decoded.feed_chain, FeedChain::Unspecified);
+        assert_eq!(decoded.status, FeedStatus::Active);
+    }
+
+    #[test]
+    fn test_feed_chain_parses_from_display() {
+        for chain in [
+            FeedChain::Unspecified,
+            FeedChain::Solana,
+            FeedChain::Hyperliquid,
+        ] {
+            assert_eq!(chain.to_string().parse::<FeedChain>().unwrap(), chain);
+        }
+        assert_eq!(
+            "ethereum".parse::<FeedChain>(),
+            Err("Invalid feed chain: ethereum".to_string())
+        );
+    }
+
+    #[test]
+    fn test_every_chain_holds_its_discriminant() {
+        for (chain, byte) in [
+            (FeedChain::Unspecified, 0u8),
+            (FeedChain::Solana, 1),
+            (FeedChain::Hyperliquid, 2),
+        ] {
+            let mut feed = feed_with(Pubkey::new_unique(), vec![]);
+            feed.feed_chain = chain;
+            let bytes = borsh::to_vec(&feed).unwrap();
+            assert_eq!(
+                bytes[bytes.len() - 1],
+                byte,
+                "{chain} must stay byte {byte}"
+            );
+            assert_eq!(Feed::try_from(&bytes[..]).unwrap().feed_chain, chain);
+        }
     }
 }

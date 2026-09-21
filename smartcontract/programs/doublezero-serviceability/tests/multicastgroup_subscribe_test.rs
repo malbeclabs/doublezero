@@ -9,7 +9,10 @@ use doublezero_serviceability::{
         multicastgroup::{
             allowlist::{
                 publisher::add::AddMulticastGroupPubAllowlistArgs,
-                subscriber::add::AddMulticastGroupSubAllowlistArgs,
+                subscriber::{
+                    add::AddMulticastGroupSubAllowlistArgs,
+                    remove::RemoveMulticastGroupSubAllowlistArgs,
+                },
             },
             create::MulticastGroupCreateArgs,
             subscribe::UpdateMulticastGroupRolesArgs,
@@ -364,6 +367,98 @@ async fn setup_fixture() -> TestFixture {
         _user_ip: user_ip,
         recent_blockhash,
     }
+}
+
+#[tokio::test]
+async fn test_adds_publisher_without_reauthorizing_existing_subscriber() {
+    let f = setup_fixture().await;
+    let TestFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        accesspass_pubkey,
+        user_pubkey,
+        mgroup1_pubkey,
+        _user_ip: user_ip,
+        ..
+    } = f;
+    let multicast_publisher_block =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: user_ip,
+            publisher: false,
+            subscriber: true,
+            use_onchain_allocation: true,
+            extra_group_count: 0,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicast_publisher_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RemoveMulticastGroupSubAllowlist(
+            RemoveMulticastGroupSubAllowlistArgs {
+                client_ip: user_ip,
+                user_payer: payer.pubkey(),
+            },
+        ),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: user_ip,
+            publisher: true,
+            subscriber: true,
+            use_onchain_allocation: true,
+            extra_group_count: 0,
+        }),
+        vec![
+            AccountMeta::new(mgroup1_pubkey, false),
+            AccountMeta::new(accesspass_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(multicast_publisher_block, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    assert_eq!(user.publishers, vec![mgroup1_pubkey]);
+    assert_eq!(user.subscribers, vec![mgroup1_pubkey]);
 }
 
 /// Foundation admin (payer != user.owner) can subscribe a user to a multicast group.

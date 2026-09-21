@@ -3,8 +3,9 @@ use std::net::Ipv4Addr;
 use crate::DoubleZeroClient;
 use doublezero_serviceability::{
     pda::get_accesspass_pda,
-    state::{accesspass::AccessPass, accountdata::AccountData},
+    state::{accesspass::AccessPass, accountdata::AccountData, user::User},
 };
+use eyre::WrapErr;
 use solana_sdk::pubkey::Pubkey;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -40,10 +41,101 @@ impl GetAccessPassCommand {
     }
 }
 
+pub fn resolve_user_accesspass(
+    client: &dyn DoubleZeroClient,
+    user_pk: Pubkey,
+    user: &User,
+    selected_accesspass_pk: Option<Pubkey>,
+) -> eyre::Result<(Pubkey, AccessPass)> {
+    if user.accesspass_pk != Pubkey::default() {
+        if let Some(selected_pk) = selected_accesspass_pk {
+            if selected_pk != user.accesspass_pk {
+                eyre::bail!(
+                    "User {user_pk} records access pass {}. Remove --access-pass or provide that address.",
+                    user.accesspass_pk
+                );
+            }
+        }
+
+        return match client.get(user.accesspass_pk) {
+            Ok(AccountData::AccessPass(accesspass)) => Ok((user.accesspass_pk, accesspass)),
+            Ok(_) => eyre::bail!(
+                "Recorded access pass {} for user {user_pk} has the wrong account type",
+                user.accesspass_pk,
+            ),
+            Err(err) => Err(err).wrap_err_with(|| {
+                format!(
+                    "Failed to load recorded access pass {} for user {user_pk}",
+                    user.accesspass_pk
+                )
+            }),
+        };
+    }
+
+    let candidates = legacy_user_accesspass_candidates(client, user);
+
+    if let Some(selected_pk) = selected_accesspass_pk {
+        return candidates
+            .into_iter()
+            .find(|(pk, _)| *pk == selected_pk)
+            .ok_or_else(|| {
+                eyre::eyre!("Access pass {selected_pk} does not match legacy user {user_pk}")
+            });
+    }
+
+    match candidates.as_slice() {
+        [] => eyre::bail!("No access pass matches legacy user {user_pk}"),
+        [candidate] => Ok(candidate.clone()),
+        _ => {
+            let choices = format_accesspass_choices(&candidates);
+            eyre::bail!(
+                "Legacy user {user_pk} matches multiple access passes:\n{choices}\nRetry with --access-pass <ADDRESS>."
+            )
+        }
+    }
+}
+
+fn legacy_user_accesspass_candidates(
+    client: &dyn DoubleZeroClient,
+    user: &User,
+) -> Vec<(Pubkey, AccessPass)> {
+    let program_id = client.get_program_id();
+    let (exact_pk, _) = get_accesspass_pda(&program_id, &user.client_ip, &user.owner);
+    let (dynamic_pk, _) = get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &user.owner);
+    let candidate_pks = if exact_pk == dynamic_pk {
+        vec![exact_pk]
+    } else {
+        vec![exact_pk, dynamic_pk]
+    };
+    candidate_pks
+        .into_iter()
+        .filter_map(|pk| match client.get(pk) {
+            Ok(AccountData::AccessPass(accesspass)) if accesspass.user_payer == user.owner => {
+                Some((pk, accesspass))
+            }
+            _ => None,
+        })
+        .collect()
+}
+
+fn format_accesspass_choices(candidates: &[(Pubkey, AccessPass)]) -> String {
+    candidates
+        .iter()
+        .map(|(pk, accesspass)| {
+            format!(
+                "  {pk}: {:?}, client IP {}, {} connections",
+                accesspass.accesspass_type, accesspass.client_ip, accesspass.connection_count
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
-        commands::accesspass::get::GetAccessPassCommand, tests::utils::create_test_client,
+        commands::accesspass::get::{resolve_user_accesspass, GetAccessPassCommand},
+        tests::utils::create_test_client,
         DoubleZeroClient,
     };
     use doublezero_serviceability::{
@@ -52,6 +144,7 @@ mod tests {
             accesspass::{AccessPass, AccessPassStatus, AccessPassType},
             accountdata::AccountData,
             accounttype::AccountType,
+            user::User,
         },
     };
     use mockall::predicate;
@@ -200,5 +293,139 @@ mod tests {
 
         let (pubkey, _) = res.expect("expected a pass");
         assert_eq!(pubkey, dynamic_pubkey);
+    }
+
+    #[test]
+    fn test_resolve_user_accesspass_uses_recorded_address() {
+        let mut client = create_test_client();
+        let user_pk = Pubkey::new_unique();
+        let accesspass_pk = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let user = User {
+            owner: payer,
+            accesspass_pk,
+            ..Default::default()
+        };
+        let accesspass = sample_accesspass(Ipv4Addr::UNSPECIFIED, payer);
+        let expected_accesspass = accesspass.clone();
+
+        client
+            .expect_get()
+            .with(predicate::eq(accesspass_pk))
+            .times(1)
+            .return_once(move |_| Ok(AccountData::AccessPass(accesspass)));
+
+        let resolved = resolve_user_accesspass(&client, user_pk, &user, None).unwrap();
+        assert_eq!(resolved, (accesspass_pk, expected_accesspass));
+    }
+
+    #[test]
+    fn test_resolve_user_accesspass_uses_single_legacy_candidate() {
+        let mut client = create_test_client();
+        let program_id = client.get_program_id();
+        let user_pk = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let client_ip = Ipv4Addr::new(10, 0, 0, 1);
+        let user = User {
+            owner: payer,
+            client_ip,
+            ..Default::default()
+        };
+        let (exact_pk, _) = get_accesspass_pda(&program_id, &client_ip, &payer);
+        let (dynamic_pk, _) = get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
+        let dynamic_pass = sample_accesspass(Ipv4Addr::UNSPECIFIED, payer);
+        let expected_accesspass = dynamic_pass.clone();
+
+        client
+            .expect_get()
+            .with(predicate::eq(exact_pk))
+            .return_once(|_| Err(eyre::eyre!("account not found")));
+        client
+            .expect_get()
+            .with(predicate::eq(dynamic_pk))
+            .return_once(move |_| Ok(AccountData::AccessPass(dynamic_pass)));
+
+        let resolved = resolve_user_accesspass(&client, user_pk, &user, None).unwrap();
+
+        assert_eq!(resolved, (dynamic_pk, expected_accesspass));
+    }
+
+    // Legacy users record no pass. When both possible passes exist, deletion must ask the caller
+    // to select one.
+    #[test]
+    fn test_resolve_user_accesspass_lists_legacy_conflict() {
+        let mut client = create_test_client();
+        let program_id = client.get_program_id();
+        let user_pk = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let client_ip = Ipv4Addr::new(10, 0, 0, 1);
+        let user = User {
+            owner: payer,
+            client_ip,
+            ..Default::default()
+        };
+        let (exact_pk, _) = get_accesspass_pda(&program_id, &client_ip, &payer);
+        let (dynamic_pk, _) = get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
+        let exact_pass = sample_accesspass(client_ip, payer);
+        let dynamic_pass = sample_accesspass(Ipv4Addr::UNSPECIFIED, payer);
+
+        client
+            .expect_get()
+            .with(predicate::eq(exact_pk))
+            .return_once(move |_| Ok(AccountData::AccessPass(exact_pass)));
+        client
+            .expect_get()
+            .with(predicate::eq(dynamic_pk))
+            .return_once(move |_| Ok(AccountData::AccessPass(dynamic_pass)));
+
+        let error = resolve_user_accesspass(&client, user_pk, &user, None).unwrap_err();
+        let message = error.to_string();
+        let lines = message.lines().collect::<Vec<_>>();
+        assert_eq!(lines.len(), 4);
+        assert_eq!(
+            lines[0],
+            format!("Legacy user {user_pk} matches multiple access passes:")
+        );
+        assert_eq!(
+            lines[1],
+            format!("  {exact_pk}: Prepaid, client IP {client_ip}, 0 connections")
+        );
+        assert_eq!(
+            lines[2],
+            format!("  {dynamic_pk}: Prepaid, client IP 0.0.0.0, 0 connections")
+        );
+        assert_eq!(lines[3], "Retry with --access-pass <ADDRESS>.");
+    }
+
+    // The caller resolves a legacy conflict by selecting either matching pass explicitly.
+    #[test]
+    fn test_resolve_user_accesspass_selects_legacy_candidate() {
+        let mut client = create_test_client();
+        let program_id = client.get_program_id();
+        let user_pk = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let client_ip = Ipv4Addr::new(10, 0, 0, 1);
+        let user = User {
+            owner: payer,
+            client_ip,
+            ..Default::default()
+        };
+        let (exact_pk, _) = get_accesspass_pda(&program_id, &client_ip, &payer);
+        let (dynamic_pk, _) = get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
+        let exact_pass = sample_accesspass(client_ip, payer);
+        let dynamic_pass = sample_accesspass(Ipv4Addr::UNSPECIFIED, payer);
+        let expected_accesspass = dynamic_pass.clone();
+
+        client
+            .expect_get()
+            .with(predicate::eq(exact_pk))
+            .return_once(move |_| Ok(AccountData::AccessPass(exact_pass)));
+        client
+            .expect_get()
+            .with(predicate::eq(dynamic_pk))
+            .return_once(move |_| Ok(AccountData::AccessPass(dynamic_pass)));
+
+        let resolved = resolve_user_accesspass(&client, user_pk, &user, Some(dynamic_pk)).unwrap();
+        assert_eq!(resolved, (dynamic_pk, expected_accesspass));
     }
 }

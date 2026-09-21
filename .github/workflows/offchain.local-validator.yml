@@ -47,9 +47,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.97.1
       - uses: Swatinem/rust-cache@v2
       - name: Solana toolchain
-        run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/$SOLANA_CLI/install)"
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+        uses: ./.github/actions/solana-toolchain
+        with:
+          version: ${{ env.SOLANA_CLI }}
       - name: Generate ~/.config/solana/id.json
         run: solana-keygen new --silent --no-bip39-passphrase
       - name: Generate manager keypair for synthetic ValidatorClientRewards
@@ -77,9 +77,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.97.1
       - uses: Swatinem/rust-cache@v2
       - name: Solana toolchain
-        run: |
-          sh -c "$(curl -sSfL https://release.anza.xyz/$SOLANA_CLI/install)"
-          echo "$HOME/.local/share/solana/install/active_release/bin" >> $GITHUB_PATH
+        uses: ./.github/actions/solana-toolchain
+        with:
+          version: ${{ env.SOLANA_CLI }}
       - name: Generate ~/.config/solana/id.json
         run: solana-keygen new --silent --no-bip39-passphrase
       - name: Start Solana mainnet-beta fork in background

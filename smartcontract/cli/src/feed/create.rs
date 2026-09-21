@@ -5,7 +5,7 @@ use crate::{
 };
 use clap::Args;
 use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
-use doublezero_sdk::commands::feed::create::CreateFeedCommand;
+use doublezero_sdk::{commands::feed::create::CreateFeedCommand, FeedChain};
 use eyre::WrapErr;
 use std::io::Write;
 
@@ -23,6 +23,9 @@ pub struct CreateFeedCliCommand {
     /// Multicast group pubkey or code joinable in this metro (repeatable)
     #[arg(long = "group", value_parser = validate_pubkey_or_code, num_args = 1..)]
     pub groups: Vec<String>,
+    /// Chain this feed publishes for
+    #[arg(long, default_value_t = FeedChain::Unspecified)]
+    pub chain: FeedChain,
 }
 
 impl CreateFeedCliCommand {
@@ -50,6 +53,7 @@ impl CreateFeedCliCommand {
             name: self.name,
             exchange,
             groups,
+            feed_chain: self.chain,
         })?;
 
         print_signature(out, &signature)
@@ -65,7 +69,7 @@ mod tests {
             exchange::get::GetExchangeCommand, feed::create::CreateFeedCommand,
             multicastgroup::get::GetMulticastGroupCommand,
         },
-        AccountType, Exchange, ExchangeStatus, MulticastGroup, MulticastGroupStatus,
+        AccountType, Exchange, ExchangeStatus, FeedChain, MulticastGroup, MulticastGroupStatus,
     };
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
@@ -142,6 +146,7 @@ mod tests {
                 name: "Feed".to_string(),
                 exchange: exchange_pk,
                 groups: vec![group_pk],
+                feed_chain: FeedChain::Solana,
             }))
             .times(1)
             .returning(move |_| Ok((signature, feed_pk)));
@@ -154,6 +159,7 @@ mod tests {
                 name: "Feed".to_string(),
                 exchange: exchange_pk.to_string(),
                 groups: vec![group_pk.to_string()],
+                chain: FeedChain::Solana,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -199,6 +205,7 @@ mod tests {
                 name: "Feed".to_string(),
                 exchange: exchange_pk,
                 groups: vec![group_pk],
+                feed_chain: FeedChain::Unspecified,
             }))
             .times(1)
             .returning(move |_| Ok((signature, feed_pk)));
@@ -211,6 +218,7 @@ mod tests {
                 name: "Feed".to_string(),
                 exchange: "xchi".to_string(),
                 groups: vec!["mg01".to_string()],
+                chain: FeedChain::Unspecified,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -243,6 +251,7 @@ mod tests {
                 name: "Feed".to_string(),
                 exchange: exchange_pk.to_string(),
                 groups: vec!["nope".to_string()],
+                chain: FeedChain::Unspecified,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -270,6 +279,7 @@ mod tests {
                 name: "Feed".to_string(),
                 exchange: "nope".to_string(),
                 groups: vec![],
+                chain: FeedChain::Unspecified,
             }
             .execute(&ctx, &client, &mut output),
         );

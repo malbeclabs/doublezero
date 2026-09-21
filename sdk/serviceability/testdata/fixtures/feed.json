@@ -46,6 +46,51 @@
       "name": "Group1",
       "value": "GH7YkRi9soP4j2JAUYTMEMBtkDFyGf7oYu1aGGRucd5H",
       "typ": "pubkey"
+    },
+    {
+      "name": "Builder",
+      "value": "GM1xPvSEmdsn8iR8z3io8Gw81DpjycDi8mKTmTjuLRjd",
+      "typ": "pubkey"
+    },
+    {
+      "name": "StakeRef",
+      "value": "GQvN3RAKfUNVYQY7VYzF2CgMGEPWgZKciddMGf3u4EPy",
+      "typ": "pubkey"
+    },
+    {
+      "name": "SpecId",
+      "value": "top-of-book@v1.0.0",
+      "typ": "string"
+    },
+    {
+      "name": "SlaHash",
+      "value": "e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6e6",
+      "typ": "string"
+    },
+    {
+      "name": "CommittedRateBitsPerSec",
+      "value": "1000000000",
+      "typ": "u64"
+    },
+    {
+      "name": "Status",
+      "value": "4",
+      "typ": "u8"
+    },
+    {
+      "name": "HaltedBy",
+      "value": "11111111111111111111111111111111",
+      "typ": "pubkey"
+    },
+    {
+      "name": "RetiresAt",
+      "value": "-1764547200",
+      "typ": "i64"
+    },
+    {
+      "name": "FeedChain",
+      "value": "2",
+      "typ": "u8"
     }
   ]
 }

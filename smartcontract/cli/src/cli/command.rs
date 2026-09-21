@@ -182,6 +182,11 @@ impl ServiceabilityCommand {
                 FeedCommands::Update(args) => args.execute(ctx, client, out).await,
                 FeedCommands::List(args) => args.execute(ctx, client, out).await,
                 FeedCommands::Delete(args) => args.execute(ctx, client, out).await,
+                FeedCommands::Activate(args) => args.execute(ctx, client, out).await,
+                FeedCommands::Halt(args) => args.execute(ctx, client, out).await,
+                FeedCommands::Resume(args) => args.execute(ctx, client, out).await,
+                FeedCommands::Retire(args) => args.execute(ctx, client, out).await,
+                FeedCommands::FinalizeRetirement(args) => args.execute(ctx, client, out).await,
             },
             Self::Contributor(cmd) => match cmd.command {
                 ContributorCommands::Create(args) => args.execute(ctx, client, out).await,

@@ -281,8 +281,8 @@ pub fn process_update_multicastgroup_roles(
         // another owner's pass with the right permission, and the two operations require different
         // grants:
         //   - Removal-only cleanup (stripping roles as a prerequisite to delete/request-ban) is a
-        //     USER_ADMIN operation, as DeleteUserCommand / RequestBanUserCommand authorize the
-        //     final instruction with the same flag.
+        //     USER_ADMIN operation, as the Delete<Kind>User instructions / RequestBanUserCommand
+        //     authorize the final instruction with the same flag.
         //   - Granting roles (subscribe/publish) on behalf of another owner manages the pass's
         //     entitlements, so it is an ACCESS_PASS_ADMIN operation. This is the path the oracle
         //     uses to subscribe validator-owned users (accesspass.user_payer = validator) once it
@@ -334,8 +334,8 @@ pub fn process_update_multicastgroup_roles(
         check_mgroup_allowlists(
             &accesspass,
             group_account.key,
-            value.publisher,
-            value.subscriber,
+            value.publisher && !user.publishers.contains(group_account.key),
+            value.subscriber && !user.subscribers.contains(group_account.key),
         )?;
         let result = update_user_multicastgroup_roles(
             group_account,

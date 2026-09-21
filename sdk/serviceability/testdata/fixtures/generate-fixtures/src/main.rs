@@ -25,7 +25,7 @@ use doublezero_serviceability::state::{
     accesspass::{AccessPass, AccessPassStatus, AccessPassType, FeedSeat},
     accounttype::AccountType,
     contributor::{Contributor, ContributorStatus},
-    feed::Feed,
+    feed::{Feed, FeedChain, FeedStatus},
     device::{Device, DeviceDesiredStatus, DeviceHealth, DeviceStatus, DeviceType},
     exchange::{Exchange, ExchangeStatus},
     globalconfig::GlobalConfig,
@@ -108,6 +108,7 @@ fn main() {
     generate_access_pass_validator(&fixtures_dir);
     generate_access_pass_edge_seat(&fixtures_dir);
     generate_feed(&fixtures_dir);
+    generate_feed_legacy(&fixtures_dir);
     generate_tenant(&fixtures_dir);
     generate_resource_extension_id(&fixtures_dir);
     generate_resource_extension_ip(&fixtures_dir);
@@ -152,8 +153,10 @@ fn generate_user_create_args(dir: &Path) {
     write_fixture(dir, "user_create_args", &data, &meta);
 }
 
-/// Borsh-encoded `UserDeleteArgs` (the body of instruction variant 42, without the
+/// Borsh-encoded `UserDeleteArgs` (the body of instruction variants 130 to 134, without the
 /// 1-byte discriminant). Field order: dz_prefix_count, multicast_publisher_count.
+/// Variant 42 carried this body until it was deprecated and split by pass type; the args are
+/// unchanged, so the fixture bytes are too.
 fn generate_user_delete_args(dir: &Path) {
     let val = UserDeleteArgs {
         dz_prefix_count: 3,
@@ -1127,6 +1130,7 @@ fn generate_user(dir: &Path) {
     let validator_pubkey = pubkey_from_byte(0x65);
     let feed_pk_a = pubkey_from_byte(0x67);
     let feed_pk_b = pubkey_from_byte(0x68);
+    let accesspass_pk = pubkey_from_byte(0x69);
 
     let val = User {
         account_type: AccountType::User,
@@ -1152,6 +1156,7 @@ fn generate_user(dir: &Path) {
         last_bgp_reported_at: 1_700_000_100,
         bgp_rtt_ns: 5_500_000,
         feed_pks: vec![feed_pk_a, feed_pk_b],
+        accesspass_pk,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -1187,6 +1192,7 @@ fn generate_user(dir: &Path) {
             FieldValue { name: "FeedPksLen".into(), value: "2".into(), typ: "u32".into() },
             FieldValue { name: "FeedPks0".into(), value: pubkey_bs58(&feed_pk_a), typ: "pubkey".into() },
             FieldValue { name: "FeedPks1".into(), value: pubkey_bs58(&feed_pk_b), typ: "pubkey".into() },
+            FieldValue { name: "AccessPassPk".into(), value: pubkey_bs58(&accesspass_pk), typ: "pubkey".into() },
         ],
     };
 
@@ -1491,12 +1497,15 @@ fn generate_access_pass_edge_seat(dir: &Path) {
 }
 
 /// Borsh-encoded `Feed` account. Field order: account_type, owner, bump_seed, code, name,
-/// exchange (Pubkey), groups (Vec<Pubkey>). Two groups, so the vec decoding is exercised.
+/// exchange (Pubkey), groups (Vec<Pubkey>), then the RFC-28 tail: builder, stake_ref, spec_id,
+/// sla_hash, committed_rate_bits_per_sec, status. Two groups, so the vec decoding is exercised.
 fn generate_feed(dir: &Path) {
     let owner = pubkey_from_byte(0xE0);
     let exchange = pubkey_from_byte(0xE1);
     let group0 = pubkey_from_byte(0xE2);
     let group1 = pubkey_from_byte(0xE3);
+    let builder = pubkey_from_byte(0xE4);
+    let stake_ref = pubkey_from_byte(0xE5);
 
     let val = Feed {
         account_type: AccountType::Feed,
@@ -1506,6 +1515,18 @@ fn generate_feed(dir: &Path) {
         name: "Shreds".into(),
         exchange,
         groups: vec![group0, group1],
+        builder,
+        stake_ref,
+        spec_id: "top-of-book@v1.0.0".into(),
+        sla_hash: [0xE6; 32],
+        committed_rate_bits_per_sec: 1_000_000_000,
+        status: FeedStatus::Retiring,
+        halted_by: Pubkey::default(),
+        // A distinct nonzero timestamp, so a decoder that reads the wrong offset, the wrong width
+        // or drops the field cannot pass. Negative, because `retires_at` is an i64 and a positive
+        // value cannot tell a signed read from an unsigned one.
+        retires_at: -1_764_547_200,
+        feed_chain: FeedChain::Hyperliquid,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -1523,10 +1544,60 @@ fn generate_feed(dir: &Path) {
             FieldValue { name: "GroupsLen".into(), value: "2".into(), typ: "u32".into() },
             FieldValue { name: "Group0".into(), value: pubkey_bs58(&group0), typ: "pubkey".into() },
             FieldValue { name: "Group1".into(), value: pubkey_bs58(&group1), typ: "pubkey".into() },
+            FieldValue { name: "Builder".into(), value: pubkey_bs58(&builder), typ: "pubkey".into() },
+            FieldValue { name: "StakeRef".into(), value: pubkey_bs58(&stake_ref), typ: "pubkey".into() },
+            FieldValue { name: "SpecId".into(), value: "top-of-book@v1.0.0".into(), typ: "string".into() },
+            FieldValue { name: "SlaHash".into(), value: "e6".repeat(32), typ: "string".into() },
+            FieldValue { name: "CommittedRateBitsPerSec".into(), value: "1000000000".into(), typ: "u64".into() },
+            FieldValue { name: "Status".into(), value: "4".into(), typ: "u8".into() },
+            FieldValue { name: "HaltedBy".into(), value: pubkey_bs58(&Pubkey::default()), typ: "pubkey".into() },
+            FieldValue { name: "RetiresAt".into(), value: "-1764547200".into(), typ: "i64".into() },
+            FieldValue { name: "FeedChain".into(), value: "2".into(), typ: "u8".into() },
         ],
     };
 
     write_fixture(dir, "feed", &data, &meta);
+}
+
+/// A `Feed` account as written before RFC-28: everything through `groups` and nothing after.
+/// SDK decoders must read it, default the RFC-28 fields, and report it Active rather than Pending,
+/// which is the shape of every feed live on the ledger today.
+fn generate_feed_legacy(dir: &Path) {
+    let owner = pubkey_from_byte(0xF0);
+    let exchange = pubkey_from_byte(0xF1);
+    let group0 = pubkey_from_byte(0xF2);
+
+    // A tuple, not a `Feed`: the point is to emit the old field set only, which the current struct
+    // can no longer produce.
+    let data = borsh::to_vec(&(
+        AccountType::Feed,
+        owner,
+        238u8,
+        "legacy".to_string(),
+        "Legacy".to_string(),
+        exchange,
+        vec![group0],
+    ))
+    .unwrap();
+
+    let meta = FixtureMeta {
+        name: "FeedLegacy".into(),
+        account_type: 18,
+        fields: vec![
+            FieldValue { name: "AccountType".into(), value: "18".into(), typ: "u8".into() },
+            FieldValue { name: "Owner".into(), value: pubkey_bs58(&owner), typ: "pubkey".into() },
+            FieldValue { name: "BumpSeed".into(), value: "238".into(), typ: "u8".into() },
+            FieldValue { name: "Code".into(), value: "legacy".into(), typ: "string".into() },
+            FieldValue { name: "Name".into(), value: "Legacy".into(), typ: "string".into() },
+            FieldValue { name: "Exchange".into(), value: pubkey_bs58(&exchange), typ: "pubkey".into() },
+            FieldValue { name: "GroupsLen".into(), value: "1".into(), typ: "u32".into() },
+            FieldValue { name: "Group0".into(), value: pubkey_bs58(&group0), typ: "pubkey".into() },
+            // Status the decoder must synthesize, since the bytes carry none.
+            FieldValue { name: "Status".into(), value: "1".into(), typ: "u8".into() },
+        ],
+    };
+
+    write_fixture(dir, "feed_legacy", &data, &meta);
 }
 
 fn generate_tenant(dir: &Path) {

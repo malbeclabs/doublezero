@@ -34,6 +34,17 @@ func deserializeAccount[T any](data []byte, disc [8]byte) (*T, error) {
 	return &item, nil
 }
 
+// DeserializeFeedDistribution decodes a FeedDistribution account from raw
+// account data, discriminator included.
+//
+// This is exported where the shred subscription accounts are not, because
+// FeedDistribution belongs to a second program: Client is built around one
+// program ID, so a caller reading the feed subscription program makes its own
+// getProgramAccounts call and decodes what comes back.
+func DeserializeFeedDistribution(data []byte) (*FeedDistribution, error) {
+	return deserializeAccount[FeedDistribution](data, DiscriminatorFeedDistribution)
+}
+
 // RPCClient is the minimal RPC interface needed by the client.
 type RPCClient interface {
 	GetAccountInfo(ctx context.Context, account solana.PublicKey) (*rpc.GetAccountInfoResult, error)

@@ -49,7 +49,7 @@ pub struct CreateUserCoreAccounts<'a, 'b> {
 
 /// Result returned by `create_user_core` containing mutable state for callers to finish writing.
 pub struct CreateUserCoreResult {
-    pub user: User,
+    pub user: Box<User>,
     pub device: Device,
     pub accesspass: AccessPass,
     pub globalstate: GlobalState,
@@ -459,10 +459,11 @@ pub fn create_user_core(
         bgp_rtt_ns: 0,
         // Feeds are joined post-creation via SubscribeFeed, or by CreateSubscribeUser's gate.
         feed_pks: vec![],
+        accesspass_pk: *core.accesspass_account.key,
     };
 
     Ok(Some(CreateUserCoreResult {
-        user,
+        user: Box::new(user),
         device,
         accesspass,
         globalstate,

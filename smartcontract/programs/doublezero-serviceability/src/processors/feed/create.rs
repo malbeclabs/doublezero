@@ -1,12 +1,17 @@
 use crate::{
     authorize::authorize,
-    error::DoubleZeroError,
+    error::{DoubleZeroError, Validate},
     pda::get_feed_pda,
+    processors::feed::split_stake_mirror,
     seeds::{SEED_FEED, SEED_PREFIX},
-    serializer::try_acc_create,
+    serializer::{try_acc_create, try_acc_write},
     state::{
-        accounttype::AccountType, feed::Feed, globalstate::GlobalState,
+        accounttype::AccountType,
+        feature_flags::{is_feature_enabled, FeatureFlag},
+        feed::{Feed, FeedChain, FeedStatus},
+        globalstate::GlobalState,
         permission::permission_flags,
+        stake_mirror::StakeMirror,
     },
 };
 use borsh::BorshSerialize;
@@ -25,6 +30,8 @@ pub const MAX_FEED_NAME_LEN: usize = 64;
 /// Maximum number of multicast groups in a feed. A feed's whole group set joins in one
 /// `SubscribeFeed` transaction, so this is bounded by transaction capacity.
 pub const MAX_FEED_GROUPS: usize = 20;
+/// Maximum `spec_id` length. Holds `<spec>@<version>` for any name `edge-feed-spec` publishes.
+pub const MAX_FEED_SPEC_ID_LEN: usize = 64;
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Debug, Clone, Default)]
 pub struct FeedCreateArgs {
@@ -34,6 +41,27 @@ pub struct FeedCreateArgs {
     pub exchange: Pubkey,
     /// Multicast groups joinable in this metro.
     pub groups: Vec<Pubkey>,
+
+    // RFC-28 tail. A client built before RFC-28 sends nothing past `groups` and still creates a
+    // catalog feed, which is what the defaults below describe.
+    /// The builder deploying this feed. Zero creates a catalog feed with no builder, the pre-RFC-28
+    /// behavior. Any other value makes this a staked feed and starts it Pending.
+    #[incremental(default = Pubkey::default())]
+    pub builder: Pubkey,
+    /// The `BuilderStake` PDA on Solana holding this feed's bond.
+    #[incremental(default = Pubkey::default())]
+    pub stake_ref: Pubkey,
+    /// The `edge-feed-spec` wire format, as `<spec>@<version>`.
+    #[incremental(default = String::new())]
+    pub spec_id: String,
+    /// SHA-256 of the declared service level.
+    #[incremental(default = [0u8; 32])]
+    pub sla_hash: [u8; 32],
+    /// Committed rate in bits per second, `u64::MAX` for the unmetered tier.
+    #[incremental(default = 0)]
+    pub committed_rate_bits_per_sec: u64,
+    #[incremental(default = FeedChain::Unspecified)]
+    pub feed_chain: FeedChain,
 }
 
 pub fn process_create_feed(
@@ -48,6 +76,12 @@ pub fn process_create_feed(
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
+    // The tail holds the stake's StakeMirror, the payer's Permission account, both, or neither.
+    // `value` rather than a `Feed` here, because this is describing a feed that does not exist yet.
+    let (stake_mirror_account, authorize_candidates) =
+        split_stake_mirror(program_id, &value.builder, &value.stake_ref, accounts_iter);
+    let mut authorize_iter = authorize_candidates.into_iter();
+
     assert!(payer_account.is_signer, "Payer must be a signer");
     assert_eq!(
         globalstate_account.owner, program_id,
@@ -55,20 +89,40 @@ pub fn process_create_feed(
     );
     assert!(feed_account.is_writable, "PDA Account is not writable");
 
-    // Authorize before any input validation or existence probing so an unauthorized caller gets
-    // NotAllowed rather than being able to trip validation errors or probe whether a feed exists.
-    // Catalog admin: FEED_AUTHORITY (Permission PDA) or FOUNDATION.
+    // Two things admit this call: a builder's own stake, or the catalog permission. The stake goes
+    // first, because RFC-28's claim is that a bond rather than an admin is what lets a builder
+    // deploy. The catalog path below is untouched, so an admin creating a feed on a builder's
+    // behalf works exactly as it did.
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    authorize(
+    if !stake_authorizes(
         program_id,
-        accounts_iter,
         payer_account.key,
-        &globalstate,
-        permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION,
-    )?;
+        value,
+        stake_mirror_account,
+        globalstate.feature_flags,
+    ) {
+        // Authorize before any input validation or existence probing so an unauthorized caller gets
+        // NotAllowed rather than being able to trip validation errors or probe whether a feed exists.
+        // Catalog admin: FEED_AUTHORITY (Permission PDA) or FOUNDATION.
+        authorize(
+            program_id,
+            &mut authorize_iter,
+            payer_account.key,
+            &globalstate,
+            permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION,
+        )?;
+    }
 
     validate_feed_name(&value.name)?;
     validate_feed_groups(&value.groups)?;
+    validate_feed_stake_terms(value, globalstate.feature_flags)?;
+    let claimed_mirror = if value.builder == Pubkey::default() {
+        None
+    } else {
+        let mirror_account = stake_mirror_account.ok_or(DoubleZeroError::StakeMirrorMissing)?;
+        let mirror = verify_stake_covers_rate(program_id, mirror_account, value)?;
+        Some((mirror_account, mirror))
+    };
     // Every feed is scoped to a real metro; there is no metro-agnostic feed.
     if value.exchange == Pubkey::default() {
         msg!("Feed exchange must be a real metro, not the default pubkey");
@@ -93,6 +147,21 @@ pub fn process_create_feed(
         name: value.name.clone(),
         exchange: value.exchange,
         groups: value.groups.clone(),
+        builder: value.builder,
+        stake_ref: value.stake_ref,
+        spec_id: value.spec_id.clone(),
+        sla_hash: value.sla_hash,
+        committed_rate_bits_per_sec: value.committed_rate_bits_per_sec,
+        // A staked feed waits on a conformance verdict before it sells seats. A catalog feed has no
+        // builder to attest, so it is sellable on creation, as it was before RFC-28.
+        status: if value.builder == Pubkey::default() {
+            FeedStatus::Active
+        } else {
+            FeedStatus::Pending
+        },
+        halted_by: Pubkey::default(),
+        retires_at: 0,
+        feed_chain: value.feed_chain,
     };
 
     try_acc_create(
@@ -110,9 +179,70 @@ pub fn process_create_feed(
         ],
     )?;
 
+    // Spend the stake on this feed. Ordering matters: the feed account is created first, so a
+    // failure anywhere above leaves the stake unclaimed and the builder can retry.
+    if let Some((mirror_account, mut mirror)) = claimed_mirror {
+        mirror.feed_key = *feed_account.key;
+        try_acc_write(&mirror, mirror_account, payer_account, accounts)?;
+    }
+
     msg!("Created feed: {} @ {}", code, value.exchange);
 
     Ok(())
+}
+
+/// Whether a stake, rather than a catalog permission, admits this create.
+///
+/// Reads the mirror rather than trusting that one is there, and leaves only the tier question to
+/// `verify_stake_covers_rate` below. That split is what lets a builder whose bond is too small be
+/// told which, while a caller with no claim on any stake falls through to the permission check and
+/// sees `NotAllowed`.
+///
+/// Every check here is on what the ledger holds. `builder` and `stake_ref` are both caller-supplied
+/// arguments, and an earlier version of this gate took them at their word: it admitted anyone who
+/// named themselves `builder` and attached the empty account that any `stake_ref` derives.
+///
+/// `&value.builder == payer` is the load-bearing line. `builder` is a caller-supplied argument, so
+/// without it one builder's bond creates another builder's feed.
+///
+/// The feature-flag check is redundant today: `validate_feed_stake_terms` refuses any create
+/// naming a builder while `allow-staked-feeds` is clear, so dropping it here changes no outcome.
+/// It stays because an authorization decision that is safe only because of a validation running
+/// later is a trap for whoever edits either one next.
+fn stake_authorizes(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    value: &FeedCreateArgs,
+    stake_mirror_account: Option<&AccountInfo>,
+    feature_flags: u128,
+) -> bool {
+    if !is_feature_enabled(feature_flags, FeatureFlag::AllowStakedFeeds)
+        || value.builder == Pubkey::default()
+        || &value.builder != payer
+    {
+        return false;
+    }
+
+    // An account at the right address is not a mirror. The address is derived from `stake_ref`,
+    // which is a caller-supplied argument, so anyone can name a stake nobody posted and attach the
+    // empty account its seeds derive. Reading it is what makes this a stake rather than an
+    // assertion that one exists.
+    let Some(account) = stake_mirror_account else {
+        return false;
+    };
+    if account.data_is_empty() || account.owner != program_id {
+        return false;
+    }
+    let Ok(mirror) = StakeMirror::try_from(account) else {
+        return false;
+    };
+    if mirror.validate().is_err() {
+        return false;
+    }
+
+    // The builder the mirror records, not the one the caller claimed. `value.builder` is an
+    // argument; this is what the relayer wrote.
+    &mirror.builder == payer
 }
 
 /// Validate a feed `name`, shared by create and update.
@@ -143,4 +273,119 @@ pub(crate) fn validate_feed_groups(groups: &[Pubkey]) -> Result<(), DoubleZeroEr
         }
     }
     Ok(())
+}
+
+/// Validate the RFC-28 stake terms on create. The terms travel together: a staked feed names a
+/// builder, the stake behind it, the spec it conforms to, and the rate it commits to. A feed with
+/// some of those and not the others is a half-declared feed that nothing downstream can measure.
+///
+/// This does not check that the stake covers the rate. That check reads `StakeMirror` and lands
+/// with it.
+pub(crate) fn validate_feed_stake_terms(
+    value: &FeedCreateArgs,
+    feature_flags: u128,
+) -> Result<(), DoubleZeroError> {
+    if value.spec_id.len() > MAX_FEED_SPEC_ID_LEN {
+        msg!(
+            "Feed spec_id too long: {} > {}",
+            value.spec_id.len(),
+            MAX_FEED_SPEC_ID_LEN
+        );
+        return Err(DoubleZeroError::InvalidArgument);
+    }
+
+    if value.builder != Pubkey::default()
+        && !is_feature_enabled(feature_flags, FeatureFlag::AllowStakedFeeds)
+    {
+        msg!("Staked feeds are not enabled on this cluster");
+        return Err(DoubleZeroError::NotAllowed);
+    }
+
+    if value.builder == Pubkey::default() {
+        // Catalog feed. It carries no stake terms at all.
+        if value.stake_ref != Pubkey::default()
+            || !value.spec_id.is_empty()
+            || value.sla_hash != [0u8; 32]
+            || value.committed_rate_bits_per_sec != 0
+        {
+            msg!("Feed stake terms given without a builder");
+            return Err(DoubleZeroError::InvalidArgument);
+        }
+        return Ok(());
+    }
+
+    if value.stake_ref == Pubkey::default() {
+        msg!("Staked feed must name the stake account behind it");
+        return Err(DoubleZeroError::InvalidArgument);
+    }
+    if value.spec_id.is_empty() {
+        msg!("Staked feed must name the edge-feed-spec it conforms to");
+        return Err(DoubleZeroError::InvalidArgument);
+    }
+    if value.sla_hash == [0u8; 32] {
+        msg!("Staked feed must declare a service level");
+        return Err(DoubleZeroError::InvalidArgument);
+    }
+    if value.committed_rate_bits_per_sec == 0 {
+        msg!("Staked feed must commit to a rate");
+        return Err(DoubleZeroError::InvalidArgument);
+    }
+
+    Ok(())
+}
+
+/// Check the builder's mirrored stake against the rate this feed commits to.
+///
+/// The mirror is written by a relayer watching `builder-stake` on Solana, so this is a check
+/// against an assertion rather than against the Solana account itself. An unwritten mirror decodes
+/// as tier `None`, which covers no rate, so "no stake yet" and "stake too small" fail the same way
+/// and neither can slip through.
+fn verify_stake_covers_rate(
+    program_id: &Pubkey,
+    mirror_account: &AccountInfo,
+    value: &FeedCreateArgs,
+) -> Result<StakeMirror, DoubleZeroError> {
+    if !mirror_account.is_writable {
+        msg!("Stake mirror must be writable so the feed can claim the stake");
+        return Err(DoubleZeroError::InvalidArgument);
+    }
+    if mirror_account.data_is_empty() || mirror_account.owner != program_id {
+        msg!("No stake mirror written for stake {}", value.stake_ref);
+        return Err(DoubleZeroError::StakeDoesNotCoverRate);
+    }
+
+    let mirror =
+        StakeMirror::try_from(mirror_account).map_err(|_| DoubleZeroError::InvalidAccountType)?;
+    // A mirror that fails its own invariants is a half-written account, not a stake. Check it
+    // before trusting the tier it asserts.
+    mirror.validate()?;
+
+    // The PDA seed already binds the account to `stake_ref`. These catch a mirror whose stored keys
+    // disagree with its own address, which would mean the writer got it wrong.
+    if mirror.stake_ref != value.stake_ref {
+        msg!("Stake mirror names a different stake: {}", mirror.stake_ref);
+        return Err(DoubleZeroError::InvalidArgument);
+    }
+    if mirror.builder != value.builder {
+        msg!("Stake mirror names a different builder: {}", mirror.builder);
+        return Err(DoubleZeroError::InvalidArgument);
+    }
+
+    // RFC-28: one feed per stake, so slashing one feed never reaches another.
+    if mirror.feed_key != Pubkey::default() {
+        msg!("Stake already backs feed {}", mirror.feed_key);
+        return Err(DoubleZeroError::StakeAlreadyBacksFeed);
+    }
+
+    if !mirror.tier.covers(value.committed_rate_bits_per_sec) {
+        msg!(
+            "Tier {} covers up to {} bits/sec, feed commits to {}",
+            mirror.tier,
+            mirror.tier.max_rate_bits_per_sec(),
+            value.committed_rate_bits_per_sec
+        );
+        return Err(DoubleZeroError::StakeDoesNotCoverRate);
+    }
+
+    Ok(mirror)
 }

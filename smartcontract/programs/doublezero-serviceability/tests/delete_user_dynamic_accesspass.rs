@@ -342,6 +342,7 @@ async fn test_delete_user_is_dynamic_pass() {
         .unwrap()
         .get_user()
         .unwrap();
+    assert_eq!(user_before_delete.accesspass_pk, accesspass_pubkey);
     let (user_tunnel_block_pda, _, _) =
         get_resource_extension_pda(&env.program_id, ResourceType::UserTunnelBlock);
     let (tunnel_ids_pda, _, _) = get_resource_extension_pda(
@@ -357,7 +358,7 @@ async fn test_delete_user_is_dynamic_pass() {
         &mut env.banks_client,
         recent_blockhash,
         env.program_id,
-        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+        DoubleZeroInstruction::DeletePrepaidUser(UserDeleteArgs {
             dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),
@@ -444,7 +445,7 @@ async fn test_delete_user_allow_multiple_ip_resets_client_ip() {
         &mut env.banks_client,
         recent_blockhash,
         env.program_id,
-        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+        DoubleZeroInstruction::DeletePrepaidUser(UserDeleteArgs {
             dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),
@@ -515,7 +516,7 @@ async fn test_delete_user_specific_ip_pass() {
         &mut env.banks_client,
         recent_blockhash,
         env.program_id,
-        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+        DoubleZeroInstruction::DeletePrepaidUser(UserDeleteArgs {
             dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),
@@ -600,7 +601,7 @@ async fn test_delete_multicast_user_dynamic_pass() {
         &mut env.banks_client,
         recent_blockhash,
         env.program_id,
-        DoubleZeroInstruction::DeleteUser(UserDeleteArgs {
+        DoubleZeroInstruction::DeletePrepaidUser(UserDeleteArgs {
             dz_prefix_count: 1,
             multicast_publisher_count: 0,
         }),

@@ -375,6 +375,7 @@ pub(crate) mod fixtures {
         UserType,
     };
     use doublezero_serviceability::state::accesspass::{AccessPassStatus, FeedSeat};
+    use solana_sdk::account::Account;
 
     pub fn device(exchange_pk: Pubkey) -> Device {
         Device {
@@ -394,6 +395,7 @@ pub(crate) mod fixtures {
             name: "Feed".to_string(),
             exchange,
             groups,
+            ..Default::default()
         }
     }
 
@@ -481,6 +483,7 @@ pub(crate) mod fixtures {
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
             feed_pks: vec![],
+            accesspass_pk: Pubkey::new_unique(),
         }
     }
 
@@ -508,6 +511,23 @@ pub(crate) mod fixtures {
                 owner: Pubkey::new_unique(),
                 client_ip: [10, 1, 1, 1].into(),
             }
+        }
+
+        /// Stub `getMultipleAccounts` for a `--pubkey <feed_pk>` update, returning a feed carrying
+        /// `groups`.
+        pub fn expect_get_feeds(&self, client: &mut MockCliCommand, groups: Vec<Pubkey>) {
+            let feed_pk = self.feed_pk;
+            let feed_acct = feed(self.exchange_pk, groups);
+            client
+                .expect_get_multiple_accounts()
+                .with(mockall::predicate::eq(vec![feed_pk]))
+                .times(1)
+                .returning(move |_| {
+                    Ok(vec![Some(Account {
+                        data: borsh::to_vec(&feed_acct).unwrap(),
+                        ..Account::default()
+                    })])
+                });
         }
 
         /// Stub `get_feed` for a `--pubkey <feed_pk>` lookup, returning a feed carrying `groups`.

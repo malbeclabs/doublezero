@@ -866,6 +866,7 @@ export interface User {
    * the former scalar feedPk slot, which was never written with a real feed on any cluster.
    */
   feedPks: PublicKey[];
+  accessPassPubKey: PublicKey;
 }
 
 export function deserializeUser(data: Uint8Array): User {
@@ -899,6 +900,7 @@ export function deserializeUser(data: Uint8Array): User {
     // read as an empty vec with the leftover zero bytes ignored as trailing data. readPubkeyVec
     // returns [] on EOF, so accounts predating the slot default to empty too.
     feedPks: readPubkeyVec(r),
+    accessPassPubKey: readPubkey(r),
   };
 }
 
@@ -1254,7 +1256,33 @@ export interface Feed {
   name: string;
   exchange: PublicKey;
   groups: PublicKey[];
+  // RFC-28. Absent from feeds written before RFC-28, which decode with these defaulted and
+  // status "active".
+  builder: PublicKey;
+  stakeRef: PublicKey;
+  specId: string;
+  slaHash: Uint8Array;
+  committedRateBitsPerSec: bigint;
+  status: number;
+  // Who halted the feed, the default key when it is not halted. Appended after status, so a feed
+  // written before it reads as halted by nobody, which is right: it cannot have been halted.
+  haltedBy: PublicKey;
+  // When the retirement notice elapses, zero when the feed is not retiring. Appended after
+  // haltedBy, so a feed written before it reads as not retiring, which is right.
+  retiresAt: bigint;
+  feedChain: number;
 }
+
+// Feed lifecycle. Matches FeedStatus in the Rust program.
+export const FEED_STATUS_PENDING = 0;
+export const FEED_STATUS_ACTIVE = 1;
+export const FEED_STATUS_HALTED = 2;
+export const FEED_STATUS_RETIRED = 3;
+export const FEED_STATUS_RETIRING = 4;
+
+export const FEED_CHAIN_UNSPECIFIED = 0;
+export const FEED_CHAIN_SOLANA = 1;
+export const FEED_CHAIN_HYPERLIQUID = 2;
 
 export function deserializeFeed(data: Uint8Array): Feed {
   const r = new DefensiveReader(data);
@@ -1266,6 +1294,22 @@ export function deserializeFeed(data: Uint8Array): Feed {
   // A feed serves one metro: an exchange pubkey followed by a Vec<Pubkey> of joinable groups.
   const exchange = readPubkey(r);
   const groups = readPubkeyVec(r);
+  // RFC-28 tail. DefensiveReader returns zeros past EOF, so a feed written before RFC-28 lands
+  // here with every field defaulted. Read the flag before the tail, not after: the tail reads
+  // themselves leave `remaining` at zero either way.
+  const hasRfc28Tail = r.remaining > 0;
+  const builder = readPubkey(r);
+  const stakeRef = readPubkey(r);
+  const specId = r.readString();
+  const slaHash = r.readBytes(32);
+  const committedRateBitsPerSec = r.readU64();
+  // Not "pending": a feed written before RFC-28 has no status byte, and reading one as pending
+  // would show every live catalog feed as out of service.
+  const status = hasRfc28Tail ? r.readU8() : FEED_STATUS_ACTIVE;
+  const haltedBy = readPubkey(r);
+  // readU64 is unsigned; reinterpret the sign bit, as the seat timestamps above do.
+  const retiresAt = BigInt.asIntN(64, r.readU64());
+  const feedChain = r.readU8();
   return {
     accountType,
     owner,
@@ -1274,5 +1318,14 @@ export function deserializeFeed(data: Uint8Array): Feed {
     name,
     exchange,
     groups,
+    builder,
+    stakeRef,
+    specId,
+    slaHash,
+    committedRateBitsPerSec,
+    status,
+    haltedBy,
+    retiresAt,
+    feedChain,
   };
 }

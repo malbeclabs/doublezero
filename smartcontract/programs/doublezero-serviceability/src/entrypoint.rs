@@ -38,7 +38,10 @@ use crate::{
             suspend::process_suspend_exchange, update::process_update_exchange,
         },
         feed::{
-            create::process_create_feed, delete::process_delete_feed, update::process_update_feed,
+            activate::process_activate_feed, create::process_create_feed,
+            delete::process_delete_feed, finalize_retirement::process_finalize_feed_retirement,
+            halt::process_halt_feed, resume::process_resume_feed, retire::process_retire_feed,
+            update::process_update_feed,
         },
         globalconfig::set::process_set_globalconfig,
         globalstate::{
@@ -87,6 +90,7 @@ use crate::{
             closeaccount::process_closeaccount_resource_extension, create::process_create_resource,
             deallocate::process_deallocate_resource,
         },
+        stake_mirror::write::process_write_stake_mirror,
         tenant::{
             add_administrator::process_add_administrator_tenant, create::process_create_tenant,
             delete::process_delete_tenant,
@@ -105,6 +109,7 @@ use crate::{
             update::process_update_user,
         },
     },
+    state::accesspass::AccessPassKind,
 };
 
 use solana_program::{
@@ -178,7 +183,28 @@ pub fn process_instruction(
             return Err(DoubleZeroError::Deprecated.into());
         }
         DoubleZeroInstruction::DeleteUser(value) => {
-            process_delete_user(program_id, accounts, &value)?
+            process_delete_user(program_id, accounts, &value, None)?
+        }
+        DoubleZeroInstruction::DeletePrepaidUser(value) => {
+            process_delete_user(program_id, accounts, &value, Some(AccessPassKind::Prepaid))?
+        }
+        DoubleZeroInstruction::DeleteSolanaValidatorUser(value) => process_delete_user(
+            program_id,
+            accounts,
+            &value,
+            Some(AccessPassKind::SolanaValidator),
+        )?,
+        DoubleZeroInstruction::DeleteSolanaRPCUser(value) => process_delete_user(
+            program_id,
+            accounts,
+            &value,
+            Some(AccessPassKind::SolanaRPC),
+        )?,
+        DoubleZeroInstruction::DeleteOthersUser(value) => {
+            process_delete_user(program_id, accounts, &value, Some(AccessPassKind::Others))?
+        }
+        DoubleZeroInstruction::DeleteEdgeSeatUser(value) => {
+            process_delete_user(program_id, accounts, &value, Some(AccessPassKind::EdgeSeat))?
         }
         DoubleZeroInstruction::DeleteDevice(value) => {
             process_delete_device(program_id, accounts, &value)?
@@ -306,7 +332,28 @@ pub fn process_instruction(
             process_set_access_pass(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::CloseAccessPass(value) => {
-            process_close_access_pass(program_id, accounts, &value)?
+            process_close_access_pass(program_id, accounts, &value, None)?
+        }
+        DoubleZeroInstruction::ClosePrepaidAccessPass(value) => {
+            process_close_access_pass(program_id, accounts, &value, Some(AccessPassKind::Prepaid))?
+        }
+        DoubleZeroInstruction::CloseSolanaValidatorAccessPass(value) => process_close_access_pass(
+            program_id,
+            accounts,
+            &value,
+            Some(AccessPassKind::SolanaValidator),
+        )?,
+        DoubleZeroInstruction::CloseSolanaRPCAccessPass(value) => process_close_access_pass(
+            program_id,
+            accounts,
+            &value,
+            Some(AccessPassKind::SolanaRPC),
+        )?,
+        DoubleZeroInstruction::CloseOthersAccessPass(value) => {
+            process_close_access_pass(program_id, accounts, &value, Some(AccessPassKind::Others))?
+        }
+        DoubleZeroInstruction::CloseEdgeSeatAccessPass(value) => {
+            process_close_access_pass(program_id, accounts, &value, Some(AccessPassKind::EdgeSeat))?
         }
         DoubleZeroInstruction::CheckStatusAccessPass(value) => {
             process_check_status_access_pass(program_id, accounts, &value)?
@@ -416,6 +463,22 @@ pub fn process_instruction(
         DoubleZeroInstruction::Deprecated111() => (),
         DoubleZeroInstruction::CreateFeed(value) => {
             process_create_feed(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::WriteStakeMirror(value) => {
+            process_write_stake_mirror(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::HaltFeed(value) => process_halt_feed(program_id, accounts, &value)?,
+        DoubleZeroInstruction::RetireFeed(value) => {
+            process_retire_feed(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::FinalizeFeedRetirement(value) => {
+            process_finalize_feed_retirement(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::ResumeFeed(value) => {
+            process_resume_feed(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::ActivateFeed(value) => {
+            process_activate_feed(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::UpdateFeed(value) => {
             process_update_feed(program_id, accounts, &value)?

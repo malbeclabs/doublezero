@@ -503,6 +503,7 @@ mod tests {
             name: "Shreds NYC".to_string(),
             exchange: Pubkey::new_unique(),
             groups: vec![],
+            ..Default::default()
         };
         client
             .expect_get_feed()

@@ -360,10 +360,13 @@ reach the service from that source at all gets none. The pass and the flag toget
 host unable to connect. It waives the *requirement* only; a supplied proof is still validated in
 full.
 
-This exemption is reached through the address the client daemon is configured with or discovers,
-not through a caller-chosen one: `connect --client-ip` independently requires that the host hold
-the address on a local interface, so the flag cannot claim an attested address this host does not
-carry.
+At the program level the exemption rests on issuance alone. The PDA seed names the address and
+only an authorized issuer can create a pass at it, and nothing else about the caller is checked —
+in particular the program does not know, and MUST NOT be assumed to enforce, that the host asking
+holds the address. `doublezero connect --client-ip` does require that, on a local interface that is
+up, so through that path a caller cannot claim an attested address its host does not carry; but
+that is a property of the client daemon's CLI, and `doublezero user create --client-ip` and any SDK
+caller reach the exemption without it.
 
 The exemption also moves the trust boundary onto issuance: a tenant administrator may issue
 passes, so one could pin a third party's address to their own payer and create a user there with

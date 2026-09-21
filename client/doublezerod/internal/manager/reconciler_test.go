@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -1066,13 +1067,14 @@ func TestReconcile_FetchError(t *testing.T) {
 
 // --- HTTP handler tests ---
 
-func newTestNLMForHTTP(stateDir string) *NetlinkManager {
+func newTestNLMForHTTP(stateDir string, extra ...Option) *NetlinkManager {
 	fetcher := &mockFetcher{data: &serviceability.ProgramData{GlobalConfig: testGlobalConfig()}}
-	return newTestNLM(fetcher,
+	opts := append([]Option{
 		WithClientIP(net.IPv4(1, 2, 3, 4).To4()),
 		WithPollInterval(time.Hour),
 		WithStateDir(stateDir),
-	)
+	}, extra...)
+	return newTestNLM(fetcher, opts...)
 }
 
 func TestServeEnable(t *testing.T) {
@@ -1106,8 +1108,8 @@ func TestServeEnable(t *testing.T) {
 
 	// Drain the enable signal from the channel
 	select {
-	case enabled := <-n.enableCh:
-		if !enabled {
+	case cmd := <-n.enableCh:
+		if !cmd.enabled {
 			t.Fatal("expected enable signal to be true")
 		}
 	default:
@@ -1147,8 +1149,8 @@ func TestServeDisable(t *testing.T) {
 
 	// Drain the disable signal from the channel
 	select {
-	case enabled := <-n.enableCh:
-		if enabled {
+	case cmd := <-n.enableCh:
+		if cmd.enabled {
 			t.Fatal("expected disable signal to be false")
 		}
 	default:
@@ -1162,7 +1164,7 @@ func TestServeEnable_AlreadyEnabled(t *testing.T) {
 	n.enabled.Store(true)
 
 	// Write existing enabled state
-	if err := WriteState(dir, true); err != nil {
+	if err := WriteState(dir, State{ReconcilerEnabled: true}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1197,7 +1199,7 @@ func TestServeDisable_AlreadyDisabled(t *testing.T) {
 	// Default is disabled
 
 	// Write existing disabled state
-	if err := WriteState(dir, false); err != nil {
+	if err := WriteState(dir, State{}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -1672,7 +1674,8 @@ func TestStartup_UpgradeFromOldDaemon_WasConnected(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	enabled, err := LoadOrMigrateState(dir)
+	enabledState, err := LoadOrMigrateState(dir)
+	enabled := enabledState.ReconcilerEnabled
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1731,11 +1734,12 @@ func TestStartup_UpgradeFromOldDaemon_WasConnected(t *testing.T) {
 
 func TestStartup_DaemonRestart_WasEnabled(t *testing.T) {
 	dir := t.TempDir()
-	if err := WriteState(dir, true); err != nil {
+	if err := WriteState(dir, State{ReconcilerEnabled: true}); err != nil {
 		t.Fatal(err)
 	}
 
-	enabled, err := LoadOrMigrateState(dir)
+	enabledState, err := LoadOrMigrateState(dir)
+	enabled := enabledState.ReconcilerEnabled
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1776,7 +1780,8 @@ func TestStartup_DaemonRestart_WasEnabled(t *testing.T) {
 func TestStartup_FreshInstall_DoesNotProvision(t *testing.T) {
 	dir := t.TempDir()
 
-	enabled, err := LoadOrMigrateState(dir)
+	enabledState, err := LoadOrMigrateState(dir)
+	enabled := enabledState.ReconcilerEnabled
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1819,11 +1824,12 @@ func TestStartup_FreshInstall_DoesNotProvision(t *testing.T) {
 
 func TestStartup_DaemonRestart_WasDisabled(t *testing.T) {
 	dir := t.TempDir()
-	if err := WriteState(dir, false); err != nil {
+	if err := WriteState(dir, State{}); err != nil {
 		t.Fatal(err)
 	}
 
-	enabled, err := LoadOrMigrateState(dir)
+	enabledState, err := LoadOrMigrateState(dir)
+	enabled := enabledState.ReconcilerEnabled
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -2191,5 +2197,437 @@ func provisionMulticast(t *testing.T, n *NetlinkManager) {
 	}
 	if err := n.Provision(pr); err != nil {
 		t.Fatalf("failed to pre-provision multicast: %v", err)
+	}
+}
+
+// --- client IP pinning (POST /enable with a client_ip body) ---
+
+// withAssignedIPs makes isLocallyAssigned report exactly ips for the duration of a test, so
+// the handler's validation can be exercised without depending on this machine's interfaces.
+func withAssignedIPs(t *testing.T, ips ...string) {
+	t.Helper()
+	prev := isLocallyAssigned
+	isLocallyAssigned = func(ip net.IP) (bool, error) {
+		return slices.Contains(ips, ip.String()), nil
+	}
+	t.Cleanup(func() { isLocallyAssigned = prev })
+}
+
+// readState reads the persisted reconciler state written by the enable/disable handlers.
+func readState(t *testing.T, dir string) State {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join(dir, stateFileName))
+	if err != nil {
+		t.Fatalf("reading state file: %v", err)
+	}
+	var s State
+	if err := json.Unmarshal(data, &s); err != nil {
+		t.Fatalf("parsing state file: %v", err)
+	}
+	return s
+}
+
+func TestServeEnable_PinsClientIP(t *testing.T) {
+	withAssignedIPs(t, "5.6.7.8")
+	dir := t.TempDir()
+	n := newTestNLMForHTTP(dir)
+
+	req := httptest.NewRequest(http.MethodPost, "/enable", strings.NewReader(`{"client_ip":"5.6.7.8"}`))
+	w := httptest.NewRecorder()
+	n.ServeEnable(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := n.ClientIP().String(); got != "5.6.7.8" {
+		t.Fatalf("expected client IP 5.6.7.8, got %s", got)
+	}
+	if st := readState(t, dir); !st.ReconcilerEnabled || st.ClientIP != "5.6.7.8" {
+		t.Fatalf("expected the pin persisted, got %+v", st)
+	}
+}
+
+// A body-less enable is what every pre-pin client sends; it must still work and must leave
+// the discovered address alone.
+func TestServeEnable_NoBodyLeavesClientIPAlone(t *testing.T) {
+	dir := t.TempDir()
+	n := newTestNLMForHTTP(dir)
+
+	req := httptest.NewRequest(http.MethodPost, "/enable", nil)
+	w := httptest.NewRecorder()
+	n.ServeEnable(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := n.ClientIP().String(); got != "1.2.3.4" {
+		t.Fatalf("expected the discovered IP 1.2.3.4 to survive, got %s", got)
+	}
+	if st := readState(t, dir); st.ClientIP != "" {
+		t.Fatalf("expected no pin persisted, got %q", st.ClientIP)
+	}
+}
+
+// A rejected address must leave both the daemon and the state file untouched.
+func TestServeEnable_InvalidClientIPChangesNothing(t *testing.T) {
+	for _, body := range []string{`{"client_ip":"not-an-ip"}`, `{"client_ip":"::1"}`} {
+		dir := t.TempDir()
+		n := newTestNLMForHTTP(dir)
+
+		req := httptest.NewRequest(http.MethodPost, "/enable", strings.NewReader(body))
+		w := httptest.NewRecorder()
+		n.ServeEnable(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Fatalf("body %s: expected 400, got %d: %s", body, w.Code, w.Body.String())
+		}
+		if got := n.ClientIP().String(); got != "1.2.3.4" {
+			t.Fatalf("body %s: expected client IP unchanged, got %s", body, got)
+		}
+		if _, err := os.ReadFile(filepath.Join(dir, stateFileName)); !os.IsNotExist(err) {
+			t.Fatalf("body %s: expected no state file written, got err %v", body, err)
+		}
+		if n.Enabled() {
+			t.Fatalf("body %s: expected the reconciler to stay disabled", body)
+		}
+	}
+}
+
+// A disable turns the reconciler off and nothing else. The pin is host configuration, and
+// dropping it from disk while the running daemon kept using it is what would make the next
+// restart tear the tunnel down.
+func TestServeDisable_KeepsPin(t *testing.T) {
+	withAssignedIPs(t, "5.6.7.8")
+	dir := t.TempDir()
+	n := newTestNLMForHTTP(dir)
+
+	enableReq := httptest.NewRequest(http.MethodPost, "/enable", strings.NewReader(`{"client_ip":"5.6.7.8"}`))
+	n.ServeEnable(httptest.NewRecorder(), enableReq)
+
+	w := httptest.NewRecorder()
+	n.ServeDisable(w, httptest.NewRequest(http.MethodPost, "/disable", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if st := readState(t, dir); st.ReconcilerEnabled || st.ClientIP != "5.6.7.8" {
+		t.Fatalf("expected the reconciler disabled and the pin kept, got %+v", st)
+	}
+}
+
+// The regression: an ordinary `connect` (or `doublezero enable`) sends no client_ip, and
+// must not blank the pin the daemon is still using. Persisting the request instead of the
+// pin in effect left the daemon and the state file disagreeing, which showed up only at the
+// next restart — discovery took over and the tunnel went away.
+func TestServeEnable_NoBodyKeepsPersistedPin(t *testing.T) {
+	withAssignedIPs(t, "5.6.7.8")
+	dir := t.TempDir()
+	n := newTestNLMForHTTP(dir)
+
+	n.ServeEnable(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/enable", strings.NewReader(`{"client_ip":"5.6.7.8"}`)))
+
+	w := httptest.NewRecorder()
+	n.ServeEnable(w, httptest.NewRequest(http.MethodPost, "/enable", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := n.ClientIP().String(); got != "5.6.7.8" {
+		t.Fatalf("expected the pinned address still in use, got %s", got)
+	}
+	if st := readState(t, dir); st.ClientIP != "5.6.7.8" {
+		t.Fatalf("expected the pin preserved on disk, got %q", st.ClientIP)
+	}
+}
+
+// The full cycle an operator runs: pin, disconnect, reconnect without the flag. The address
+// in use and the one on disk have to agree at every step, so that a restart at any point
+// resumes on the same address.
+func TestServeEnable_PinSurvivesDisableEnableCycle(t *testing.T) {
+	withAssignedIPs(t, "5.6.7.8")
+	dir := t.TempDir()
+	n := newTestNLMForHTTP(dir)
+
+	n.ServeEnable(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/enable", strings.NewReader(`{"client_ip":"5.6.7.8"}`)))
+	n.ServeDisable(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/disable", nil))
+	n.ServeEnable(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost, "/enable", nil))
+
+	if got := n.ClientIP().String(); got != "5.6.7.8" {
+		t.Fatalf("expected the pinned address still in use, got %s", got)
+	}
+	st := readState(t, dir)
+	if !st.ReconcilerEnabled || st.ClientIP != "5.6.7.8" {
+		t.Fatalf("expected enabled with the pin intact, got %+v", st)
+	}
+	if got := n.PinnedClientIP(); got != st.ClientIP {
+		t.Fatalf("daemon pin %q disagrees with the state file %q", got, st.ClientIP)
+	}
+}
+
+// A pin restored from disk is the pin in effect, so a body-less enable from a fresh daemon
+// preserves it rather than blanking a file it never read back.
+func TestServeEnable_NoBodyKeepsRestoredPin(t *testing.T) {
+	dir := t.TempDir()
+	n := newTestNLMForHTTP(dir, WithPinnedClientIP("5.6.7.8"))
+
+	w := httptest.NewRecorder()
+	n.ServeEnable(w, httptest.NewRequest(http.MethodPost, "/enable", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if st := readState(t, dir); st.ClientIP != "5.6.7.8" {
+		t.Fatalf("expected the restored pin preserved, got %q", st.ClientIP)
+	}
+}
+
+// Pinning on an already-enabled daemon is the `connect --client-ip` case: SetEnabled alone
+// would swallow it because the enabled state is unchanged.
+func TestSetReconcilerState_DeliversPinWhenAlreadyEnabled(t *testing.T) {
+	n := newTestNLMForHTTP(t.TempDir())
+	n.enabled.Store(true)
+
+	n.SetReconcilerState(true, net.IPv4(5, 6, 7, 8).To4())
+
+	if got := n.ClientIP().String(); got != "5.6.7.8" {
+		t.Fatalf("expected the pin applied synchronously, got %s", got)
+	}
+
+	select {
+	case cmd := <-n.enableCh:
+		if !cmd.enabled {
+			t.Fatal("expected the command to keep the reconciler enabled")
+		}
+		if !cmd.clientIPChanged {
+			t.Fatal("expected the command to flag the client IP change")
+		}
+	default:
+		t.Fatal("expected a command on the channel")
+	}
+}
+
+// Without a pin, an unchanged enabled state stays a no-op.
+func TestSetReconcilerState_NoOpWithoutPin(t *testing.T) {
+	n := newTestNLMForHTTP(t.TempDir())
+	n.enabled.Store(true)
+
+	n.SetReconcilerState(true, nil)
+
+	select {
+	case cmd := <-n.enableCh:
+		t.Fatalf("expected no command, got %+v", cmd)
+	default:
+	}
+}
+
+func TestState_ClientIPRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	if err := WriteState(dir, State{ReconcilerEnabled: true, ClientIP: "5.6.7.8"}); err != nil {
+		t.Fatalf("WriteState: %v", err)
+	}
+	st, err := LoadOrMigrateState(dir)
+	if err != nil {
+		t.Fatalf("LoadOrMigrateState: %v", err)
+	}
+	if !st.ReconcilerEnabled || st.ClientIP != "5.6.7.8" {
+		t.Fatalf("expected the pin to round-trip, got %+v", st)
+	}
+}
+
+// An address the host does not hold cannot become the tunnel source, so the daemon refuses it
+// even though the CLI is supposed to have checked first.
+func TestServeEnable_RejectsClientIPNotOnThisHost(t *testing.T) {
+	withAssignedIPs(t, "1.2.3.4")
+	dir := t.TempDir()
+	n := newTestNLMForHTTP(dir)
+
+	req := httptest.NewRequest(http.MethodPost, "/enable", strings.NewReader(`{"client_ip":"5.6.7.8"}`))
+	w := httptest.NewRecorder()
+	n.ServeEnable(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := n.ClientIP().String(); got != "1.2.3.4" {
+		t.Fatalf("expected client IP unchanged, got %s", got)
+	}
+	if _, err := os.ReadFile(filepath.Join(dir, stateFileName)); !os.IsNotExist(err) {
+		t.Fatalf("expected no state file written, got err %v", err)
+	}
+	if n.Enabled() {
+		t.Fatal("expected the reconciler to stay disabled")
+	}
+}
+
+// A private address can be genuinely held by this host and still be useless as a pin: no
+// Activated user can exist at one, because create_user rejects a non-global client_ip. Accepting
+// it would tear down the host's services, persist, and survive every restart.
+func TestServeEnable_RejectsNonGlobalClientIP(t *testing.T) {
+	withAssignedIPs(t, "1.2.3.4", "192.168.1.50")
+	dir := t.TempDir()
+	n := newTestNLMForHTTP(dir)
+
+	req := httptest.NewRequest(http.MethodPost, "/enable", strings.NewReader(`{"client_ip":"192.168.1.50"}`))
+	w := httptest.NewRecorder()
+	n.ServeEnable(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "globally routable") {
+		t.Fatalf("expected the reason to name routability, got %s", w.Body.String())
+	}
+	if got := n.ClientIP().String(); got != "1.2.3.4" {
+		t.Fatalf("expected client IP unchanged, got %s", got)
+	}
+	if _, err := os.ReadFile(filepath.Join(dir, stateFileName)); !os.IsNotExist(err) {
+		t.Fatalf("expected no state file written, got err %v", err)
+	}
+	if n.Enabled() {
+		t.Fatal("expected the reconciler to stay disabled")
+	}
+}
+
+// Enumeration failing is not the same as the address being absent: the daemon cannot verify,
+// so it refuses rather than provisioning against an unverified address.
+func TestServeEnable_EnumerationFailureIsFatal(t *testing.T) {
+	prev := isLocallyAssigned
+	isLocallyAssigned = func(net.IP) (bool, error) { return false, fmt.Errorf("netlink unavailable") }
+	t.Cleanup(func() { isLocallyAssigned = prev })
+
+	n := newTestNLMForHTTP(t.TempDir())
+	req := httptest.NewRequest(http.MethodPost, "/enable", strings.NewReader(`{"client_ip":"5.6.7.8"}`))
+	w := httptest.NewRecorder()
+	n.ServeEnable(w, req)
+
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", w.Code, w.Body.String())
+	}
+}
+
+// The daemon's own -client-ip flag outranks a pin at startup, so a pin that differs from it
+// would work until the next restart and then be replaced silently, leaving the host on an
+// address no onchain user matches. Refused up front instead, naming the flag, because editing
+// the unit file is the only way out and nothing else would say so.
+func TestServeEnable_RefusesPinConflictingWithClientIPFlag(t *testing.T) {
+	withAssignedIPs(t, "5.6.7.8", "9.10.11.12")
+	dir := t.TempDir()
+	n := newTestNLMForHTTP(dir, WithClientIPFlag("9.10.11.12"))
+
+	req := httptest.NewRequest(http.MethodPost, "/enable", strings.NewReader(`{"client_ip":"5.6.7.8"}`))
+	w := httptest.NewRecorder()
+	n.ServeEnable(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "-client-ip 9.10.11.12") {
+		t.Fatalf("expected the reason to name the flag and its address, got %s", w.Body.String())
+	}
+	if got := n.ClientIP().String(); got != "1.2.3.4" {
+		t.Fatalf("expected client IP unchanged, got %s", got)
+	}
+	if _, err := os.ReadFile(filepath.Join(dir, stateFileName)); !os.IsNotExist(err) {
+		t.Fatalf("expected no state file written, got err %v", err)
+	}
+	if n.Enabled() {
+		t.Fatal("expected the reconciler to stay disabled")
+	}
+}
+
+// Pinning the address the flag already names is not a conflict: it asks for what the host is
+// going to do anyway, and refusing it would fail a `connect --client-ip` that is correct.
+func TestServeEnable_AcceptsPinMatchingClientIPFlag(t *testing.T) {
+	withAssignedIPs(t, "9.10.11.12")
+	dir := t.TempDir()
+	n := newTestNLMForHTTP(dir, WithClientIPFlag("9.10.11.12"))
+
+	req := httptest.NewRequest(http.MethodPost, "/enable", strings.NewReader(`{"client_ip":"9.10.11.12"}`))
+	w := httptest.NewRecorder()
+	n.ServeEnable(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := n.ClientIP().String(); got != "9.10.11.12" {
+		t.Fatalf("expected the pin adopted, got %s", got)
+	}
+	if st := readState(t, dir); st.ClientIP != "9.10.11.12" {
+		t.Fatalf("expected the pin persisted, got %+v", st)
+	}
+}
+
+// A unit file can spell the flag's address in a form net.IP canonicalizes differently — the
+// IPv4-in-IPv6 form is the one that reaches here, since DiscoverClientIP refuses the spellings
+// net.ParseIP rejects outright. Comparing the raw string would 409 a pin naming the very
+// address the flag already carries, and send the operator off to edit systemd for nothing.
+func TestServeEnable_FlagConflictComparesAddressesNotStrings(t *testing.T) {
+	withAssignedIPs(t, "9.10.11.12")
+	dir := t.TempDir()
+	n := newTestNLMForHTTP(dir, WithClientIPFlag("::ffff:9.10.11.12"))
+
+	req := httptest.NewRequest(http.MethodPost, "/enable", strings.NewReader(`{"client_ip":"9.10.11.12"}`))
+	w := httptest.NewRecorder()
+	n.ServeEnable(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := n.ClientIP().String(); got != "9.10.11.12" {
+		t.Fatalf("expected the pin adopted, got %s", got)
+	}
+}
+
+// The flag constrains pins, not the body-less enable every pre-pin client sends.
+func TestServeEnable_NoBodyUnaffectedByClientIPFlag(t *testing.T) {
+	dir := t.TempDir()
+	n := newTestNLMForHTTP(dir, WithClientIPFlag("9.10.11.12"))
+
+	w := httptest.NewRecorder()
+	n.ServeEnable(w, httptest.NewRequest(http.MethodPost, "/enable", nil))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if st := readState(t, dir); !st.ReconcilerEnabled || st.ClientIP != "" {
+		t.Fatalf("expected enabled with no pin, got %+v", st)
+	}
+}
+
+// A body-less enable must not be subjected to the assignment check: the daemon's own
+// discovered address is not a caller-supplied claim, and on a NAT'd host it is legitimately
+// not on any local interface.
+func TestServeEnable_NoBodySkipsAssignmentCheck(t *testing.T) {
+	called := false
+	prev := isLocallyAssigned
+	isLocallyAssigned = func(net.IP) (bool, error) { called = true; return false, nil }
+	t.Cleanup(func() { isLocallyAssigned = prev })
+
+	n := newTestNLMForHTTP(t.TempDir())
+	w := httptest.NewRecorder()
+	n.ServeEnable(w, httptest.NewRequest(http.MethodPost, "/enable", nil))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if called {
+		t.Fatal("expected no assignment check for a body-less enable")
+	}
+}
+
+func TestIsLocallyAssigned(t *testing.T) {
+	// Loopback is assigned and up on every host this runs on.
+	ok, err := IsLocallyAssigned(net.IPv4(127, 0, 0, 1))
+	if err != nil {
+		t.Fatalf("IsLocallyAssigned(127.0.0.1): %v", err)
+	}
+	if !ok {
+		t.Fatal("expected 127.0.0.1 to be reported as locally assigned")
+	}
+
+	// A routable address no host legitimately holds on an interface.
+	ok, err = IsLocallyAssigned(net.IPv4(8, 8, 8, 8))
+	if err != nil {
+		t.Fatalf("IsLocallyAssigned(8.8.8.8): %v", err)
+	}
+	if ok {
+		t.Fatal("expected 8.8.8.8 not to be reported as locally assigned")
 	}
 }

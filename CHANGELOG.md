@@ -6,7 +6,19 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- CLI
+  - `doublezero connect --client-ip <ip>` fails when it cannot be honored, where it was previously accepted and discarded. An invocation that names an address this host does not hold, or whose payer holds a dynamic AccessPass, now aborts the connect instead of quietly proceeding on the discovered address.
+
 ### Changes
+
+- CLI
+  - `doublezero connect --client-ip <ip>` is honored again. The flag is accepted only for an AccessPass at the exact `(client_ip, user_payer)` PDA, not flagged `allow_multiple_ip` and with no dynamic pass alongside it — the predicate `create_user` applies, so a refusal arrives up front rather than as a late `IpOwnershipProofRequired` — and only for an address that is globally routable and assigned to an interface that is up on this host. A daemon that refuses the pin fails the connect, rather than leaving an onchain user no tunnel can be built for.
+- Client
+  - `doublezerod` takes an optional `client_ip` on `POST /enable`, which pins the address the reconciler matches onchain users against and, for plain IBRL, uses as the GRE tunnel source. Without it the CLI flag reached nothing, since the reconciler took provisioning over. The pin is host configuration: it is persisted with the reconciler-enabled state, survives a disable, and only a new pin replaces it. It is re-validated on restart and dropped for discovery when the host no longer holds it or it is no longer globally routable. The daemon's own `-client-ip` flag still takes precedence, and `/enable` refuses a pin that differs from it rather than accepting one the next restart would overrule.
+- SDK
+  - `GetExactAccessPassCommand` in the Rust SDK reads the AccessPass at an exact `(client_ip, user_payer)` PDA. `GetAccessPassCommand` resolves the dynamic `0.0.0.0` pass first and falls back to the exact one — right for a connect that takes the address it is given, wrong for authorizing a caller-chosen one, where the distinction is the whole check.
+- Serviceability
+  - With `RequireIpOwnershipProof` set, a user creation carrying no RFC-27 proof is accepted when its AccessPass sits at the PDA of the address being claimed and is not flagged `allow_multiple_ip`. `SetAccessPass` is permissioned, so such a pass is an issuing authority's attestation of that address, and the flag and the pass together otherwise left a host unable to connect when no proof was obtainable for it. The waiver is keyed on the PDA seed rather than the stored `client_ip` field, which a legacy wildcard pass can carry without any authority behind it. It covers absence only: a supplied proof is still validated in full, and wildcard passes still require one. The trust boundary moves onto issuance, which `SetAccessPass` extends to tenant administrators as well as `ACCESS_PASS_ADMIN` holders. RFC-27 is amended to match.
 
 ## [v0.42.0](https://github.com/malbeclabs/doublezero/compare/client/v0.41.0...client/v0.42.0) - 2026-09-18
 

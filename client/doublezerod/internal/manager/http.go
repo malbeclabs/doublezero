@@ -3,7 +3,9 @@ package manager
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"math"
 	"net"
@@ -145,22 +147,103 @@ func (n *NetlinkManager) ServeStatus(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// EnableRequest is the optional body of POST /enable.
+type EnableRequest struct {
+	// ClientIP pins the address the reconciler matches onchain users against and uses as the
+	// IBRL tunnel source, overriding the one discovered at startup. An empty value leaves the
+	// pin in effect alone — both the address in use and the one persisted — which is what a
+	// body-less request (every pre-pin client, and every `connect` without the flag) does.
+	ClientIP string `json:"client_ip,omitempty"`
+}
+
 // ServeEnable handles POST /enable requests.
-func (n *NetlinkManager) ServeEnable(w http.ResponseWriter, _ *http.Request) {
-	if err := WriteState(n.stateDir, true); err != nil {
-		w.Header().Set("Content-Type", "application/json")
+func (n *NetlinkManager) ServeEnable(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var req EnableRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]string{"status": "error", "description": fmt.Sprintf("malformed enable request: %v", err)}) //nolint:errcheck
+		return
+	}
+
+	// Parsed before anything is written, so a bad address leaves the daemon untouched.
+	var clientIP net.IP
+	if req.ClientIP != "" {
+		parsed := net.ParseIP(req.ClientIP)
+		if parsed == nil || parsed.To4() == nil {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"status": "error", "description": fmt.Sprintf("invalid client_ip %q: not an IPv4 address", req.ClientIP)}) //nolint:errcheck
+			return
+		}
+		clientIP = parsed.To4()
+
+		// A pin the next restart would overrule is refused rather than accepted and quietly
+		// reverted. The -client-ip flag outranks a pin at startup (it is the operator's standing
+		// configuration for this host, in the unit file), but SetReconcilerState adopts a pin
+		// immediately, so without this check the two disagree: the pin works, is persisted and is
+		// reported by /v2/status, until a restart puts the flag's address back and the host
+		// matches no onchain user. Naming the flag is the whole value of the message — the
+		// operator has to edit the unit file, and nothing else would say so.
+		if n.flagClientIP != nil && !n.flagClientIP.Equal(clientIP) {
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(map[string]string{"status": "error", "description": fmt.Sprintf("client_ip %s conflicts with the daemon's -client-ip %s, which takes precedence at startup; remove -client-ip from the doublezerod unit to pin a different address", clientIP, n.flagClientIP)}) //nolint:errcheck
+			return
+		}
+
+		// The daemon is the last gate before local configuration, so it repeats both of the
+		// CLI's checks rather than trusting them. `create_user` is not the backstop for either:
+		// it rejects the onchain *user*, while what is written here is the daemon's *pin*, and a
+		// pin the program would never accept a user for is the worst shape to hold — it matches
+		// no Activated user, tears down the services the host had, persists, and survives every
+		// restart, with no un-pin path short of editing the state file.
+		if !IsPublicIPv4(clientIP) {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"status": "error", "description": fmt.Sprintf("client_ip %s is not a globally routable address", clientIP)}) //nolint:errcheck
+			return
+		}
+
+		// For plain IBRL this address becomes the GRE tunnel source verbatim, so one the kernel
+		// does not hold cannot carry a tunnel. An enumeration failure is fatal here — unlike in
+		// the CLI, there is nothing downstream left to catch it.
+		assigned, err := isLocallyAssigned(clientIP)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]string{"status": "error", "description": fmt.Sprintf("could not verify client_ip %s: %v", clientIP, err)}) //nolint:errcheck
+			return
+		}
+		if !assigned {
+			w.WriteHeader(http.StatusBadRequest)
+			json.NewEncoder(w).Encode(map[string]string{"status": "error", "description": fmt.Sprintf("client_ip %s is not assigned to any interface that is up on this host", clientIP)}) //nolint:errcheck
+			return
+		}
+	}
+
+	// What gets persisted is the pin that will be in effect once this request is served: the
+	// new one, or the existing one when none was supplied. A body-less enable must leave it
+	// alone rather than blank it — this request does not touch the address the daemon is
+	// using, and a state file that disagreed with the running daemon would keep the tunnel up
+	// until the next restart and then tear it down, discovery having quietly taken over.
+	pinned := n.PinnedClientIP()
+	if clientIP != nil {
+		pinned = clientIP.String()
+	}
+	if err := WriteState(n.stateDir, State{ReconcilerEnabled: true, ClientIP: pinned}); err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"status": "error", "description": err.Error()}) //nolint:errcheck
 		return
 	}
-	n.SetEnabled(true)
-	w.Header().Set("Content-Type", "application/json")
+	n.SetReconcilerState(true, clientIP)
 	json.NewEncoder(w).Encode(map[string]string{"status": "ok"}) //nolint:errcheck
 }
 
 // ServeDisable handles POST /disable requests.
 func (n *NetlinkManager) ServeDisable(w http.ResponseWriter, _ *http.Request) {
-	if err := WriteState(n.stateDir, false); err != nil {
+	// The pin outlives a disable, because it describes which address this host presents to
+	// DoubleZero rather than anything about one session. Dropping it here would only drop it
+	// from disk — the daemon has no discovered address to fall back to without probing for
+	// one again — and that split is what makes a later restart surprising.
+	if err := WriteState(n.stateDir, State{ClientIP: n.PinnedClientIP()}); err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]string{"status": "error", "description": err.Error()}) //nolint:errcheck
@@ -186,7 +269,7 @@ func (n *NetlinkManager) ServeV2Status(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(V2StatusResponse{ //nolint:errcheck
 		ReconcilerEnabled: n.enabled.Load(),
-		ClientIP:          n.clientIP.String(),
+		ClientIP:          n.ClientIP().String(),
 		Network:           n.network,
 		Services:          enriched,
 	})
@@ -350,7 +433,7 @@ func (n *NetlinkManager) enrichStatuses(statuses []*api.StatusResponse) []V2Serv
 		// Fallback: match by client_ip + user_type (e.g. multicast subscribers
 		// whose tunnel endpoint differs from the device public IP).
 		if matchedUser == nil {
-			clientIP4 := n.clientIP.To4()
+			clientIP4 := n.ClientIP().To4()
 			for i := range users {
 				u := &users[i]
 				if net.IP(u.ClientIp[:]).Equal(clientIP4) && mapUserType(u.UserType) == svc.UserType {

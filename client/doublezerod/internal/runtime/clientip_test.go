@@ -208,3 +208,64 @@ func TestDiscoverFromExternal_AllRetriesExhausted(t *testing.T) {
 		t.Errorf("expected 3 attempts, got %d", got)
 	}
 }
+
+func TestRestoreClientIPPin(t *testing.T) {
+	tests := []struct {
+		name     string
+		pinned   string
+		isAssign func(net.IP) (bool, error)
+		want     string
+	}{
+		{
+			name:     "held by the host, so the pin stands",
+			pinned:   "9.128.0.9",
+			isAssign: func(net.IP) (bool, error) { return true, nil },
+			want:     "9.128.0.9",
+		},
+		{
+			// The lockout this guards: the address left while the daemon was down, and a
+			// pinned daemon would match no onchain user and build no tunnel.
+			name:     "no longer held, so discovery takes over",
+			pinned:   "9.128.0.9",
+			isAssign: func(net.IP) (bool, error) { return false, nil },
+			want:     "",
+		},
+		{
+			// A failure to check is not a failed check: keeping the pin is what stops a
+			// transient netlink error from silently re-addressing the host.
+			name:     "enumeration failed, so the pin is kept",
+			pinned:   "9.128.0.9",
+			isAssign: func(net.IP) (bool, error) { return false, fmt.Errorf("enumerating interfaces") },
+			want:     "9.128.0.9",
+		},
+		{
+			// The same lockout as an address the host has lost: no user can exist onchain at
+			// a non-global address, so a pin that decayed into one — a re-addressing that put
+			// the host behind CGNAT — matches nothing. The host holding it is not enough.
+			name:     "non-global pin falls back to discovery even when held",
+			pinned:   "100.64.0.9",
+			isAssign: func(net.IP) (bool, error) { return true, nil },
+			want:     "",
+		},
+		{
+			name:     "unparseable pin falls back to discovery",
+			pinned:   "not-an-ip",
+			isAssign: func(net.IP) (bool, error) { return true, nil },
+			want:     "",
+		},
+		{
+			name:     "IPv6 pin falls back to discovery",
+			pinned:   "2001:db8::1",
+			isAssign: func(net.IP) (bool, error) { return true, nil },
+			want:     "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := restoreClientIPPin(tt.pinned, tt.isAssign); got != tt.want {
+				t.Errorf("restoreClientIPPin(%q) = %q, want %q", tt.pinned, got, tt.want)
+			}
+		})
+	}
+}

@@ -10,7 +10,7 @@ use hyper_util::{client::legacy::Client, rt::TokioExecutor};
 use hyperlocal::{UnixConnector, Uri};
 use mockall::automock;
 use serde::{Deserialize, Serialize};
-use std::{fmt, fs::File, path::Path, sync::OnceLock};
+use std::{fmt, fs::File, net::Ipv4Addr, path::Path, sync::OnceLock};
 use tabled::{derive::display, Tabled};
 
 pub(crate) const DEFAULT_SOCKET_PATH: &str = "/var/run/doublezerod/doublezerod.sock";
@@ -139,6 +139,29 @@ pub struct ErrorResponse {
     pub description: String,
 }
 
+/// Render a non-200 from an endpoint that answers with no body of its own.
+///
+/// The daemon describes *why* it refused in an `ErrorResponse`, and for `/enable` that is the
+/// only place the reason exists: a pin can be refused as malformed, non-IPv4, unverifiable, or
+/// not held by this host, and a bare status code collapses all four into "400 Bad Request".
+async fn daemon_status_error<B>(res: hyper::Response<B>, action: &str) -> eyre::Report
+where
+    B: hyper::body::Body,
+    B::Error: fmt::Display,
+{
+    let status = res.status();
+    let body = match res.into_body().collect().await {
+        Ok(collected) => collected.to_bytes(),
+        Err(e) => return eyre!("Failed to {action}: {status} (unreadable response body: {e})"),
+    };
+    match serde_json::from_slice::<ErrorResponse>(&body) {
+        Ok(err) if err.status == "error" && !err.description.is_empty() => {
+            eyre!("Failed to {action}: {}", err.description)
+        }
+        _ => eyre!("Failed to {action}: {status}"),
+    }
+}
+
 /// Parse a daemon response, falling back to ErrorResponse if the primary type fails.
 fn parse_daemon_response<T: serde::de::DeserializeOwned>(
     data: &[u8],
@@ -224,7 +247,12 @@ pub trait DaemonClient: Send + Sync {
     async fn latency(&self) -> eyre::Result<LatencyResponse>;
     async fn status(&self) -> eyre::Result<Vec<StatusResponse>>;
     async fn v2_status(&self) -> eyre::Result<V2StatusResponse>;
-    async fn enable(&self) -> eyre::Result<()>;
+    /// Enable the reconciler, optionally pinning the address it provisions against.
+    ///
+    /// `Some(ip)` is `connect --client-ip`: the daemon adopts it in place of the address it
+    /// discovered. `None` leaves the daemon's current address alone, which is what every
+    /// caller without the flag wants.
+    async fn enable(&self, client_ip: Option<Ipv4Addr>) -> eyre::Result<()>;
     async fn disable(&self) -> eyre::Result<()>;
     async fn routes(&self) -> eyre::Result<Vec<RouteRecord>>;
 }
@@ -357,19 +385,25 @@ impl DaemonClient for DaemonClientImpl {
         parse_daemon_response::<V2StatusResponse>(&data, "/v2/status")
     }
 
-    async fn enable(&self) -> eyre::Result<()> {
+    async fn enable(&self, client_ip: Option<Ipv4Addr>) -> eyre::Result<()> {
         let client: Client<UnixConnector, Full<Bytes>> =
             Client::builder(TokioExecutor::new()).build(UnixConnector);
+        // An absent pin sends an empty body rather than `{"client_ip":""}`, so a daemon that
+        // predates the field behaves exactly as it does today.
+        let body = match client_ip {
+            Some(ip) => Bytes::from(format!(r#"{{"client_ip":"{ip}"}}"#)),
+            None => Bytes::new(),
+        };
         let req = Request::builder()
             .method(Method::POST)
             .uri(Uri::new(&self.socket_path, "/enable"))
-            .body(Full::from(Bytes::new()))?;
+            .body(Full::from(body))?;
         let res = client
             .request(req)
             .await
             .map_err(|e| eyre!("Unable to connect to doublezero daemon: {e}"))?;
         if res.status() != 200 {
-            eyre::bail!("Failed to enable reconciler: {}", res.status());
+            return Err(daemon_status_error(res, "enable reconciler").await);
         }
         Ok(())
     }
@@ -386,7 +420,7 @@ impl DaemonClient for DaemonClientImpl {
             .await
             .map_err(|e| eyre!("Unable to connect to doublezero daemon: {e}"))?;
         if res.status() != 200 {
-            eyre::bail!("Failed to disable reconciler: {}", res.status());
+            return Err(daemon_status_error(res, "disable reconciler").await);
         }
         Ok(())
     }

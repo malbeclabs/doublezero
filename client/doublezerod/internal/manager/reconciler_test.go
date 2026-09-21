@@ -2502,6 +2502,74 @@ func TestServeEnable_EnumerationFailureIsFatal(t *testing.T) {
 	}
 }
 
+// The daemon's own -client-ip flag outranks a pin at startup, so a pin that differs from it
+// would work until the next restart and then be replaced silently, leaving the host on an
+// address no onchain user matches. Refused up front instead, naming the flag, because editing
+// the unit file is the only way out and nothing else would say so.
+func TestServeEnable_RefusesPinConflictingWithClientIPFlag(t *testing.T) {
+	withAssignedIPs(t, "5.6.7.8", "9.10.11.12")
+	dir := t.TempDir()
+	n := newTestNLMForHTTP(dir, WithClientIPFlag("9.10.11.12"))
+
+	req := httptest.NewRequest(http.MethodPost, "/enable", strings.NewReader(`{"client_ip":"5.6.7.8"}`))
+	w := httptest.NewRecorder()
+	n.ServeEnable(w, req)
+
+	if w.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "-client-ip 9.10.11.12") {
+		t.Fatalf("expected the reason to name the flag and its address, got %s", w.Body.String())
+	}
+	if got := n.ClientIP().String(); got != "1.2.3.4" {
+		t.Fatalf("expected client IP unchanged, got %s", got)
+	}
+	if _, err := os.ReadFile(filepath.Join(dir, stateFileName)); !os.IsNotExist(err) {
+		t.Fatalf("expected no state file written, got err %v", err)
+	}
+	if n.Enabled() {
+		t.Fatal("expected the reconciler to stay disabled")
+	}
+}
+
+// Pinning the address the flag already names is not a conflict: it asks for what the host is
+// going to do anyway, and refusing it would fail a `connect --client-ip` that is correct.
+func TestServeEnable_AcceptsPinMatchingClientIPFlag(t *testing.T) {
+	withAssignedIPs(t, "9.10.11.12")
+	dir := t.TempDir()
+	n := newTestNLMForHTTP(dir, WithClientIPFlag("9.10.11.12"))
+
+	req := httptest.NewRequest(http.MethodPost, "/enable", strings.NewReader(`{"client_ip":"9.10.11.12"}`))
+	w := httptest.NewRecorder()
+	n.ServeEnable(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if got := n.ClientIP().String(); got != "9.10.11.12" {
+		t.Fatalf("expected the pin adopted, got %s", got)
+	}
+	if st := readState(t, dir); st.ClientIP != "9.10.11.12" {
+		t.Fatalf("expected the pin persisted, got %+v", st)
+	}
+}
+
+// The flag constrains pins, not the body-less enable every pre-pin client sends.
+func TestServeEnable_NoBodyUnaffectedByClientIPFlag(t *testing.T) {
+	dir := t.TempDir()
+	n := newTestNLMForHTTP(dir, WithClientIPFlag("9.10.11.12"))
+
+	w := httptest.NewRecorder()
+	n.ServeEnable(w, httptest.NewRequest(http.MethodPost, "/enable", nil))
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+	if st := readState(t, dir); !st.ReconcilerEnabled || st.ClientIP != "" {
+		t.Fatalf("expected enabled with no pin, got %+v", st)
+	}
+}
+
 // A body-less enable must not be subjected to the assignment check: the daemon's own
 // discovered address is not a caller-supplied claim, and on a NAT'd host it is legitimately
 // not on any local interface.

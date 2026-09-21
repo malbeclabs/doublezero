@@ -178,6 +178,19 @@ func (n *NetlinkManager) ServeEnable(w http.ResponseWriter, r *http.Request) {
 		}
 		clientIP = parsed.To4()
 
+		// A pin the next restart would overrule is refused rather than accepted and quietly
+		// reverted. The -client-ip flag outranks a pin at startup (it is the operator's standing
+		// configuration for this host, in the unit file), but SetReconcilerState adopts a pin
+		// immediately, so without this check the two disagree: the pin works, is persisted and is
+		// reported by /v2/status, until a restart puts the flag's address back and the host
+		// matches no onchain user. Naming the flag is the whole value of the message — the
+		// operator has to edit the unit file, and nothing else would say so.
+		if n.flagClientIP != "" && n.flagClientIP != clientIP.String() {
+			w.WriteHeader(http.StatusConflict)
+			json.NewEncoder(w).Encode(map[string]string{"status": "error", "description": fmt.Sprintf("client_ip %s conflicts with the daemon's -client-ip %s, which takes precedence at startup; remove -client-ip from the doublezerod unit to pin a different address", clientIP, n.flagClientIP)}) //nolint:errcheck
+			return
+		}
+
 		// The daemon is the last gate before local configuration, so it repeats both of the
 		// CLI's checks rather than trusting them. `create_user` is not the backstop for either:
 		// it rejects the onchain *user*, while what is written here is the daemon's *pin*, and a

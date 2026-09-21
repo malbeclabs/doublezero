@@ -47,10 +47,19 @@ const (
 // --client-ip` away.
 //
 // An enumeration failure keeps the pin: that is a failure to check, not a failed check.
+//
+// Both of `/enable`'s checks are repeated, not just local assignment. A non-global pin is the
+// same lockout by a different route — no user can exist onchain at one, so the reconciler
+// matches nothing — and it is the shape a pin most easily decays into, an address that was
+// globally routable when pinned and sits behind CGNAT after a re-addressing.
 func restoreClientIPPin(pinned string, isAssigned func(net.IP) (bool, error)) string {
 	ip := net.ParseIP(pinned)
 	if ip == nil || ip.To4() == nil {
 		slog.Warn("reconciler: ignoring unusable pinned client IP, falling back to discovery", "pinned", pinned)
+		return ""
+	}
+	if !manager.IsPublicIPv4(ip.To4()) {
+		slog.Warn("reconciler: pinned client IP is not globally routable, falling back to discovery; the pin is dropped, re-pin with `doublezero connect --client-ip`", "pinned", pinned)
 		return ""
 	}
 	assigned, err := isAssigned(ip.To4())
@@ -128,6 +137,13 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	// host to its discovered address and tearing the tunnel down.
 	effectiveClientIP := clientIP
 	pinnedClientIP := state.ClientIP
+	if clientIP != "" && state.ClientIP != "" && state.ClientIP != clientIP {
+		// Only reachable from a pin that predates the flag: `/enable` refuses a pin that
+		// differs from it. Kept rather than dropped, so removing the flag from the unit file
+		// restores the operator's last pin instead of silently falling back to discovery —
+		// it is re-validated at that point, by the branch below.
+		slog.Warn("reconciler: pinned client IP is dormant, the -client-ip flag takes precedence", "pinned", state.ClientIP, "flag", clientIP)
+	}
 	if clientIP == "" && state.ClientIP != "" {
 		// One value for both: a pin this host cannot use is not the pin in effect either, so it
 		// is neither used nor reported nor written back.
@@ -171,6 +187,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		manager.WithFetchTimeout(fetchTimeout),
 		manager.WithEnabled(state.ReconcilerEnabled),
 		manager.WithPinnedClientIP(pinnedClientIP),
+		manager.WithClientIPFlag(clientIP),
 		manager.WithStateDir(stateDir),
 		manager.WithNetwork(networkConfig.Moniker),
 	}

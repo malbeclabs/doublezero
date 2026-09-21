@@ -79,6 +79,15 @@ func WithPinnedClientIP(ip string) Option {
 	}
 }
 
+// WithClientIPFlag records the address the daemon's own -client-ip flag was given, so /enable
+// can refuse a pin that startup would overrule. Empty means the flag is unset, which is the
+// case where a pin is free to take effect.
+func WithClientIPFlag(ip string) Option {
+	return func(n *NetlinkManager) {
+		n.flagClientIP = ip
+	}
+}
+
 // WithFetcher sets the onchain data fetcher for the reconciler.
 func WithFetcher(f Fetcher) Option {
 	return func(n *NetlinkManager) {
@@ -149,10 +158,20 @@ type NetlinkManager struct {
 	clientIP net.IP
 	// pinnedClientIP is the address an operator pinned, as persisted, or empty when the
 	// daemon is using the one it discovered. Kept alongside clientIP — rather than derived
-	// from it — because the two differ: the daemon's own -client-ip flag outranks a pin at
+	// from it — because the two can differ: the daemon's own -client-ip flag outranks a pin at
 	// startup, leaving a pin recorded but dormant.
 	pinnedClientIP string
 	clientIPMu     sync.RWMutex
+	// flagClientIP is the address given to the daemon's own -client-ip flag, or empty when the
+	// flag is unset. Immutable after construction, so it needs no lock.
+	//
+	// It is here so /enable can refuse a pin the flag would overrule. The flag wins at startup
+	// and a pin wins at runtime, so without this a pin was adopted, persisted and reported as
+	// in effect, and then silently replaced by the flag's address at the next restart — on a
+	// host whose unit file carries the flag, which is exactly the population `connect
+	// --client-ip` exists for, since the flag was the only previous way to connect from an
+	// address discovery did not find.
+	flagClientIP   string
 	fetcher        Fetcher
 	pollInterval   time.Duration
 	fetchTimeout   time.Duration
@@ -428,7 +447,8 @@ func (n *NetlinkManager) GetProvisionedServices() []*api.ProvisionRequest {
 // because /v2/status must report the pinned address as soon as /enable returns — the CLI
 // enables and then reads status back, and a pin that only landed when the loop next woke up
 // would have it provision against the old address. clientIPChanged exists so the loop still
-// learns it must drop the tunnel-src cache, which only the loop may touch.
+// learns to reconcile: a pin on an already-enabled daemon changes no enabled state, but the
+// previous address's services have to be torn down and the new one's provisioned.
 type reconcilerCmd struct {
 	enabled         bool
 	clientIPChanged bool
@@ -516,12 +536,10 @@ func (n *NetlinkManager) StartReconciler(ctx context.Context) error {
 			slog.Info("reconciler: stopping")
 			return nil
 		case cmd := <-n.enableCh:
-			// A changed address invalidates the tunnel-src cache, whose entries were
-			// resolved for the old source. Cleared here because the cache belongs to
-			// this goroutine.
-			if cmd.clientIPChanged {
-				n.tunnelSrcCache = make(map[string]net.IP)
-			}
+			// No cache invalidation on a changed address: entries are ResolveTunnelSrc(dst),
+			// a function of the routing table alone, and are read only for
+			// IBRLWithAllocatedIP and Multicast, where the client IP is not the source. A
+			// pin neither invalidates them nor is described by them.
 			wasEnabled := n.enabled.Load()
 			n.enabled.Store(cmd.enabled)
 			switch {

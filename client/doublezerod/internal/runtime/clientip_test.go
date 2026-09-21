@@ -218,15 +218,15 @@ func TestRestoreClientIPPin(t *testing.T) {
 	}{
 		{
 			name:     "held by the host, so the pin stands",
-			pinned:   "203.0.113.9",
+			pinned:   "9.128.0.9",
 			isAssign: func(net.IP) (bool, error) { return true, nil },
-			want:     "203.0.113.9",
+			want:     "9.128.0.9",
 		},
 		{
 			// The lockout this guards: the address left while the daemon was down, and a
 			// pinned daemon would match no onchain user and build no tunnel.
 			name:     "no longer held, so discovery takes over",
-			pinned:   "203.0.113.9",
+			pinned:   "9.128.0.9",
 			isAssign: func(net.IP) (bool, error) { return false, nil },
 			want:     "",
 		},
@@ -234,9 +234,18 @@ func TestRestoreClientIPPin(t *testing.T) {
 			// A failure to check is not a failed check: keeping the pin is what stops a
 			// transient netlink error from silently re-addressing the host.
 			name:     "enumeration failed, so the pin is kept",
-			pinned:   "203.0.113.9",
+			pinned:   "9.128.0.9",
 			isAssign: func(net.IP) (bool, error) { return false, fmt.Errorf("enumerating interfaces") },
-			want:     "203.0.113.9",
+			want:     "9.128.0.9",
+		},
+		{
+			// The same lockout as an address the host has lost: no user can exist onchain at
+			// a non-global address, so a pin that decayed into one — a re-addressing that put
+			// the host behind CGNAT — matches nothing. The host holding it is not enough.
+			name:     "non-global pin falls back to discovery even when held",
+			pinned:   "100.64.0.9",
+			isAssign: func(net.IP) (bool, error) { return true, nil },
+			want:     "",
 		},
 		{
 			name:     "unparseable pin falls back to discovery",

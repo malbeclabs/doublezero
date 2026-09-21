@@ -188,8 +188,10 @@ enum FeedJoinUser {
 ///    one against it would let the caller bind an address no authority ever vouched for — the
 ///    squatting RFC-27 exists to close. The lookup therefore goes to the exact PDA rather than
 ///    through `get_accesspass`, which prefers the dynamic pass and would mask the distinction.
-///    A pass at the exact PDA flagged `allow_multiple_ip` says the same thing as a dynamic one
-///    — any address will do — so it is refused too. This is the predicate `create_user` applies
+///    A pass at the exact PDA flagged `allow_multiple_ip` is refused too, for a weaker reason:
+///    the PDA it sits at already settles which address it names, but its issuer marked it
+///    reusable across addresses, and the program declines to read that as an attestation of any
+///    one of them. This is the predicate `create_user` applies
 ///    to decide whether an RFC-27 proof is still required (`accesspass_is_ip_bound`); matching
 ///    it here is what turns a late `IpOwnershipProofRequired` into an up-front diagnostic for
 ///    the case the flag exists to serve, a host with no obtainable proof.
@@ -223,21 +225,35 @@ async fn resolve_connect_client_ip_with<D: DaemonClient, L: LedgerClient, W: Wri
         return Err(eyre::eyre!("--client-ip {client_ip} cannot be used here"));
     }
 
-    let pinned = ledger
-        .get_accesspass_exact(client_ip, ledger.get_payer())?
-        .filter(|accesspass| !accesspass.allow_multiple_ip());
-    if pinned.is_none() {
-        writeln!(
-            out,
-            "❌  No AccessPass is pinned to {client_ip} for UserPayer: {}",
-            ledger.get_payer()
-        )?;
-        return Err(eyre::eyre!(
-            "--client-ip requires an AccessPass issued for that exact address and not flagged \
-             allow_multiple_ip. A pass that authorizes any address does not authorize a \
-             caller-chosen one; connect without --client-ip to use the address the daemon \
-             discovered."
-        ));
+    // Two refusals, not one: a pass that is absent and a pass that is present but flagged are
+    // different things to be told, and the operator's next move differs — obtain a pass for
+    // this address, or have the flag cleared on the one they hold.
+    match ledger.get_accesspass_exact(client_ip, ledger.get_payer())? {
+        None => {
+            writeln!(
+                out,
+                "❌  No AccessPass is pinned to {client_ip} for UserPayer: {}",
+                ledger.get_payer()
+            )?;
+            return Err(eyre::eyre!(
+                "--client-ip requires an AccessPass issued for that exact address. Connect \
+                 without --client-ip to use the address the daemon discovered."
+            ));
+        }
+        Some(accesspass) if accesspass.allow_multiple_ip() => {
+            writeln!(
+                out,
+                "❌  The AccessPass at {client_ip} for UserPayer {} is flagged allow_multiple_ip",
+                ledger.get_payer()
+            )?;
+            return Err(eyre::eyre!(
+                "--client-ip requires an AccessPass that is not flagged allow_multiple_ip: such \
+                 a pass authorizes any address, so it does not attest the one named here, and \
+                 `create_user` would still require an RFC-27 proof. Connect without --client-ip \
+                 to use the address the daemon discovered."
+            ));
+        }
+        Some(_) => {}
     }
 
     // The gate has to predict what `create_user` will evaluate, and what it evaluates is the
@@ -7294,11 +7310,14 @@ mod tests {
             assert!(out.contains("takes precedence"), "unexpected output: {out}");
         }
 
-        /// A pass stored at the exact PDA but flagged `allow_multiple_ip` authorizes any
-        /// address, exactly as a dynamic one does, so it does not pin this one. It is also
-        /// the predicate `create_user` uses to decide whether an RFC-27 proof is still
-        /// required: admitting it here would push the failure to `IpOwnershipProofRequired`
-        /// after the enable, instead of naming the problem now.
+        /// A pass stored at the exact PDA but flagged `allow_multiple_ip` is the predicate
+        /// `create_user` uses to decide whether an RFC-27 proof is still required: admitting
+        /// it here would push the failure to `IpOwnershipProofRequired` after the enable,
+        /// instead of naming the problem now.
+        ///
+        /// The refusal must not be the one for an absent pass. The pass exists, and what the
+        /// operator has to do about it — have the flag cleared — is not what "no AccessPass is
+        /// pinned to this address" would send them to do.
         #[tokio::test]
         async fn refuses_an_exact_pass_flagged_allow_multiple_ip() {
             let mut ledger = MockLedgerClient::new();
@@ -7315,8 +7334,12 @@ mod tests {
                 "unexpected error: {err}"
             );
             assert!(
-                out.contains("No AccessPass is pinned to"),
+                out.contains("is flagged allow_multiple_ip"),
                 "unexpected output: {out}"
+            );
+            assert!(
+                !out.contains("No AccessPass is pinned to"),
+                "an existing pass must not be reported as absent: {out}"
             );
         }
     }

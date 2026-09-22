@@ -59,9 +59,8 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Reject obviously broken thresholds early. A negative or NaN threshold would
-	// silently flag every link as impaired (or never), triggering an onchain
-	// write storm or hiding real failures — better to fail fast at startup.
+	// A nonsense threshold silently flags every link as impaired or none at all,
+	// so it becomes an onchain write storm or a blind spot. Fail fast instead.
 	if math.IsNaN(*linkLossThreshold) || math.IsInf(*linkLossThreshold, 0) || *linkLossThreshold < 0 || *linkLossThreshold > 100 {
 		fmt.Fprintf(os.Stderr, "invalid --link-loss-threshold %v: must be in [0, 100]\n", *linkLossThreshold)
 		os.Exit(1)
@@ -179,11 +178,9 @@ func main() {
 		Log:                   log,
 	}
 	linkEvaluator := &worker.LinkHealthEvaluator{
-		// Gate promotion on the same latest-bucket check that drives demotion.
-		// Without it a link already reporting isis_down promotes to RFS and
-		// demotes on the next tick — two onchain writes and a misleading RFS
-		// in between. Safe to reuse: the impairment criterion passes on
-		// no-data, so links with no telemetry promote exactly as before.
+		// Reusing the impairment criterion stops a link that already reads
+		// impaired from promoting only to demote a tick later. Safe because it
+		// passes on no-data, so links with no telemetry promote as before.
 		ReadyForServiceCriteria: linkImpairmentCriteria,
 		ImpairmentCriteria:      linkImpairmentCriteria,
 		RecoveryCriteria:        linkRecoveryCriteria,

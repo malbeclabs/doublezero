@@ -29,9 +29,8 @@ const (
 // to absorb a single missed bucket plus an ingest delay.
 const linkHealthRecentMaxAge = 15 * time.Minute
 
-// LinkHealthCriterion evaluates link impairment from the link_rollup_5m table.
-// In ImpairmentMode it inspects the latest bucket; in RecoveryMode it requires
-// every bucket in the recovery window (resolved via LinkBurnIn) to be clean.
+// LinkHealthCriterion evaluates link impairment from the link_rollup_5m table,
+// over the window its mode selects (RecoveryMode resolves it via LinkBurnIn).
 //
 // "Clean" means: isis_down=false AND a_loss_pct <= LossThreshold AND
 // z_loss_pct <= LossThreshold. Buckets with provisioning=true are excluded
@@ -85,9 +84,7 @@ func (c *LinkHealthCriterion) checkImpairment(ctx context.Context, link servicea
 		// A failing criterion demotes an RFS link, so returning false here
 		// would turn one transient ClickHouse blip into an Impaired write for
 		// every healthy link on the network, followed by a matching wave of
-		// RFS writes once it recovered. A monitor that calls the network
-		// unhealthy when its own telemetry breaks is worse than one that
-		// reports nothing.
+		// RFS writes once it recovered.
 		c.log.Error("Failed to query link health recent",
 			"link", pubkey, "code", link.Code, "error", err)
 		MetricErrors.WithLabelValues(MetricErrorTypeLinkHealthQuery).Inc()
@@ -169,14 +166,12 @@ func (c *LinkHealthCriterion) checkRecovery(ctx context.Context, link serviceabi
 		return false, fmt.Sprintf("recovery window has %d/%d impaired buckets", r.Bad, r.Total)
 	}
 
-	// "Every bucket present is clean" is not enough on its own — it is also
-	// satisfied by a window holding one clean bucket, or by one holding only
-	// old clean buckets after a frozen pipeline let the dirty ones age out of
-	// the trailing window. Either would recover a link that is still broken,
-	// and it would then stay RFS because checkImpairment reads the stale
-	// latest bucket as no-data. So require the window to be both covered and
-	// recent; failing either keeps the link Impaired, which is the safe
-	// direction.
+	// "Every bucket present is clean" also holds for a window carrying a single
+	// bucket, and for one whose dirty buckets aged out of a frozen pipeline
+	// while older clean ones remained. Both recover a link that is still
+	// broken, which then stays RFS because checkImpairment reads the stale
+	// latest bucket as no-data. Requiring coverage and recency closes each;
+	// failing either keeps the link Impaired, the safe direction.
 	minBuckets := expectedMinutes/5 - 1
 	if int64(r.Total) < minBuckets {
 		return false, fmt.Sprintf("recovery window has %d/%d expected buckets", r.Total, minBuckets)

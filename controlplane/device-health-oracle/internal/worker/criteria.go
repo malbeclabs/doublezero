@@ -134,9 +134,8 @@ func (e *DeviceHealthEvaluator) checkAll(ctx context.Context, device serviceabil
 //   - Impaired → ReadyForService when RecoveryCriteria pass over the full
 //     recovery window (slow recovery to prevent flapping).
 //
-// The asymmetry — fast demotion via the latest bucket, slow recovery requiring
-// every bucket in the window to be clean — is intentional: it keeps borderline
-// links from flapping while still surfacing real impairment quickly.
+// The asymmetry is deliberate: impairment should surface within a tick, while
+// recovery should outlast a link that is merely oscillating.
 type LinkHealthEvaluator struct {
 	ReadyForServiceCriteria []LinkCriterion
 	ImpairmentCriteria      []LinkCriterion
@@ -150,8 +149,8 @@ func (e *LinkHealthEvaluator) Evaluate(ctx context.Context, link serviceability.
 
 	switch current {
 	case serviceability.LinkHealthReadyForService:
-		// No impairment criteria configured ⇒ no demotion path (preserves
-		// behavior of deployments without ClickHouse wired up).
+		// Deployments without ClickHouse configure none, and must keep the
+		// pre-existing behavior of never demoting.
 		if len(e.ImpairmentCriteria) == 0 {
 			return current
 		}

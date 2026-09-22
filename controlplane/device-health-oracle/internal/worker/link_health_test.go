@@ -339,9 +339,9 @@ func TestLinkHealthCriterion_Recovery_PassesThresholdToChecker(t *testing.T) {
 	assert.Equal(t, threshold, observed)
 }
 
-// Finding 4: ReadyForServiceCriteria is wired to the impairment criterion, so a
-// link whose latest bucket already reads impaired must not promote to RFS only
-// to be demoted on the next tick. Links with no telemetry still promote.
+// ReadyForServiceCriteria is wired to the impairment criterion, so a link whose
+// latest bucket already reads impaired must not promote to RFS only to be
+// demoted on the next tick. Links with no telemetry still promote.
 func TestLinkHealthEvaluator_Pending_PromotionGatedOnImpairment(t *testing.T) {
 	tests := []struct {
 		name     string

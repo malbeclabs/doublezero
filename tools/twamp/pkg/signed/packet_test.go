@@ -669,3 +669,75 @@ func TestParseOffsetInfo(t *testing.T) {
 		assert.False(t, ok)
 	})
 }
+
+// An unsigned datagram is what an attacker sends when they cannot sign at all: the
+// all-zero key verifies on ~1 message in 4 and the identity encoding on every one
+// (see hasZeroScalar). The all-zero cases pin probe seq 1 because acceptance there
+// is message-dependent, and an arbitrary choice would pass without the guard.
+func TestProbePacket_Verify_SmallOrderPubkeyForgery(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		pubkey    [32]byte
+		signature [64]byte
+	}{
+		{"all-zero pubkey and signature", [32]byte{}, [64]byte{}},
+		{"identity pubkey, R=identity S=0", [32]byte{1}, [64]byte{1}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			buf := make([]byte, signed.ProbePacketSize)
+			binary.BigEndian.PutUint32(buf[0:4], 1)
+			copy(buf[12:44], tt.pubkey[:])
+			copy(buf[44:108], tt.signature[:])
+
+			probe, err := signed.UnmarshalProbePacket(buf)
+			require.NoError(t, err)
+			assert.False(t, probe.Verify(), "unsigned probe must not verify")
+		})
+	}
+}
+
+func TestReplyPacket_Verify_SmallOrderPubkeyForgery(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name      string
+		pubkey    [32]byte
+		signature [64]byte
+	}{
+		{"all-zero pubkey and signature", [32]byte{}, [64]byte{}},
+		{"identity pubkey, R=identity S=0", [32]byte{1}, [64]byte{1}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			buf := make([]byte, signed.MinReplyPacketSize)
+			copy(buf[108:140], tt.pubkey[:])
+			copy(buf[signed.MinReplyPacketSize-64:], tt.signature[:])
+
+			reply, err := signed.UnmarshalReplyPacket(buf)
+			require.NoError(t, err)
+			assert.False(t, reply.Verify(), "unsigned reply must not verify")
+		})
+	}
+}
+
+func TestReplyPacket_Verify_RealSignatureStillVerifies(t *testing.T) {
+	t.Parallel()
+
+	_, senderSigner := newTestSigner(t)
+	_, reflectorSigner := newTestSigner(t)
+	probe := signed.NewProbePacket(1, senderSigner)
+	reply, err := signed.NewReplyPacket(probe, reflectorSigner, [32]byte{}, nil, 42, 1.0, 2.0, 3, 4, false)
+	require.NoError(t, err)
+
+	assert.True(t, reply.Probe.Verify(), "a real probe signature must verify")
+	assert.True(t, reply.Verify(), "a real reply signature must verify")
+}

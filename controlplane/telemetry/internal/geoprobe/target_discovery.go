@@ -91,52 +91,59 @@ func (d *TargetDiscovery) Tick(ctx context.Context, targetCh chan<- TargetUpdate
 }
 
 func (d *TargetDiscovery) discoverAndSend(ctx context.Context, targetCh chan<- TargetUpdate, keyCh chan<- InboundKeyUpdate, icmpTargetCh chan<- ICMPTargetUpdate) {
-	targets, icmpTargets, inboundKeys, outboundDelivery, icmpDelivery, err := d.discover(ctx)
+	scanned, targets, icmpTargets, inboundKeys, outboundDelivery, icmpDelivery, err := d.discover(ctx)
 	if err != nil {
 		d.log.Warn("Target discovery tick failed", "error", err)
 		return
 	}
 
-	// nil targets means the scan was skipped (target_update_count unchanged).
-	if targets == nil && inboundKeys == nil && icmpTargets == nil {
+	// A completed scan that matched nothing must still propagate: it is how a
+	// deregistered or delinquent user stops being probed.
+	if !scanned {
 		return
 	}
 
+	// Each cache is updated only once its send succeeds. Recording it up front
+	// would make a dropped send permanent — the cache would compare equal, so no
+	// later tick would retry — and these updates are one-shot: an empty one lost
+	// that way leaves a delinquent user probed until the process restarts.
 	if !probeAddressSlicesEqual(targets, d.cachedTargets) || !deliveryAddrsEqual(outboundDelivery, d.cachedOutboundDelivery) {
-		d.cachedTargets = targets
-		d.cachedOutboundDelivery = outboundDelivery
 		select {
 		case targetCh <- TargetUpdate{Targets: targets, DeliveryAddrs: outboundDelivery}:
+			d.cachedTargets = targets
+			d.cachedOutboundDelivery = outboundDelivery
 		default:
-			d.log.Warn("Target update channel full, skipping update")
+			d.log.Warn("Target update channel full, will retry next tick")
 		}
 	}
 
 	if !keySlicesEqual(inboundKeys, d.cachedInboundKeys) {
-		d.cachedInboundKeys = inboundKeys
 		select {
 		case keyCh <- InboundKeyUpdate{Keys: inboundKeys}:
+			d.cachedInboundKeys = inboundKeys
 		default:
-			d.log.Warn("Inbound key update channel full, skipping update")
+			d.log.Warn("Inbound key update channel full, will retry next tick")
 		}
 	}
 
 	if !probeAddressSlicesEqual(icmpTargets, d.cachedIcmpTargets) || !deliveryAddrsEqual(icmpDelivery, d.cachedIcmpDelivery) {
-		d.cachedIcmpTargets = icmpTargets
-		d.cachedIcmpDelivery = icmpDelivery
 		select {
 		case icmpTargetCh <- ICMPTargetUpdate{Targets: icmpTargets, DeliveryAddrs: icmpDelivery}:
+			d.cachedIcmpTargets = icmpTargets
+			d.cachedIcmpDelivery = icmpDelivery
 		default:
-			d.log.Warn("ICMP target update channel full, skipping update")
+			d.log.Warn("ICMP target update channel full, will retry next tick")
 		}
 	}
 }
 
 // discover performs a single discovery cycle: fetch users, filter, extract targets/keys,
-// merge with CLI values. Returns nil, nil, nil, nil, nil, nil when the scan is skipped.
+// merge with CLI values. The first return value reports whether the scan ran, and is
+// meaningful only when err is nil: false means skipped (target_update_count unchanged),
+// which callers must not confuse with a scan that ran and matched nothing.
 // The returned delivery maps map measurement target → result destination for targets
 // whose user has a non-empty ResultDestination, split by target type.
-func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, []ProbeAddress, [][32]byte, map[ProbeAddress]string, map[ProbeAddress]string, error) {
+func (d *TargetDiscovery) discover(ctx context.Context) (bool, []ProbeAddress, []ProbeAddress, [][32]byte, map[ProbeAddress]string, map[ProbeAddress]string, error) {
 	forceFullRefresh := d.tickCount%targetDiscoveryFullRefreshEvery == 0
 	d.tickCount++
 
@@ -145,14 +152,14 @@ func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, []Probe
 		if current == d.lastSeenTargetUpdateCount && d.tickCount > 1 {
 			d.log.Debug("GeoProbe target_update_count unchanged, skipping target scan",
 				"targetUpdateCount", current)
-			return nil, nil, nil, nil, nil, nil
+			return false, nil, nil, nil, nil, nil, nil
 		}
 		d.lastSeenTargetUpdateCount = current
 	}
 
 	users, err := d.client.GetGeolocationUsers(ctx)
 	if err != nil {
-		return nil, nil, nil, nil, nil, fmt.Errorf("failed to fetch GeolocationUser accounts: %w", err)
+		return false, nil, nil, nil, nil, nil, fmt.Errorf("failed to fetch GeolocationUser accounts: %w", err)
 	}
 
 	var probePKBytes [32]byte
@@ -253,7 +260,7 @@ func (d *TargetDiscovery) discover(ctx context.Context) ([]ProbeAddress, []Probe
 		"icmpDeliveryOverrides", len(icmpDelivery),
 	)
 
-	return onchainTargets, onchainIcmpTargets, onchainKeys, outboundDelivery, icmpDelivery, nil
+	return true, onchainTargets, onchainIcmpTargets, onchainKeys, outboundDelivery, icmpDelivery, nil
 }
 
 // targetToProbeAddress converts a GeolocationTarget to a ProbeAddress.

@@ -90,6 +90,35 @@ func maxFloorAdvance(elapsed time.Duration) uint64 {
 	return maxFloorAdvanceSlack + uint64(elapsed/minSlotDuration)
 }
 
+// referenceSlot returns the highest slot proven by a live key other than
+// authority, plus how long ago that key last advanced. Every sender stamps
+// MeasurementSlot from the same ledger, so what the other keys have proven is
+// the only reading of the current height a target can take from the offset
+// stream — and the offset stream is all it has, by design.
+//
+// A key whose own floor has stalled past maxFloorStall does not count: a slot
+// nobody has advanced in that long has stopped tracking the current height, and
+// leaving it in would let one parked high slot serve as a permissive ceiling
+// indefinitely — including for the wrong-cluster seed this check exists to
+// catch.
+//
+// Callers must hold f.mu.
+func (f *slotFloor) referenceSlot(authority [32]byte, now time.Time) (slot uint64, age time.Duration, ok bool) {
+	for key, entry := range f.entries {
+		if key == authority {
+			continue
+		}
+		entryAge := now.Sub(entry.advancedAt)
+		if entryAge > maxFloorStall {
+			continue
+		}
+		if !ok || entry.slot > slot {
+			slot, age, ok = entry.slot, entryAge, true
+		}
+	}
+	return slot, age, ok
+}
+
 // signatureUnverifiedMarker records in signature_error that no verification ran
 // at all, distinguishing a -verify-signatures=false row from a historical row
 // whose verification genuinely failed.
@@ -323,9 +352,19 @@ func newSlotFloor(ttl time.Duration) *slotFloor {
 // A never-seen key seeds its floor from its own first offer, so one stale
 // capture is accepted per key per process restart; the live stream raises the
 // floor past it within minutes. A rejected offer still refreshes lastSeen, so a
-// sustained replay cannot outlive the entry and reseed from itself. Seeding has
-// nothing to check against, so it is also the one place an anomalous high slot
-// still sticks until restart.
+// sustained replay cannot outlive the entry and reseed from itself.
+//
+// A seed is checked against referenceSlot, because a seed taken on trust is the
+// one unrecoverable state here: a floor set at the wrong cluster's height is
+// out of reach of every later genuine offer, and the rejections themselves keep
+// the entry from being swept. On a rejected seed the returned floor is that
+// reference, not this key's floor, which it has none of yet.
+//
+// Where no live key offers a reference — the first sender a target ever hears
+// from, or a deployment with only one — a seed still sticks until restart. No
+// local state closes that: once a misconfigured sender is repointed, its
+// genuine offers are indistinguishable from a replay, and letting them pull the
+// floor back down is the replay this bound exists to stop.
 func (f *slotFloor) accept(authority [32]byte, slot uint64) (ok bool, reason string, floorSlot uint64, floorAge time.Duration) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -333,6 +372,10 @@ func (f *slotFloor) accept(authority [32]byte, slot uint64) (ok bool, reason str
 	now := f.nowFunc()
 	entry, exists := f.entries[authority]
 	if !exists {
+		if ref, refAge, hasRef := f.referenceSlot(authority, now); hasRef &&
+			slot > ref && slot-ref > maxFloorAdvance(refAge) {
+			return false, rejectSlotJumped, ref, refAge
+		}
 		f.entries[authority] = &floorEntry{slot: slot, advancedAt: now, lastSeen: now}
 		return true, "", slot, 0
 	}

@@ -121,9 +121,8 @@ type LinkHealthRecentResult struct {
 
 // LinkHealthWindowResult summarises a recovery-window check. AllClean is true
 // when every distinct bucket (deduplicated by latest ingested_at) is clean.
-// Bad and Total are exposed for operator diagnostics; MaxBucketTs is the
-// newest bucket in the window, which callers use to reject a window whose
-// data has gone stale.
+// Total and MaxBucketTs let a caller also require the window to be covered
+// and recent, so a frozen pipeline cannot recover a link on stale data.
 type LinkHealthWindowResult struct {
 	Bad         uint64
 	Total       uint64
@@ -146,10 +145,7 @@ type LinkHealthChecker interface {
 	// threshold AND z_loss_pct <= threshold). Late-arriving rows for the same
 	// bucket are deduplicated by ingested_at so a corrected re-write doesn't
 	// keep a link Impaired even after every distinct bucket reads as clean.
-	// Total and MaxBucketTs let callers additionally require that the window is
-	// covered and recent, so a frozen pipeline cannot recover a link on stale
-	// data. Returns found=false when there are no buckets in the window for
-	// this link.
+	// Returns found=false when there are no buckets in the window for this link.
 	LinkHealthWindowAllClean(ctx context.Context, linkPubkey string, start, end time.Time, lossThreshold float64) (result LinkHealthWindowResult, found bool, err error)
 }
 
@@ -188,15 +184,12 @@ func (c *ClickHouseClient) LinkHealthRecent(ctx context.Context, linkPubkey stri
 }
 
 // LinkHealthWindowAllClean returns whether every distinct bucket for the given
-// link in [start, end] is clean. The inner query deduplicates late-arriving
-// rows by selecting the latest ingested_at per bucket; the outer aggregate
-// counts distinct dirty buckets without streaming rows.
+// link in [start, end] is clean, aggregating in ClickHouse rather than
+// streaming buckets back.
 func (c *ClickHouseClient) LinkHealthWindowAllClean(ctx context.Context, linkPubkey string, start, end time.Time, lossThreshold float64) (LinkHealthWindowResult, bool, error) {
-	// provisioning is carried through argMax and filtered after the GROUP BY
-	// for the same reason as in LinkHealthRecent: filtering in the WHERE clause
-	// would drop the current version of a bucket that just flipped
-	// provisioning, leaving the dedup to return a stale one. A status filter,
-	// if one is ever wanted, belongs next to it.
+	// provisioning is carried through argMax and filtered after the GROUP BY,
+	// for the reason given in LinkHealthRecent: filtered in the WHERE clause it
+	// would pre-empt the dedup. A status filter would belong beside it.
 	query := fmt.Sprintf(
 		`SELECT
 		   countIf(isis_down = true OR a_loss_pct > ? OR z_loss_pct > ?) AS bad_buckets,

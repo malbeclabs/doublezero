@@ -268,7 +268,6 @@ func TestLinkHealthWindowAllClean_AllClean(t *testing.T) {
 		queryRowFunc: func(_ context.Context, query string, args ...any) driver.Row {
 			assert.Contains(t, query, `"testdb".link_rollup_5m`)
 			assert.Contains(t, query, "countIf")
-			// Inner subquery dedupes ingested_at duplicates per bucket via argMax.
 			assert.Contains(t, query, "argMax")
 			assert.Contains(t, query, "GROUP BY bucket_ts")
 			assert.Contains(t, query, "max(bucket_ts)")

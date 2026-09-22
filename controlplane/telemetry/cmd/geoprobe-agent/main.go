@@ -44,10 +44,9 @@ const (
 	defaultDeliveryDNSRefreshInterval = 5 * time.Minute
 	defaultDeliveryDNSTTL             = defaultDeliveryDNSRefreshInterval * 5 / 2
 
-	// Solana's 400ms slot target less 15%, matching internal/telemetry's
-	// fallbackSlotDuration: the DZ ledger runs slots faster than the target (~367ms),
-	// and under-estimating the duration keeps every window below at least as wide as
-	// its stated wall time. Over-estimating shrinks it and rejects fresh offsets.
+	// Solana's 400ms target less 15%, as internal/telemetry's fallbackSlotDuration:
+	// the DZ ledger runs ~367ms slots, and under-estimating keeps every window below
+	// at least as wide as its stated wall time.
 	dzSlotDuration = 340 * time.Millisecond
 
 	// Past this age the cached slot stops counting as "now" for the replay check:

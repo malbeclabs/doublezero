@@ -354,11 +354,9 @@ func newSlotFloor(ttl time.Duration) *slotFloor {
 // floor past it within minutes. A rejected offer still refreshes lastSeen, so a
 // sustained replay cannot outlive the entry and reseed from itself.
 //
-// A seed is checked against referenceSlot, because a seed taken on trust is the
-// one unrecoverable state here: a floor set at the wrong cluster's height is
-// out of reach of every later genuine offer, and the rejections themselves keep
-// the entry from being swept. On a rejected seed the returned floor is that
-// reference, not this key's floor, which it has none of yet.
+// A seed is checked against referenceSlot too, because a seed taken on trust is
+// the one unrecoverable wedge: nothing later can lower the floor it sets. On a
+// rejected seed the returned floor is that reference, this key having none yet.
 //
 // Where no live key offers a reference — the first sender a target ever hears
 // from, or a deployment with only one — a seed still sticks until restart. No
@@ -385,8 +383,7 @@ func (f *slotFloor) accept(authority [32]byte, slot uint64) (ok bool, reason str
 	switch {
 	case slot > entry.slot:
 		if slot-entry.slot > maxFloorAdvance(age) {
-			// Reject rather than absorb: an implausible slot must not become
-			// the floor, or it wedges this key.
+			// Reject rather than clamp: absorbing it wedges this key.
 			return false, rejectSlotJumped, entry.slot, age
 		}
 		entry.slot = slot
@@ -395,8 +392,7 @@ func (f *slotFloor) accept(authority [32]byte, slot uint64) (ok bool, reason str
 	case entry.slot-slot > maxSlotRegression:
 		return false, rejectSlotRegressed, entry.slot, age
 	case age > maxFloorStall:
-		// The floor has not moved in maxFloorStall, so repeats no longer
-		// evidence a live sender.
+		// Repeats stop evidencing a live sender once the floor stops moving.
 		return false, rejectFloorStalled, entry.slot, age
 	}
 

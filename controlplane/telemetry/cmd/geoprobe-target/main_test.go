@@ -408,3 +408,86 @@ func TestSlotFloor_AllowsCacheRefreshStepWithNoElapsedTime(t *testing.T) {
 		t.Fatalf("a slot-cache refresh step rejected with no elapsed time: %s", reason)
 	}
 }
+
+// The regression test for the seeding wedge: a probe pointed at the wrong
+// ledger RPC is ingested fine, then vanishes from location_offsets for good the
+// moment someone repoints it, because its first offer seeded the floor at the
+// wrong cluster's height. Remove the seed check and the remediated offers below
+// all fail slot_regressed.
+func TestSlotFloor_RejectsSeedAboveLiveReferenceAndIngestsAfterRemediation(t *testing.T) {
+	floor := newSlotFloor(floorEntryTTL)
+	now := time.Now()
+	floor.nowFunc = func() time.Time { return now }
+	healthy, misconfigured := [32]byte{1}, [32]byte{2}
+
+	// A correctly configured sender establishes what the current height is.
+	if ok, reason, _, _ := floor.accept(healthy, 1_000_000); !ok {
+		t.Fatalf("healthy sender rejected on seed: %s", reason)
+	}
+
+	// The misconfigured probe's first offer carries a Solana-L1-height slot.
+	ok, reason, refSlot, _ := floor.accept(misconfigured, 400_000_000)
+	if ok {
+		t.Fatal("expected a wrong-cluster seed to be rejected, not absorbed into the floor")
+	}
+	if reason != rejectSlotJumped {
+		t.Errorf("reason = %q, want %q", reason, rejectSlotJumped)
+	}
+	if refSlot != 1_000_000 {
+		t.Errorf("reported reference = %d, want the live key's proven slot", refSlot)
+	}
+
+	// Repointed at the real ledger, it seeds and keeps being ingested.
+	now = now.Add(time.Minute)
+	if ok, reason, _, _ := floor.accept(misconfigured, 1_000_150); !ok {
+		t.Fatalf("remediated sender could not seed: %s", reason)
+	}
+	for i := 1; i <= 12; i++ {
+		now = now.Add(5 * time.Minute)
+		slot := uint64(1_000_150) + uint64(i)*uint64(5*time.Minute/dzSlotDuration)
+		if ok, reason, _, _ := floor.accept(misconfigured, slot); !ok {
+			t.Fatalf("remediated sender wedged out at offer %d: %s", i, reason)
+		}
+	}
+}
+
+// The seed check must not reject a genuine new sender, whose slot sits somewhat
+// above the last height the reference key proved.
+func TestSlotFloor_SeedsGenuineSenderAboveStaleReference(t *testing.T) {
+	for _, refAge := range []time.Duration{0, 4 * time.Minute, maxFloorStall} {
+		floor := newSlotFloor(floorEntryTTL)
+		now := time.Now()
+		floor.nowFunc = func() time.Time { return now }
+
+		floor.accept([32]byte{1}, 1_000_000)
+		now = now.Add(refAge)
+
+		// The reference's slot is refAge stale, so a current slot is that far above it.
+		slot := uint64(1_000_000) + uint64(refAge/dzSlotDuration)
+		if ok, reason, _, _ := floor.accept([32]byte{2}, slot); !ok {
+			t.Fatalf("genuine seed against a %s-stale reference rejected: %s", refAge, reason)
+		}
+	}
+}
+
+// A parked high slot must stop authorizing seeds once nobody is advancing it,
+// or the wrong-cluster seed it once let in keeps letting the next one in.
+func TestSlotFloor_StalledKeyIsNotAReference(t *testing.T) {
+	floor := newSlotFloor(floorEntryTTL)
+	now := time.Now()
+	floor.nowFunc = func() time.Time { return now }
+
+	// The no-reference residual: the first key a target hears from seeds freely.
+	if ok, reason, _, _ := floor.accept([32]byte{1}, 400_000_000); !ok {
+		t.Fatalf("first seed on an empty floor rejected: %s", reason)
+	}
+
+	now = now.Add(maxFloorStall + time.Minute)
+	if ok, reason, _, _ := floor.accept([32]byte{2}, 1_000_000); !ok {
+		t.Fatalf("healthy sender rejected on seed: %s", reason)
+	}
+
+	if ok, _, refSlot, _ := floor.accept([32]byte{3}, 400_000_000); ok {
+		t.Fatalf("stalled key at 400000000 authorized a wrong-cluster seed (reference %d)", refSlot)
+	}
+}

@@ -100,19 +100,22 @@ would move.
 
 ## What `plan` refuses to do
 
-Blocked items are reported, and both verbs exit non-zero when there are any.
+Blocked items are reported, and both verbs exit non-zero when there are any. `apply` refuses
+the whole run rather than converging the part it can: it stops before the confirmation prompt and
+sends nothing, so the exit code means one thing. Pass `--allow-blocked` to apply the valid subset
+anyway; the run still exits non-zero, because the document was not fully reconciled.
 
 **A pass that does not exist.** The document does not create access passes. Granting an allowlist
 entry against an empty PDA would silently mint a `Prepaid` pass with one unicast and one
 multicast seat and no epoch, so a typo'd IP would produce a junk pass that looks real. Create the
 pass first with `doublezero access-pass set`.
 
-**A group leaving both allowlists at once.** The host's detach verbs send the role being *kept*
-as desired state, and the program authorizes every `true` against these allowlists. Once both
-entries are gone, `multicast unpublish` asks for `subscriber: true` and `multicast unsubscribe`
-asks for `publisher: true`, and neither is allowlisted any more — the roles are stranded on the
-User account with no legal write to remove them. Detach the host first
-(`doublezero multicast unpublish` / `unsubscribe`), then revoke.
+**Two entries that resolve to the same pass and disagree.** A pass with `allow_multiple_ip`
+is stored at the `0.0.0.0` PDA and serves any client IP, so two declared addresses can land on one
+account. The allowlists live on that single account, so entries asking for different groups are
+not two grants but one contradiction: each would plan a revoke of what the other declared, and
+apply would flip the state on every run without ever converging. Entries that agree are merely
+redundant and are planned once. Give each host its own pass, or declare the same access for both.
 
 ## What it leaves alone
 
@@ -124,12 +127,25 @@ User account with no legal write to remove them. Detach the host first
   `0.0.0.0` PDA and serves any client IP, so a concrete address can resolve to it. Writes target
   the stored pass rather than the declared IP, and `plan` warns when the two differ, because every
   group granted there is granted to every host using that pass.
-- **Subscribe rights granted by a feed.** An EdgeSeat pass's feeds grant subscribe on their
-  groups in their own metro, so a declared subscribe that a feed already covers is reported as
-  satisfied and costs no transaction. Publisher is never feed-covered, so a publish gap on the
-  same group is still a real gap.
 - **A group that no longer exists.** An allowlist key with no group behind it cannot be named, so
   the document cannot declare it and no revoke is planned for it.
+
+## Feeds do not substitute for the subscriber allowlist
+
+An EdgeSeat pass's feeds look like they should make a declared subscribe unnecessary, and a
+feed-covered group is reported as a warning to say so. The allowlist entry is written anyway,
+because the coverage is narrower than it appears in two ways:
+
+- It applies **only at connect** (`CreateSubscribeUser`). `doublezero multicast subscribe` on an
+  existing user sends `UpdateMulticastGroupRoles`, which checks the subscriber allowlist for every
+  role being gained, whatever the pass type — there is no feed path in it at all.
+- Even at connect it holds **only in the feed's own metro**: the program rejects a join with
+  `MetroMismatch` unless the feed's exchange matches the device's, and the CLI cannot know which
+  device a host will attach to.
+
+Skipping the write on the strength of a feed therefore left the host refused at subscribe time
+while the document reported itself converged. Writing it costs one transaction the first time and
+nothing thereafter, so a converged document is still a no-op.
 
 ## Automation
 

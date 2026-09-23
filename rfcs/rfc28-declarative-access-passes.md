@@ -31,7 +31,7 @@ The failure this produces is quiet rather than loud: a grant that was never issu
 - **Definition document**: the YAML file describing the access passes and the access each should have. The desired state.
 - **Plan**: the set of writes that would bring the ledger to the state the document describes, together with the declared grants already satisfied and the entries the tool refuses to act on.
 - **Declarative field**: a field whose absence is meaningful. A group the document does not name is revoked; an entry with no `ibrl` has its tenant cleared.
-- **Satisfied grant**: a grant the document declares that the ledger already provides, whether through the allowlist or through a feed.
+- **Satisfied grant**: a grant the document declares that the pass's allowlist already provides.
 - **Blocked entry**: a declared pass the plan refuses to act on, with the reason.
 - **IBRL grant**: unicast access, comprising the pass's tenant and its `last_access_epoch`, which are written together.
 
@@ -107,11 +107,13 @@ One document entry produces up to two kinds of change.
 
 **Multicast.** For each role, the declared set is compared against the pass's `mgroup_pub_allowlist` / `mgroup_sub_allowlist`. Missing entries become grants, undeclared entries become revokes.
 
-A declared subscribe that a feed already grants is reported as satisfied and never written. An EdgeSeat pass's feeds grant subscribe on their groups in their own metro, so re-granting spends a transaction, changes nothing, and would make every run report as changed — which is what breaks idempotency for a driver. Publisher is never feed-covered, so a publish gap on the same group is still a real gap.
+A declared subscribe is written to the allowlist even when a feed on the pass carries the group. Feed coverage is reported as a warning, never acted on, because it is narrower than it looks: it authorizes a join only at connect (`CreateSubscribeUser`), and there only in the feed's own metro (`check_feed_metro_coverage` rejects a mismatch with `MetroMismatch`). `doublezero multicast subscribe` on an existing user sends `UpdateMulticastGroupRoles`, which has no feed path and checks the subscriber allowlist for every role gained, whatever the pass type. Suppressing the write therefore left the host refused at subscribe time while the document reported itself converged — a silent, late failure of exactly the kind the epoch pinning exists to prevent. Writing the entry costs one transaction the first time and nothing after, so idempotency is preserved by the allowlist itself rather than by the feed rule.
 
 An allowlist key that resolves to no group is skipped rather than revoked. It cannot be named, so the document cannot declare it, and a plan line printing a bare pubkey would be unreadable. See *Known limitation* below.
 
 **IBRL.** The declared tenant is compared against the pass's first `tenant_allowlist` entry, and the tenant and `last_access_epoch` are treated as one grant. A declared `ibrl` requires the epoch to be unlimited: the epoch gates unicast user creation only, any finite value turns a later `connect ibrl` on that IP into a failure at an unpredictable date, and `0` is not "expired" but "no epoch defined", which blocks every unicast type outright. Either half drifting re-sends the same `SetAccessPass`.
+
+Clearing a tenant re-sends the stored epoch, with one exception: `SetAccessPassCommand` rejects a finite epoch that has already elapsed, which would otherwise make IBRL impossible to revoke from an expired pass — the run would fail on a value the operator never mentioned, on a write whose purpose is to take a grant away. An elapsed epoch is therefore sent as `0`, which blocks every unicast type and so matches what removing the tenant intends. An epoch still in the future is preserved, since zeroing it would revoke more than the document asked for.
 
 ### Reads
 
@@ -150,11 +152,13 @@ Plan: 1 to add, 1 to remove, 1 IBRL change(s), 3 satisfied, 0 blocked.
 
 ### Blocked entries
 
-Two situations are reported and refused rather than attempted. Both verbs exit non-zero when there are any.
+Two situations are reported and refused rather than attempted. Both verbs exit non-zero when there are any, and `apply` refuses the whole run before the prompt rather than converging the subset it can, so the exit code carries one meaning. `--allow-blocked` opts into the subset deliberately, and still exits non-zero.
 
 **A pass that does not exist.** The document does not create access passes. `AddMulticastGroup*Allowlist` against an empty PDA silently creates a `Prepaid` pass with one unicast seat, one multicast seat and `last_access_epoch: 0`, so a typo'd address would mint a junk pass that looks real. The operator creates the pass with `access-pass set` first.
 
-**A group leaving both allowlists at once.** The host's detach verbs send the role being *kept* as desired state, and the program authorizes every `true` against these allowlists. Once both entries are gone, `multicast unpublish` asks for `subscriber: true` and `multicast unsubscribe` asks for `publisher: true`, and neither is allowlisted any more — the roles are stranded on the User account with no legal write to remove them. Detaching the host first, then revoking, is the safe order.
+**Two entries resolving to one pass and disagreeing.** A pass with `allow_multiple_ip` lives at the `0.0.0.0` PDA and serves any client IP, so two declared addresses can resolve to the same account. The allowlists live on that one account, so entries declaring different groups are not two grants but one contradiction: each plans a revoke of what the other asked for, and apply flips the state on every run without converging. Entries that agree are redundant rather than contradictory and are planned once.
+
+An earlier draft also refused a group leaving both allowlists at once, on the theory that the host's detach verbs send the role being *kept* as desired state and would then be unauthorized. That is no longer so: #4302 changed `check_mgroup_allowlists` to authorize only the roles a user is *gaining*, so a role already held is not re-checked and the detach is a legal write. The refusal was blocking a document that works, and has been removed.
 
 ### Automation
 
@@ -170,7 +174,7 @@ Two situations are reported and refused rather than attempted. Both verbs exit n
 
 `--json` requires `--auto-approve` (or `--dry-run`), because there is no terminal to answer the confirmation prompt on and the alternative is hanging on a read that never returns.
 
-A converged document is a no-op: the second `apply` reports `changed: false` and sends nothing. That property depends on the feed-coverage rule above.
+A converged document is a no-op: the second `apply` reports `changed: false` and sends nothing. The property rests on the allowlist comparison alone, so it does not depend on any rule about what a feed already covers.
 
 ## Impact
 
@@ -178,7 +182,7 @@ A converged document is a no-op: the second `apply` reports `changed: false` and
 
 **Operations.** A fleet's access becomes a file that can be reviewed, diffed and version-controlled. The intended use is that the file is templated from configuration-management inventory, where the addresses already live, so the document is generated rather than hand-maintained.
 
-**Performance.** A run costs one multicast-group scan, at most one tenant scan, at most one feed scan, and one account fetch per declared pass — against the current cost of one full access-pass scan per group listed. Writes are unchanged in number and kind, minus the ones the feed-coverage rule now skips.
+**Performance.** A run costs one multicast-group scan, at most one tenant scan, at most one feed scan, and one account fetch per declared pass — against the current cost of one full access-pass scan per group listed. Writes are unchanged in number and kind.
 
 **Existing commands.** Untouched. The per-instruction verbs remain, and are still the right tool for a one-off.
 

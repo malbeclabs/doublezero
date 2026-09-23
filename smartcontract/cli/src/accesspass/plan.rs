@@ -221,6 +221,9 @@ pub fn build_plan<C: CliCommand>(
 
     let mut plan = AccessPassPlan::default();
     let mut feeds: Option<HashMap<Pubkey, doublezero_sdk::Feed>> = None;
+    // Pass PDA -> the first entry that resolved to it and the access it declared.
+    type WantKey = (BTreeSet<String>, BTreeSet<String>, Option<String>);
+    let mut by_pass: HashMap<Pubkey, (Ipv4Addr, WantKey)> = HashMap::new();
 
     for entry in desired {
         let Some((pass_pk, pass)) = client.get_accesspass(GetAccessPassCommand {
@@ -260,28 +263,41 @@ pub fn build_plan<C: CliCommand>(
         let want_pub: BTreeSet<&str> = entry.publish.iter().map(String::as_str).collect();
         let want_sub: BTreeSet<&str> = entry.subscribe.iter().map(String::as_str).collect();
 
-        // A group leaving both allowlists at once cannot be revoked safely. The host's detach
-        // verbs send the role being KEPT as desired state, and the program authorizes every
-        // `true` against these allowlists — so once both entries are gone, `multicast unpublish`
-        // asks for subscriber=true and `multicast unsubscribe` asks for publisher=true, and
-        // neither is allowlisted any more. The roles are then stranded on the User with no legal
-        // write to remove them. Detach the host first, then revoke.
-        let dual_revoke: Vec<&str> = have_pub
-            .difference(&want_pub)
-            .filter(|code| have_sub.difference(&want_sub).any(|s| s == *code))
-            .copied()
-            .collect();
-        if !dual_revoke.is_empty() {
-            plan.blocked.push(BlockedItem {
-                client_ip: entry.client_ip,
-                user_payer: entry.user_payer,
-                reason: format!(
-                    "{} would leave both allowlists at once; detach the host \
-                     (`doublezero multicast unpublish` / `unsubscribe`) before revoking both roles",
-                    dual_revoke.join(", ")
-                ),
-            });
-            continue;
+        // Two entries can resolve to one account: a pass stored at 0.0.0.0 serves every client
+        // IP, so distinct declared addresses land on the same PDA. The allowlists live on that
+        // one account, so two entries asking for different groups are not two grants but one
+        // contradiction — each plans a revoke of what the other declared, and apply would flip
+        // the state on every run without ever converging. An identical declaration is merely
+        // redundant, so only a genuine disagreement is refused.
+        let want_key = (
+            want_pub
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<BTreeSet<String>>(),
+            want_sub
+                .iter()
+                .map(|s| s.to_string())
+                .collect::<BTreeSet<String>>(),
+            entry.ibrl.clone(),
+        );
+        match by_pass.get(&pass_pk) {
+            Some((first_ip, seen)) if *seen != want_key => {
+                plan.blocked.push(BlockedItem {
+                    client_ip: entry.client_ip,
+                    user_payer: entry.user_payer,
+                    reason: format!(
+                        "resolves to the same access pass ({pass_pk}) as {first_ip}, which \
+                         declares different access; one account cannot hold both — give each \
+                         host its own pass, or declare the same access for both"
+                    ),
+                });
+                continue;
+            }
+            // Same pass, same declaration: the first entry already planned every write.
+            Some(_) => continue,
+            None => {
+                by_pass.insert(pass_pk, (entry.client_ip, want_key));
+            }
         }
 
         // The pass admits one tenant, so the grant is its first entry.
@@ -321,22 +337,23 @@ pub fn build_plan<C: CliCommand>(
             });
         }
 
+        let mut feed_covered: Vec<String> = Vec::new();
         for (role, want, have) in [
             (Role::Publisher, &want_pub, &have_pub),
             (Role::Subscriber, &want_sub, &have_sub),
         ] {
             for code in want.difference(have) {
-                // A feed already grants subscribe on its groups in its own metro, so granting it
-                // again spends a transaction and changes nothing. Publisher is never feed-covered.
+                // A seated feed is NOT a substitute for the subscriber allowlist, so it does not
+                // suppress this write. It authorizes a join on the connect path only
+                // (`CreateSubscribeUser`, and there only for the feed's own metro);
+                // `UpdateMulticastGroupRoles` — what `doublezero multicast subscribe` sends once
+                // the user exists — checks the allowlist for every role being gained, whatever
+                // the pass type. Suppressing the entry here left the host refused at subscribe
+                // time while the document reported itself converged. The coverage is still worth
+                // naming, so it becomes a warning below rather than a skipped write.
                 if role == Role::Subscriber {
                     if let Some(feed_code) = feed_granted.get(*code) {
-                        plan.satisfied.push(SatisfiedGrant {
-                            client_ip: entry.client_ip,
-                            group: (*code).to_string(),
-                            role,
-                            source: format!("feed {feed_code}"),
-                        });
-                        continue;
+                        feed_covered.push(format!("{code} (feed {feed_code})"));
                     }
                 }
                 plan.changes.push(PlannedChange {
@@ -369,6 +386,16 @@ pub fn build_plan<C: CliCommand>(
                 });
             }
         }
+
+        if !feed_covered.is_empty() {
+            plan.warnings.push(format!(
+                "{}: {} already joinable via a seated feed at connect time; the subscriber \
+                 allowlist is written anyway, because feed coverage does not authorize \
+                 `doublezero multicast subscribe` and holds only in the feed's own metro",
+                entry.client_ip,
+                feed_covered.join(", ")
+            ));
+        }
     }
 
     Ok(plan)
@@ -387,7 +414,10 @@ fn allowlist_codes<'a>(
         .collect()
 }
 
-/// Group code -> the feed that grants subscribe on it, for the feeds seated on this pass.
+/// Group code -> a feed seated on this pass that carries it.
+///
+/// Reported, never acted on: a feed authorizes a join only at connect and only in its own metro,
+/// so it cannot stand in for a subscriber allowlist entry. See the call site.
 fn feed_granted_groups<'a>(
     pass: &AccessPass,
     feeds: Option<&HashMap<Pubkey, doublezero_sdk::Feed>>,
@@ -767,7 +797,7 @@ mod tests {
     }
 
     #[test]
-    fn a_feed_granted_subscribe_is_satisfied_not_granted() {
+    fn a_feed_granted_subscribe_is_still_written_to_the_allowlist() {
         let mut client = create_test_client();
         let payer = Pubkey::new_unique();
         let by_code = with_groups(&mut client, &["g-feed"]);
@@ -809,14 +839,28 @@ mod tests {
 
         let plan = build_plan(&client, &desired(payer, &["g-feed"], &["g-feed"])).unwrap();
 
-        // Subscribe is already covered by the feed, so no transaction for it...
+        // The feed covers this group, but only for a connect in the feed's own metro.
+        // `doublezero multicast subscribe` goes through `UpdateMulticastGroupRoles`, which
+        // checks the subscriber allowlist for every pass type, so the entry must be written or
+        // the host is refused while the document reports itself converged.
+        assert_eq!(plan.grants(), 2, "{:?}", plan.changes);
         assert!(plan
-            .satisfied
+            .changes
             .iter()
-            .any(|s| s.role == Role::Subscriber && s.source == "feed example-feed"));
-        // ...but a feed grants subscribe only, so publish is still a real gap.
-        assert_eq!(plan.grants(), 1);
-        assert_eq!(plan.changes[0].role, Role::Publisher);
+            .any(|c| c.role == Role::Subscriber && c.op == Op::Grant));
+        assert!(plan
+            .changes
+            .iter()
+            .any(|c| c.role == Role::Publisher && c.op == Op::Grant));
+        assert!(
+            !plan.satisfied.iter().any(|s| s.source.starts_with("feed ")),
+            "feed coverage must not report a grant as satisfied: {:?}",
+            plan.satisfied
+        );
+        // The coverage is still worth telling the operator about, so it becomes a warning.
+        let warning = plan.warnings.join(" ");
+        assert!(warning.contains("example-feed"), "{warning}");
+        assert!(warning.contains("g-feed"), "{warning}");
     }
 
     #[test]
@@ -834,7 +878,7 @@ mod tests {
     }
 
     #[test]
-    fn revoking_both_roles_of_one_group_is_blocked() {
+    fn revoking_both_roles_of_one_group_is_planned() {
         let mut client = create_test_client();
         let payer = Pubkey::new_unique();
         let by_code = with_groups(&mut client, &["g-both"]);
@@ -849,16 +893,94 @@ mod tests {
             .expect_get_accesspass()
             .returning(move |_| Ok(Some((Pubkey::new_unique(), existing.clone()))));
 
-        // The document declares nothing, so g-both would leave both allowlists at once.
+        // The document declares nothing, so g-both leaves both allowlists at once. This was
+        // refused on the theory that the host's detach verbs would then be unauthorized, but
+        // #4302 made `check_mgroup_allowlists` authorize only roles being GAINED — a role the
+        // user already holds is not re-checked, so the detach is a legal write and the refusal
+        // was blocking a document that works.
         let plan = build_plan(&client, &desired(payer, &[], &[])).unwrap();
 
+        assert!(plan.blocked.is_empty(), "{:?}", plan.blocked);
+        assert_eq!(plan.changes.len(), 2, "{:?}", plan.changes);
+        assert!(plan.changes.iter().all(|c| c.op == Op::Revoke));
+        assert!(plan.changes.iter().any(|c| c.role == Role::Publisher));
+        assert!(plan.changes.iter().any(|c| c.role == Role::Subscriber));
+    }
+
+    /// Two entries whose addresses both resolve to one shared `0.0.0.0` pass. The allowlists live
+    /// on that single account, so divergent declarations never converge: each run would revoke
+    /// what the other asked for.
+    #[test]
+    fn two_entries_sharing_one_pass_with_different_access_are_blocked() {
+        let mut client = create_test_client();
+        let payer = Pubkey::new_unique();
+        let by_code = with_groups(&mut client, &["g-a", "g-b"]);
+
+        let shared_pk = Pubkey::new_unique();
+        let shared = pass(Ipv4Addr::UNSPECIFIED, payer, vec![], vec![]);
+        client
+            .expect_get_accesspass()
+            .returning(move |_| Ok(Some((shared_pk, shared.clone()))));
+        let _ = by_code;
+
+        let desired = vec![
+            DesiredAccessPass {
+                client_ip: IP.into(),
+                user_payer: payer,
+                ibrl: None,
+                publish: vec![],
+                subscribe: vec!["g-a".to_string()],
+            },
+            DesiredAccessPass {
+                client_ip: Ipv4Addr::new(203, 0, 113, 11),
+                user_payer: payer,
+                ibrl: None,
+                publish: vec![],
+                subscribe: vec!["g-b".to_string()],
+            },
+        ];
+        let plan = build_plan(&client, &desired).unwrap();
+
+        assert_eq!(plan.blocked.len(), 1, "{:?}", plan.blocked);
         assert!(
-            plan.is_empty(),
-            "no writes may be planned: {:?}",
-            plan.changes
+            plan.blocked[0].reason.contains("same access pass"),
+            "{}",
+            plan.blocked[0].reason
         );
-        assert_eq!(plan.blocked.len(), 1);
-        assert!(plan.blocked[0].reason.contains("both allowlists"));
+        // Only the first entry's write is planned; the second is refused rather than fighting it.
+        assert_eq!(plan.changes.len(), 1, "{:?}", plan.changes);
+        assert_eq!(plan.changes[0].group, "g-a");
+    }
+
+    /// The same collision, but the two entries agree. That is redundant, not contradictory, so it
+    /// is planned once rather than refused — and never twice, which would send a duplicate write.
+    #[test]
+    fn two_entries_sharing_one_pass_with_the_same_access_plan_once() {
+        let mut client = create_test_client();
+        let payer = Pubkey::new_unique();
+        with_groups(&mut client, &["g-a"]);
+
+        let shared_pk = Pubkey::new_unique();
+        let shared = pass(Ipv4Addr::UNSPECIFIED, payer, vec![], vec![]);
+        client
+            .expect_get_accesspass()
+            .returning(move |_| Ok(Some((shared_pk, shared.clone()))));
+
+        let entry = |ip: Ipv4Addr| DesiredAccessPass {
+            client_ip: ip,
+            user_payer: payer,
+            ibrl: None,
+            publish: vec![],
+            subscribe: vec!["g-a".to_string()],
+        };
+        let plan = build_plan(
+            &client,
+            &[entry(IP.into()), entry(Ipv4Addr::new(203, 0, 113, 11))],
+        )
+        .unwrap();
+
+        assert!(plan.blocked.is_empty(), "{:?}", plan.blocked);
+        assert_eq!(plan.changes.len(), 1, "{:?}", plan.changes);
     }
 
     #[test]

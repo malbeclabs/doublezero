@@ -49,6 +49,9 @@ pub struct ApplyAccessPassCliCommand {
     /// Skip the confirmation prompt
     #[arg(long, alias = "force", default_value_t = false)]
     pub auto_approve: bool,
+    /// Apply the changes that are not blocked, instead of refusing the whole run
+    #[arg(long, default_value_t = false)]
+    pub allow_blocked: bool,
     /// Also list the grants that are already satisfied
     #[arg(long, default_value_t = false)]
     pub verbose: bool,
@@ -140,6 +143,21 @@ impl ApplyAccessPassCliCommand {
             return blocked_result(&plan);
         }
 
+        // A plan the tool cannot fully make is refused before anything is sent, the way
+        // `terraform apply` refuses rather than converging the valid subset. Applying the good
+        // part leaves an exit code no CI job can read: non-zero would mean both "nothing ran"
+        // and "nine of ten landed". `--allow-blocked` opts into the subset deliberately.
+        if !plan.blocked.is_empty() && !self.allow_blocked {
+            if self.json {
+                emit_json(out, &plan, &[], &[])?;
+            }
+            eyre::bail!(
+                "{} declared access pass(es) could not be reconciled; nothing was sent. \
+                 Fix the blocked items above, or pass --allow-blocked to apply the rest",
+                plan.blocked.len()
+            );
+        }
+
         if plan.is_empty() {
             if self.json {
                 emit_json(out, &plan, &[], &[])?;
@@ -154,7 +172,10 @@ impl ApplyAccessPassCliCommand {
             input.read_line(&mut answer)?;
             if !matches!(answer.trim().to_lowercase().as_str(), "y" | "yes") {
                 writeln!(out, "Aborted.")?;
-                return Ok(());
+                // Reachable with blocked items only under --allow-blocked; answering `n` then
+                // exits non-zero like every other blocked path, rather than disagreeing with
+                // the `y` answer purely because nothing was sent.
+                return blocked_result(&plan);
             }
             writeln!(out)?;
         }
@@ -326,6 +347,24 @@ fn send_ibrl<C: CliCommand>(client: &C, change: &IbrlChange) -> eyre::Result<Str
             )
         })?;
 
+    // Clearing a tenant re-sends the pass's stored epoch, and `SetAccessPassCommand` rejects a
+    // finite one that has already elapsed. That made IBRL impossible to revoke from an expired
+    // pass: the run failed on a value the operator never mentioned, on a write whose whole
+    // purpose was to take a grant away. An elapsed epoch is replaced with 0 — "no epoch
+    // defined", which blocks every unicast type, so the end state is what removing the tenant
+    // intends anyway. An epoch still in the future is preserved untouched, since zeroing it
+    // would revoke more than the document asked for.
+    let last_access_epoch = if change.to.is_some() {
+        u64::MAX
+    } else {
+        let stored = pass.last_access_epoch;
+        if stored == 0 || stored == u64::MAX || stored >= client.get_epoch()? {
+            stored
+        } else {
+            0
+        }
+    };
+
     // Address the pass that actually holds the grant. A shared pass is stored at 0.0.0.0, and
     // `set` seeds the PDA from this value — sending the concrete IP would write a different
     // account than the one the plan described.
@@ -333,11 +372,7 @@ fn send_ibrl<C: CliCommand>(client: &C, change: &IbrlChange) -> eyre::Result<Str
         accesspass_type: pass.accesspass_type.clone(),
         client_ip: pass.client_ip,
         user_payer: pass.user_payer,
-        last_access_epoch: if change.to.is_some() {
-            u64::MAX
-        } else {
-            pass.last_access_epoch
-        },
+        last_access_epoch,
         allow_multiple_ip: pass.allow_multiple_ip(),
         tenant: change.to_pk,
         max_unicast_users: pass.max_unicast_users,
@@ -510,6 +545,7 @@ mod tests {
                 file: file.path().to_path_buf(),
                 dry_run: false,
                 auto_approve: false,
+                allow_blocked: false,
                 verbose: false,
                 json: false,
             }
@@ -547,6 +583,7 @@ mod tests {
                 file: file.path().to_path_buf(),
                 dry_run: false,
                 auto_approve: false,
+                allow_blocked: false,
                 verbose: false,
                 json: false,
             }
@@ -574,6 +611,7 @@ mod tests {
                 file: file.path().to_path_buf(),
                 dry_run: true,
                 auto_approve: false,
+                allow_blocked: false,
                 verbose: false,
                 json: false,
             }
@@ -604,6 +642,7 @@ mod tests {
                 file: file.path().to_path_buf(),
                 dry_run: false,
                 auto_approve: true,
+                allow_blocked: false,
                 verbose: false,
                 json: true,
             }
@@ -638,6 +677,7 @@ mod tests {
                 file: file.path().to_path_buf(),
                 dry_run: false,
                 auto_approve: true,
+                allow_blocked: false,
                 verbose: false,
                 json: true,
             }
@@ -669,6 +709,7 @@ mod tests {
                 file: file.path().to_path_buf(),
                 dry_run: false,
                 auto_approve: false,
+                allow_blocked: false,
                 verbose: false,
                 json: true,
             }
@@ -788,6 +829,7 @@ mod tests {
                 file: file.path().to_path_buf(),
                 dry_run: false,
                 auto_approve: true,
+                allow_blocked: false,
                 verbose: false,
                 json: false,
             }
@@ -822,6 +864,7 @@ mod tests {
                 file: file.path().to_path_buf(),
                 dry_run: false,
                 auto_approve: true,
+                allow_blocked: false,
                 verbose: false,
                 json: false,
             }
@@ -855,6 +898,7 @@ mod tests {
                 file: file.path().to_path_buf(),
                 dry_run: true,
                 auto_approve: false,
+                allow_blocked: false,
                 verbose: false,
                 json: false,
             }
@@ -887,6 +931,7 @@ mod tests {
                 file: file.path().to_path_buf(),
                 dry_run: true,
                 auto_approve: false,
+                allow_blocked: false,
                 verbose: false,
                 json: true,
             }
@@ -917,6 +962,7 @@ mod tests {
                 file: file.path().to_path_buf(),
                 dry_run: true,
                 auto_approve: false,
+                allow_blocked: false,
                 verbose: false,
                 json: true,
             }
@@ -1010,6 +1056,7 @@ mod tests {
                 file: file.path().to_path_buf(),
                 dry_run: false,
                 auto_approve: true,
+                allow_blocked: false,
                 verbose: false,
                 json: false,
             }
@@ -1025,5 +1072,253 @@ mod tests {
         let text = String::from_utf8(out).unwrap();
         assert!(text.contains("0 applied, 1 failed"), "{text}");
         assert!(err.to_string().contains("1 of 1 changes failed"), "{err}");
+    }
+
+    /// Build a client holding one pass that carries `tenant_pk` and the given epoch. The
+    /// document omits `ibrl`, so the plan is "clear the tenant". The current epoch is 10, from
+    /// `create_test_client`; mockall honors the first expectation, so it cannot be overridden
+    /// here, and the epochs below are chosen relative to it.
+    #[cfg(test)]
+    fn clearing_tenant_client(
+        stored_epoch: u64,
+    ) -> (
+        crate::doublezerocommand::MockCliCommand,
+        Pubkey,
+        tempfile::NamedTempFile,
+    ) {
+        use doublezero_serviceability::state::tenant::{
+            Tenant, TenantBillingConfig, TenantPaymentStatus,
+        };
+
+        let mut client = create_test_client();
+        let payer = Pubkey::new_unique();
+        let tenant_pk = Pubkey::new_unique();
+
+        client.expect_get_payer().returning(move || payer);
+        client.expect_check_requirements().returning(|_| Ok(()));
+        client
+            .expect_list_multicastgroup()
+            .returning(|_| Ok(HashMap::new()));
+        client.expect_list_tenant().returning(move |_| {
+            Ok(HashMap::from([(
+                tenant_pk,
+                Tenant {
+                    account_type: AccountType::Tenant,
+                    owner: Pubkey::new_unique(),
+                    bump_seed: 0,
+                    code: "solana".to_string(),
+                    vrf_id: 100,
+                    reference_count: 1,
+                    administrators: vec![],
+                    token_account: Pubkey::default(),
+                    payment_status: TenantPaymentStatus::Paid,
+                    metro_routing: false,
+                    route_liveness: false,
+                    billing: TenantBillingConfig::default(),
+                    include_topologies: vec![],
+                },
+            )]))
+        });
+
+        let stored = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 255,
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: IP,
+            user_payer: payer,
+            last_access_epoch: stored_epoch,
+            connection_count: 0,
+            status: AccessPassStatus::Connected,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![tenant_pk],
+            owner: Pubkey::new_unique(),
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
+        };
+        client
+            .expect_get_accesspass()
+            .returning(move |_| Ok(Some((Pubkey::new_unique(), stored.clone()))));
+
+        // No `ibrl` key: the declared state is "no tenant".
+        let doc = format!("access_passes:\n  - client_ip: {IP}\n    user_payer: {payer}\n");
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(&mut file, doc.as_bytes()).unwrap();
+        (client, payer, file)
+    }
+
+    fn run_apply(
+        client: &crate::doublezerocommand::MockCliCommand,
+        file: &tempfile::NamedTempFile,
+        allow_blocked: bool,
+    ) -> (String, eyre::Result<()>) {
+        let mut out = Vec::new();
+        let mut input = Cursor::new(Vec::new());
+        let res = block_on(
+            ApplyAccessPassCliCommand {
+                file: file.path().to_path_buf(),
+                dry_run: false,
+                auto_approve: true,
+                allow_blocked,
+                verbose: false,
+                json: false,
+            }
+            .execute(
+                &cli_context_default_for_tests(),
+                client,
+                &mut out,
+                &mut input,
+            ),
+        );
+        (String::from_utf8(out).unwrap(), res)
+    }
+
+    /// Re-sending an elapsed epoch is rejected by `SetAccessPassCommand`'s own guard, which made
+    /// IBRL impossible to revoke from an expired pass — the run failed on a value the operator
+    /// never mentioned, on a write meant to take a grant away.
+    #[test]
+    fn clearing_a_tenant_on_an_expired_pass_sends_epoch_zero() {
+        use doublezero_sdk::commands::accesspass::set::SetAccessPassCommand;
+
+        let (mut client, _payer, file) = clearing_tenant_client(5); // elapsed: current epoch is 10
+        client
+            .expect_set_accesspass()
+            .withf(|cmd: &SetAccessPassCommand| {
+                cmd.tenant == Pubkey::default() && cmd.last_access_epoch == 0
+            })
+            .times(1)
+            .returning(move |_| Ok(signature()));
+
+        let (text, res) = run_apply(&client, &file, false);
+        assert!(res.is_ok(), "{:?}", res.unwrap_err());
+        assert!(text.contains("1 applied, 0 failed"), "{text}");
+    }
+
+    /// The clamp is narrow: an epoch still in the future is preserved, because zeroing it would
+    /// revoke unicast access the document never asked to remove.
+    #[test]
+    fn clearing_a_tenant_preserves_an_epoch_still_in_the_future() {
+        use doublezero_sdk::commands::accesspass::set::SetAccessPassCommand;
+
+        let (mut client, _payer, file) = clearing_tenant_client(500); // still ahead of epoch 10
+        client
+            .expect_set_accesspass()
+            .withf(|cmd: &SetAccessPassCommand| {
+                cmd.tenant == Pubkey::default() && cmd.last_access_epoch == 500
+            })
+            .times(1)
+            .returning(move |_| Ok(signature()));
+
+        let (_text, res) = run_apply(&client, &file, false);
+        assert!(res.is_ok(), "{:?}", res.unwrap_err());
+    }
+
+    /// `terraform apply` refuses a plan it cannot fully make rather than converging the valid
+    /// subset, and the exit code has to mean one thing to a CI job.
+    #[test]
+    fn a_blocked_plan_is_refused_before_anything_is_sent() {
+        let mut client = create_test_client();
+        let payer = Pubkey::new_unique();
+        client.expect_get_payer().returning(move || payer);
+        client.expect_check_requirements().returning(|_| Ok(()));
+        client
+            .expect_list_multicastgroup()
+            .returning(|_| Ok(HashMap::new()));
+        // No pass at this PDA, so the entry is blocked.
+        client.expect_get_accesspass().returning(|_| Ok(None));
+        // Any write at all is a failure of this test: mockall panics on an unexpected call.
+
+        // No `ibrl`: a missing pass is blocked either way, and declaring a tenant would make
+        // the planner read the tenant list.
+        let doc = format!("access_passes:\n  - client_ip: {IP}\n    user_payer: {payer}\n");
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(&mut file, doc.as_bytes()).unwrap();
+
+        let (text, res) = run_apply(&client, &file, false);
+        let err = res.unwrap_err();
+        assert!(err.to_string().contains("nothing was sent"), "{err}");
+        assert!(err.to_string().contains("--allow-blocked"), "{err}");
+        // The blocked item is still shown; the refusal is added to the output, not substituted.
+        assert!(text.contains("no access pass"), "{text}");
+    }
+
+    /// The escape hatch: an operator who genuinely wants the valid subset says so, and the run
+    /// still exits non-zero because the document was not fully reconciled.
+    #[test]
+    fn allow_blocked_applies_the_valid_subset_and_still_exits_non_zero() {
+        use doublezero_sdk::commands::multicastgroup::allowlist::subscriber::add::AddMulticastGroupSubAllowlistCommand;
+
+        let mut client = create_test_client();
+        let payer = Pubkey::new_unique();
+        let group_pk = Pubkey::new_unique();
+        const MISSING: Ipv4Addr = Ipv4Addr::new(203, 0, 113, 99);
+
+        client.expect_get_payer().returning(move || payer);
+        client.expect_check_requirements().returning(|_| Ok(()));
+        client.expect_list_multicastgroup().returning(move |_| {
+            Ok(HashMap::from([(
+                group_pk,
+                MulticastGroup {
+                    account_type: AccountType::MulticastGroup,
+                    index: 1,
+                    bump_seed: 1,
+                    owner: Pubkey::new_unique(),
+                    tenant_pk: Pubkey::default(),
+                    multicast_ip: [239, 0, 0, 1].into(),
+                    max_bandwidth: 1_000_000_000,
+                    status: MulticastGroupStatus::Activated,
+                    code: "g1".to_string(),
+                    publisher_count: 0,
+                    subscriber_count: 0,
+                },
+            )]))
+        });
+
+        let pass = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 255,
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: IP,
+            user_payer: payer,
+            last_access_epoch: u64::MAX,
+            connection_count: 0,
+            status: AccessPassStatus::Connected,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
+            owner: Pubkey::new_unique(),
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
+        };
+        // One entry has a pass, the other does not and is therefore blocked.
+        client.expect_get_accesspass().returning(move |cmd| {
+            if cmd.client_ip == IP {
+                Ok(Some((Pubkey::new_unique(), pass.clone())))
+            } else {
+                Ok(None)
+            }
+        });
+        client
+            .expect_add_multicastgroup_sub_allowlist()
+            .withf(|cmd: &AddMulticastGroupSubAllowlistCommand| cmd.client_ip == IP)
+            .times(1)
+            .returning(move |_| Ok(signature()));
+
+        let doc = format!(
+            "defaults:\n  user_payer: {payer}\naccess_passes:\n  - client_ip: {IP}\n    multicast:\n      subscribe: [g1]\n  - client_ip: {MISSING}\n    multicast:\n      subscribe: [g1]\n"
+        );
+        let mut file = tempfile::NamedTempFile::new().unwrap();
+        std::io::Write::write_all(&mut file, doc.as_bytes()).unwrap();
+
+        let (text, res) = run_apply(&client, &file, true);
+        assert!(text.contains("1 applied, 0 failed"), "{text}");
+        let err = res.unwrap_err();
+        assert!(err.to_string().contains("could not be reconciled"), "{err}");
     }
 }

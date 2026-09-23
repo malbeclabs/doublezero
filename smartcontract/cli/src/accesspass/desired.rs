@@ -168,6 +168,22 @@ impl AccessPassDocument {
                 );
             }
 
+            // Group codes get the same up-front check the tenant code gets. Left to the
+            // planner, a blank one surfaces much later and much vaguer, as
+            // `unknown multicast group code(s): ` with an empty name and no entry index.
+            for (list, codes) in [
+                ("publish", &entry.multicast.publish),
+                ("subscribe", &entry.multicast.subscribe),
+            ] {
+                if codes.iter().any(|code| code.trim().is_empty()) {
+                    eyre::bail!(
+                        "access_passes[{index}] ({}) has an empty multicast {list} code; \
+                         remove the entry to declare no group",
+                        entry.client_ip
+                    );
+                }
+            }
+
             resolved.push(DesiredAccessPass {
                 client_ip: entry.client_ip,
                 user_payer,
@@ -194,6 +210,25 @@ fn dedupe(codes: &[String]) -> Vec<String> {
 mod tests {
     use super::{AccessPassDocument, DesiredAccessPass};
     use solana_sdk::pubkey::Pubkey;
+
+    /// A blank group code reached the planner and surfaced there as
+    /// `unknown multicast group code(s):` with an empty name and no entry index.
+    #[test]
+    fn an_empty_multicast_group_code_is_rejected_with_its_entry() {
+        let payer = Pubkey::new_unique();
+        for list in ["publish", "subscribe"] {
+            let raw = format!(
+                "access_passes:\n  - client_ip: 203.0.113.10\n    user_payer: {payer}\n    multicast:\n      {list}: [\"\"]\n"
+            );
+            let err = AccessPassDocument::from_yaml(&raw)
+                .unwrap()
+                .resolve(payer)
+                .unwrap_err();
+            let msg = err.to_string();
+            assert!(msg.contains("access_passes[0]"), "{msg}");
+            assert!(msg.contains(list), "{msg}");
+        }
+    }
 
     #[test]
     fn parses_a_document_and_applies_the_default_payer() {

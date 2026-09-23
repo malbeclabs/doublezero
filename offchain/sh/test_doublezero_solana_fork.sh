@@ -11,6 +11,11 @@ FORK_WAIT_SECONDS=180
 FORK_LOG=solana-fork.log
 FORK_PID_FILE=solana-fork.pid
 
+# The caller writes the pid file; nothing reads it once this script is done, and
+# a stale one left behind would make the next local run read a dead pid and
+# report the loader as crashed. Clear it however we exit.
+trap 'rm -f "$FORK_PID_FILE"' EXIT
+
 for _ in $(seq 1 $((FORK_WAIT_SECONDS / 2))); do
     if solana cluster-version -u l > /dev/null 2>&1; then
         echo "Solana fork is ready."
@@ -18,7 +23,7 @@ for _ in $(seq 1 $((FORK_WAIT_SECONDS / 2))); do
     fi
     # A loader that died is reported now rather than after the whole window: the
     # timeout alone cannot distinguish a crash from a slow start.
-    if [ -f "$FORK_PID_FILE" ] && ! kill -0 "$(cat "$FORK_PID_FILE")" 2>/dev/null; then
+    if [ -s "$FORK_PID_FILE" ] && ! kill -0 "$(cat "$FORK_PID_FILE")" 2>/dev/null; then
         echo "Solana fork loader exited before becoming ready." >&2
         if [ -f "$FORK_LOG" ]; then
             tail -50 "$FORK_LOG" >&2
@@ -251,7 +256,7 @@ echo
 # generate the keypair BEFORE starting the fork loader and pass its pubkey:
 #
 #   solana-keygen new --silent --no-bip39-passphrase -o manager_keypair.json
-#   cargo run --bin doublezero-solana-fork -- -um --reset \
+#   cargo run -p doublezero-solana-fork-cli --bin doublezero-solana-fork -- -um --reset \
 #       --synthetic-validator-client-rewards-manager $(solana address -k manager_keypair.json)
 #   bash sh/test_doublezero_solana_fork.sh
 #
@@ -323,7 +328,7 @@ else
     echo "Skipping validator-client claim commands: $MANAGER_KEY_PATH not found."
     echo "To exercise this block, generate the keypair before starting the fork loader:"
     echo "  solana-keygen new --silent --no-bip39-passphrase -o $MANAGER_KEY_PATH"
-    echo "  cargo run --bin doublezero-solana-fork -- -um --reset --synthetic-validator-client-rewards-manager \$(solana address -k $MANAGER_KEY_PATH)"
+    echo "  cargo run -p doublezero-solana-fork-cli --bin doublezero-solana-fork -- -um --reset --synthetic-validator-client-rewards-manager \$(solana address -k $MANAGER_KEY_PATH)"
     echo
 fi
 

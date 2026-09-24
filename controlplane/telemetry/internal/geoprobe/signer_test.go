@@ -438,3 +438,63 @@ func TestNewOffsetSigner_ZeroSenderPubkey(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "sender pubkey must not be zero")
 }
+
+// An unsigned offset is what an attacker sends when they cannot sign at all: the
+// all-zero pubkey verifies on ~1 message in 4 and the identity encoding on every
+// one. See VerifyOffset for why rejecting a zero S covers both.
+func TestVerifyOffset_SmallOrderPubkeyForgery(t *testing.T) {
+	t.Parallel()
+
+	identity := [32]byte{1} // 0x01||00*31, the identity point encoding
+
+	tests := []struct {
+		name            string
+		authorityPubkey [32]byte
+		signature       [64]byte
+	}{
+		// Slot 2 is pinned because acceptance of the all-zero pair is
+		// message-dependent; at slot 1 the math rejects it and the test would
+		// pass without the guard.
+		{"all-zero pubkey and signature", [32]byte{}, [64]byte{}},
+		{"identity pubkey, R=identity S=0", identity, [64]byte{1}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			offset := &LocationOffset{
+				Version:         LocationOffsetVersion,
+				AuthorityPubkey: tt.authorityPubkey,
+				Signature:       tt.signature,
+				MeasurementSlot: 2,
+				Lat:             1.0,
+				Lng:             2.0,
+				MeasuredRttNs:   1000,
+				RttNs:           1000,
+			}
+
+			require.ErrorContains(t, VerifyOffset(offset), "signature scalar is zero")
+			require.ErrorContains(t, VerifyOffsetChain(offset), "signature scalar is zero")
+		})
+	}
+}
+
+func TestVerifyOffset_RealSignatureStillVerifies(t *testing.T) {
+	t.Parallel()
+
+	keypair := solana.NewWallet().PrivateKey
+	signer, err := NewOffsetSigner(keypair, solana.NewWallet().PublicKey())
+	require.NoError(t, err)
+
+	offset := &LocationOffset{
+		Version:         LocationOffsetVersion,
+		MeasurementSlot: 2,
+		Lat:             1.0,
+		Lng:             2.0,
+		MeasuredRttNs:   1000,
+		RttNs:           1000,
+	}
+	require.NoError(t, signer.SignOffset(offset))
+	require.NoError(t, VerifyOffset(offset))
+}

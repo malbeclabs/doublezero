@@ -43,6 +43,8 @@ const (
 	RejectUnknownParent    = "unknown_parent"
 	RejectWrongAuthority   = "wrong_authority"
 	RejectInvalidSignature = "invalid_signature"
+	RejectSlotOutOfWindow  = "slot_out_of_window"
+	RejectSlotUnavailable  = "slot_unavailable"
 )
 
 // discoveryBuckets covers RPC-heavy discovery operations which commonly

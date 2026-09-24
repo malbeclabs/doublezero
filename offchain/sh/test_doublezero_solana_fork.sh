@@ -4,20 +4,11 @@ GENESIS_DZ_EPOCH=31
 
 set -eu
 
-# Wait for Solana fork to start. Only try for 60 seconds.
-for i in {1..60}; do
-    if solana cluster-version -u l > /dev/null 2>&1; then
-        echo "Solana fork is ready."
-        break
-    fi
-        sleep 2
-done
-
-# If not ready after 60 seconds, bail out.
-if ! solana cluster-version -u l > /dev/null 2>&1; then
-    echo "Solana fork did not start within 60 seconds." >&2
-    exit 1
-fi
+# Wait for the Solana fork the caller started in the background. Shared with
+# test_validator_debt_fork.sh so the two cannot drift apart.
+# shellcheck source=lib/wait_for_fork.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/wait_for_fork.sh"
+wait_for_fork
 
 CLI_BIN=target/debug/doublezero-solana
 
@@ -234,7 +225,7 @@ echo
 # generate the keypair BEFORE starting the fork loader and pass its pubkey:
 #
 #   solana-keygen new --silent --no-bip39-passphrase -o manager_keypair.json
-#   cargo run --bin doublezero-solana-fork -- -um --reset \
+#   cargo run -p doublezero-solana-fork-cli --bin doublezero-solana-fork -- -um --reset \
 #       --synthetic-validator-client-rewards-manager $(solana address -k manager_keypair.json)
 #   bash sh/test_doublezero_solana_fork.sh
 #
@@ -306,7 +297,7 @@ else
     echo "Skipping validator-client claim commands: $MANAGER_KEY_PATH not found."
     echo "To exercise this block, generate the keypair before starting the fork loader:"
     echo "  solana-keygen new --silent --no-bip39-passphrase -o $MANAGER_KEY_PATH"
-    echo "  cargo run --bin doublezero-solana-fork -- -um --reset --synthetic-validator-client-rewards-manager \$(solana address -k $MANAGER_KEY_PATH)"
+    echo "  cargo run -p doublezero-solana-fork-cli --bin doublezero-solana-fork -- -um --reset --synthetic-validator-client-rewards-manager \$(solana address -k $MANAGER_KEY_PATH)"
     echo
 fi
 

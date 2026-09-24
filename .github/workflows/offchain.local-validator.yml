@@ -31,6 +31,16 @@ env:
 # `default-members = []`, so a bare `cargo build --bin X` selects nothing and
 # fails with "the workspace has no members". These commands came from a
 # repository whose workspace had no such restriction.
+#
+# The fork loader is compiled first and started from its built binary, never
+# with `cargo run`. Backgrounding `cargo run` puts the loader's own compile
+# behind whatever cargo holds the target/ lock, so on a cold cache it was still
+# waiting when the readiness window opened and expired.
+#
+# The remaining CLIs are then built *after* the loader is running, not before.
+# The loader's slow part is cloning accounts from mainnet-beta, which is
+# network-bound and needs no cargo lock, so it overlaps with that build instead
+# of sitting wholly inside the readiness window.
 
 jobs:
   test-doublezero-solana-fork:
@@ -54,10 +64,15 @@ jobs:
         run: solana-keygen new --silent --no-bip39-passphrase
       - name: Generate manager keypair for synthetic ValidatorClientRewards
         run: solana-keygen new --silent --no-bip39-passphrase -o manager_keypair.json
+      - name: Build the fork loader
+        run: cargo build -p doublezero-solana-fork-cli --bin doublezero-solana-fork
       - name: Start Solana mainnet-beta fork in background
         run: |
           MANAGER_PUBKEY=$(solana address -k manager_keypair.json)
-          cargo run -p doublezero-solana-fork-cli --bin doublezero-solana-fork -- -um --reset --synthetic-validator-client-rewards-manager "$MANAGER_PUBKEY" > /dev/null 2>&1 &
+          target/debug/doublezero-solana-fork -um --reset \
+            --synthetic-validator-client-rewards-manager "$MANAGER_PUBKEY" \
+            > solana-fork.log 2>&1 &
+          echo $! > solana-fork.pid
       - name: Build `doublezero-solana`
         run: cargo build -p doublezero-solana-cli --bin doublezero-solana
       - name: Run `doublezero-solana` tests
@@ -82,8 +97,13 @@ jobs:
           version: ${{ env.SOLANA_CLI }}
       - name: Generate ~/.config/solana/id.json
         run: solana-keygen new --silent --no-bip39-passphrase
+      - name: Build the fork loader
+        run: cargo build -p doublezero-solana-fork-cli --bin doublezero-solana-fork
       - name: Start Solana mainnet-beta fork in background
-        run: cargo run -p doublezero-solana-fork-cli --bin doublezero-solana-fork -- -um --reset --god-mode > /dev/null 2>&1 &
+        run: |
+          target/debug/doublezero-solana-fork -um --reset --god-mode \
+            > solana-fork.log 2>&1 &
+          echo $! > solana-fork.pid
       - name: Build the admin and validator-debt CLIs
         run: |
           cargo build \

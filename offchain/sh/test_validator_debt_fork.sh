@@ -5,20 +5,11 @@ MAINNET_BETA_DEBT_ACCOUNTANT_KEY=acLisxTpNkoctPZoqssyo58pcdnHzJyRFhod7Wxkz5a
 
 set -eu
 
-# Wait for Solana fork to start. Only try for 60 seconds.
-for i in {1..60}; do
-    if solana cluster-version -u l > /dev/null 2>&1; then
-        echo "Solana fork is ready."
-        break
-    fi
-        sleep 2
-done
-
-# If not ready after 60 seconds, bail out.
-if ! solana cluster-version -u l > /dev/null 2>&1; then
-    echo "Solana fork did not start within 60 seconds." >&2
-    exit 1
-fi
+# Wait for the Solana fork the caller started in the background. Shared with
+# test_doublezero_solana_fork.sh so the two cannot drift apart.
+# shellcheck source=lib/wait_for_fork.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/wait_for_fork.sh"
+wait_for_fork
 
 ### Fund the test wallet on the fork.
 echo "Airdropping SOL to test wallet..."

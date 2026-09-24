@@ -6,6 +6,7 @@ use crate::accesspass::{
     get::GetAccessPassCliCommand,
     list::ListAccessPassCliCommand,
     plan::PlanAccessPassCliCommand,
+    remove_feed::RemoveFeedAccessPassCliCommand,
     set::SetAccessPassCliCommand,
     user_balances::UserBalancesAccessPassCliCommand,
 };
@@ -49,4 +50,7 @@ pub enum AccessPassCommands {
     /// Clear the DZF-locked mark on an access pass
     #[clap()]
     DzfUnlock(DzfUnlockAccessPassCliCommand),
+    /// Remove one feed from an EdgeSeat access pass and unsubscribe its users
+    #[clap()]
+    RemoveFeed(RemoveFeedAccessPassCliCommand),
 }

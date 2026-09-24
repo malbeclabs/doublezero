@@ -26,13 +26,10 @@ use std::{collections::HashMap, io::Write, net::Ipv4Addr, str::FromStr};
 /// Requires `ACCESS_PASS_ADMIN`.
 #[derive(Args, Debug)]
 pub struct RemoveFeedAccessPassCliCommand {
-    /// Client IP address in IPv4 format (the pass's `client_ip`; omit for passes keyed on 0.0.0.0)
     #[arg(long)]
     pub client_ip: Option<Ipv4Addr>,
-    /// Payer of the access pass ("me" for the current keypair)
     #[arg(long)]
     pub user_payer: String,
-    /// Feed to remove: its pubkey, or its code if only one feed on the pass has that code
     #[arg(long)]
     pub feed: String,
 }
@@ -70,9 +67,6 @@ impl RemoveFeedAccessPassCliCommand {
 
         let feeds = client.list_feed(ListFeedCommand {})?;
         let feed_pk = resolve_seated_feed(&self.feed, seats, &feeds)?;
-        let removed_feed = feeds
-            .get(&feed_pk)
-            .ok_or_else(|| eyre::eyre!("feed {feed_pk} is not in the feed catalog"))?;
         let remaining: Vec<&FeedSeat> = seats.iter().filter(|s| s.feed_key != feed_pk).collect();
         let max_multicast_users = u16::try_from(
             remaining
@@ -82,7 +76,8 @@ impl RemoveFeedAccessPassCliCommand {
         )?;
 
         writeln!(out, "AccessPass PDA: {accesspass_pk}")?;
-        writeln!(out, "Removing feed {} ({feed_pk})", removed_feed.code)?;
+        let feed_name = feeds.get(&feed_pk).map_or("", |f| f.name.as_str());
+        writeln!(out, "Removing feed {feed_name} ({feed_pk})")?;
 
         let mut holders: Vec<Pubkey> = client
             .list_user(ListUserCommand {})?
@@ -167,17 +162,13 @@ fn resolve_seated_feed(
     let matches: Vec<Pubkey> = seats
         .iter()
         .map(|s| s.feed_key)
-        .filter(|feed_pk| {
-            feeds
-                .get(feed_pk)
-                .is_some_and(|f| f.code.eq_ignore_ascii_case(feed))
-        })
+        .filter(|feed_pk| feeds.get(feed_pk).is_some_and(|f| f.name == feed))
         .collect();
     match matches.as_slice() {
         [feed_pk] => Ok(*feed_pk),
-        [] => eyre::bail!("no feed with code {feed} is on the access pass"),
+        [] => eyre::bail!("no feed named {feed} is on the access pass"),
         _ => eyre::bail!(
-            "{} feeds with code {feed} are on the access pass; pass the feed pubkey instead",
+            "{} feeds named {feed} are on the access pass; pass the feed pubkey instead",
             matches.len()
         ),
     }
@@ -205,10 +196,12 @@ mod tests {
         }
     }
 
-    fn feed(code: &str) -> Feed {
+    fn feed(code: &str, name: &str) -> Feed {
         Feed {
             account_type: AccountType::Feed,
             code: code.to_string(),
+            name: name.to_string(),
+            exchange: Pubkey::new_unique(),
             ..Default::default()
         }
     }
@@ -236,19 +229,19 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_accesspass_remove_feed_keeps_the_other_feed() {
+    fn test_cli_accesspass_remove_feed_by_name_keeps_the_other_metro() {
         let mut client = create_test_client();
         let user_payer = Pubkey::new_unique();
         let accesspass_pk = Pubkey::new_unique();
-        let (trial_pk, paid_pk) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let (fra_pk, lon_pk) = (Pubkey::new_unique(), Pubkey::new_unique());
         let (holder_pk, other_owner_pk) = (Pubkey::new_unique(), Pubkey::new_unique());
-        let paid_seat = seat(paid_pk, 3);
+        let lon_seat = seat(lon_pk, 3);
 
         client
             .expect_check_requirements()
             .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
             .returning(|_| Ok(()));
-        let pass = edge_seat_pass(user_payer, vec![seat(trial_pk, 2), paid_seat.clone()]);
+        let pass = edge_seat_pass(user_payer, vec![seat(fra_pk, 2), lon_seat.clone()]);
         client
             .expect_get_accesspass_exact()
             .with(predicate::eq(GetExactAccessPassCommand {
@@ -258,8 +251,8 @@ mod tests {
             .returning(move |_| Ok(Some((accesspass_pk, pass.clone()))));
         client.expect_list_feed().returning(move |_| {
             Ok(HashMap::from([
-                (trial_pk, feed("trial")),
-                (paid_pk, feed("paid")),
+                (fra_pk, feed("solana-shreds-full", "Solana Shreds FRA")),
+                (lon_pk, feed("solana-shreds-full", "Solana Shreds LON")),
             ]))
         });
         client.expect_list_user().returning(move |_| {
@@ -267,7 +260,7 @@ mod tests {
                 account_type: AccountType::User,
                 owner: user_payer,
                 user_type: UserType::Multicast,
-                feed_pks: vec![trial_pk, paid_pk],
+                feed_pks: vec![fra_pk, lon_pk],
                 accesspass_pk,
                 ..Default::default()
             };
@@ -285,7 +278,7 @@ mod tests {
             .expect_unsubscribe_feed()
             .with(predicate::eq(UnsubscribeFeedCommand {
                 user_pk: holder_pk,
-                feed_pks: vec![trial_pk],
+                feed_pks: vec![fra_pk],
                 accesspass_pk: Some(accesspass_pk),
             }))
             .times(1)
@@ -310,12 +303,12 @@ mod tests {
                 client_ip: Ipv4Addr::UNSPECIFIED,
                 user_payer,
                 feeds: vec![FeedSeatProvision {
-                    feed_key: paid_pk,
-                    max_users: paid_seat.max_users,
-                    max_future_users: paid_seat.max_future_users,
-                    anniversary_day: paid_seat.anniversary_day,
-                    window_end: paid_seat.window_end,
-                    terminates_at: paid_seat.terminates_at,
+                    feed_key: lon_pk,
+                    max_users: lon_seat.max_users,
+                    max_future_users: lon_seat.max_future_users,
+                    anniversary_day: lon_seat.anniversary_day,
+                    window_end: lon_seat.window_end,
+                    terminates_at: lon_seat.terminates_at,
                 }],
             }))
             .times(1)
@@ -327,7 +320,7 @@ mod tests {
             RemoveFeedAccessPassCliCommand {
                 client_ip: None,
                 user_payer: user_payer.to_string(),
-                feed: "trial".to_string(),
+                feed: "Solana Shreds FRA".to_string(),
             }
             .execute(&ctx, &client, &mut output),
         )
@@ -348,7 +341,7 @@ mod tests {
             .returning(move |_| Ok(Some((Pubkey::new_unique(), pass.clone()))));
         client
             .expect_list_feed()
-            .returning(move |_| Ok(HashMap::from([(seated_pk, feed("seated"))])));
+            .returning(move |_| Ok(HashMap::from([(seated_pk, feed("seated", "Seated"))])));
 
         let ctx = cli_context_default_for_tests();
         let mut output = Vec::new();

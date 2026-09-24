@@ -98,6 +98,22 @@ impl<C: CliCommand + Sync> doublezero_daemon_cli::LedgerClient for LedgerAdapter
         self.client.get_epoch()
     }
 
+    fn resolve_accesspass(
+        &self,
+        client_ip: std::net::Ipv4Addr,
+        user_payer: solana_sdk::pubkey::Pubkey,
+    ) -> eyre::Result<Option<doublezero_serviceability::state::accesspass::AccessPass>> {
+        Ok(self
+            .client
+            .resolve_accesspass(
+                doublezero_sdk::commands::accesspass::get::ResolveAccessPassCommand {
+                    client_ip,
+                    user_payer,
+                },
+            )?
+            .map(|(_, accesspass)| accesspass))
+    }
+
     fn get_accesspass(
         &self,
         client_ip: std::net::Ipv4Addr,
@@ -107,22 +123,6 @@ impl<C: CliCommand + Sync> doublezero_daemon_cli::LedgerClient for LedgerAdapter
             .client
             .get_accesspass(
                 doublezero_sdk::commands::accesspass::get::GetAccessPassCommand {
-                    client_ip,
-                    user_payer,
-                },
-            )?
-            .map(|(_, accesspass)| accesspass))
-    }
-
-    fn get_accesspass_exact(
-        &self,
-        client_ip: std::net::Ipv4Addr,
-        user_payer: solana_sdk::pubkey::Pubkey,
-    ) -> eyre::Result<Option<doublezero_serviceability::state::accesspass::AccessPass>> {
-        Ok(self
-            .client
-            .get_accesspass_exact(
-                doublezero_sdk::commands::accesspass::get::GetExactAccessPassCommand {
                     client_ip,
                     user_payer,
                 },

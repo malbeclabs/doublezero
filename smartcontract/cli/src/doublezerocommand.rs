@@ -3,7 +3,7 @@ use doublezero_sdk::{
     commands::{
         accesspass::{
             close::CloseAccessPassCommand,
-            get::{GetAccessPassCommand, GetExactAccessPassCommand},
+            get::{GetAccessPassCommand, ResolveAccessPassCommand},
             list::ListAccessPassCommand,
             set::SetAccessPassCommand,
             set_flags::SetAccessPassFlagsCommand,
@@ -337,13 +337,13 @@ pub trait CliCommand {
     ) -> eyre::Result<Signature>;
     fn set_accesspass(&self, cmd: SetAccessPassCommand) -> eyre::Result<Signature>;
     fn set_accesspass_flags(&self, cmd: SetAccessPassFlagsCommand) -> eyre::Result<Signature>;
+    fn resolve_accesspass(
+        &self,
+        cmd: ResolveAccessPassCommand,
+    ) -> eyre::Result<Option<(Pubkey, AccessPass)>>;
     fn get_accesspass(
         &self,
         cmd: GetAccessPassCommand,
-    ) -> eyre::Result<Option<(Pubkey, AccessPass)>>;
-    fn get_accesspass_exact(
-        &self,
-        cmd: GetExactAccessPassCommand,
     ) -> eyre::Result<Option<(Pubkey, AccessPass)>>;
     fn list_accesspass(
         &self,
@@ -824,15 +824,15 @@ impl CliCommand for CliCommandImpl<'_> {
     fn set_accesspass_flags(&self, cmd: SetAccessPassFlagsCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
-    fn get_accesspass(
+    fn resolve_accesspass(
         &self,
-        cmd: GetAccessPassCommand,
+        cmd: ResolveAccessPassCommand,
     ) -> eyre::Result<Option<(Pubkey, AccessPass)>> {
         cmd.execute(self.client)
     }
-    fn get_accesspass_exact(
+    fn get_accesspass(
         &self,
-        cmd: GetExactAccessPassCommand,
+        cmd: GetAccessPassCommand,
     ) -> eyre::Result<Option<(Pubkey, AccessPass)>> {
         cmd.execute(self.client)
     }

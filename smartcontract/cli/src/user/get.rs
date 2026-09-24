@@ -6,7 +6,7 @@ use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_program_common::serializer;
 use doublezero_sdk::commands::{
-    accesspass::get::GetAccessPassCommand, device::list::ListDeviceCommand,
+    accesspass::get::ResolveAccessPassCommand, device::list::ListDeviceCommand,
     multicastgroup::list::ListMulticastGroupCommand, tenant::list::ListTenantCommand,
     user::get::GetUserCommand,
 };
@@ -84,7 +84,7 @@ impl GetUserCliCommand {
         let (pubkey, user) = client.get_user(GetUserCommand { pubkey })?;
 
         let accesspass_str = client
-            .get_accesspass(GetAccessPassCommand {
+            .resolve_accesspass(ResolveAccessPassCommand {
                 client_ip: user.client_ip,
                 user_payer: user.owner,
             })?
@@ -359,8 +359,8 @@ mod tests {
                 Ok(map)
             });
         client
-            .expect_get_accesspass()
-            .with(predicate::eq(accesspass::get::GetAccessPassCommand {
+            .expect_resolve_accesspass()
+            .with(predicate::eq(accesspass::get::ResolveAccessPassCommand {
                 client_ip: user.client_ip,
                 user_payer: user.owner,
             }))
@@ -504,7 +504,9 @@ mod tests {
             .expect_get_user()
             .with(predicate::eq(GetUserCommand { pubkey: pda_pubkey }))
             .returning(move |_| Ok((pda_pubkey, user.clone())));
-        client.expect_get_accesspass().returning(move |_| Ok(None));
+        client
+            .expect_resolve_accesspass()
+            .returning(move |_| Ok(None));
         client
             .expect_list_multicastgroup()
             .with(predicate::eq(ListMulticastGroupCommand {}))
@@ -672,8 +674,8 @@ mod tests {
                 Ok(map)
             });
         client
-            .expect_get_accesspass()
-            .with(predicate::eq(accesspass::get::GetAccessPassCommand {
+            .expect_resolve_accesspass()
+            .with(predicate::eq(accesspass::get::ResolveAccessPassCommand {
                 client_ip: user.client_ip,
                 user_payer: user.owner,
             }))

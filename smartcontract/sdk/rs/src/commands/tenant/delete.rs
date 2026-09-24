@@ -465,14 +465,14 @@ mod tests {
 
         let mut seq = Sequence::new();
 
-        // GetAccessPassCommand inside SetAccessPassCommand: get(accesspass_pda)
+        // ResolveAccessPassCommand inside SetAccessPassCommand: get(accesspass_pda)
         let ap_for_get = accesspass.clone();
         client
             .expect_get()
             .with(predicate::eq(accesspass_pubkey))
             .returning(move |_| Ok(AccountData::AccessPass(ap_for_get.clone())));
 
-        // GetAccessPassCommand checks the UNSPECIFIED (dynamic) PDA first; no pass
+        // ResolveAccessPassCommand checks the UNSPECIFIED (dynamic) PDA first; no pass
         // exists there, so it falls back to the exact-IP PDA above.
         let (dynamic_accesspass_pubkey, _) = get_accesspass_pda(
             &client.get_program_id(),

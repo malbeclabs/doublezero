@@ -190,7 +190,7 @@ enum FeedJoinUser {
 ///    is deliberately not enough: it authorizes any address at all, so honoring a caller-chosen
 ///    one against it would let the caller bind an address no authority ever vouched for — the
 ///    squatting RFC-27 exists to close. The lookup therefore goes to the exact PDA rather than
-///    through `get_accesspass`, which prefers the dynamic pass and would mask the distinction.
+///    through `resolve_accesspass`, which prefers the dynamic pass and would mask the distinction.
 ///    A pass at the exact PDA flagged `allow_multiple_ip` is refused too, for a weaker reason:
 ///    the PDA it sits at already settles which address it names, but its issuer marked it
 ///    reusable across addresses, and the program declines to read that as an attestation of any
@@ -231,7 +231,7 @@ async fn resolve_connect_client_ip_with<D: DaemonClient, L: LedgerClient, W: Wri
     // Two refusals, not one: a pass that is absent and a pass that is present but flagged are
     // different things to be told, and the operator's next move differs — obtain a pass for
     // this address, or have the flag cleared on the one they hold.
-    match ledger.get_accesspass_exact(client_ip, ledger.get_payer())? {
+    match ledger.get_accesspass(client_ip, ledger.get_payer())? {
         None => {
             writeln!(
                 out,
@@ -261,14 +261,14 @@ async fn resolve_connect_client_ip_with<D: DaemonClient, L: LedgerClient, W: Wri
 
     // The gate has to predict what `create_user` will evaluate, and what it evaluates is the
     // pass the *transaction* attaches — which `CreateUserCommand` resolves with
-    // `GetAccessPassCommand`, preferring the dynamic (0.0.0.0) PDA whenever one exists. A payer
+    // `ResolveAccessPassCommand`, preferring the dynamic (0.0.0.0) PDA whenever one exists. A payer
     // holding both passes would clear the check above on the exact one and then have the dynamic
     // one sent, where `accesspass_is_ip_bound` is false and the proof is required after all:
     // precisely the late `IpOwnershipProofRequired` this gate exists to turn into an early,
     // legible refusal. Saying so here is the honest half of the fix; letting the pin choose which
     // pass is charged for the seat is a larger change than this flag should make.
     if ledger
-        .get_accesspass(Ipv4Addr::UNSPECIFIED, ledger.get_payer())?
+        .resolve_accesspass(Ipv4Addr::UNSPECIFIED, ledger.get_payer())?
         .is_some()
     {
         writeln!(
@@ -301,7 +301,7 @@ fn check_accesspass<L: LedgerClient>(
     client_ip: Ipv4Addr,
     enforce_epoch: bool,
 ) -> eyre::Result<bool> {
-    let Some(accesspass) = ledger.get_accesspass(client_ip, ledger.get_payer())? else {
+    let Some(accesspass) = ledger.resolve_accesspass(client_ip, ledger.get_payer())? else {
         return Ok(false);
     };
 
@@ -321,7 +321,7 @@ fn require_accesspass<L: LedgerClient, W: Write>(
     client_ip: Ipv4Addr,
     out: &mut W,
 ) -> eyre::Result<AccessPass> {
-    match ledger.get_accesspass(client_ip, ledger.get_payer())? {
+    match ledger.resolve_accesspass(client_ip, ledger.get_payer())? {
         Some(accesspass) => Ok(accesspass),
         None => {
             writeln!(
@@ -895,7 +895,7 @@ impl Connect {
             // subscriber allowlist. The pass is guaranteed to exist (validated by
             // check_accesspass before dispatch); the ok_or_else is defensive.
             let accesspass = ledger
-                .get_accesspass(client_ip, ledger.get_payer())?
+                .resolve_accesspass(client_ip, ledger.get_payer())?
                 .ok_or_else(|| {
                     eyre::eyre!(
                         "No valid AccessPass found for IP: {} user_payer: {}",
@@ -1623,7 +1623,7 @@ impl Connect {
         // Refuse here what the program would refuse after the create: by then the bare user
         // would already exist, holding a multicast slot and a device seat for nothing.
         let accesspass = ledger
-            .get_accesspass(client_ip, ledger.get_payer())?
+            .resolve_accesspass(client_ip, ledger.get_payer())?
             .ok_or_else(|| {
                 eyre::eyre!(
                     "No valid AccessPass found for IP: {client_ip} user_payer: {}",
@@ -1949,7 +1949,7 @@ impl Connect {
                 }
 
                 let accesspass = ledger
-                    .get_accesspass(*client_ip, ledger.get_payer())?
+                    .resolve_accesspass(*client_ip, ledger.get_payer())?
                     .ok_or_else(|| {
                         eyre::eyre!(
                             "No valid AccessPass found for IP: {} user_payer: {}",
@@ -3152,7 +3152,7 @@ mod tests {
             let accesspass = fixture.accesspass.clone();
             fixture
                 .ledger
-                .expect_get_accesspass()
+                .expect_resolve_accesspass()
                 .with(
                     predicate::eq(Ipv4Addr::new(1, 2, 3, 4)),
                     predicate::eq(payer),
@@ -3164,7 +3164,7 @@ mod tests {
             // only the one keyed on its own address.
             fixture
                 .ledger
-                .expect_get_accesspass()
+                .expect_resolve_accesspass()
                 .with(predicate::eq(Ipv4Addr::UNSPECIFIED), predicate::eq(payer))
                 .returning(|_, _| Ok(None));
 
@@ -6910,12 +6910,12 @@ mod tests {
             let accesspass = fixture.accesspass.clone();
             fixture
                 .ledger
-                .expect_get_accesspass_exact()
+                .expect_get_accesspass()
                 .returning_st(move |_, _| Ok(Some(accesspass.lock().unwrap().clone())));
             let accesspass = fixture.accesspass.clone();
             fixture
                 .ledger
-                .expect_get_accesspass()
+                .expect_resolve_accesspass()
                 .returning_st(move |_, _| Ok(Some(accesspass.lock().unwrap().clone())));
 
             // No create_user expectation: reaching one would be the bug.
@@ -7256,10 +7256,12 @@ mod tests {
             let mut ledger = MockLedgerClient::new();
             ledger.expect_get_payer().returning(Pubkey::new_unique);
             ledger
-                .expect_get_accesspass_exact()
+                .expect_get_accesspass()
                 .returning(|_, _| Ok(Some(pinned_accesspass())));
             // No dynamic pass, so the pinned one is what the transaction will attach.
-            ledger.expect_get_accesspass().returning(|_, _| Ok(None));
+            ledger
+                .expect_resolve_accesspass()
+                .returning(|_, _| Ok(None));
             let (res, out) = resolve(Some(PINNED), ledger, held_by_host).await;
             assert_eq!(res.unwrap(), PINNED);
             assert!(
@@ -7269,15 +7271,13 @@ mod tests {
         }
 
         /// A dynamic pass authorizes any address, so it must not authorize a caller-chosen one.
-        /// `get_accesspass_exact` is what draws the line — `get_accesspass` would have resolved
+        /// `get_accesspass` is what draws the line — `resolve_accesspass` would have resolved
         /// the dynamic pass and admitted this.
         #[tokio::test]
         async fn refuses_when_only_a_dynamic_access_pass_exists() {
             let mut ledger = MockLedgerClient::new();
             ledger.expect_get_payer().returning(Pubkey::new_unique);
-            ledger
-                .expect_get_accesspass_exact()
-                .returning(|_, _| Ok(None));
+            ledger.expect_get_accesspass().returning(|_, _| Ok(None));
             let (res, out) = resolve(Some(PINNED), ledger, held_by_host).await;
             let err = res.unwrap_err().to_string();
             assert!(
@@ -7291,7 +7291,7 @@ mod tests {
         }
 
         /// Holding both passes is the case where the gate's predicate and the transaction's
-        /// disagree: `CreateUserCommand` resolves the account with `GetAccessPassCommand`, which
+        /// disagree: `CreateUserCommand` resolves the account with `ResolveAccessPassCommand`, which
         /// prefers the dynamic PDA, so admitting this would fail onchain with
         /// `IpOwnershipProofRequired` after the user was already created.
         #[tokio::test]
@@ -7299,10 +7299,10 @@ mod tests {
             let mut ledger = MockLedgerClient::new();
             ledger.expect_get_payer().returning(Pubkey::new_unique);
             ledger
-                .expect_get_accesspass_exact()
+                .expect_get_accesspass()
                 .returning(|_, _| Ok(Some(pinned_accesspass())));
             ledger
-                .expect_get_accesspass()
+                .expect_resolve_accesspass()
                 .returning(|_, _| Ok(Some(pinned_accesspass())));
             let (res, out) = resolve(Some(PINNED), ledger, held_by_host).await;
             let err = res.unwrap_err().to_string();
@@ -7325,7 +7325,7 @@ mod tests {
         async fn refuses_an_exact_pass_flagged_allow_multiple_ip() {
             let mut ledger = MockLedgerClient::new();
             ledger.expect_get_payer().returning(Pubkey::new_unique);
-            ledger.expect_get_accesspass_exact().returning(|_, _| {
+            ledger.expect_get_accesspass().returning(|_, _| {
                 let mut accesspass = pinned_accesspass();
                 accesspass.flags = ALLOW_MULTIPLE_IP;
                 Ok(Some(accesspass))
@@ -7583,7 +7583,7 @@ mod tests {
             let accesspass = fixture.accesspass.clone();
             fixture
                 .ledger
-                .expect_get_accesspass_exact()
+                .expect_get_accesspass()
                 .with(predicate::eq(PINNED), predicate::always())
                 .returning_st(move |_, _| Ok(Some(accesspass.lock().unwrap().clone())));
             // The pass lookups further down the connect flow are keyed on the pinned address
@@ -7591,7 +7591,7 @@ mod tests {
             let accesspass = fixture.accesspass.clone();
             fixture
                 .ledger
-                .expect_get_accesspass()
+                .expect_resolve_accesspass()
                 .with(predicate::eq(PINNED), predicate::always())
                 .returning_st(move |_, _| Ok(Some(accesspass.lock().unwrap().clone())));
 

@@ -2,7 +2,7 @@ use std::net::Ipv4Addr;
 
 use crate::{
     commands::{
-        accesspass::get::GetAccessPassCommand, common::append_payer_permission_account,
+        accesspass::get::ResolveAccessPassCommand, common::append_payer_permission_account,
         multicastgroup::get::GetMulticastGroupCommand, user::get::GetUserCommand,
     },
     DoubleZeroClient,
@@ -78,9 +78,9 @@ impl UpdateMulticastGroupRolesCommand {
         .execute(client)
         .wrap_err_with(|| format!("User not found ({})", self.user_pk))?;
 
-        // GetAccessPassCommand prefers a shared dynamic (UNSPECIFIED) pass and falls
+        // ResolveAccessPassCommand prefers a shared dynamic (UNSPECIFIED) pass and falls
         // back to the exact client-IP pass.
-        let (accesspass_pubkey, accesspass) = GetAccessPassCommand {
+        let (accesspass_pubkey, accesspass) = ResolveAccessPassCommand {
             client_ip: self.client_ip,
             user_payer: user.owner,
         }

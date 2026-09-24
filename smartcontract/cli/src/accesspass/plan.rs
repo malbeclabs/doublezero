@@ -12,7 +12,7 @@ use crate::{
 use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::{
-    accesspass::get::GetAccessPassCommand, feed::list::ListFeedCommand,
+    accesspass::get::ResolveAccessPassCommand, feed::list::ListFeedCommand,
     multicastgroup::list::ListMulticastGroupCommand, tenant::list::ListTenantCommand,
 };
 use doublezero_serviceability::state::accesspass::AccessPass;
@@ -226,7 +226,7 @@ pub fn build_plan<C: CliCommand>(
     let mut by_pass: HashMap<Pubkey, (Ipv4Addr, WantKey)> = HashMap::new();
 
     for entry in desired {
-        let Some((pass_pk, pass)) = client.get_accesspass(GetAccessPassCommand {
+        let Some((pass_pk, pass)) = client.resolve_accesspass(ResolveAccessPassCommand {
             client_ip: entry.client_ip,
             user_payer: entry.user_payer,
         })?
@@ -758,7 +758,7 @@ mod tests {
             vec![by_code["g-keep"], by_code["g-drop"]],
         );
         client
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .returning(move |_| Ok(Some((Pubkey::new_unique(), existing.clone()))));
 
         let plan = build_plan(&client, &desired(payer, &[], &["g-keep", "g-add"])).unwrap();
@@ -787,7 +787,7 @@ mod tests {
 
         let existing = pass(IP.into(), payer, vec![by_code["g1"]], vec![by_code["g1"]]);
         client
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .returning(move |_| Ok(Some((Pubkey::new_unique(), existing.clone()))));
 
         let plan = build_plan(&client, &desired(payer, &["g1"], &["g1"])).unwrap();
@@ -815,7 +815,7 @@ mod tests {
             terminates_at: 0,
         }]);
         client
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .returning(move |_| Ok(Some((Pubkey::new_unique(), edge.clone()))));
         client.expect_list_feed().returning(move |_| {
             Ok(HashMap::from([(
@@ -868,7 +868,7 @@ mod tests {
         let mut client = create_test_client();
         let payer = Pubkey::new_unique();
         with_groups(&mut client, &["g1"]);
-        client.expect_get_accesspass().returning(|_| Ok(None));
+        client.expect_resolve_accesspass().returning(|_| Ok(None));
 
         let plan = build_plan(&client, &desired(payer, &[], &["g1"])).unwrap();
 
@@ -890,7 +890,7 @@ mod tests {
             vec![by_code["g-both"]],
         );
         client
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .returning(move |_| Ok(Some((Pubkey::new_unique(), existing.clone()))));
 
         // The document declares nothing, so g-both leaves both allowlists at once. This was
@@ -919,7 +919,7 @@ mod tests {
         let shared_pk = Pubkey::new_unique();
         let shared = pass(Ipv4Addr::UNSPECIFIED, payer, vec![], vec![]);
         client
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .returning(move |_| Ok(Some((shared_pk, shared.clone()))));
         let _ = by_code;
 
@@ -963,7 +963,7 @@ mod tests {
         let shared_pk = Pubkey::new_unique();
         let shared = pass(Ipv4Addr::UNSPECIFIED, payer, vec![], vec![]);
         client
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .returning(move |_| Ok(Some((shared_pk, shared.clone()))));
 
         let entry = |ip: Ipv4Addr| DesiredAccessPass {
@@ -1005,7 +1005,7 @@ mod tests {
         // Resolution prefers the 0.0.0.0 pass, so a concrete IP can land on the shared one.
         let shared = pass(Ipv4Addr::UNSPECIFIED, payer, vec![], vec![]);
         client
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .returning(move |_| Ok(Some((Pubkey::new_unique(), shared.clone()))));
 
         let plan = build_plan(&client, &desired(payer, &[], &["g1"])).unwrap();
@@ -1033,7 +1033,7 @@ mod tests {
             vec![by_code["g1"], Pubkey::new_unique()],
         );
         client
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .returning(move |_| Ok(Some((Pubkey::new_unique(), existing.clone()))));
 
         let plan = build_plan(&client, &desired(payer, &[], &["g1"])).unwrap();
@@ -1052,7 +1052,7 @@ mod tests {
         let mut existing = pass(IP.into(), payer, vec![], vec![]);
         existing.last_access_epoch = 200;
         client
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .returning(move |_| Ok(Some((Pubkey::new_unique(), existing.clone()))));
 
         let plan = build_plan(&client, &desired_ibrl(payer, Some("solana"))).unwrap();
@@ -1075,7 +1075,7 @@ mod tests {
         let mut existing = pass(IP.into(), payer, vec![], vec![]);
         existing.tenant_allowlist = vec![by_code["solana"]];
         client
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .returning(move |_| Ok(Some((Pubkey::new_unique(), existing.clone()))));
 
         let plan = build_plan(&client, &desired_ibrl(payer, Some("solana"))).unwrap();
@@ -1100,7 +1100,7 @@ mod tests {
         existing.tenant_allowlist = vec![by_code["solana"]];
         existing.last_access_epoch = 0;
         client
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .returning(move |_| Ok(Some((Pubkey::new_unique(), existing.clone()))));
 
         let plan = build_plan(&client, &desired_ibrl(payer, Some("solana"))).unwrap();
@@ -1120,7 +1120,7 @@ mod tests {
         let mut existing = pass(IP.into(), payer, vec![], vec![]);
         existing.tenant_allowlist = vec![by_code["solana"]];
         client
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .returning(move |_| Ok(Some((Pubkey::new_unique(), existing.clone()))));
 
         // The document declares no ibrl, and every field here is declarative.
@@ -1156,7 +1156,7 @@ mod tests {
 
         let existing = pass(IP.into(), payer, vec![], vec![by_code["g1"]]);
         client
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .returning(move |_| Ok(Some((Pubkey::new_unique(), existing.clone()))));
 
         let plan = build_plan(&client, &desired(payer, &[], &["g1"])).unwrap();
@@ -1175,7 +1175,7 @@ mod tests {
         let mut existing = pass(IP.into(), payer, vec![], vec![]);
         existing.tenant_allowlist = vec![by_code["solana"]];
         client
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .returning(move |_| Ok(Some((Pubkey::new_unique(), existing.clone()))));
 
         let plan = build_plan(&client, &desired(payer, &[], &[])).unwrap();
@@ -1191,7 +1191,7 @@ mod tests {
         let by_code = with_groups(&mut client, &["g1"]);
         let existing = pass(IP.into(), payer, vec![], vec![by_code["g1"]]);
         client
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .returning(move |_| Ok(Some((Pubkey::new_unique(), existing.clone()))));
 
         let plan = build_plan(&client, &desired(payer, &[], &["g1"])).unwrap();
@@ -1210,7 +1210,7 @@ mod tests {
         let by_code = with_groups(&mut client, &["g-add", "g-drop"]);
         let existing = pass(IP.into(), payer, vec![], vec![by_code["g-drop"]]);
         client
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .returning(move |_| Ok(Some((Pubkey::new_unique(), existing.clone()))));
 
         let plan = build_plan(&client, &desired(payer, &[], &["g-add"])).unwrap();
@@ -1234,7 +1234,7 @@ mod tests {
         with_groups(&mut client, &["g1"]);
         // No pass at that PDA: the document does not create passes, so this is blocked.
         client.expect_get_payer().returning(move || payer);
-        client.expect_get_accesspass().returning(|_| Ok(None));
+        client.expect_resolve_accesspass().returning(|_| Ok(None));
 
         let doc = format!(
             "access_passes:\n  - client_ip: {}\n    user_payer: {payer}\n    multicast:\n      subscribe: [g1]\n",
@@ -1272,7 +1272,7 @@ mod tests {
         let existing = pass(IP.into(), payer, vec![], vec![]);
         client.expect_get_payer().returning(move || payer);
         client
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .returning(move |_| Ok(Some((Pubkey::new_unique(), existing.clone()))));
 
         let doc = format!(

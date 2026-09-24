@@ -3,7 +3,7 @@ use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_program_common::serializer;
 use doublezero_sdk::commands::{
-    accesspass::get::GetAccessPassCommand, multicastgroup::list::ListMulticastGroupCommand,
+    accesspass::get::ResolveAccessPassCommand, multicastgroup::list::ListMulticastGroupCommand,
     tenant::list::ListTenantCommand,
 };
 use serde::Serialize;
@@ -76,7 +76,7 @@ impl GetAccessPassCliCommand {
         let epoch = client.get_epoch()?;
 
         let (pubkey, accesspass) = client
-            .get_accesspass(GetAccessPassCommand {
+            .resolve_accesspass(ResolveAccessPassCommand {
                 client_ip: self.client_ip,
                 user_payer: self.user_payer,
             })?
@@ -216,8 +216,8 @@ mod tests {
     use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{
         commands::{
-            accesspass::get::GetAccessPassCommand, multicastgroup::list::ListMulticastGroupCommand,
-            tenant::list::ListTenantCommand,
+            accesspass::get::ResolveAccessPassCommand,
+            multicastgroup::list::ListMulticastGroupCommand, tenant::list::ListTenantCommand,
         },
         AccountType, Exchange, ExchangeStatus, Feed, MulticastGroup,
     };
@@ -292,8 +292,8 @@ mod tests {
         let accesspass_clone = accesspass.clone();
 
         client
-            .expect_get_accesspass()
-            .with(predicate::eq(GetAccessPassCommand {
+            .expect_resolve_accesspass()
+            .with(predicate::eq(ResolveAccessPassCommand {
                 client_ip,
                 user_payer,
             }))
@@ -475,8 +475,8 @@ mod tests {
         };
 
         client
-            .expect_get_accesspass()
-            .with(predicate::eq(GetAccessPassCommand {
+            .expect_resolve_accesspass()
+            .with(predicate::eq(ResolveAccessPassCommand {
                 client_ip,
                 user_payer,
             }))
@@ -642,8 +642,8 @@ mod tests {
         };
 
         client
-            .expect_get_accesspass()
-            .with(predicate::eq(GetAccessPassCommand {
+            .expect_resolve_accesspass()
+            .with(predicate::eq(ResolveAccessPassCommand {
                 client_ip,
                 user_payer,
             }))
@@ -750,8 +750,8 @@ mod tests {
             .collect();
 
         client
-            .expect_get_accesspass()
-            .with(predicate::eq(GetAccessPassCommand {
+            .expect_resolve_accesspass()
+            .with(predicate::eq(ResolveAccessPassCommand {
                 client_ip,
                 user_payer,
             }))
@@ -854,8 +854,8 @@ mod tests {
         };
 
         client
-            .expect_get_accesspass()
-            .with(predicate::eq(GetAccessPassCommand {
+            .expect_resolve_accesspass()
+            .with(predicate::eq(ResolveAccessPassCommand {
                 client_ip,
                 user_payer,
             }))

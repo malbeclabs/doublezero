@@ -8,13 +8,16 @@ use doublezero_serviceability::{
 use eyre::WrapErr;
 use solana_sdk::pubkey::Pubkey;
 
+/// Find the AccessPass the program will attach for a user at `client_ip`: the payer's dynamic
+/// (0.0.0.0) pass when one exists, otherwise the pass at `client_ip`. Use [`GetAccessPassCommand`]
+/// to read one specific pass.
 #[derive(Debug, PartialEq, Clone)]
-pub struct GetAccessPassCommand {
+pub struct ResolveAccessPassCommand {
     pub client_ip: Ipv4Addr,
     pub user_payer: Pubkey,
 }
 
-impl GetAccessPassCommand {
+impl ResolveAccessPassCommand {
     pub fn execute(
         &self,
         client: &dyn DoubleZeroClient,
@@ -41,34 +44,24 @@ impl GetAccessPassCommand {
     }
 }
 
-/// Fetch the AccessPass stored at the exact `(client_ip, user_payer)` PDA.
-///
-/// Unlike [`GetAccessPassCommand`], this never falls back to the dynamic (0.0.0.0) pass.
-/// `connect --client-ip` needs exactly that distinction: the flag is honored only for a pass
-/// whose address an issuing authority pinned, and the wildcard-first resolution above would
-/// answer such a query with a dynamic pass — one that authorizes any address at all, which is
-/// the case the flag must refuse.
+/// Fetch the AccessPass stored at the `(client_ip, user_payer)` PDA, including the dynamic pass
+/// at 0.0.0.0. Unlike [`ResolveAccessPassCommand`], this never reads a different address.
 #[derive(Debug, PartialEq, Clone)]
-pub struct GetExactAccessPassCommand {
+pub struct GetAccessPassCommand {
     pub client_ip: Ipv4Addr,
     pub user_payer: Pubkey,
 }
 
-impl GetExactAccessPassCommand {
+impl GetAccessPassCommand {
     pub fn execute(
         &self,
         client: &dyn DoubleZeroClient,
     ) -> eyre::Result<Option<(Pubkey, AccessPass)>> {
-        // A pass at the UNSPECIFIED PDA is the dynamic pass by construction, so an exact
-        // lookup for it would contradict the name. Refuse rather than quietly resolving it.
-        if self.client_ip == Ipv4Addr::UNSPECIFIED {
-            return Ok(None);
-        }
         let program_id = client.get_program_id();
         let (pubkey, _) = get_accesspass_pda(&program_id, &self.client_ip, &self.user_payer);
 
         // `get_multiple_accounts` rather than `get`, because absence has to be told apart from
-        // failure here and only this one reports it as a value. `GetAccessPassCommand` can fold
+        // failure here and only this one reports it as a value. `ResolveAccessPassCommand` can fold
         // an error into `None` because a second lookup follows it; here the lookup *is* the
         // answer, so an unreachable or wrong-cluster ledger would otherwise render as "this payer
         // holds no pass" and send an operator off to have one reissued. `None` in the returned
@@ -188,7 +181,7 @@ fn format_accesspass_choices(candidates: &[(Pubkey, AccessPass)]) -> String {
 mod tests {
     use crate::{
         commands::accesspass::get::{
-            resolve_user_accesspass, GetAccessPassCommand, GetExactAccessPassCommand,
+            resolve_user_accesspass, GetAccessPassCommand, ResolveAccessPassCommand,
         },
         tests::utils::create_test_client,
         DoubleZeroClient,
@@ -239,9 +232,9 @@ mod tests {
         }
     }
 
-    /// The whole point of the exact command: a dynamic pass must not answer for an address.
+    /// A dynamic pass must not answer for another address.
     #[test]
-    fn test_get_exact_accesspass_never_resolves_the_dynamic_pass() {
+    fn test_get_accesspass_never_resolves_the_dynamic_pass() {
         let mut client = create_test_client();
         let program_id = client.get_program_id();
         let client_ip: Ipv4Addr = [203, 0, 113, 9].into();
@@ -255,7 +248,7 @@ mod tests {
             .times(1)
             .returning(|_| Ok(vec![None]));
 
-        let res = GetExactAccessPassCommand {
+        let res = GetAccessPassCommand {
             client_ip,
             user_payer: payer,
         }
@@ -265,7 +258,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_exact_accesspass_returns_the_pass_at_that_pda() {
+    fn test_get_accesspass_returns_the_pass_at_that_pda() {
         let mut client = create_test_client();
         let program_id = client.get_program_id();
         let client_ip: Ipv4Addr = [203, 0, 113, 9].into();
@@ -281,7 +274,7 @@ mod tests {
             .times(1)
             .returning(move |_| Ok(vec![Some(account.clone())]));
 
-        let (pubkey, found) = GetExactAccessPassCommand {
+        let (pubkey, found) = GetAccessPassCommand {
             client_ip,
             user_payer: payer,
         }
@@ -296,7 +289,7 @@ mod tests {
     /// that is the answer that sends an operator to have a live pass reissued. Absence is a
     /// `None` in the returned vector, so nothing else has to be inferred from an error.
     #[test]
-    fn test_get_exact_accesspass_propagates_a_transport_error() {
+    fn test_get_accesspass_propagates_a_transport_error() {
         let mut client = create_test_client();
         let client_ip: Ipv4Addr = [203, 0, 113, 9].into();
         let payer = Pubkey::new_unique();
@@ -306,7 +299,7 @@ mod tests {
             .times(1)
             .returning(|_| Err(eyre::eyre!("error sending request for url (http://ledger)")));
 
-        let err = GetExactAccessPassCommand {
+        let err = GetAccessPassCommand {
             client_ip,
             user_payer: payer,
         }
@@ -322,7 +315,7 @@ mod tests {
     /// happen for a PDA derived from this program's id, but deciding it on the owner rather
     /// than on a successful decode is what keeps that true.
     #[test]
-    fn test_get_exact_accesspass_ignores_an_account_owned_by_another_program() {
+    fn test_get_accesspass_ignores_an_account_owned_by_another_program() {
         let mut client = create_test_client();
         let program_id = client.get_program_id();
         let client_ip: Ipv4Addr = [203, 0, 113, 9].into();
@@ -335,7 +328,7 @@ mod tests {
             .times(1)
             .returning(move |_| Ok(vec![Some(account.clone())]));
 
-        let res = GetExactAccessPassCommand {
+        let res = GetAccessPassCommand {
             client_ip,
             user_payer: payer,
         }
@@ -345,7 +338,33 @@ mod tests {
     }
 
     #[test]
-    fn test_get_accesspass_prefers_dynamic_pass() {
+    fn test_get_accesspass_reads_the_dynamic_pass_at_unspecified() {
+        let mut client = create_test_client();
+        let program_id = client.get_program_id();
+        let payer = Pubkey::new_unique();
+
+        let (dynamic_pubkey, _) = get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
+        let pass = sample_accesspass(Ipv4Addr::UNSPECIFIED, payer);
+        let account = accesspass_account(program_id, &pass);
+        client
+            .expect_get_multiple_accounts()
+            .with(predicate::eq(vec![dynamic_pubkey]))
+            .times(1)
+            .returning(move |_| Ok(vec![Some(account.clone())]));
+
+        let (pubkey, found) = GetAccessPassCommand {
+            client_ip: Ipv4Addr::UNSPECIFIED,
+            user_payer: payer,
+        }
+        .execute(&client)
+        .expect("the lookup must succeed")
+        .expect("the pass must be found");
+        assert_eq!(pubkey, dynamic_pubkey);
+        assert_eq!(found, pass);
+    }
+
+    #[test]
+    fn test_resolve_accesspass_prefers_dynamic_pass() {
         let mut client = create_test_client();
         let program_id = client.get_program_id();
 
@@ -362,7 +381,7 @@ mod tests {
             .times(1)
             .returning(move |_| Ok(AccountData::AccessPass(dynamic_pass.clone())));
 
-        let res = GetAccessPassCommand {
+        let res = ResolveAccessPassCommand {
             client_ip,
             user_payer: payer,
         }
@@ -375,7 +394,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_accesspass_falls_back_to_exact_ip() {
+    fn test_resolve_accesspass_falls_back_to_exact_ip() {
         let mut client = create_test_client();
         let program_id = client.get_program_id();
 
@@ -396,7 +415,7 @@ mod tests {
             .with(predicate::eq(exact_pubkey))
             .returning(move |_| Ok(AccountData::AccessPass(exact_pass.clone())));
 
-        let res = GetAccessPassCommand {
+        let res = ResolveAccessPassCommand {
             client_ip,
             user_payer: payer,
         }
@@ -409,7 +428,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_accesspass_returns_none_when_neither_present() {
+    fn test_resolve_accesspass_returns_none_when_neither_present() {
         let mut client = create_test_client();
         let program_id = client.get_program_id();
 
@@ -428,7 +447,7 @@ mod tests {
             .with(predicate::eq(exact_pubkey))
             .returning(|_| Err(eyre::eyre!("account not found")));
 
-        let res = GetAccessPassCommand {
+        let res = ResolveAccessPassCommand {
             client_ip,
             user_payer: payer,
         }
@@ -439,7 +458,7 @@ mod tests {
     }
 
     #[test]
-    fn test_get_accesspass_unspecified_does_single_lookup() {
+    fn test_resolve_accesspass_unspecified_does_single_lookup() {
         let mut client = create_test_client();
         let program_id = client.get_program_id();
 
@@ -455,7 +474,7 @@ mod tests {
             .times(1)
             .returning(move |_| Ok(AccountData::AccessPass(dynamic_pass.clone())));
 
-        let res = GetAccessPassCommand {
+        let res = ResolveAccessPassCommand {
             client_ip: Ipv4Addr::UNSPECIFIED,
             user_payer: payer,
         }

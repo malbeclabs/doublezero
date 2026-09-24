@@ -14,7 +14,7 @@ use std::net::Ipv4Addr;
 
 use crate::{
     commands::{
-        accesspass::get::GetAccessPassCommand, device::get::GetDeviceCommand,
+        accesspass::get::ResolveAccessPassCommand, device::get::GetDeviceCommand,
         multicastgroup::get::GetMulticastGroupCommand, user::instructions_with_ip_proof,
     },
     DoubleZeroClient,
@@ -98,9 +98,9 @@ impl CreateSubscribeUserCommand {
         // When a custom owner is set, look up the access pass for that owner
         let accesspass_payer = self.owner.unwrap_or_else(|| client.get_payer());
 
-        // GetAccessPassCommand prefers a shared dynamic (UNSPECIFIED) pass and falls
+        // ResolveAccessPassCommand prefers a shared dynamic (UNSPECIFIED) pass and falls
         // back to the exact client-IP pass, matching the onchain create_user path.
-        let (accesspass_pk, _) = GetAccessPassCommand {
+        let (accesspass_pk, _) = ResolveAccessPassCommand {
             client_ip: self.client_ip,
             user_payer: accesspass_payer,
         }
@@ -286,7 +286,7 @@ mod tests {
             .with(predicate::eq(accesspass_pubkey))
             .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
 
-        // GetAccessPassCommand checks the UNSPECIFIED (dynamic) PDA first; no pass
+        // ResolveAccessPassCommand checks the UNSPECIFIED (dynamic) PDA first; no pass
         // exists there, so it falls back to the exact-IP PDA above.
         let (dynamic_accesspass_pubkey, _) =
             get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);

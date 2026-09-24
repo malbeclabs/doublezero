@@ -17,7 +17,7 @@ use crate::DoubleZeroClient;
 /// pass exists — either to use an existing exact-IP pass or as the creation target when neither
 /// pass exists.
 ///
-/// This mirrors `GetAccessPassCommand::execute` so allowlist ops and reads resolve the same pass.
+/// This mirrors `ResolveAccessPassCommand::execute` so allowlist ops and reads resolve the same pass.
 pub(crate) fn resolve_accesspass_pda(
     client: &dyn DoubleZeroClient,
     client_ip: &Ipv4Addr,

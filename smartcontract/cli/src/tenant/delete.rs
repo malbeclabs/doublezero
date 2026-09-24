@@ -459,7 +459,7 @@ mod tests {
             });
 
         // Delete user. The cascade declares no kind, so it does not read the pass first:
-        // there is no get_accesspass expectation, and the mock fails if one is called.
+        // there is no resolve_accesspass expectation, and the mock fails if one is called.
         client
             .expect_delete_user()
             .times(1)

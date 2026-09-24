@@ -23,7 +23,7 @@ use std::{collections::HashMap, io::Write, net::Ipv4Addr, str::FromStr};
 
 /// Remove one feed from an EdgeSeat access pass while its other feeds stay active. Users holding
 /// the feed are unsubscribed from it, and the multicast user cap drops to the remaining seats.
-/// Requires `ACCESS_PASS_ADMIN`.
+/// Requires `ACCESS_PASS_ADMIN` or foundation allowlist membership.
 #[derive(Args, Debug)]
 pub struct RemoveFeedAccessPassCliCommand {
     #[arg(long)]

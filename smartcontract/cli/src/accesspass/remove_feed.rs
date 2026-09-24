@@ -122,7 +122,7 @@ impl RemoveFeedAccessPassCliCommand {
         let holders = find_holders(client, user_payer, client_ip, accesspass_pk, feed_pk)?;
         for (user_pk, user) in &holders {
             if left_with_no_feed(user, feed_pk, &remaining) {
-                writeln!(out, "  Unsubscribe and delete user {user_pk}")?;
+                writeln!(out, "  Delete user {user_pk}")?;
             } else {
                 writeln!(out, "  Unsubscribe user {user_pk}")?;
             }
@@ -175,19 +175,28 @@ impl RemoveFeedAccessPassCliCommand {
 
         for (user_pk, user) in find_holders(client, user_payer, client_ip, accesspass_pk, feed_pk)?
         {
-            let signature = client.unsubscribe_feed(UnsubscribeFeedCommand {
-                user_pk,
-                feed_pks: vec![feed_pk],
-                accesspass_pk: Some(accesspass_pk),
-            })?;
-            writeln!(out, "Unsubscribed user {user_pk}: {signature}")?;
-            if left_with_no_feed(&user, feed_pk, &remaining) {
-                let signature = client.delete_user(DeleteUserCommand {
-                    pubkey: user_pk,
+            if !left_with_no_feed(&user, feed_pk, &remaining) {
+                let signature = client.unsubscribe_feed(UnsubscribeFeedCommand {
+                    user_pk,
+                    feed_pks: vec![feed_pk],
                     accesspass_pk: Some(accesspass_pk),
-                    kind: None,
                 })?;
-                writeln!(out, "Deleted user {user_pk}: {signature}")?;
+                writeln!(out, "Unsubscribed user {user_pk}: {signature}")?;
+                continue;
+            }
+            // No unsubscribe first: DeleteUserCommand strips the user's groups, and DeleteUser
+            // frees its seats from the user's feed list. That list keeps the feed until the
+            // delete lands, so a rerun still finds a user whose delete failed.
+            match client.delete_user(DeleteUserCommand {
+                pubkey: user_pk,
+                accesspass_pk: Some(accesspass_pk),
+                kind: None,
+            }) {
+                Ok(signature) => writeln!(out, "Deleted user {user_pk}: {signature}")?,
+                Err(e) => writeln!(
+                    out,
+                    "Failed to delete user {user_pk}: {e}. Run `doublezero user delete --pubkey {user_pk} --accesspass-type edge-seat` to finish."
+                )?,
             }
         }
 
@@ -412,18 +421,16 @@ mod tests {
             .times(1)
             .in_sequence(&mut seq)
             .returning(|_| Ok(Signature::new_unique()));
-        for user_pk in [both_pk, fra_only_pk] {
-            client
-                .expect_unsubscribe_feed()
-                .with(predicate::eq(UnsubscribeFeedCommand {
-                    user_pk,
-                    feed_pks: vec![fra_pk],
-                    accesspass_pk: Some(accesspass_pk),
-                }))
-                .times(1)
-                .in_sequence(&mut seq)
-                .returning(|_| Ok(Signature::new_unique()));
-        }
+        client
+            .expect_unsubscribe_feed()
+            .with(predicate::eq(UnsubscribeFeedCommand {
+                user_pk: both_pk,
+                feed_pks: vec![fra_pk],
+                accesspass_pk: Some(accesspass_pk),
+            }))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(|_| Ok(Signature::new_unique()));
         client
             .expect_delete_user()
             .with(predicate::eq(DeleteUserCommand {
@@ -477,9 +484,49 @@ mod tests {
         });
 
         let output = run(&client, remove(user_payer, &fra_pk.to_string(), true)).unwrap();
-        assert!(output.contains(&format!("Unsubscribe and delete user {holder_pk}")));
+        assert!(output.contains(&format!("Delete user {holder_pk}")));
         assert!(output.contains("Set max multicast users from 5 to 3"));
         assert!(output.contains("[dry-run] no transactions sent."));
+    }
+
+    #[test]
+    fn test_cli_accesspass_remove_feed_prints_the_delete_command_when_a_delete_fails() {
+        let mut client = create_test_client();
+        let user_payer = Pubkey::new_unique();
+        let accesspass_pk = Pubkey::new_unique();
+        let (fra_pk, lon_pk) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let holder_pk = Pubkey::new_unique();
+
+        client.expect_check_requirements().returning(|_| Ok(()));
+        let pass = edge_seat_pass(user_payer, vec![seat(fra_pk, 2), seat(lon_pk, 3)]);
+        client
+            .expect_get_accesspass()
+            .returning(move |_| Ok(Some((accesspass_pk, pass.clone()))));
+        client
+            .expect_list_feed()
+            .returning(move |_| Ok(HashMap::from([(fra_pk, feed("fra", "FRA"))])));
+        client.expect_list_user().returning(move |_| {
+            Ok(HashMap::from([(
+                holder_pk,
+                user(user_payer, accesspass_pk, vec![fra_pk]),
+            )]))
+        });
+        client
+            .expect_set_accesspass_feeds()
+            .returning(|_| Ok(Signature::new_unique()));
+        client.expect_unsubscribe_feed().never();
+        client
+            .expect_delete_user()
+            .returning(|_| Err(eyre::eyre!("blockhash expired")));
+        client
+            .expect_set_accesspass()
+            .times(1)
+            .returning(|_| Ok(Signature::new_unique()));
+
+        let output = run(&client, remove(user_payer, "FRA", false)).unwrap();
+        assert!(output.contains(&format!(
+            "Failed to delete user {holder_pk}: blockhash expired. Run `doublezero user delete --pubkey {holder_pk} --accesspass-type edge-seat` to finish."
+        )));
     }
 
     #[test]

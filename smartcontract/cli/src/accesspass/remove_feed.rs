@@ -7,7 +7,7 @@ use doublezero_cli_core::CliContext;
 use doublezero_sdk::{
     commands::{
         accesspass::{
-            get::GetExactAccessPassCommand,
+            get::{GetAccessPassCommand, GetExactAccessPassCommand},
             set::SetAccessPassCommand,
             set_feeds::{FeedSeatProvision, SetAccessPassFeedsCommand},
         },
@@ -50,14 +50,22 @@ impl RemoveFeedAccessPassCliCommand {
         };
         let client_ip = self.client_ip.unwrap_or(Ipv4Addr::UNSPECIFIED);
 
-        let (accesspass_pk, accesspass) = client
-            .get_accesspass_exact(GetExactAccessPassCommand {
+        // GetExactAccessPassCommand refuses 0.0.0.0, and GetAccessPassCommand swaps any other IP
+        // for the 0.0.0.0 pass when one exists.
+        let found = if client_ip == Ipv4Addr::UNSPECIFIED {
+            client.get_accesspass(GetAccessPassCommand {
                 client_ip,
                 user_payer,
             })?
-            .ok_or_else(|| {
-                eyre::eyre!("no access pass for client_ip {client_ip} and user_payer {user_payer}")
-            })?;
+        } else {
+            client.get_accesspass_exact(GetExactAccessPassCommand {
+                client_ip,
+                user_payer,
+            })?
+        };
+        let (accesspass_pk, accesspass) = found.ok_or_else(|| {
+            eyre::eyre!("no access pass for client_ip {client_ip} and user_payer {user_payer}")
+        })?;
         let AccessPassType::EdgeSeat(seats) = &accesspass.accesspass_type else {
             eyre::bail!(
                 "access pass {accesspass_pk} is {}; only an EdgeSeat pass carries feeds",
@@ -243,8 +251,8 @@ mod tests {
             .returning(|_| Ok(()));
         let pass = edge_seat_pass(user_payer, vec![seat(fra_pk, 2), lon_seat.clone()]);
         client
-            .expect_get_accesspass_exact()
-            .with(predicate::eq(GetExactAccessPassCommand {
+            .expect_get_accesspass()
+            .with(predicate::eq(GetAccessPassCommand {
                 client_ip: Ipv4Addr::UNSPECIFIED,
                 user_payer,
             }))
@@ -335,9 +343,14 @@ mod tests {
         let unseated_pk = Pubkey::new_unique();
 
         client.expect_check_requirements().returning(|_| Ok(()));
+        let client_ip: Ipv4Addr = [100, 0, 0, 1].into();
         let pass = edge_seat_pass(user_payer, vec![seat(seated_pk, 2)]);
         client
             .expect_get_accesspass_exact()
+            .with(predicate::eq(GetExactAccessPassCommand {
+                client_ip,
+                user_payer,
+            }))
             .returning(move |_| Ok(Some((Pubkey::new_unique(), pass.clone()))));
         client
             .expect_list_feed()
@@ -347,7 +360,7 @@ mod tests {
         let mut output = Vec::new();
         let err = block_on(
             RemoveFeedAccessPassCliCommand {
-                client_ip: None,
+                client_ip: Some(client_ip),
                 user_payer: user_payer.to_string(),
                 feed: unseated_pk.to_string(),
             }

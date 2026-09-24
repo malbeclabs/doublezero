@@ -265,7 +265,8 @@ defensive, so older fixtures continue to parse.
 
 File: `smartcontract/sdk/rs/src/commands/accesspass/get.rs`.
 
-`GetAccessPassCommand::execute` derives the PDA from `(client_ip, user_payer)` and fetches it. Change it
+`ResolveAccessPassCommand::execute` (named `GetAccessPassCommand` when this RFC was written; that name
+now reads only the given PDA) derives the PDA from `(client_ip, user_payer)` and fetches it. Change it
 so that when `client_ip != UNSPECIFIED` it first tries the dynamic PDA
 `get_accesspass_pda(UNSPECIFIED, user_payer)` and, only if that account is absent, falls back to the
 exact-IP PDA. This lets the read path find a shared seat pass first. The connect command's
@@ -428,7 +429,7 @@ the resulting `User`s after the fact.
   scaling of the existing `SetAccessPass` airdrop. The change is additive, ungated, and confined to the
   access-pass and user paths.
 - **CLI and SDKs.** New flags on `access-pass set`, new display fields, three SDK layout updates, and a
-  fixture regeneration. The `GetAccessPassCommand` UNSPECIFIED-first lookup is the only client-facing
+  fixture regeneration. The `ResolveAccessPassCommand` UNSPECIFIED-first lookup is the only client-facing
   change.
 - **Client.** No changes beyond the SDK lookup; provisioning uses the standard `doublezero connect` with
   latency-based device selection.
@@ -443,7 +444,7 @@ the resulting `User`s after the fact.
 
 This spans two repositories and well exceeds the project's ~500-line-per-PR guideline, so it should be
 delivered as a sequence of PRs, roughly: (1) AccessPass caps, methods, set args, scaled airdrop, CLI,
-SDK, and fixtures; (2) the `GetAccessPassCommand` fallback; (3) the `ConnectionTicket` account with its
+SDK, and fixtures; (2) the `ResolveAccessPassCommand` fallback; (3) the `ConnectionTicket` account with its
 three instructions (dev-gated); (4) the oracle's `process_connection_ticket_requests` AccessPass loop
 (dev-gated); (5) the oracle's user-reconciliation funding loop (dev-gated). The on-chain instructions
 in (3) landed together in doublezero-shreds PR 465.
@@ -482,7 +483,7 @@ in (3) landed together in doublezero-shreds PR 465.
   maxes `1`); the SDK readers already tolerate missing trailing fields. `connection_count` semantics are
   unchanged. Cap enforcement and the airdrop scaling are both gated on `EdgeSeat`, so Prepaid, validator,
   and RPC passes are unaffected and keep the existing fixed airdrop.
-- **`GetAccessPassCommand`.** The new dynamic-first lookup falls back to the exact-IP PDA, so existing
+- **`ResolveAccessPassCommand`.** The new dynamic-first lookup falls back to the exact-IP PDA, so existing
   per-IP passes still resolve.
 - **`ConnectionTicket` and its instructions.** Gated behind the `development` feature and excluded from
   mainnet-beta builds, so they cannot affect a production program. The v1 `ClientSeat` lifecycle,

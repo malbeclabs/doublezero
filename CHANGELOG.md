@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - `doublezero connect --client-ip <ip>` fails when it cannot be honored, where it was previously accepted and discarded. An invocation that names an address this host does not hold, or whose payer holds a dynamic AccessPass, now aborts the connect instead of quietly proceeding on the discovered address.
+- SDK
+  - `GetAccessPassCommand` in the Rust SDK now reads only the pass at the `(client_ip, user_payer)` it is given, including a dynamic pass at `0.0.0.0`. It returns an error when the RPC read fails, instead of reporting that the pass is missing. The old behavior, which returns the payer's `0.0.0.0` pass for any other IP when one exists, is now `ResolveAccessPassCommand`. Code that needs the pass `create_user` will attach must switch to `ResolveAccessPassCommand`.
 
 ### Changes
 
@@ -26,8 +28,6 @@ All notable changes to this project will be documented in this file.
   - The signed TWAMP reflector verifies a probe's signature before touching per-sender pair state. `target_pk` is public onchain, so spoofed probes could previously consume a paying sender's pair budget, repoint its source IP and clear its challenge nonce. Unverified probes still get a reply, now off throwaway state and capped at one per window per pubkey — with a floor so the cap holds even where pair rate limiting is disabled. Ingestion also refuses a reference slot older than two refresh periods, so an RPC outage cannot freeze the replay window around a stale slot, and it reads that slot from a background-refreshed cache rather than calling RPC on the socket-receive path.
   - A completed target scan that matches nothing propagates instead of being mistaken for a skipped scan, so removing a user's last target or flipping them to Delinquent stops the probing. A scan where accounts came back but none decoded is an error rather than an empty result, so a lagging replica or an account layout change cannot take a probe dark, and an update dropped by a full channel is retried instead of being recorded as delivered.
   - ICMP echo replies are matched on source address as well as ID and sequence.
-- SDK
-  - `GetExactAccessPassCommand` in the Rust SDK reads the AccessPass at an exact `(client_ip, user_payer)` PDA. `GetAccessPassCommand` resolves the dynamic `0.0.0.0` pass first and falls back to the exact one — right for a connect that takes the address it is given, wrong for authorizing a caller-chosen one, where the distinction is the whole check.
 - Serviceability
   - With `RequireIpOwnershipProof` set, a user creation carrying no RFC-27 proof is accepted when its AccessPass sits at the PDA of the address being claimed and is not flagged `allow_multiple_ip`. `SetAccessPass` is permissioned, so such a pass is an issuing authority's attestation of that address, and the flag and the pass together otherwise left a host unable to connect when no proof was obtainable for it. The waiver is keyed on the PDA seed rather than the stored `client_ip` field, which a legacy wildcard pass can carry without any authority behind it. It covers absence only: a supplied proof is still validated in full, and wildcard passes still require one. The trust boundary moves onto issuance, which `SetAccessPass` extends to tenant administrators as well as `ACCESS_PASS_ADMIN` holders. RFC-27 is amended to match.
 

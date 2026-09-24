@@ -1,6 +1,6 @@
 use crate::{
     commands::{
-        accesspass::get::GetAccessPassCommand, device::get::GetDeviceCommand,
+        accesspass::get::ResolveAccessPassCommand, device::get::GetDeviceCommand,
         user::instructions_with_ip_proof,
     },
     DoubleZeroClient,
@@ -33,9 +33,9 @@ pub struct CreateUserCommand {
 
 impl CreateUserCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
-        // GetAccessPassCommand prefers a shared dynamic (UNSPECIFIED) pass and falls
+        // ResolveAccessPassCommand prefers a shared dynamic (UNSPECIFIED) pass and falls
         // back to the exact client-IP pass, matching the onchain create_user path.
-        let (accesspass_pk, _) = GetAccessPassCommand {
+        let (accesspass_pk, _) = ResolveAccessPassCommand {
             client_ip: self.client_ip,
             user_payer: client.get_payer(),
         }
@@ -162,7 +162,7 @@ mod tests {
             .with(predicate::eq(accesspass_pubkey))
             .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
 
-        // GetAccessPassCommand checks the UNSPECIFIED (dynamic) PDA first; no pass
+        // ResolveAccessPassCommand checks the UNSPECIFIED (dynamic) PDA first; no pass
         // exists there, so it falls back to the exact-IP PDA above.
         let (dynamic_accesspass_pubkey, _) =
             get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);

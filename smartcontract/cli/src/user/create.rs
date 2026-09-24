@@ -8,7 +8,7 @@ use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_sdk::{
     commands::{
-        accesspass::get::GetAccessPassCommand,
+        accesspass::get::ResolveAccessPassCommand,
         device::get::GetDeviceCommand,
         tenant::get::GetTenantCommand,
         user::{create::CreateUserCommand, get::GetUserCommand},
@@ -60,7 +60,7 @@ impl CreateUserCliCommand {
         };
 
         let accesspass = client
-            .get_accesspass(GetAccessPassCommand {
+            .resolve_accesspass(ResolveAccessPassCommand {
                 client_ip: self.client_ip,
                 user_payer: client.get_payer(),
             })?
@@ -131,7 +131,7 @@ mod tests {
     };
     use doublezero_sdk::{
         commands::{
-            accesspass::get::GetAccessPassCommand, device::get::GetDeviceCommand,
+            accesspass::get::ResolveAccessPassCommand, device::get::GetDeviceCommand,
             user::create::CreateUserCommand,
         },
         AccountType, Device, DeviceStatus, DeviceType, UserCYOA, UserType,
@@ -227,8 +227,8 @@ mod tests {
             max_multicast_users: 1,
         };
         client
-            .expect_get_accesspass()
-            .with(predicate::eq(GetAccessPassCommand {
+            .expect_resolve_accesspass()
+            .with(predicate::eq(ResolveAccessPassCommand {
                 client_ip,
                 user_payer,
             }))

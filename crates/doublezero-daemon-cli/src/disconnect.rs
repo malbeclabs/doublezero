@@ -547,7 +547,7 @@ mod tests {
         // The kind for delete_user comes from a read-back of the pass, since there is no
         // operator here to declare one.
         ledger
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .with(predicate::eq(ip), predicate::eq(payer))
             .returning(move |client_ip, user_payer| {
                 Ok(Some(make_test_accesspass(
@@ -605,7 +605,7 @@ mod tests {
             .expect_list_user()
             .returning(move || Ok(users.clone()));
         ledger
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .with(predicate::eq(ip), predicate::eq(payer))
             .returning(move |client_ip, user_payer| {
                 Ok(Some(make_test_accesspass(
@@ -696,7 +696,7 @@ mod tests {
         // The kind for delete_user comes from a read-back of the pass, since there is no
         // operator here to declare one.
         ledger
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .with(predicate::eq(ip), predicate::eq(payer))
             .returning(move |client_ip, user_payer| {
                 Ok(Some(make_test_accesspass(
@@ -747,7 +747,7 @@ mod tests {
         ledger
             .expect_list_user()
             .returning(move || Ok(users.clone()));
-        // No get_accesspass expectation: disconnect must not read the pass to pick a kind.
+        // No resolve_accesspass expectation: disconnect must not read the pass to pick a kind.
         // The mock panics if it does, which is the point of this test.
         ledger
             .expect_delete_user()
@@ -815,7 +815,7 @@ mod tests {
                 .expect_list_user()
                 .returning(move || Ok(users.clone()));
             ledger
-                .expect_get_accesspass()
+                .expect_resolve_accesspass()
                 .with(predicate::eq(ip), predicate::eq(payer))
                 .returning(move |client_ip, user_payer| {
                     Ok(Some(make_test_accesspass(

@@ -19,7 +19,7 @@ use crate::{
 use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::{
-    accesspass::{get::GetAccessPassCommand, set::SetAccessPassCommand},
+    accesspass::{get::ResolveAccessPassCommand, set::SetAccessPassCommand},
     multicastgroup::allowlist::{
         publisher::{
             add::AddMulticastGroupPubAllowlistCommand,
@@ -335,7 +335,7 @@ fn send<C: CliCommand>(client: &C, change: &PlannedChange) -> eyre::Result<Strin
 /// counters that the plan may already have seen go stale.
 fn send_ibrl<C: CliCommand>(client: &C, change: &IbrlChange) -> eyre::Result<String> {
     let (_, pass) = client
-        .get_accesspass(GetAccessPassCommand {
+        .resolve_accesspass(ResolveAccessPassCommand {
             client_ip: change.client_ip,
             user_payer: change.user_payer,
         })?
@@ -519,7 +519,7 @@ mod tests {
             max_multicast_users: 1,
         };
         client
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .returning(move |_| Ok(Some((Pubkey::new_unique(), pass.clone()))));
 
         let doc = format!(
@@ -799,7 +799,7 @@ mod tests {
             max_multicast_users: 5,
         };
         client
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .returning(move |_| Ok(Some((Pubkey::new_unique(), stored.clone()))));
 
         client
@@ -1037,7 +1037,7 @@ mod tests {
             max_multicast_users: 1,
         };
         client
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .returning(move |_| Ok(Some((Pubkey::new_unique(), pass.clone()))));
         client
             .expect_set_accesspass()
@@ -1140,7 +1140,7 @@ mod tests {
             max_multicast_users: 1,
         };
         client
-            .expect_get_accesspass()
+            .expect_resolve_accesspass()
             .returning(move |_| Ok(Some((Pubkey::new_unique(), stored.clone()))));
 
         // No `ibrl` key: the declared state is "no tenant".
@@ -1228,7 +1228,7 @@ mod tests {
             .expect_list_multicastgroup()
             .returning(|_| Ok(HashMap::new()));
         // No pass at this PDA, so the entry is blocked.
-        client.expect_get_accesspass().returning(|_| Ok(None));
+        client.expect_resolve_accesspass().returning(|_| Ok(None));
         // Any write at all is a failure of this test: mockall panics on an unexpected call.
 
         // No `ibrl`: a missing pass is blocked either way, and declaring a tenant would make
@@ -1297,7 +1297,7 @@ mod tests {
             max_multicast_users: 1,
         };
         // One entry has a pass, the other does not and is therefore blocked.
-        client.expect_get_accesspass().returning(move |cmd| {
+        client.expect_resolve_accesspass().returning(move |cmd| {
             if cmd.client_ip == IP {
                 Ok(Some((Pubkey::new_unique(), pass.clone())))
             } else {

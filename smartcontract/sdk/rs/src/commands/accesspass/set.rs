@@ -6,7 +6,7 @@ use doublezero_serviceability::{
 use doublezero_serviceability_instruction::accesspass::set_access_pass;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
-use crate::{commands::accesspass::get::GetAccessPassCommand, DoubleZeroClient};
+use crate::{commands::accesspass::get::ResolveAccessPassCommand, DoubleZeroClient};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SetAccessPassCommand {
@@ -33,7 +33,7 @@ impl SetAccessPassCommand {
             }
         }
 
-        let accesspass = GetAccessPassCommand {
+        let accesspass = ResolveAccessPassCommand {
             client_ip: self.client_ip,
             user_payer: self.user_payer,
         }
@@ -119,7 +119,7 @@ mod tests {
             .with(predicate::eq(pda_pubkey))
             .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
 
-        // GetAccessPassCommand checks the UNSPECIFIED (dynamic) PDA first; no pass
+        // ResolveAccessPassCommand checks the UNSPECIFIED (dynamic) PDA first; no pass
         // exists there, so it falls back to the exact-IP PDA above.
         let (dynamic_pubkey, _) =
             get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &user_payer);

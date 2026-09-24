@@ -71,22 +71,17 @@ pub trait LedgerClient: Send + Sync {
     /// The current DZ ledger epoch (used for AccessPass expiry enforcement).
     fn get_epoch(&self) -> eyre::Result<u64>;
 
-    /// Fetch the AccessPass for `(client_ip, user_payer)`, or `None` if no
-    /// such pass exists.
-    fn get_accesspass(
+    /// Find the AccessPass `create_user` will attach for a user at `client_ip`: the payer's
+    /// dynamic (0.0.0.0) pass when one exists, otherwise the pass at `client_ip`.
+    fn resolve_accesspass(
         &self,
         client_ip: Ipv4Addr,
         user_payer: Pubkey,
     ) -> eyre::Result<Option<AccessPass>>;
 
-    /// Fetch the AccessPass stored at the exact `(client_ip, user_payer)` PDA, or `None` if
-    /// there is none.
-    ///
-    /// Distinct from [`LedgerClient::get_accesspass`], which prefers the dynamic (0.0.0.0) pass
-    /// and falls back to the exact one. `connect --client-ip` must not accept a dynamic pass:
-    /// it authorizes any address, so honoring a caller-chosen IP against it would let the
-    /// caller bind an address nobody vouched for.
-    fn get_accesspass_exact(
+    /// Fetch the AccessPass stored at the `(client_ip, user_payer)` PDA, or `None` if there is
+    /// none. Unlike [`LedgerClient::resolve_accesspass`], this never reads a different address.
+    fn get_accesspass(
         &self,
         client_ip: Ipv4Addr,
         user_payer: Pubkey,

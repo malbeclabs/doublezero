@@ -4,42 +4,11 @@ GENESIS_DZ_EPOCH=31
 
 set -eu
 
-# Wait for the Solana fork to become reachable. The caller starts the loader in
-# the background; it clones accounts from mainnet-beta, so it is slower to serve
-# than a bare validator boot.
-FORK_WAIT_SECONDS=180
-FORK_LOG=solana-fork.log
-FORK_PID_FILE=solana-fork.pid
-
-# The caller writes the pid file; nothing reads it once this script is done, and
-# a stale one left behind would make the next local run read a dead pid and
-# report the loader as crashed. Clear it however we exit.
-trap 'rm -f "$FORK_PID_FILE"' EXIT
-
-for _ in $(seq 1 $((FORK_WAIT_SECONDS / 2))); do
-    if solana cluster-version -u l > /dev/null 2>&1; then
-        echo "Solana fork is ready."
-        break
-    fi
-    # A loader that died is reported now rather than after the whole window: the
-    # timeout alone cannot distinguish a crash from a slow start.
-    if [ -s "$FORK_PID_FILE" ] && ! kill -0 "$(cat "$FORK_PID_FILE")" 2>/dev/null; then
-        echo "Solana fork loader exited before becoming ready." >&2
-        if [ -f "$FORK_LOG" ]; then
-            tail -50 "$FORK_LOG" >&2
-        fi
-        exit 1
-    fi
-    sleep 2
-done
-
-if ! solana cluster-version -u l > /dev/null 2>&1; then
-    echo "Solana fork did not start within ${FORK_WAIT_SECONDS} seconds." >&2
-    if [ -f "$FORK_LOG" ]; then
-        tail -50 "$FORK_LOG" >&2
-    fi
-    exit 1
-fi
+# Wait for the Solana fork the caller started in the background. Shared with
+# test_validator_debt_fork.sh so the two cannot drift apart.
+# shellcheck source=lib/wait_for_fork.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/wait_for_fork.sh"
+wait_for_fork
 
 CLI_BIN=target/debug/doublezero-solana
 

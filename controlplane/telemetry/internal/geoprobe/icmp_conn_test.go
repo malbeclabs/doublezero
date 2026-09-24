@@ -35,9 +35,10 @@ func TestICMPConn_RoundTrip(t *testing.T) {
 	require.NoError(t, conn.setReadDeadline(time.Now().Add(2*time.Second)))
 
 	buf := make([]byte, 1500)
-	n, rxTime, err := conn.recvEcho(buf)
+	n, src, rxTime, err := conn.recvEcho(buf)
 	require.NoError(t, err)
 	assert.Greater(t, n, 0)
+	assert.True(t, src.Equal(net.IPv4(127, 0, 0, 1)), "reply source should be the probed host, got %v", src)
 
 	rtt := rxTime.Sub(txTime)
 	assert.GreaterOrEqual(t, rtt, time.Duration(0))
@@ -54,7 +55,7 @@ func TestICMPConn_DeadlineExpired(t *testing.T) {
 	require.NoError(t, conn.setReadDeadline(time.Now().Add(-1*time.Second)))
 
 	buf := make([]byte, 1500)
-	_, _, err = conn.recvEcho(buf)
+	_, _, _, err = conn.recvEcho(buf)
 	assert.Error(t, err)
 }
 

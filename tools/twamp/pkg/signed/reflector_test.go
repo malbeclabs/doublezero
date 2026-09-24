@@ -749,6 +749,136 @@ func TestReflector_Linux(t *testing.T) {
 		_, err = conn.Read(replyBuf)
 		assert.Error(t, err, "third probe should be rate-limited")
 	})
+
+	t.Run("spoofed probe does not disturb a legitimate sender's pair", func(t *testing.T) {
+		t.Parallel()
+
+		senderPub, senderSigner := newTestSigner(t)
+		_, reflectorSigner := newTestSigner(t)
+
+		var senderPubKey [32]byte
+		copy(senderPubKey[:], senderPub)
+
+		// verifyInterval exceeds the test duration: only two probes per window,
+		// so if spoofed packets consume the pair budget the legitimate pair can
+		// never complete.
+		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, [32]byte{}, [][32]byte{senderPubKey}, 10*time.Second)
+		require.NoError(t, err)
+		defer reflector.Close()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		go func() { _ = reflector.Run(ctx) }()
+		time.Sleep(10 * time.Millisecond)
+
+		conn, err := net.DialUDP("udp", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())})
+		require.NoError(t, err)
+		defer conn.Close()
+
+		send := func(probe *signed.ProbePacket) {
+			t.Helper()
+			var buf [signed.ProbePacketSize]byte
+			require.NoError(t, probe.Marshal(buf[:]))
+			_, err := conn.Write(buf[:])
+			require.NoError(t, err)
+		}
+		readReply := func() *signed.ReplyPacket {
+			t.Helper()
+			require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
+			replyBuf := make([]byte, signed.MaxReplyPacketSize)
+			n, err := conn.Read(replyBuf)
+			require.NoError(t, err)
+			reply, err := signed.UnmarshalReplyPacket(replyBuf[:n])
+			require.NoError(t, err)
+			return reply
+		}
+		// A reply to a spoofed probe is allowed; drain whatever arrives.
+		drain := func() {
+			t.Helper()
+			require.NoError(t, conn.SetReadDeadline(time.Now().Add(200*time.Millisecond)))
+			_, _ = conn.Read(make([]byte, signed.MaxReplyPacketSize))
+		}
+		spoof := func(seq uint32) *signed.ProbePacket {
+			t.Helper()
+			p := signed.NewProbePacket(seq, senderSigner)
+			p.Signature[0] ^= 0xff // target_pk is public onchain; the signature is not forgeable
+			return p
+		}
+
+		// Spoofed probe before the pair starts must not consume the budget or
+		// claim the pair's source IP.
+		send(spoof(90))
+		drain()
+
+		probe0 := signed.NewProbePacket(1, senderSigner)
+		send(probe0)
+		reply0 := readReply()
+		nonce := reply0.SinceLastRxNs
+		require.NotEqual(t, uint64(0), nonce, "Reply 0 should carry a challenge nonce")
+
+		// Spoofed probe mid-pair must not clear the issued nonce.
+		send(spoof(91))
+		drain()
+
+		probe1 := signed.NewProbePacket(2, senderSigner)
+		overwriteProbeSecFracAndResign(t, probe1, nonce, senderSigner)
+		send(probe1)
+		reply1 := readReply()
+
+		assert.True(t, reply1.Challenged, "legitimate Reply 1 should still be Challenged after spoofed probes")
+	})
+
+	t.Run("unverified replies stay capped with rate limiting disabled", func(t *testing.T) {
+		t.Parallel()
+
+		senderPub, senderSigner := newTestSigner(t)
+		_, reflectorSigner := newTestSigner(t)
+
+		var senderPubKey [32]byte
+		copy(senderPubKey[:], senderPub)
+
+		// verifyInterval 0 disables pair rate limiting. Replies to probes we
+		// could not authenticate must still be capped, or the reflector is a
+		// UDP amplifier for anyone who knows an authorized pubkey.
+		reflector, err := signed.NewLinuxReflector("127.0.0.1:0", 100*time.Millisecond, reflectorSigner, [32]byte{}, [][32]byte{senderPubKey}, 0)
+		require.NoError(t, err)
+		defer reflector.Close()
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		go func() { _ = reflector.Run(ctx) }()
+		time.Sleep(10 * time.Millisecond)
+
+		conn, err := net.DialUDP("udp", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: int(reflector.Port())})
+		require.NoError(t, err)
+		defer conn.Close()
+
+		sendSpoofed := func(seq uint32) {
+			t.Helper()
+			probe := signed.NewProbePacket(seq, senderSigner)
+			probe.Signature[0] ^= 0xff
+			var buf [signed.ProbePacketSize]byte
+			require.NoError(t, probe.Marshal(buf[:]))
+			_, err := conn.Write(buf[:])
+			require.NoError(t, err)
+		}
+
+		replyBuf := make([]byte, signed.MaxReplyPacketSize)
+
+		sendSpoofed(1)
+		require.NoError(t, conn.SetReadDeadline(time.Now().Add(2*time.Second)))
+		_, err = conn.Read(replyBuf)
+		require.NoError(t, err, "the first unverified probe is answered")
+
+		for seq := uint32(2); seq <= 5; seq++ {
+			sendSpoofed(seq)
+		}
+		require.NoError(t, conn.SetReadDeadline(time.Now().Add(300*time.Millisecond)))
+		_, err = conn.Read(replyBuf)
+		assert.Error(t, err, "further unverified probes inside the window must not be answered")
+	})
 }
 
 // overwriteProbeSecFracAndResign rewrites the Sec/Frac fields of probe to

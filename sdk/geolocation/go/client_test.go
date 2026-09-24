@@ -379,13 +379,79 @@ func TestSDK_Geolocation_Client_GetGeolocationUserByCode_OwnerMismatch(t *testin
 	require.ErrorIs(t, err, geolocation.ErrOwnerMismatch)
 }
 
+// A caller acts on emptiness — a geoprobe stops probing and empties its inbound
+// allowlist — so "accounts came back but none of them decoded" must not look
+// like "no users". A lagging replica or an account layout change would otherwise
+// take the probe dark, and the layout case does not self-heal.
+func TestSDK_Geolocation_Client_GetGeolocationUsers_AllAccountsUndecodable(t *testing.T) {
+	t.Parallel()
+
+	programID := solana.NewWallet().PublicKey()
+	wrongOwner := solana.NewWallet().PublicKey()
+	user1 := &geolocation.GeolocationUser{
+		AccountType:   geolocation.AccountTypeGeolocationUser,
+		Owner:         solana.NewWallet().PublicKey(),
+		Code:          "geo-user-01",
+		TokenAccount:  solana.NewWallet().PublicKey(),
+		PaymentStatus: geolocation.GeolocationPaymentStatusPaid,
+		Billing: geolocation.GeolocationBillingConfig{
+			Variant:      geolocation.BillingConfigFlatPerEpoch,
+			FlatPerEpoch: geolocation.FlatPerEpochConfig{Rate: 1000},
+		},
+		Status:  geolocation.GeolocationUserStatusActivated,
+		Targets: []geolocation.GeolocationTarget{},
+	}
+
+	tests := []struct {
+		name  string
+		owner solana.PublicKey
+		data  []byte
+	}{
+		{"wrong owner", wrongOwner, nil},
+		{"undecodable data", programID, []byte{0xff, 0xff, 0xff}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockRPC := &mockRPCClient{
+				GetProgramAccountsWithOptsFunc: func(_ context.Context, _ solana.PublicKey, _ *solanarpc.GetProgramAccountsOpts) (solanarpc.GetProgramAccountsResult, error) {
+					data := tt.data
+					if data == nil {
+						var buf bytes.Buffer
+						if err := user1.Serialize(&buf); err != nil {
+							t.Fatalf("mock serialize: %v", err)
+						}
+						data = buf.Bytes()
+					}
+					return solanarpc.GetProgramAccountsResult{
+						{
+							Pubkey: solana.NewWallet().PublicKey(),
+							Account: &solanarpc.Account{
+								Owner: tt.owner,
+								Data:  solanarpc.DataBytesOrJSONFromBytes(data),
+							},
+						},
+					}, nil
+				},
+			}
+
+			client := geolocation.New(slog.Default(), mockRPC, programID)
+			users, err := client.GetGeolocationUsers(context.Background())
+			require.ErrorContains(t, err, "none of the 1 GeolocationUser accounts returned could be decoded")
+			require.Empty(t, users)
+		})
+	}
+}
+
+// One bad account among good ones is still skipped rather than failing the scan.
 func TestSDK_Geolocation_Client_GetGeolocationUsers_SkipsWrongOwner(t *testing.T) {
 	t.Parallel()
 
 	programID := solana.NewWallet().PublicKey()
 	wrongOwner := solana.NewWallet().PublicKey()
-
-	user1 := &geolocation.GeolocationUser{
+	good := &geolocation.GeolocationUser{
 		AccountType:   geolocation.AccountTypeGeolocationUser,
 		Owner:         solana.NewWallet().PublicKey(),
 		Code:          "geo-user-01",
@@ -401,8 +467,8 @@ func TestSDK_Geolocation_Client_GetGeolocationUsers_SkipsWrongOwner(t *testing.T
 
 	mockRPC := &mockRPCClient{
 		GetProgramAccountsWithOptsFunc: func(_ context.Context, _ solana.PublicKey, _ *solanarpc.GetProgramAccountsOpts) (solanarpc.GetProgramAccountsResult, error) {
-			var buf1 bytes.Buffer
-			if err := user1.Serialize(&buf1); err != nil {
+			var buf bytes.Buffer
+			if err := good.Serialize(&buf); err != nil {
 				t.Fatalf("mock serialize: %v", err)
 			}
 			return solanarpc.GetProgramAccountsResult{
@@ -410,7 +476,14 @@ func TestSDK_Geolocation_Client_GetGeolocationUsers_SkipsWrongOwner(t *testing.T
 					Pubkey: solana.NewWallet().PublicKey(),
 					Account: &solanarpc.Account{
 						Owner: wrongOwner,
-						Data:  solanarpc.DataBytesOrJSONFromBytes(buf1.Bytes()),
+						Data:  solanarpc.DataBytesOrJSONFromBytes(buf.Bytes()),
+					},
+				},
+				{
+					Pubkey: solana.NewWallet().PublicKey(),
+					Account: &solanarpc.Account{
+						Owner: programID,
+						Data:  solanarpc.DataBytesOrJSONFromBytes(buf.Bytes()),
 					},
 				},
 			}, nil
@@ -420,7 +493,8 @@ func TestSDK_Geolocation_Client_GetGeolocationUsers_SkipsWrongOwner(t *testing.T
 	client := geolocation.New(slog.Default(), mockRPC, programID)
 	users, err := client.GetGeolocationUsers(context.Background())
 	require.NoError(t, err)
-	require.Empty(t, users)
+	require.Len(t, users, 1)
+	require.Equal(t, "geo-user-01", users[0].Code)
 }
 
 func TestSDK_Geolocation_Client_GetGeolocationUsers_Empty(t *testing.T) {

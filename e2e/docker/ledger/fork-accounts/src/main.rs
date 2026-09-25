@@ -93,10 +93,10 @@ fn cmd_fetch(args: &[String]) {
         });
 
         let response: RpcResponse = ureq::post(rpc_url)
-            .set("Content-Type", "application/json")
             .send_json(&body)
             .expect("RPC request failed")
-            .into_json()
+            .body_mut()
+            .read_json()
             .expect("failed to parse RPC response");
 
         if let Some(err) = response.error {

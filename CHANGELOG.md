@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+### Changes
+
+## [v0.43.0](https://github.com/malbeclabs/doublezero/compare/client/v0.42.0...client/v0.43.0) - 2026-09-25
+
+### Breaking
+
 - CLI
   - `doublezero connect --client-ip <ip>` fails when it cannot be honored, where it was previously accepted and discarded. An invocation that names an address this host does not hold, or whose payer holds a dynamic AccessPass, now aborts the connect instead of quietly proceeding on the discovered address.
 - SDK

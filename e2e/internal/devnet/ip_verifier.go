@@ -5,15 +5,17 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"strconv"
 	"time"
 
+	mobycontainer "github.com/moby/moby/api/types/container"
+	mobynetwork "github.com/moby/moby/api/types/network"
+
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerfilters "github.com/docker/docker/api/types/filters"
-	dockernetwork "github.com/docker/docker/api/types/network"
-	"github.com/docker/go-connections/nat"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
@@ -292,10 +294,15 @@ func (v *IPVerifier) Start(ctx context.Context) error {
 		env["DZ_IP_VERIFIER_AUTHORITY_REFRESH_SECS"] = strconv.Itoa(v.dn.Spec.IPVerifier.AuthorityRefreshSecs)
 	}
 
+	cyoaAddr, err := netip.ParseAddr(v.CYOANetworkIP)
+	if err != nil {
+		return fmt.Errorf("failed to parse ip-verifier CYOA IP %q: %w", v.CYOANetworkIP, err)
+	}
+
 	req := testcontainers.ContainerRequest{
 		Image: v.dn.Spec.IPVerifier.ContainerImage,
 		Name:  v.dockerContainerName(),
-		ConfigModifier: func(cfg *dockercontainer.Config) {
+		ConfigModifier: func(cfg *mobycontainer.Config) {
 			cfg.Hostname = v.dockerContainerHostname()
 		},
 		ExposedPorts: []string{fmt.Sprintf("%d/tcp", ipVerifierInternalPort)},
@@ -313,22 +320,22 @@ func (v *IPVerifier) Start(ctx context.Context) error {
 		NetworkAliases: map[string][]string{
 			v.dn.DefaultNetwork.Name: {"ip-verifier"},
 		},
-		EndpointSettingsModifier: func(m map[string]*dockernetwork.EndpointSettings) {
+		EndpointSettingsModifier: func(m map[string]*mobynetwork.EndpointSettings) {
 			if m[v.dn.CYOANetwork.Name] == nil {
-				m[v.dn.CYOANetwork.Name] = &dockernetwork.EndpointSettings{}
+				m[v.dn.CYOANetwork.Name] = &mobynetwork.EndpointSettings{}
 			}
-			m[v.dn.CYOANetwork.Name].IPAddress = v.CYOANetworkIP
-			m[v.dn.CYOANetwork.Name].IPAMConfig = &dockernetwork.EndpointIPAMConfig{
-				IPv4Address: v.CYOANetworkIP,
+			m[v.dn.CYOANetwork.Name].IPAddress = cyoaAddr
+			m[v.dn.CYOANetwork.Name].IPAMConfig = &mobynetwork.EndpointIPAMConfig{
+				IPv4Address: cyoaAddr,
 			}
 		},
 		// /health is 200 only once the cached ledger epoch is fresh *and* the ledger names this
 		// container's key as the verifier authority, so waiting on it proves both.
 		WaitingFor: tcwait.ForHTTP("/health").
-			WithPort(nat.Port(fmt.Sprintf("%d/tcp", ipVerifierInternalPort))).
+			WithPort(fmt.Sprintf("%d/tcp", ipVerifierInternalPort)).
 			WithStartupTimeout(ipVerifierStartupTimeout).
 			WithPollInterval(1 * time.Second),
-		Resources: dockercontainer.Resources{
+		Resources: mobycontainer.Resources{
 			NanoCPUs: defaultContainerNanoCPUs,
 			Memory:   defaultContainerMemory,
 		},

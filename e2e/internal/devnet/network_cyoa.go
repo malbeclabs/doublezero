@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/netip"
+
+	mobynetwork "github.com/moby/moby/api/types/network"
 
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	dockernetwork "github.com/docker/docker/api/types/network"
@@ -76,6 +79,10 @@ func (n *CYOANetwork) Create(ctx context.Context) error {
 	// Allocate a collision-safe subnet and create the network, retrying on a Docker pool-overlap
 	// error so a concurrent process grabbing the CIDR between allocation and creation self-heals.
 	subnetCIDR, err := createNetworkWithSubnet(ctx, n.dn.subnetAllocator, n.dn.Spec.DeployID, func(subnetCIDR string) error {
+		subnet, err := netip.ParsePrefix(subnetCIDR)
+		if err != nil {
+			return fmt.Errorf("failed to parse subnet %q: %w", subnetCIDR, err)
+		}
 		// NOTE: We use the deprecated GenericNetworkRequest because the newer network.New doesn't
 		// allow us to set the name of the network, and we want something we can find by name.
 		//nolint:staticcheck // SA1019
@@ -86,15 +93,15 @@ func (n *CYOANetwork) Create(ctx context.Context) error {
 				Attachable: true,
 				Labels:     n.dn.labels,
 				Internal:   true,
-				IPAM: &dockernetwork.IPAM{
-					Config: []dockernetwork.IPAMConfig{
-						{Subnet: subnetCIDR},
+				IPAM: &mobynetwork.IPAM{
+					Config: []mobynetwork.IPAMConfig{
+						{Subnet: subnet},
 					},
 				},
 			},
 		}
 		//nolint:staticcheck // SA1019
-		_, err := testcontainers.GenericNetwork(ctx, req)
+		_, err = testcontainers.GenericNetwork(ctx, req)
 		return err
 	})
 	if err != nil {

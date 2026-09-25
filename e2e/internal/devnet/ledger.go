@@ -13,10 +13,11 @@ import (
 	"strings"
 	"time"
 
+	mobycontainer "github.com/moby/moby/api/types/container"
+
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	dockervolume "github.com/docker/docker/api/types/volume"
-	"github.com/docker/go-connections/nat"
 	"github.com/gagliardetto/solana-go"
 	"github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
@@ -199,7 +200,7 @@ func (l *Ledger) Start(ctx context.Context) error {
 	req := testcontainers.ContainerRequest{
 		Image: l.dn.Spec.Ledger.ContainerImage,
 		Name:  l.dockerContainerName(),
-		ConfigModifier: func(cfg *dockercontainer.Config) {
+		ConfigModifier: func(cfg *mobycontainer.Config) {
 			cfg.Hostname = l.dockerContainerHostname()
 		},
 		ExposedPorts: []string{fmt.Sprintf("%d/tcp", internalLedgerRPCPort), fmt.Sprintf("%d/tcp", internalLedgerRPCWSPort)},
@@ -227,7 +228,7 @@ func (l *Ledger) Start(ctx context.Context) error {
 		// start simultaneously (causing "container exec inspect: context deadline exceeded").
 		// HTTP checks are more resilient as they don't require Docker API round-trips.
 		WaitingFor: tcwait.ForHTTP("/").
-			WithPort(nat.Port(fmt.Sprintf("%d/tcp", internalLedgerRPCPort))).
+			WithPort(fmt.Sprintf("%d/tcp", internalLedgerRPCPort)).
 			WithMethod(http.MethodPost).
 			WithHeaders(map[string]string{"Content-Type": "application/json"}).
 			WithBody(strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"getHealth"}`)).
@@ -252,7 +253,7 @@ func (l *Ledger) Start(ctx context.Context) error {
 		// NOTE: We intentionally use the deprecated Resources field here instead of the HostConfigModifier
 		// because the latter has issues with setting SHM memory and other constraints to 0, which can cause
 		// unexpected behavior.
-		Resources: dockercontainer.Resources{
+		Resources: mobycontainer.Resources{
 			NanoCPUs: defaultContainerNanoCPUs,
 			Memory:   ledgerContainerMemory,
 		},

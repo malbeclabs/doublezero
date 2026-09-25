@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/netip"
+
+	mobynetwork "github.com/moby/moby/api/types/network"
 
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	dockernetwork "github.com/docker/docker/api/types/network"
@@ -69,6 +72,10 @@ func (n *DefaultNetwork) Create(ctx context.Context) error {
 	// kept separate from the CYOA network (9.128.0.0/9) to avoid conflicts in tests that detect
 	// interfaces by IP range.
 	subnetCIDR, err := createNetworkWithSubnet(ctx, n.dn.defaultNetworkAllocator, n.dn.Spec.DeployID, func(subnetCIDR string) error {
+		subnet, err := netip.ParsePrefix(subnetCIDR)
+		if err != nil {
+			return fmt.Errorf("failed to parse subnet %q: %w", subnetCIDR, err)
+		}
 		//nolint:staticcheck // SA1019
 		req := testcontainers.GenericNetworkRequest{
 			NetworkRequest: testcontainers.NetworkRequest{
@@ -76,15 +83,15 @@ func (n *DefaultNetwork) Create(ctx context.Context) error {
 				Driver:     "bridge",
 				Attachable: true,
 				Labels:     n.dn.labels,
-				IPAM: &dockernetwork.IPAM{
-					Config: []dockernetwork.IPAMConfig{
-						{Subnet: subnetCIDR},
+				IPAM: &mobynetwork.IPAM{
+					Config: []mobynetwork.IPAMConfig{
+						{Subnet: subnet},
 					},
 				},
 			},
 		}
 		//nolint:staticcheck // SA1019
-		_, err := testcontainers.GenericNetwork(ctx, req)
+		_, err = testcontainers.GenericNetwork(ctx, req)
 		return err
 	})
 	if err != nil {

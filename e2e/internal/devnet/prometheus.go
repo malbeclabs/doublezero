@@ -9,9 +9,10 @@ import (
 	"net/url"
 	"time"
 
+	mobycontainer "github.com/moby/moby/api/types/container"
+
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerfilters "github.com/docker/docker/api/types/filters"
-	"github.com/docker/go-connections/nat"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -112,7 +113,7 @@ func (p *Prometheus) Start(ctx context.Context) error {
 	req := testcontainers.ContainerRequest{
 		Image: p.dn.Spec.Prometheus.ContainerImage,
 		Name:  p.dockerContainerName(),
-		ConfigModifier: func(cfg *dockercontainer.Config) {
+		ConfigModifier: func(cfg *mobycontainer.Config) {
 			cfg.Hostname = p.dockerContainerHostname()
 		},
 		Cmd:          []string{"--config.file=/etc/prometheus/prometheus.yml", "--web.enable-remote-write-receiver"},
@@ -121,13 +122,13 @@ func (p *Prometheus) Start(ctx context.Context) error {
 		NetworkAliases: map[string][]string{
 			p.dn.DefaultNetwork.Name: {"prometheus"},
 		},
-		Resources: dockercontainer.Resources{
+		Resources: mobycontainer.Resources{
 			NanoCPUs: defaultContainerNanoCPUs,
 			Memory:   defaultContainerMemory,
 		},
 		Labels: p.dn.labels,
 		WaitingFor: wait.ForHTTP("/-/ready").
-			WithPort(nat.Port(fmt.Sprintf("%d/tcp", prometheusInternalPort))).
+			WithPort(fmt.Sprintf("%d/tcp", prometheusInternalPort)).
 			WithStatusCodeMatcher(func(status int) bool {
 				return status == 200
 			}).

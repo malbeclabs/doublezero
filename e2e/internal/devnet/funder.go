@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"time"
 
+	mobycontainer "github.com/moby/moby/api/types/container"
+
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	"github.com/gagliardetto/solana-go"
@@ -187,7 +189,7 @@ func (c *Funder) Start(ctx context.Context) error {
 	req := testcontainers.ContainerRequest{
 		Image: c.dn.Spec.Funder.ContainerImage,
 		Name:  c.dockerContainerName(),
-		ConfigModifier: func(cfg *dockercontainer.Config) {
+		ConfigModifier: func(cfg *mobycontainer.Config) {
 			cfg.Hostname = c.dockerContainerHostname()
 		},
 		ExposedPorts: []string{fmt.Sprintf("%d/tcp", funderInternalMetricsPort)},
@@ -198,7 +200,7 @@ func (c *Funder) Start(ctx context.Context) error {
 		// NOTE: We intentionally use the deprecated Resources field here instead of the HostConfigModifier
 		// because the latter has issues with setting SHM memory and other constraints to 0, which can cause
 		// unexpected behavior.
-		Resources: dockercontainer.Resources{
+		Resources: mobycontainer.Resources{
 			NanoCPUs: defaultContainerNanoCPUs,
 			Memory:   defaultContainerMemory,
 		},

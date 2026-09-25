@@ -208,6 +208,9 @@ func (p *Plugin) OnClose(peer corebgp.PeerConfig) {
 				continue
 			}
 		}
+		// Routes already gone from the kernel got no RouteDelete above; stop the
+		// route reconciler from restoring them toward a peer that is down.
+		routing.ForgetRoutesVia(p.RouteReaderWriter, net.IP(peerGw))
 	}
 
 	MetricSessionStatus.Set(0)

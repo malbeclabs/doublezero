@@ -142,12 +142,29 @@ func (n Netlink) RouteGet(ip net.IP) ([]*Route, error) {
 	return routes, nil
 }
 
+// RouteByProtocol returns IPv4 routes matching the given routing protocol.
+//
+// NOTE: only RT_FILTER_PROTOCOL is set, so vishvananda/netlink restricts the
+// listing to the main routing table (RT_TABLE_MAIN); routes in other tables,
+// such as the edge-filtering BGP routes in table 100, are skipped. Use
+// RouteByProtocolAllTables to see those.
 func (n Netlink) RouteByProtocol(protocol int) ([]*Route, error) {
+	return routeByProtocol(protocol, nl.RT_FILTER_PROTOCOL)
+}
+
+// RouteByProtocolAllTables returns IPv4 routes matching the given routing
+// protocol in every routing table. Setting RT_FILTER_TABLE with the table left
+// unspecified lifts the main-table restriction without selecting a table.
+func (n Netlink) RouteByProtocolAllTables(protocol int) ([]*Route, error) {
+	return routeByProtocol(protocol, nl.RT_FILTER_PROTOCOL|nl.RT_FILTER_TABLE)
+}
+
+func routeByProtocol(protocol int, filterMask uint64) ([]*Route, error) {
 	routeFilter := &nl.Route{
 		Protocol: nl.RouteProtocol(protocol),
 	}
 
-	nlr, err := nl.RouteListFiltered(nl.FAMILY_V4, routeFilter, nl.RT_FILTER_PROTOCOL)
+	nlr, err := nl.RouteListFiltered(nl.FAMILY_V4, routeFilter, filterMask)
 	if err != nil {
 		return []*Route{}, err
 	}

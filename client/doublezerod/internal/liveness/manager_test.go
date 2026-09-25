@@ -1641,13 +1641,17 @@ func TestClient_Liveness_Manager_WithdrawRoute_PassiveMode_NoUninstall_NoDelete(
 
 	addCh := make(chan *routing.Route, 1)
 	delCh := make(chan *routing.Route, 1)
+	forgetCh := make(chan *routing.Route, 1)
 
 	m, err := newTestManager(t, func(cfg *ManagerConfig) {
 		cfg.PassiveMode = true
-		cfg.Netlinker = &MockRouteReaderWriter{
-			RouteAddFunc:        func(r *routing.Route) error { addCh <- r; return nil },
-			RouteDeleteFunc:     func(r *routing.Route) error { delCh <- r; return nil },
-			RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
+		cfg.Netlinker = &forgettingRouteReaderWriter{
+			MockRouteReaderWriter: &MockRouteReaderWriter{
+				RouteAddFunc:        func(r *routing.Route) error { addCh <- r; return nil },
+				RouteDeleteFunc:     func(r *routing.Route) error { delCh <- r; return nil },
+				RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
+			},
+			forgetCh: forgetCh,
 		}
 	})
 	require.NoError(t, err)
@@ -1680,7 +1684,21 @@ func TestClient_Liveness_Manager_WithdrawRoute_PassiveMode_NoUninstall_NoDelete(
 	require.Equal(t, 0, m.GetSessionsLen(), "session should be removed after withdraw with NoUninstall in PassiveMode")
 	require.False(t, m.HasSession(peer), "session should be removed after withdraw with NoUninstall in PassiveMode")
 	require.False(t, sess.alive, "session should be marked not alive after withdraw with NoUninstall in PassiveMode")
+
+	// The kernel route stays, but the route reconciler must stop restoring it.
+	forgot := wait(t, forgetCh, time.Second, "RouteForget on NoUninstall withdraw")
+	require.Equal(t, r.Dst.String(), forgot.Dst.String())
 }
+
+// forgettingRouteReaderWriter is a MockRouteReaderWriter that is also a
+// routing.RouteForgetter, standing in for the route reconciler.
+type forgettingRouteReaderWriter struct {
+	*MockRouteReaderWriter
+	forgetCh chan *routing.Route
+}
+
+func (f *forgettingRouteReaderWriter) RouteForget(r *routing.Route) { f.forgetCh <- r }
+func (f *forgettingRouteReaderWriter) RouteForgetVia(net.IP)        {}
 
 func TestClient_Liveness_Manager_OnSessionDown_NoUninstall_SkipsRouteDeleteButClearsInstalled(t *testing.T) {
 	t.Parallel()

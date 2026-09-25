@@ -451,7 +451,11 @@ func (m *manager) WithdrawRoute(r *Route, iface string) error {
 	// Remove the kernel route. In passive mode the caller wants an immediate
 	// kernel update independent of liveness, so we always delete; otherwise we
 	// only delete a route we previously installed.
-	if !r.NoUninstall && (m.cfg.PassiveMode || wasInstalled) {
+	if r.NoUninstall {
+		// The kernel route stays, but BGP withdrew it, so the route reconciler
+		// must stop restoring it.
+		routing.ForgetRoute(m.cfg.Netlinker, &r.Route)
+	} else if m.cfg.PassiveMode || wasInstalled {
 		if err := m.cfg.Netlinker.RouteDelete(&r.Route); err != nil {
 			m.metrics.RouteUninstallFailures.WithLabelValues(iface, srcIP).Inc()
 			return fmt.Errorf("error withdrawing route: %v", err)

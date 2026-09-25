@@ -66,13 +66,21 @@ func keyFor(r *routing.Route) routeKey {
 	}
 }
 
+// Netlinker is the routing.Netlinker the Reconciler wraps. The reconcile scan
+// needs BGP routes from every table, not just the main table RouteByProtocol
+// covers: edge filtering installs its BGP routes in table 100.
+type Netlinker interface {
+	routing.Netlinker
+	RouteByProtocolAllTables(int) ([]*routing.Route, error)
+}
+
 // Reconciler decorates a routing.Netlinker, tracking installed BGP routes and
 // periodically reinstalling any that go missing from the kernel.
 type Reconciler struct {
 	// Embedded Netlinker provides the full routing.Netlinker surface (tunnels,
 	// rules, etc.) by promotion; only RouteAdd, RouteDelete, and TunnelDelete
 	// are overridden below.
-	routing.Netlinker
+	Netlinker
 
 	log      *slog.Logger
 	interval time.Duration
@@ -88,7 +96,7 @@ type Reconciler struct {
 // New creates a Reconciler wrapping inner. interval <= 0 means reconciliation is
 // disabled (the decorator still tracks routes, but Start launches no ticker). If
 // reg is nil, metrics register with prometheus.DefaultRegisterer.
-func New(log *slog.Logger, inner routing.Netlinker, interval time.Duration, reg prometheus.Registerer) *Reconciler {
+func New(log *slog.Logger, inner Netlinker, interval time.Duration, reg prometheus.Registerer) *Reconciler {
 	if log == nil {
 		log = slog.Default()
 	}
@@ -137,6 +145,30 @@ func (rc *Reconciler) RouteDelete(r *routing.Route) error {
 	return rc.Netlinker.RouteDelete(r)
 }
 
+// RouteForget untracks r without touching the kernel. NoUninstall withdrawals
+// (IBRL-with-allocated-IP) leave the kernel route in place and never issue a
+// RouteDelete, but BGP no longer wants the route, so it must not be restored.
+func (rc *Reconciler) RouteForget(r *routing.Route) {
+	rc.mu.Lock()
+	delete(rc.tracked, keyFor(r))
+	rc.mu.Unlock()
+}
+
+// RouteForgetVia untracks every route via nextHop without touching the kernel.
+// A BGP session close only issues RouteDelete for the routes it finds in the
+// kernel, so a tracked route already removed from the kernel would otherwise
+// be restored toward a peer that is down.
+func (rc *Reconciler) RouteForgetVia(nextHop net.IP) {
+	nh := ipString(nextHop)
+	rc.mu.Lock()
+	for k := range rc.tracked {
+		if k.NextHop == nh {
+			delete(rc.tracked, k)
+		}
+	}
+	rc.mu.Unlock()
+}
+
 // TunnelDelete purges tracked routes whose next hop is the tunnel's remote
 // overlay address before deleting the tunnel. The kernel drops routes with
 // their link, but teardown paths that skip route withdrawal (NoUninstall, used
@@ -145,14 +177,7 @@ func (rc *Reconciler) RouteDelete(r *routing.Route) error {
 // reinstall routes onto a deleted tunnel forever.
 func (rc *Reconciler) TunnelDelete(t *routing.Tunnel) error {
 	if t != nil && t.RemoteOverlay != nil {
-		nh := ipString(t.RemoteOverlay)
-		rc.mu.Lock()
-		for k := range rc.tracked {
-			if k.NextHop == nh {
-				delete(rc.tracked, k)
-			}
-		}
-		rc.mu.Unlock()
+		rc.RouteForgetVia(t.RemoteOverlay)
 	}
 	return rc.Netlinker.TunnelDelete(t)
 }
@@ -190,12 +215,8 @@ func (rc *Reconciler) Stop() {
 	rc.wg.Wait()
 }
 
-// reconcile scans the kernel BGP routing table for tracked routes that have gone
-// missing and reinstalls them.
-//
-// NOTE: routing.Netlink.RouteByProtocol only returns main-table routes (see the
-// NOTE on that method); tracked routes in other tables would be declared
-// missing every tick. All current BGP route writers use RT_TABLE_MAIN.
+// reconcile scans the kernel BGP routes in every table for tracked routes that
+// have gone missing and reinstalls them.
 func (rc *Reconciler) reconcile() {
 	rc.mu.Lock()
 	toCheck := make([]*routing.Route, 0, len(rc.tracked))
@@ -208,7 +229,7 @@ func (rc *Reconciler) reconcile() {
 		return
 	}
 
-	kernelRoutes, err := rc.Netlinker.RouteByProtocol(unix.RTPROT_BGP)
+	kernelRoutes, err := rc.Netlinker.RouteByProtocolAllTables(unix.RTPROT_BGP)
 	if err != nil {
 		rc.log.Error("route reconcile: error fetching kernel routes", "error", err)
 		return

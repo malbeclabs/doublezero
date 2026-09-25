@@ -159,6 +159,11 @@ func TestClient_BGPPlugin_OnCloseDeletesRoutesAndSendsDownStatus(t *testing.T) {
 	require.Len(t, deletedRoutes, 1, "should only delete routes matching the closed peer's gateway")
 	require.Equal(t, "1.1.1.1/32", deletedRoutes[0].Dst.String())
 	require.True(t, deletedRoutes[0].NextHop.Equal(peerIP))
+
+	// Routes via the peer that are already gone from the kernel get no delete,
+	// so the close must also forget everything via the peer.
+	require.Len(t, mockRW.forgottenVia, 1)
+	require.True(t, mockRW.forgottenVia[0].Equal(peerIP))
 }
 
 func TestClient_BGPPlugin_OnCloseSkipsRouteDeletionWhenNoInstall(t *testing.T) {

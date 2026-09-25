@@ -16,15 +16,17 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-// mockNetlinker implements routing.Netlinker with overridable route and tunnel
-// hooks; all other methods are no-ops.
+// mockNetlinker implements Netlinker with overridable route and tunnel hooks;
+// all other methods are no-ops. RouteByProtocolAllTables falls back to
+// RouteByProtocolFunc when RouteByProtocolAllTablesFunc is unset.
 type mockNetlinker struct {
 	mu sync.Mutex
 
-	RouteAddFunc        func(*routing.Route) error
-	RouteDeleteFunc     func(*routing.Route) error
-	RouteByProtocolFunc func(int) ([]*routing.Route, error)
-	TunnelDeleteFunc    func(*routing.Tunnel) error
+	RouteAddFunc                 func(*routing.Route) error
+	RouteDeleteFunc              func(*routing.Route) error
+	RouteByProtocolFunc          func(int) ([]*routing.Route, error)
+	RouteByProtocolAllTablesFunc func(int) ([]*routing.Route, error)
+	TunnelDeleteFunc             func(*routing.Tunnel) error
 
 	addCalls    []*routing.Route
 	deleteCalls []*routing.Route
@@ -55,6 +57,19 @@ func (m *mockNetlinker) RouteByProtocol(p int) ([]*routing.Route, error) {
 		return m.RouteByProtocolFunc(p)
 	}
 	return nil, nil
+}
+
+func (m *mockNetlinker) RouteByProtocolAllTables(p int) ([]*routing.Route, error) {
+	if m.RouteByProtocolAllTablesFunc != nil {
+		return m.RouteByProtocolAllTablesFunc(p)
+	}
+	return m.RouteByProtocol(p)
+}
+
+func (m *mockNetlinker) deleteCount() int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return len(m.deleteCalls)
 }
 
 func (m *mockNetlinker) TunnelDelete(t *routing.Tunnel) error {
@@ -216,29 +231,97 @@ func TestClient_Reconcile_UntracksOnDelete_ProtocolAgnostic(t *testing.T) {
 func TestClient_Reconcile_DeleteDuringReconcileNotResurrected(t *testing.T) {
 	t.Parallel()
 
-	// Simulate the resurrection race window: the kernel scan sees the route
-	// missing, then a withdrawal lands before the reinstall re-check. The
-	// tracked-set re-check under the lock must observe the withdrawal and skip.
-	mock := &mockNetlinker{
-		RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
-	}
-	rc := New(testLogger(), mock, 0, prometheus.NewRegistry())
-
+	// The withdrawal lands inside the kernel scan: after reconcile() has
+	// snapshotted the tracked set and before it re-checks it. The locked
+	// re-check must observe the withdrawal and skip the reinstall.
+	var rc *Reconciler
 	r := newTestRoute(nil)
+	mock := &mockNetlinker{
+		RouteByProtocolAllTablesFunc: func(int) ([]*routing.Route, error) {
+			require.NoError(t, rc.RouteDelete(r))
+			return nil, nil
+		},
+	}
+	rc = New(testLogger(), mock, 0, prometheus.NewRegistry())
+
 	require.NoError(t, rc.RouteAdd(r))
 	require.Equal(t, 1, mock.addCount())
 
-	rc.mu.Lock()
-	toCheckLen := len(rc.tracked)
-	rc.mu.Unlock()
-	require.Equal(t, 1, toCheckLen)
+	rc.reconcile()
+	require.Equal(t, 1, mock.deleteCount(), "the withdrawal must have run during the scan")
+	require.Equal(t, 1, mock.addCount(), "route withdrawn between the scan and the re-check must not be resurrected")
+}
 
-	// Withdraw between the kernel scan and the re-check: reconcile() below
-	// re-scans (kernel empty) but must find the tracked entry gone.
-	require.NoError(t, rc.RouteDelete(r))
+func TestClient_Reconcile_NonMainTablePresentNotReinstalled(t *testing.T) {
+	t.Parallel()
+
+	// Edge filtering installs BGP routes in table 100, which the main-table
+	// RouteByProtocol listing omits. The scan must see them in every table.
+	edge := newTestRoute(func(r *routing.Route) { r.Table = routing.RouteTableSpecific })
+	mock := &mockNetlinker{
+		RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
+		RouteByProtocolAllTablesFunc: func(int) ([]*routing.Route, error) {
+			return []*routing.Route{newTestRoute(func(r *routing.Route) { r.Table = routing.RouteTableSpecific })}, nil
+		},
+	}
+	reg := prometheus.NewRegistry()
+	rc := New(testLogger(), mock, 0, reg)
+
+	require.NoError(t, rc.RouteAdd(edge))
+	rc.reconcile()
+
+	require.Equal(t, 1, mock.addCount(), "a table-100 route present in the kernel must not be reinstalled")
+	reinstalls := getCounterValue(t, reg, "doublezero_route_reconcile_reinstalls_total",
+		prometheus.Labels{"local_ip": "10.4.0.1"})
+	require.Equal(t, float64(0), reinstalls)
+}
+
+func TestClient_Reconcile_RouteForgetUntracksWithoutKernelDelete(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockNetlinker{}
+	rc := New(testLogger(), mock, 0, prometheus.NewRegistry())
+
+	require.NoError(t, rc.RouteAdd(newTestRoute(nil)))
+
+	// A NoUninstall withdrawal: shaped like a BGP withdraw, no Protocol.
+	routing.ForgetRoute(rc, newTestRoute(func(r *routing.Route) { r.Protocol = 0 }))
 
 	rc.reconcile()
-	require.Equal(t, 1, mock.addCount(), "route withdrawn before the re-check must not be resurrected")
+	require.Equal(t, 0, mock.deleteCount(), "forgetting must not touch the kernel")
+	require.Equal(t, 1, mock.addCount(), "a forgotten route must not be reinstalled")
+}
+
+func TestClient_Reconcile_RouteForgetViaUntracksPeerRoutesOnly(t *testing.T) {
+	t.Parallel()
+
+	mock := &mockNetlinker{}
+	rc := New(testLogger(), mock, 0, prometheus.NewRegistry())
+
+	require.NoError(t, rc.RouteAdd(newTestRoute(nil)))
+	survivor := newTestRoute(func(r *routing.Route) {
+		r.Dst = &net.IPNet{IP: net.IP{10, 4, 0, 13}, Mask: net.CIDRMask(32, 32)}
+		r.NextHop = net.IP{10, 6, 0, 1}
+	})
+	require.NoError(t, rc.RouteAdd(survivor))
+
+	// The session with 10.5.0.1 closed; ConfiguredRouteReaderWriter must pass
+	// the forget through to the Reconciler below it.
+	cfgPath := filepath.Join(t.TempDir(), "routes.json")
+	require.NoError(t, os.WriteFile(cfgPath, []byte(`{"exclude":[]}`), 0o600))
+	cr, err := routing.NewConfiguredRoutes(cfgPath)
+	require.NoError(t, err)
+	crw, err := routing.NewConfiguredRouteReaderWriter(testLogger(), rc, cr)
+	require.NoError(t, err)
+	routing.ForgetRoutesVia(crw, net.IP{10, 5, 0, 1})
+
+	rc.reconcile()
+	require.Equal(t, 0, mock.deleteCount(), "forgetting must not touch the kernel")
+	require.Equal(t, 3, mock.addCount(), "only the route via the other peer must be reinstalled")
+	mock.mu.Lock()
+	last := mock.addCalls[len(mock.addCalls)-1]
+	mock.mu.Unlock()
+	require.Equal(t, survivor.Dst.String(), last.Dst.String())
 }
 
 func TestClient_Reconcile_NonBGPNotTracked(t *testing.T) {

@@ -76,6 +76,14 @@ func (c *ConfiguredRouteReaderWriter) RouteByProtocol(protocol int) ([]*Route, e
 	return c.nlr.RouteByProtocol(protocol)
 }
 
+func (c *ConfiguredRouteReaderWriter) RouteForget(r *Route) {
+	ForgetRoute(c.nlr, r)
+}
+
+func (c *ConfiguredRouteReaderWriter) RouteForgetVia(nextHop net.IP) {
+	ForgetRoutesVia(c.nlr, nextHop)
+}
+
 func loadConfig(path string) (*RouteConfig, error) {
 	f, err := os.Open(path)
 	if err != nil {

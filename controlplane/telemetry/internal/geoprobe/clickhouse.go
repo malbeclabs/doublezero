@@ -152,11 +152,11 @@ func (w *ClickhouseWriter) Record(row OffsetRow) {
 	w.mu.Unlock()
 }
 
-// BufferedRows returns the number of rows waiting to be flushed.
-func (w *ClickhouseWriter) BufferedRows() int {
+// PendingRows returns a copy of the rows waiting to be flushed.
+func (w *ClickhouseWriter) PendingRows() []OffsetRow {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	return len(w.buf)
+	return append([]OffsetRow(nil), w.buf...)
 }
 
 func (w *ClickhouseWriter) connect(ctx context.Context) error {

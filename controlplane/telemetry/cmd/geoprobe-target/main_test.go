@@ -47,16 +47,27 @@ func TestHandleOffset_DropsUnsignedOffset(t *testing.T) {
 	copy(spoofed.AuthorityPubkey[:], impersonator.PublicKey().Bytes())
 	copy(spoofed.SenderPubkey[:], impersonator.PublicKey().Bytes())
 	spoofed.Signature[0] = 0xff
+	// Stamped far in the future: if the slot floor were consulted before the
+	// signature, a forgery could raise the impersonated key's floor and lock
+	// the real holder out.
+	spoofed.MeasurementSlot = 1 << 40
 
+	floor := newSlotFloor(floorEntryTTL)
 	for _, forged := range []*geoprobe.LocationOffset{unsigned, spoofed} {
-		handleOffset(log, forged, addr, true, writer, caches)
+		handleOffset(log, forged, addr, true, writer, caches, floor)
 
-		if got := writer.BufferedRows(); got != 0 {
+		if got := len(writer.PendingRows()); got != 0 {
 			t.Errorf("expected forged offset to be dropped, got %d buffered clickhouse rows", got)
 		}
 		if _, ok := caches.Get(forged.SenderPubkey).Best(); ok {
 			t.Error("expected forged offset to be dropped, but it entered the cache")
 		}
+	}
+
+	genuine := signedOffsetAt(t, mustSigner(t, impersonator.PrivateKey, impersonator.PublicKey()), 1_000_000, 1_000_000)
+	handleOffset(log, genuine, addr, true, writer, caches, floor)
+	if got := len(writer.PendingRows()); got != 1 {
+		t.Errorf("a forged offset moved the impersonated key's floor: got %d rows for the genuine offset", got)
 	}
 }
 
@@ -78,9 +89,9 @@ func TestHandleOffset_AcceptsSignedOffset(t *testing.T) {
 		t.Fatalf("failed to sign offset: %v", err)
 	}
 
-	handleOffset(log, offset, addr, true, writer, caches)
+	handleOffset(log, offset, addr, true, writer, caches, newSlotFloor(time.Hour))
 
-	if got := writer.BufferedRows(); got != 1 {
+	if got := len(writer.PendingRows()); got != 1 {
 		t.Errorf("expected 1 buffered clickhouse row for a signed offset, got %d", got)
 	}
 	best, ok := caches.Get(offset.SenderPubkey).Best()
@@ -89,5 +100,394 @@ func TestHandleOffset_AcceptsSignedOffset(t *testing.T) {
 	}
 	if best.RttNs != offset.RttNs {
 		t.Errorf("expected cached RttNs=%d, got %d", offset.RttNs, best.RttNs)
+	}
+}
+
+// signedOffsetAt returns an offset stamped with slot and rttNs, signed by
+// signer so it passes the chain check.
+func signedOffsetAt(t *testing.T, signer *geoprobe.OffsetSigner, slot, rttNs uint64) *geoprobe.LocationOffset {
+	t.Helper()
+	offset := newTestOffset()
+	offset.MeasurementSlot = slot
+	offset.RttNs = rttNs
+	if err := signer.SignOffset(offset); err != nil {
+		t.Fatalf("failed to sign offset: %v", err)
+	}
+	return offset
+}
+
+func mustSigner(t *testing.T, key solana.PrivateKey, sender solana.PublicKey) *geoprobe.OffsetSigner {
+	t.Helper()
+	signer, err := geoprobe.NewOffsetSigner(key, sender)
+	if err != nil {
+		t.Fatalf("failed to create signer: %v", err)
+	}
+	return signer
+}
+
+func newTestSigner(t *testing.T) *geoprobe.OffsetSigner {
+	t.Helper()
+	return mustSigner(t, solana.NewWallet().PrivateKey, solana.NewWallet().PublicKey())
+}
+
+// A signature stays valid forever, so an offset captured off the wire replays
+// cleanly through the signature gate. The slot floor is what stops it reaching
+// location_offsets.
+func TestHandleOffset_RejectsReplayedOffset(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	caches := newTestCaches()
+	writer := geoprobe.NewClickhouseWriter(geoprobe.ClickhouseConfig{Addr: "unused"}, log)
+	addr := &net.UDPAddr{IP: net.IPv4(203, 0, 113, 7), Port: 41234}
+	floor := newSlotFloor(time.Hour)
+	signer := newTestSigner(t)
+
+	const currentSlot = 1_000_000
+	live := signedOffsetAt(t, signer, currentSlot, 5_000_000)
+	handleOffset(log, live, addr, true, writer, caches, floor)
+	if got := len(writer.PendingRows()); got != 1 {
+		t.Fatalf("expected the live offset to be recorded, got %d rows", got)
+	}
+
+	// A capture from well before the floor, with a lower RTT so it would win
+	// the cache if it were accepted.
+	replay := signedOffsetAt(t, signer, currentSlot-maxSlotRegression-1, 1_000_000)
+	handleOffset(log, replay, addr, true, writer, caches, floor)
+
+	if got := len(writer.PendingRows()); got != 1 {
+		t.Errorf("expected the replay to be dropped, got %d buffered rows", got)
+	}
+	best, ok := caches.Get(replay.SenderPubkey).Best()
+	if !ok {
+		t.Fatal("expected the live offset to remain cached")
+	}
+	if best.RttNs != live.RttNs {
+		t.Errorf("replay entered the cache: best RttNs=%d, want %d", best.RttNs, live.RttNs)
+	}
+
+	// Positive control: a fresh slot over the same path is still accepted.
+	handleOffset(log, signedOffsetAt(t, signer, currentSlot+1, 4_000_000), addr, true, writer, caches, floor)
+	if got := len(writer.PendingRows()); got != 2 {
+		t.Errorf("expected a fresh-slot offset to be recorded, got %d rows", got)
+	}
+}
+
+// Offsets are sent every 30s but stamped from a 5m slot cache, so most carry a
+// slot the sender has already used. Rejecting repeats would drop nine of every
+// ten legitimate offsets.
+func TestSlotFloor_AcceptsRepeatedSlotWhileFresh(t *testing.T) {
+	floor := newSlotFloor(time.Hour)
+	now := time.Now()
+	floor.nowFunc = func() time.Time { return now }
+	sender := [32]byte{1}
+
+	for i := 0; i < 10; i++ {
+		if ok, reason, _, _ := floor.accept(sender, 1_000_000); !ok {
+			t.Fatalf("repeat %d rejected while floor is fresh: %s", i, reason)
+		}
+		now = now.Add(30 * time.Second)
+	}
+
+	// A slot inside the regression allowance is also accepted.
+	if ok, reason, _, _ := floor.accept(sender, 1_000_000-maxSlotRegression); !ok {
+		t.Fatalf("slot inside the regression allowance rejected: %s", reason)
+	}
+}
+
+// Once a sender stops advancing its slot, repeats no longer evidence a live
+// sender: without this bound a capture taken while the probe was alive stays
+// acceptable forever after it goes quiet.
+func TestSlotFloor_RejectsStalledFloor(t *testing.T) {
+	floor := newSlotFloor(time.Hour)
+	now := time.Now()
+	floor.nowFunc = func() time.Time { return now }
+	sender := [32]byte{1}
+
+	floor.accept(sender, 1_000_000)
+	now = now.Add(maxFloorStall + time.Minute)
+
+	ok, reason, floorSlot, floorAge := floor.accept(sender, 1_000_000)
+	if ok {
+		t.Fatal("expected a repeat at the frozen slot to be rejected once the floor stalled")
+	}
+	if reason != rejectFloorStalled {
+		t.Errorf("reason = %q, want %q", reason, rejectFloorStalled)
+	}
+	if floorSlot != 1_000_000 || floorAge < maxFloorStall {
+		t.Errorf("floor state = (slot %d, age %s), want slot 1000000 and age > %s", floorSlot, floorAge, maxFloorStall)
+	}
+
+	// Positive control: a strictly higher slot proves liveness and unfreezes it.
+	if ok, reason, _, _ := floor.accept(sender, 1_000_001); !ok {
+		t.Fatalf("expected a higher slot to be accepted after a stall, got %s", reason)
+	}
+}
+
+func TestSlotFloor_IsPerKey(t *testing.T) {
+	floor := newSlotFloor(floorEntryTTL)
+	fast := [32]byte{1}
+	slow := [32]byte{2}
+
+	floor.accept(fast, 5_000_000)
+
+	if ok, reason, _, _ := floor.accept(slow, 1_000); !ok {
+		t.Fatalf("a second key was judged against the first key's floor: %s", reason)
+	}
+}
+
+// A rejected offer still refreshes the entry: otherwise a sustained replay
+// outlives its own floor, the sweep drops the entry, and the next replay
+// reseeds from itself — handing the attacker a fresh acceptance window every
+// TTL instead of one per process restart.
+func TestSlotFloor_RejectionKeepsFloorAlive(t *testing.T) {
+	floor := newSlotFloor(floorEntryTTL)
+	now := time.Now()
+	floor.nowFunc = func() time.Time { return now }
+	key := [32]byte{1}
+
+	floor.accept(key, 1_000_000)
+	now = now.Add(maxFloorStall + time.Minute)
+
+	// Keep replaying the frozen slot for well past floorEntryTTL, sweeping as
+	// the daemon does.
+	for elapsed := time.Duration(0); elapsed < 2*floorEntryTTL; elapsed += 5 * time.Minute {
+		if ok, _, _, _ := floor.accept(key, 1_000_000); ok {
+			t.Fatalf("replay accepted again %s after the floor stalled", elapsed)
+		}
+		floor.sweep()
+		now = now.Add(5 * time.Minute)
+	}
+
+	// Positive control: a key that goes genuinely silent is eventually
+	// forgotten, so the map stays bounded.
+	silent := [32]byte{2}
+	floor.accept(silent, 1_000_000)
+	now = now.Add(floorEntryTTL + time.Minute)
+	floor.sweep()
+	if _, ok := floor.entries[silent]; ok {
+		t.Error("expected a silent key's floor to be swept")
+	}
+}
+
+// SenderPubkey is signed but unauthenticated — anyone can mint a keypair and
+// stamp a real geoprobe's SenderPubkey. Keying floors on it would let one
+// datagram carrying a huge slot lock that geoprobe out of location_offsets.
+func TestHandleOffset_ForgedSenderCannotPoisonAnotherFloor(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	caches := newTestCaches()
+	writer := geoprobe.NewClickhouseWriter(geoprobe.ClickhouseConfig{Addr: "unused"}, log)
+	addr := &net.UDPAddr{IP: net.IPv4(203, 0, 113, 7), Port: 41234}
+	floor := newSlotFloor(floorEntryTTL)
+
+	victim := solana.NewWallet().PublicKey()
+	victimSigner := mustSigner(t, solana.NewWallet().PrivateKey, victim)
+	// An attacker's own keypair, claiming the victim geoprobe as sender.
+	attackerSigner := mustSigner(t, solana.NewWallet().PrivateKey, victim)
+
+	handleOffset(log, signedOffsetAt(t, attackerSigner, 1<<40, 1_000_000), addr, true, writer, caches, floor)
+
+	genuine := signedOffsetAt(t, victimSigner, 1_000_000, 5_000_000)
+	before := len(writer.PendingRows())
+	handleOffset(log, genuine, addr, true, writer, caches, floor)
+	if len(writer.PendingRows()) != before+1 {
+		t.Error("a forged sender claim locked the real geoprobe out of location_offsets")
+	}
+}
+
+// With verification disabled nothing is checked, so a row asserting
+// signature_valid=true would be a mislabel in the table the public explorer
+// reads.
+func TestHandleOffset_UnverifiedRowIsNotLabelledValid(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	caches := newTestCaches()
+	writer := geoprobe.NewClickhouseWriter(geoprobe.ClickhouseConfig{Addr: "unused"}, log)
+	addr := &net.UDPAddr{IP: net.IPv4(203, 0, 113, 7), Port: 41234}
+
+	handleOffset(log, newTestOffset(), addr, false, writer, caches, newSlotFloor(time.Hour))
+
+	rows := writer.PendingRows()
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 buffered row with verification disabled, got %d", len(rows))
+	}
+	if rows[0].SignatureValid {
+		t.Error("row asserts signature_valid=true though no verification ran")
+	}
+	if rows[0].SignatureError != signatureUnverifiedMarker {
+		t.Errorf("signature_error = %q, want %q", rows[0].SignatureError, signatureUnverifiedMarker)
+	}
+
+	// Positive control: a verified offset is still labelled valid.
+	caches2 := newTestCaches()
+	writer2 := geoprobe.NewClickhouseWriter(geoprobe.ClickhouseConfig{Addr: "unused"}, log)
+	handleOffset(log, signedOffsetAt(t, newTestSigner(t), 12345, 1_000_000), addr, true, writer2, caches2, newSlotFloor(time.Hour))
+	rows2 := writer2.PendingRows()
+	if len(rows2) != 1 || !rows2[0].SignatureValid || rows2[0].SignatureError != "" {
+		t.Errorf("expected a verified offset to be labelled valid with no error, got %+v", rows2)
+	}
+}
+
+// The regression test for the wedge: without an advance ceiling the floor is a
+// ratchet with nothing above it, so one anomalous slot locks a real sender out
+// of location_offsets until the process restarts. slot_regressed short-circuits
+// before the floor_stalled escape hatch, and rejections refresh lastSeen, so
+// nothing else recovers it.
+func TestSlotFloor_RejectsImplausibleJumpAndKeepsSenderIngesting(t *testing.T) {
+	floor := newSlotFloor(floorEntryTTL)
+	now := time.Now()
+	floor.nowFunc = func() time.Time { return now }
+	key := [32]byte{1}
+
+	floor.accept(key, 1_000_000)
+	now = now.Add(time.Minute)
+
+	// One cycle against the wrong ledger RPC stamps a Solana-L1-height slot.
+	const anomalous = 400_000_000
+	ok, reason, floorSlot, _ := floor.accept(key, anomalous)
+	if ok {
+		t.Fatal("expected an implausible jump to be rejected, not absorbed into the floor")
+	}
+	if reason != rejectSlotJumped {
+		t.Errorf("reason = %q, want %q", reason, rejectSlotJumped)
+	}
+	if floorSlot != 1_000_000 {
+		t.Errorf("floor moved to %d; the bad slot must not become the floor", floorSlot)
+	}
+
+	// The sender keeps being ingested afterwards, which is the whole point.
+	now = now.Add(time.Minute)
+	if ok, reason, _, _ := floor.accept(key, 1_000_150); !ok {
+		t.Fatalf("sender wedged out after one anomalous slot: %s", reason)
+	}
+}
+
+// A probe that rode out its own RPC outage on a frozen cached slot jumps
+// forward by roughly the outage, which the ceiling must not reject.
+func TestSlotFloor_AllowsCatchUpAfterSenderRPCOutage(t *testing.T) {
+	floor := newSlotFloor(floorEntryTTL)
+	now := time.Now()
+	floor.nowFunc = func() time.Time { return now }
+	key := [32]byte{1}
+
+	floor.accept(key, 1_000_000)
+
+	outage := 25 * time.Minute
+	now = now.Add(outage)
+	caughtUp := uint64(1_000_000) + uint64(outage/dzSlotDuration)
+	if ok, reason, _, _ := floor.accept(key, caughtUp); !ok {
+		t.Fatalf("honest catch-up after a %s outage rejected: %s", outage, reason)
+	}
+}
+
+// A cluster sustaining the fastest assumed block time must not trip the ceiling.
+func TestSlotFloor_ToleratesFastBlockTimes(t *testing.T) {
+	floor := newSlotFloor(floorEntryTTL)
+	now := time.Now()
+	floor.nowFunc = func() time.Time { return now }
+	key := [32]byte{1}
+
+	floor.accept(key, 1_000_000)
+
+	elapsed := 30 * time.Minute
+	now = now.Add(elapsed)
+	fast := uint64(1_000_000) + uint64(elapsed/minSlotDuration)
+	if ok, reason, _, _ := floor.accept(key, fast); !ok {
+		t.Fatalf("a cluster sustaining %s slots tripped the ceiling: %s", minSlotDuration, reason)
+	}
+}
+
+// A cache-refresh step arrives with almost no wall time behind it at the target.
+func TestSlotFloor_AllowsCacheRefreshStepWithNoElapsedTime(t *testing.T) {
+	floor := newSlotFloor(floorEntryTTL)
+	now := time.Now()
+	floor.nowFunc = func() time.Time { return now }
+	key := [32]byte{1}
+
+	floor.accept(key, 1_000_000)
+
+	step := uint64(geoprobe.SlotCacheTTL / dzSlotDuration)
+	if ok, reason, _, _ := floor.accept(key, 1_000_000+step); !ok {
+		t.Fatalf("a slot-cache refresh step rejected with no elapsed time: %s", reason)
+	}
+}
+
+// The regression test for the seeding wedge: a probe pointed at the wrong
+// ledger RPC is ingested fine, then vanishes from location_offsets for good the
+// moment someone repoints it, because its first offer seeded the floor at the
+// wrong cluster's height. Remove the seed check and the remediated offers below
+// all fail slot_regressed.
+func TestSlotFloor_RejectsSeedAboveLiveReferenceAndIngestsAfterRemediation(t *testing.T) {
+	floor := newSlotFloor(floorEntryTTL)
+	now := time.Now()
+	floor.nowFunc = func() time.Time { return now }
+	healthy, misconfigured := [32]byte{1}, [32]byte{2}
+
+	// A correctly configured sender establishes what the current height is.
+	if ok, reason, _, _ := floor.accept(healthy, 1_000_000); !ok {
+		t.Fatalf("healthy sender rejected on seed: %s", reason)
+	}
+
+	// The misconfigured probe's first offer carries a Solana-L1-height slot.
+	ok, reason, refSlot, _ := floor.accept(misconfigured, 400_000_000)
+	if ok {
+		t.Fatal("expected a wrong-cluster seed to be rejected, not absorbed into the floor")
+	}
+	if reason != rejectSlotJumped {
+		t.Errorf("reason = %q, want %q", reason, rejectSlotJumped)
+	}
+	if refSlot != 1_000_000 {
+		t.Errorf("reported reference = %d, want the live key's proven slot", refSlot)
+	}
+
+	// Repointed at the real ledger, it seeds and keeps being ingested.
+	now = now.Add(time.Minute)
+	if ok, reason, _, _ := floor.accept(misconfigured, 1_000_150); !ok {
+		t.Fatalf("remediated sender could not seed: %s", reason)
+	}
+	for i := 1; i <= 12; i++ {
+		now = now.Add(5 * time.Minute)
+		slot := uint64(1_000_150) + uint64(i)*uint64(5*time.Minute/dzSlotDuration)
+		if ok, reason, _, _ := floor.accept(misconfigured, slot); !ok {
+			t.Fatalf("remediated sender wedged out at offer %d: %s", i, reason)
+		}
+	}
+}
+
+// The seed check must not reject a genuine new sender, whose slot sits somewhat
+// above the last height the reference key proved.
+func TestSlotFloor_SeedsGenuineSenderAboveStaleReference(t *testing.T) {
+	for _, refAge := range []time.Duration{0, 4 * time.Minute, maxFloorStall} {
+		floor := newSlotFloor(floorEntryTTL)
+		now := time.Now()
+		floor.nowFunc = func() time.Time { return now }
+
+		floor.accept([32]byte{1}, 1_000_000)
+		now = now.Add(refAge)
+
+		// The reference's slot is refAge stale, so a current slot is that far above it.
+		slot := uint64(1_000_000) + uint64(refAge/dzSlotDuration)
+		if ok, reason, _, _ := floor.accept([32]byte{2}, slot); !ok {
+			t.Fatalf("genuine seed against a %s-stale reference rejected: %s", refAge, reason)
+		}
+	}
+}
+
+// A parked high slot must stop authorizing seeds once nobody is advancing it,
+// or the wrong-cluster seed it once let in keeps letting the next one in.
+func TestSlotFloor_StalledKeyIsNotAReference(t *testing.T) {
+	floor := newSlotFloor(floorEntryTTL)
+	now := time.Now()
+	floor.nowFunc = func() time.Time { return now }
+
+	// The no-reference residual: the first key a target hears from seeds freely.
+	if ok, reason, _, _ := floor.accept([32]byte{1}, 400_000_000); !ok {
+		t.Fatalf("first seed on an empty floor rejected: %s", reason)
+	}
+
+	now = now.Add(maxFloorStall + time.Minute)
+	if ok, reason, _, _ := floor.accept([32]byte{2}, 1_000_000); !ok {
+		t.Fatalf("healthy sender rejected on seed: %s", reason)
+	}
+
+	if ok, _, refSlot, _ := floor.accept([32]byte{3}, 400_000_000); ok {
+		t.Fatalf("stalled key at 400000000 authorized a wrong-cluster seed (reference %d)", refSlot)
 	}
 }

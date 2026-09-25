@@ -646,7 +646,7 @@ func newTestLogger(verbose, debug bool) *slog.Logger {
 	if debug {
 		logLevel = slog.LevelDebug
 	}
-	logger := slog.New(tint.NewHandler(logWriter, &tint.Options{
+	logger := slog.New(tint.NewTextHandler(logWriter, &tint.Options{
 		Level:      logLevel,
 		TimeFormat: time.DateTime,
 	}))
@@ -837,7 +837,7 @@ func newTestLoggerForTest(t *testing.T) *slog.Logger {
 	if debug {
 		logLevel = slog.LevelDebug
 	}
-	return slog.New(tint.NewHandler(w, &tint.Options{
+	return slog.New(tint.NewTextHandler(w, &tint.Options{
 		Level:      logLevel,
 		TimeFormat: time.DateTime,
 	}))

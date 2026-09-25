@@ -81,7 +81,7 @@ func newTestLogger(t *testing.T) *slog.Logger {
 	if *debug {
 		logLevel = slog.LevelDebug
 	}
-	return slog.New(tint.NewHandler(w, &tint.Options{
+	return slog.New(tint.NewTextHandler(w, &tint.Options{
 		Level: logLevel,
 		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 			if a.Key == slog.TimeKey {

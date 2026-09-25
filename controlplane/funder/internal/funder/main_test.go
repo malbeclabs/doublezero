@@ -26,7 +26,7 @@ func TestMain(m *testing.M) {
 		verbose = true
 	}
 	if verbose {
-		logger = slog.New(tint.NewHandler(os.Stdout, &tint.Options{
+		logger = slog.New(tint.NewTextHandler(os.Stdout, &tint.Options{
 			Level:      slog.LevelDebug,
 			TimeFormat: time.RFC3339,
 			AddSource:  true,

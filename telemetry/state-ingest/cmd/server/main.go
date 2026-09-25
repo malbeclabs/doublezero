@@ -149,7 +149,7 @@ func newLogger(verbose bool) *slog.Logger {
 	if verbose {
 		logLevel = slog.LevelDebug
 	}
-	return slog.New(tint.NewHandler(os.Stdout, &tint.Options{
+	return slog.New(tint.NewTextHandler(os.Stdout, &tint.Options{
 		Level: logLevel,
 		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 			if a.Key == slog.TimeKey {

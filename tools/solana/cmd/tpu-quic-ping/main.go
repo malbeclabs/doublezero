@@ -65,7 +65,7 @@ func newLogger(quiet bool) *slog.Logger {
 	} else {
 		writer = os.Stdout
 	}
-	return slog.New(tint.NewHandler(writer, &tint.Options{
+	return slog.New(tint.NewTextHandler(writer, &tint.Options{
 		Level: slog.LevelInfo,
 		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
 			if a.Key == slog.TimeKey {

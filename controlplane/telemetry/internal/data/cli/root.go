@@ -55,7 +55,7 @@ func newLogger(verbose bool) *slog.Logger {
 	if verbose {
 		level = slog.LevelDebug
 	}
-	return slog.New(tint.NewHandler(os.Stdout, &tint.Options{
+	return slog.New(tint.NewTextHandler(os.Stdout, &tint.Options{
 		Level:      level,
 		TimeFormat: time.Kitchen,
 	}))

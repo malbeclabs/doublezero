@@ -112,7 +112,7 @@ func newLogger(verbose bool) *slog.Logger {
 	if !verbose {
 		logLevel = slog.LevelInfo
 	}
-	logger := slog.New(tint.NewHandler(logWriter, &tint.Options{
+	logger := slog.New(tint.NewTextHandler(logWriter, &tint.Options{
 		Level:      logLevel,
 		TimeFormat: time.Kitchen,
 	}))

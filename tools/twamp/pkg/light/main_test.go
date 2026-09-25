@@ -25,7 +25,7 @@ func TestMain(m *testing.M) {
 	if verbose {
 		logLevel = slog.LevelDebug
 	}
-	log = slog.New(tint.NewHandler(os.Stdout, &tint.Options{
+	log = slog.New(tint.NewTextHandler(os.Stdout, &tint.Options{
 		Level:      logLevel,
 		TimeFormat: time.RFC3339,
 		AddSource:  true,

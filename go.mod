@@ -1,6 +1,6 @@
 module github.com/malbeclabs/doublezero
 
-go 1.25.0
+go 1.25.7
 
 toolchain go1.25.11
 
@@ -48,7 +48,7 @@ require (
 	github.com/openconfig/ygot v0.35.0
 	github.com/oschwald/geoip2-golang v1.13.0
 	github.com/osrg/gobgp v2.0.0+incompatible
-	github.com/pressly/goose/v3 v3.27.0
+	github.com/pressly/goose/v3 v3.27.3
 	github.com/prometheus-community/pro-bing v0.9.1
 	github.com/prometheus/client_golang v1.24.1
 	github.com/prometheus/client_model v0.6.2

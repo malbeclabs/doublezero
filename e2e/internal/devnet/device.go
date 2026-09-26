@@ -13,6 +13,8 @@ import (
 	"text/template"
 	"time"
 
+	mobycontainer "github.com/moby/moby/api/types/container"
+
 	_ "embed"
 
 	"github.com/aristanetworks/goeapi"
@@ -553,7 +555,7 @@ func (d *Device) Start(ctx context.Context) error {
 	req := testcontainers.ContainerRequest{
 		Image: spec.ContainerImage,
 		Name:  d.dockerContainerName(),
-		ConfigModifier: func(cfg *dockercontainer.Config) {
+		ConfigModifier: func(cfg *mobycontainer.Config) {
 			cfg.Hostname = d.dockerContainerHostname()
 		},
 		ExposedPorts: exposedPorts,
@@ -565,7 +567,7 @@ func (d *Device) Start(ctx context.Context) error {
 		// NOTE: We intentionally use the deprecated Resources field here instead of the HostConfigModifier
 		// because the latter has issues with setting SHM memory and other constraints to 0, which
 		// causes the device to fail to start.
-		Resources: dockercontainer.Resources{
+		Resources: mobycontainer.Resources{
 			NanoCPUs: deviceContainerNanoCPUs,
 			Memory:   deviceContainerMemory,
 		},

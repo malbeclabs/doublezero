@@ -10,8 +10,8 @@ import (
 	"os"
 	"time"
 
-	dockercontainer "github.com/docker/docker/api/types/container"
-	"github.com/docker/go-connections/nat"
+	mobycontainer "github.com/moby/moby/api/types/container"
+
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
 	"github.com/testcontainers/testcontainers-go"
 	tcwait "github.com/testcontainers/testcontainers-go/wait"
@@ -58,19 +58,19 @@ func (d *ValidatorMetadataServiceMock) Start(ctx context.Context) error {
 	req := testcontainers.ContainerRequest{
 		Image: d.dn.Spec.ValidatorMetadataServiceMock.ContainerImage,
 		Name:  d.dockerContainerName(),
-		ConfigModifier: func(cfg *dockercontainer.Config) {
+		ConfigModifier: func(cfg *mobycontainer.Config) {
 			cfg.Hostname = d.dockerContainerHostname()
 		},
 		ExposedPorts: []string{fmt.Sprintf("%d/tcp", validatorMetadataServiceMockInternalPort)},
 		WaitingFor: tcwait.ForHTTP("/health").
-			WithPort(nat.Port(fmt.Sprintf("%d/tcp", validatorMetadataServiceMockInternalPort))).
+			WithPort(fmt.Sprintf("%d/tcp", validatorMetadataServiceMockInternalPort)).
 			WithStartupTimeout(30 * time.Second).
 			WithPollInterval(500 * time.Millisecond),
 		Networks: []string{d.dn.DefaultNetwork.Name},
 		NetworkAliases: map[string][]string{
 			d.dn.DefaultNetwork.Name: {"validator-metadata-service-mock"},
 		},
-		Resources: dockercontainer.Resources{
+		Resources: mobycontainer.Resources{
 			NanoCPUs: defaultContainerNanoCPUs,
 			Memory:   defaultContainerMemory,
 		},

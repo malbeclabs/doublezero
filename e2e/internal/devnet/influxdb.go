@@ -7,9 +7,10 @@ import (
 	"strings"
 	"time"
 
+	mobycontainer "github.com/moby/moby/api/types/container"
+
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerfilters "github.com/docker/docker/api/types/filters"
-	"github.com/docker/go-connections/nat"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
 	"github.com/testcontainers/testcontainers-go"
@@ -111,7 +112,7 @@ func (i *InfluxDB) Start(ctx context.Context) error {
 	req := testcontainers.ContainerRequest{
 		Image: i.dn.Spec.InfluxDB.ContainerImage,
 		Name:  i.dockerContainerName(),
-		ConfigModifier: func(cfg *dockercontainer.Config) {
+		ConfigModifier: func(cfg *mobycontainer.Config) {
 			cfg.Hostname = i.dockerContainerHostname()
 		},
 		Env: map[string]string{
@@ -123,13 +124,13 @@ func (i *InfluxDB) Start(ctx context.Context) error {
 		NetworkAliases: map[string][]string{
 			i.dn.DefaultNetwork.Name: {"influxdb"},
 		},
-		Resources: dockercontainer.Resources{
+		Resources: mobycontainer.Resources{
 			NanoCPUs: defaultContainerNanoCPUs,
 			Memory:   defaultContainerMemory,
 		},
 		Labels: i.dn.labels,
 		WaitingFor: wait.ForHTTP("/ping").
-			WithPort(nat.Port(fmt.Sprintf("%d/tcp", influxDBInternalPort))).
+			WithPort(fmt.Sprintf("%d/tcp", influxDBInternalPort)).
 			WithStatusCodeMatcher(func(status int) bool {
 				return status == 204
 			}).

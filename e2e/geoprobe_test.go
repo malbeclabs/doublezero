@@ -25,6 +25,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/malbeclabs/doublezero/e2e/internal/random"
 	solanautil "github.com/malbeclabs/doublezero/e2e/internal/solana"
+	mobycontainer "github.com/moby/moby/api/types/container"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -429,7 +430,7 @@ func startGeoprobeAgent(t *testing.T, log *slog.Logger, dn *devnet.Devnet, cyoaI
 	req := testcontainers.ContainerRequest{
 		Image: geoprobeImage,
 		Name:  dn.Spec.DeployID + "-geoprobe",
-		ConfigModifier: func(cfg *dockercontainer.Config) {
+		ConfigModifier: func(cfg *mobycontainer.Config) {
 			cfg.Hostname = "geoprobe"
 		},
 		Cmd:      cmd,
@@ -442,14 +443,14 @@ func startGeoprobeAgent(t *testing.T, log *slog.Logger, dn *devnet.Devnet, cyoaI
 			},
 		},
 		WaitingFor: wait.ForLog("Starting geoprobe agent").WithStartupTimeout(30 * time.Second),
-		Resources: dockercontainer.Resources{
+		Resources: mobycontainer.Resources{
 			NanoCPUs: 1_000_000_000,
 			Memory:   512 * 1024 * 1024,
 		},
 	}
 
 	if opts != nil && opts.capNetRaw {
-		req.HostConfigModifier = func(hc *dockercontainer.HostConfig) {
+		req.HostConfigModifier = func(hc *mobycontainer.HostConfig) {
 			hc.CapAdd = []string{"NET_RAW"}
 		}
 	}
@@ -571,14 +572,14 @@ func startGeoprobeTarget(t *testing.T, log *slog.Logger, dn *devnet.Devnet, cyoa
 	req := testcontainers.ContainerRequest{
 		Image: geoprobeImage,
 		Name:  dn.Spec.DeployID + "-" + containerName,
-		ConfigModifier: func(cfg *dockercontainer.Config) {
+		ConfigModifier: func(cfg *mobycontainer.Config) {
 			cfg.Hostname = containerName
 		},
 		Cmd:        []string{"doublezero-geoprobe-target", "-twamp-port", "8925", "-udp-port", "8923"},
 		Env:        env,
 		Networks:   []string{dn.DefaultNetwork.Name},
 		WaitingFor: wait.ForLog("UDP listener started").WithStartupTimeout(30 * time.Second),
-		Resources: dockercontainer.Resources{
+		Resources: mobycontainer.Resources{
 			NanoCPUs: 1_000_000_000,
 			Memory:   512 * 1024 * 1024,
 		},
@@ -972,7 +973,7 @@ func startClickhouseContainer(t *testing.T, log *slog.Logger, dn *devnet.Devnet)
 	req := testcontainers.ContainerRequest{
 		Image: "clickhouse/clickhouse-server:24.12",
 		Name:  dn.Spec.DeployID + "-clickhouse",
-		ConfigModifier: func(cfg *dockercontainer.Config) {
+		ConfigModifier: func(cfg *mobycontainer.Config) {
 			cfg.Hostname = "clickhouse"
 		},
 		Env: map[string]string{

@@ -13,6 +13,7 @@ import (
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
+	mobycontainer "github.com/moby/moby/api/types/container"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -182,7 +183,7 @@ func (m *Manager) Start(ctx context.Context) error {
 	req := testcontainers.ContainerRequest{
 		Image: m.dn.Spec.Manager.ContainerImage,
 		Name:  m.dockerContainerName(),
-		ConfigModifier: func(cfg *dockercontainer.Config) {
+		ConfigModifier: func(cfg *mobycontainer.Config) {
 			cfg.Hostname = m.dockerContainerHostname()
 		},
 		WaitingFor: wait.ForLog("Config initialized").WithStartupTimeout(30 * time.Second),
@@ -218,7 +219,7 @@ func (m *Manager) Start(ctx context.Context) error {
 		// NOTE: We intentionally use the deprecated Resources field here instead of the HostConfigModifier
 		// because the latter has issues with setting SHM memory and other constraints to 0, which can cause
 		// unexpected behavior.
-		Resources: dockercontainer.Resources{
+		Resources: mobycontainer.Resources{
 			NanoCPUs: defaultContainerNanoCPUs,
 			Memory:   defaultContainerMemory,
 		},

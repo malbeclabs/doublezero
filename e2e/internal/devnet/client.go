@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"net/netip"
 	"os"
 	"strconv"
 	"strings"
@@ -14,13 +15,14 @@ import (
 
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerfilters "github.com/docker/docker/api/types/filters"
-	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/pkg/stdcopy"
 	"github.com/docker/go-connections/nat"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	"github.com/malbeclabs/doublezero/e2e/internal/solana"
+	mobycontainer "github.com/moby/moby/api/types/container"
+	mobynetwork "github.com/moby/moby/api/types/network"
 	"github.com/testcontainers/testcontainers-go"
 )
 
@@ -286,11 +288,16 @@ func (c *Client) Start(ctx context.Context) error {
 		exposedPorts = append(exposedPorts, fmt.Sprintf("%d/tcp", qaAgentPort))
 	}
 
+	cyoaAddr, ok := netip.AddrFromSlice(cyoaIP.To4())
+	if !ok {
+		return fmt.Errorf("invalid client CYOA IP %s", cyoaIP)
+	}
+
 	// Start the client container.
 	req := testcontainers.ContainerRequest{
 		Image: c.Spec.ContainerImage,
 		Name:  c.dockerContainerName(),
-		ConfigModifier: func(cfg *dockercontainer.Config) {
+		ConfigModifier: func(cfg *mobycontainer.Config) {
 			cfg.Hostname = c.dockerContainerHostname()
 		},
 		Env:          env,
@@ -309,13 +316,13 @@ func (c *Client) Start(ctx context.Context) error {
 			c.dn.DefaultNetwork.Name,
 			c.dn.CYOANetwork.Name,
 		},
-		EndpointSettingsModifier: func(m map[string]*network.EndpointSettings) {
+		EndpointSettingsModifier: func(m map[string]*mobynetwork.EndpointSettings) {
 			if m[c.dn.CYOANetwork.Name] == nil {
-				m[c.dn.CYOANetwork.Name] = &network.EndpointSettings{}
+				m[c.dn.CYOANetwork.Name] = &mobynetwork.EndpointSettings{}
 			}
-			m[c.dn.CYOANetwork.Name].IPAddress = clientCYOAIP
-			m[c.dn.CYOANetwork.Name].IPAMConfig = &network.EndpointIPAMConfig{
-				IPv4Address: clientCYOAIP,
+			m[c.dn.CYOANetwork.Name].IPAddress = cyoaAddr
+			m[c.dn.CYOANetwork.Name].IPAMConfig = &mobynetwork.EndpointIPAMConfig{
+				IPv4Address: cyoaAddr,
 			}
 		},
 		Privileged: true,
@@ -331,7 +338,7 @@ func (c *Client) Start(ctx context.Context) error {
 
 	// Get the QA agent mapped host port if enabled.
 	if c.Spec.EnableQAAgent {
-		mappedPort, err := container.MappedPort(ctx, nat.Port(fmt.Sprintf("%d/tcp", qaAgentPort)))
+		mappedPort, err := container.MappedPort(ctx, fmt.Sprintf("%d/tcp", qaAgentPort))
 		if err != nil {
 			return fmt.Errorf("failed to get QA agent mapped port: %w", err)
 		}

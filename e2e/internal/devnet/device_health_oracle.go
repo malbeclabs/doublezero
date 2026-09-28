@@ -10,6 +10,7 @@ import (
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
+	mobycontainer "github.com/moby/moby/api/types/container"
 	"github.com/testcontainers/testcontainers-go"
 )
 
@@ -124,7 +125,7 @@ func (d *DeviceHealthOracle) Start(ctx context.Context) error {
 	req := testcontainers.ContainerRequest{
 		Image: d.dn.Spec.DeviceHealthOracle.ContainerImage,
 		Name:  d.dockerContainerName(),
-		ConfigModifier: func(cfg *dockercontainer.Config) {
+		ConfigModifier: func(cfg *mobycontainer.Config) {
 			cfg.Hostname = d.dockerContainerHostname()
 		},
 		Env:      env,
@@ -132,7 +133,7 @@ func (d *DeviceHealthOracle) Start(ctx context.Context) error {
 		NetworkAliases: map[string][]string{
 			d.dn.DefaultNetwork.Name: {"device-health-oracle"},
 		},
-		Resources: dockercontainer.Resources{
+		Resources: mobycontainer.Resources{
 			NanoCPUs: defaultContainerNanoCPUs,
 			Memory:   defaultContainerMemory,
 		},

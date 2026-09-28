@@ -14,6 +14,7 @@ import (
 	"github.com/gagliardetto/solana-go"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
 	"github.com/malbeclabs/doublezero/e2e/internal/prometheus"
+	mobycontainer "github.com/moby/moby/api/types/container"
 	"github.com/testcontainers/testcontainers-go"
 )
 
@@ -187,7 +188,7 @@ func (c *Funder) Start(ctx context.Context) error {
 	req := testcontainers.ContainerRequest{
 		Image: c.dn.Spec.Funder.ContainerImage,
 		Name:  c.dockerContainerName(),
-		ConfigModifier: func(cfg *dockercontainer.Config) {
+		ConfigModifier: func(cfg *mobycontainer.Config) {
 			cfg.Hostname = c.dockerContainerHostname()
 		},
 		ExposedPorts: []string{fmt.Sprintf("%d/tcp", funderInternalMetricsPort)},
@@ -198,7 +199,7 @@ func (c *Funder) Start(ctx context.Context) error {
 		// NOTE: We intentionally use the deprecated Resources field here instead of the HostConfigModifier
 		// because the latter has issues with setting SHM memory and other constraints to 0, which can cause
 		// unexpected behavior.
-		Resources: dockercontainer.Resources{
+		Resources: mobycontainer.Resources{
 			NanoCPUs: defaultContainerNanoCPUs,
 			Memory:   defaultContainerMemory,
 		},

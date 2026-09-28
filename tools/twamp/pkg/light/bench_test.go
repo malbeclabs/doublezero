@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"math"
 	"net"
+	"net/netip"
 	"runtime"
 	"sort"
 	"strconv"
@@ -13,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/go-connections/nat"
 	twamplight "github.com/malbeclabs/doublezero/tools/twamp/pkg/light"
+	mobycontainer "github.com/moby/moby/api/types/container"
+	mobynetwork "github.com/moby/moby/api/types/network"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 )
@@ -196,11 +197,11 @@ func startContainerReflector(ctx context.Context, b *testing.B) *net.UDPAddr {
 	req := testcontainers.ContainerRequest{
 		Image:        "dz-local/twamp-reflector:dev",
 		ExposedPorts: []string{containerPort},
-		HostConfigModifier: func(hc *container.HostConfig) {
-			hc.PortBindings = nat.PortMap{
-				containerPort: []nat.PortBinding{
+		HostConfigModifier: func(hc *mobycontainer.HostConfig) {
+			hc.PortBindings = mobynetwork.PortMap{
+				mobynetwork.MustParsePort(containerPort): []mobynetwork.PortBinding{
 					{
-						HostIP:   "0.0.0.0",
+						HostIP:   netip.IPv4Unspecified(),
 						HostPort: strconv.Itoa(hostPort),
 					},
 				},
@@ -236,7 +237,7 @@ func startContainerReflector(ctx context.Context, b *testing.B) *net.UDPAddr {
 	}
 	require.NotNil(b, hostIP4, "no IPv4 address found for host %s", host)
 
-	return &net.UDPAddr{IP: hostIP4, Port: mapped.Int()}
+	return &net.UDPAddr{IP: hostIP4, Port: int(mapped.Num())}
 }
 
 func getAvailableUDPPort() (int, error) {

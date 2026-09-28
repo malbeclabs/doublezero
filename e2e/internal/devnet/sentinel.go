@@ -8,9 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
-	dockercontainer "github.com/docker/docker/api/types/container"
-	"github.com/docker/go-connections/nat"
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
+	mobycontainer "github.com/moby/moby/api/types/container"
 	"github.com/testcontainers/testcontainers-go"
 	tcwait "github.com/testcontainers/testcontainers-go/wait"
 )
@@ -90,7 +89,7 @@ func (s *Sentinel) Start(ctx context.Context) error {
 	req := testcontainers.ContainerRequest{
 		Image: s.dn.Spec.Sentinel.ContainerImage,
 		Name:  s.dockerContainerName(),
-		ConfigModifier: func(cfg *dockercontainer.Config) {
+		ConfigModifier: func(cfg *mobycontainer.Config) {
 			cfg.Hostname = s.dockerContainerHostname()
 		},
 		ExposedPorts: []string{fmt.Sprintf("%d/tcp", sentinelInternalMetricsPort)},
@@ -102,14 +101,14 @@ func (s *Sentinel) Start(ctx context.Context) error {
 			},
 		},
 		WaitingFor: tcwait.ForHTTP("/").
-			WithPort(nat.Port(fmt.Sprintf("%d/tcp", sentinelInternalMetricsPort))).
+			WithPort(fmt.Sprintf("%d/tcp", sentinelInternalMetricsPort)).
 			WithStartupTimeout(60 * time.Second).
 			WithPollInterval(1 * time.Second),
 		Networks: []string{s.dn.DefaultNetwork.Name},
 		NetworkAliases: map[string][]string{
 			s.dn.DefaultNetwork.Name: {"sentinel"},
 		},
-		Resources: dockercontainer.Resources{
+		Resources: mobycontainer.Resources{
 			NanoCPUs: defaultContainerNanoCPUs,
 			Memory:   defaultContainerMemory,
 		},

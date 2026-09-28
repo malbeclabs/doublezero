@@ -27,6 +27,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	"github.com/malbeclabs/doublezero/e2e/internal/prometheus"
 	solanautil "github.com/malbeclabs/doublezero/e2e/internal/solana"
+	mobycontainer "github.com/moby/moby/api/types/container"
 	"github.com/testcontainers/testcontainers-go"
 )
 
@@ -553,7 +554,7 @@ func (d *Device) Start(ctx context.Context) error {
 	req := testcontainers.ContainerRequest{
 		Image: spec.ContainerImage,
 		Name:  d.dockerContainerName(),
-		ConfigModifier: func(cfg *dockercontainer.Config) {
+		ConfigModifier: func(cfg *mobycontainer.Config) {
 			cfg.Hostname = d.dockerContainerHostname()
 		},
 		ExposedPorts: exposedPorts,
@@ -565,7 +566,7 @@ func (d *Device) Start(ctx context.Context) error {
 		// NOTE: We intentionally use the deprecated Resources field here instead of the HostConfigModifier
 		// because the latter has issues with setting SHM memory and other constraints to 0, which
 		// causes the device to fail to start.
-		Resources: dockercontainer.Resources{
+		Resources: mobycontainer.Resources{
 			NanoCPUs: deviceContainerNanoCPUs,
 			Memory:   deviceContainerMemory,
 		},

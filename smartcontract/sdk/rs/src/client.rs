@@ -912,6 +912,19 @@ mod client_tests {
             "Internal error"
         )));
     }
+
+    /// `get_account` reports a missing account as `RpcError::ForUser`, not
+    /// `RpcResponseError`. A regression making this branch retryable would add
+    /// ~3.5s of backoff to every not-found lookup without any test failing.
+    #[test]
+    fn is_retryable_rpc_error_excludes_for_user_account_not_found() {
+        let err = ClientError::from(ClientErrorKind::RpcError(
+            solana_rpc_client_api::request::RpcError::ForUser(
+                "AccountNotFound: pubkey=11111111111111111111111111111111".to_string(),
+            ),
+        ));
+        assert!(!DZClient::is_retryable_rpc_error(&err));
+    }
 }
 
 #[cfg(all(test, feature = "cli-context"))]

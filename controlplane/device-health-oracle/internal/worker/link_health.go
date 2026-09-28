@@ -20,6 +20,9 @@ const (
 	// LinkHealthModeRecovery checks every bucket in the recovery window.
 	// Used to gate recovery (Impaired → RFS) — every bucket must be clean.
 	LinkHealthModeRecovery
+	// LinkHealthModePromotion runs the impairment check to gate Pending/Unknown
+	// → RFS, but fails on a query error: there a pass would advance the link.
+	LinkHealthModePromotion
 )
 
 // linkHealthRecentMaxAge is how recent a rollup bucket must be to be acted on:
@@ -40,9 +43,9 @@ const linkHealthRecentMaxAge = 15 * time.Minute
 // treated as a pass (we cannot conclude a link is impaired without telemetry);
 // in RecoveryMode, missing data is treated as a fail (we cannot conclude a
 // link has been continuously clean without telemetry). The net effect is that
-// a link without telemetry stays at its current health. A query error resolves
-// the same way in both modes, and for the same reason — an unreachable
-// ClickHouse must not move any link's health in either direction.
+// a link without telemetry stays at its current health. A query error also
+// holds current health in every mode — an unreachable ClickHouse must not move
+// any link in either direction.
 type LinkHealthCriterion struct {
 	mode          LinkHealthMode
 	checker       LinkHealthChecker
@@ -60,8 +63,11 @@ func NewLinkHealthCriterion(mode LinkHealthMode, checker LinkHealthChecker, loss
 }
 
 func (c *LinkHealthCriterion) Name() string {
-	if c.mode == LinkHealthModeRecovery {
+	switch c.mode {
+	case LinkHealthModeRecovery:
 		return "link_health_recovery"
+	case LinkHealthModePromotion:
+		return "link_health_promotion"
 	}
 	return "link_health_impairment"
 }
@@ -81,13 +87,17 @@ func (c *LinkHealthCriterion) checkImpairment(ctx context.Context, link servicea
 		// Hold current health on error, and count it separately so an outage
 		// doesn't read as impairment in MetricCriterionResults{_, "fail"}.
 		//
-		// A failing criterion demotes an RFS link, so returning false here
-		// would turn one transient ClickHouse blip into an Impaired write for
-		// every healthy link on the network, followed by a matching wave of
-		// RFS writes once it recovered.
+		// A failing criterion demotes an RFS link, so failing here would turn
+		// one transient ClickHouse blip into an Impaired write for every
+		// healthy link on the network, followed by a matching wave of RFS
+		// writes once it recovered. On the promotion path a pass is what
+		// moves the link, so there holding means failing.
 		c.log.Error("Failed to query link health recent",
 			"link", pubkey, "code", link.Code, "error", err)
 		MetricErrors.WithLabelValues(MetricErrorTypeLinkHealthQuery).Inc()
+		if c.mode == LinkHealthModePromotion {
+			return false, fmt.Sprintf("clickhouse query failed: %v", err)
+		}
 		return true, ""
 	}
 	if !found {
@@ -145,6 +155,7 @@ func (c *LinkHealthCriterion) checkRecovery(ctx context.Context, link serviceabi
 	if err != nil {
 		c.log.Error("Failed to query link health recovery window",
 			"link", pubkey, "code", link.Code, "error", err)
+		MetricErrors.WithLabelValues(MetricErrorTypeLinkHealthQuery).Inc()
 		return false, fmt.Sprintf("clickhouse query failed: %v", err)
 	}
 	if !found {

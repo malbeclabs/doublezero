@@ -326,11 +326,8 @@ func TestHandleOffset_UnverifiedRowIsNotLabelledValid(t *testing.T) {
 	}
 }
 
-// The regression test for the wedge: without an advance ceiling the floor is a
-// ratchet with nothing above it, so one anomalous slot locks a real sender out
-// of location_offsets until the process restarts. slot_regressed short-circuits
-// before the floor_stalled escape hatch, and rejections refresh lastSeen, so
-// nothing else recovers it.
+// Without an advance ceiling one anomalous slot becomes the floor, and every
+// genuine offer after it fails slot_regressed.
 func TestSlotFloor_RejectsImplausibleJumpAndKeepsSenderIngesting(t *testing.T) {
 	floor := newSlotFloor(floorEntryTTL)
 	now := time.Now()
@@ -353,7 +350,6 @@ func TestSlotFloor_RejectsImplausibleJumpAndKeepsSenderIngesting(t *testing.T) {
 		t.Errorf("floor moved to %d; the bad slot must not become the floor", floorSlot)
 	}
 
-	// The sender keeps being ingested afterwards, which is the whole point.
 	now = now.Add(time.Minute)
 	if ok, reason, _, _ := floor.accept(key, 1_000_150); !ok {
 		t.Fatalf("sender wedged out after one anomalous slot: %s", reason)
@@ -438,10 +434,8 @@ func TestSlotFloor_DoesNotAdoptBriefAnomaly(t *testing.T) {
 // The regression test for the stale-seed lockout: a replayed capture seeds the
 // floor low, the replayer keeps it advancing by feeding captures at their
 // original cadence, and the advance ceiling then rejects every genuine slot as
-// slot_jumped. The genuine stream is higher than anything a replayer can
-// produce, so it takes over within rivalConfirm and the replay stops landing.
-// Remove the rival takeover and the genuine sender stays out for the week the
-// capture is old.
+// slot_jumped. Remove the rival takeover and the genuine sender stays out for
+// the week the capture is old.
 func TestSlotFloor_GenuineSenderDisplacesStaleSeed(t *testing.T) {
 	floor := newSlotFloor(floorEntryTTL)
 	now := time.Now()

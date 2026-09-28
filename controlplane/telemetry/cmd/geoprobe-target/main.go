@@ -31,7 +31,6 @@ const (
 	rateLimitCleanupInterval = 5 * time.Minute
 	rateLimitEntryTTL        = 10 * time.Minute
 
-	// dzSlotDuration is the nominal DoubleZero Ledger slot time.
 	dzSlotDuration = 400 * time.Millisecond
 
 	// Tuning for RFC-16's replay bound; see slotFloor for the mechanism.
@@ -84,10 +83,8 @@ const (
 	rejectSlotJumped    = "slot_jumped"
 )
 
-// maxFloorAdvance is the largest jump a floor may make after elapsed wall time.
-// Without a ceiling the floor is a ratchet with nothing above it: one anomalous
-// slot raises it out of reach and every later genuine offer from that key fails
-// maxSlotRegression until the process restarts.
+// maxFloorAdvance is the largest jump a floor may make after elapsed wall time,
+// so one anomalous slot is rejected rather than ratcheted into the floor.
 func maxFloorAdvance(elapsed time.Duration) uint64 {
 	if elapsed < 0 {
 		elapsed = 0

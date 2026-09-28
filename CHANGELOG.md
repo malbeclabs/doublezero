@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Telemetry
+  - Cap pooled ClickHouse connections at 3 minutes in gnmi-writer, flow-enricher, global-monitor, the controller, device-health-oracle and the geoprobe writer. The driver default of 1 hour let a parked connection outlive ClickHouse Cloud's ~5 minute idle close, so the next write failed with `read: EOF` and tripped the error alerts.
+
 ## [v0.43.0](https://github.com/malbeclabs/doublezero/compare/client/v0.42.0...client/v0.43.0) - 2026-09-25
 
 ### Breaking

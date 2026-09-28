@@ -373,6 +373,10 @@ func TestBuildClickhouseOptions(t *testing.T) {
 				t.Errorf("Protocol = %v, want clickhouse.HTTP (%v)", opts.Protocol, clickhouse.HTTP)
 			}
 
+			if opts.ConnMaxLifetime != 3*time.Minute {
+				t.Errorf("ConnMaxLifetime = %v, want 3m", opts.ConnMaxLifetime)
+			}
+
 			// Verify address scheme stripping
 			if len(opts.Addr) != 1 || opts.Addr[0] != tt.wantAddr {
 				t.Errorf("Addr = %v, want [%s]", opts.Addr, tt.wantAddr)

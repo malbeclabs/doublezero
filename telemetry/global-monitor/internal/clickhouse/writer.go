@@ -212,7 +212,7 @@ type Writer struct {
 	dzUserICMPRows []DoubleZeroUserICMPProbeRow
 }
 
-func NewWriter(addr, database, username, password string, secure bool, log *slog.Logger) (*Writer, error) {
+func options(addr, database, username, password string, secure bool) *clickhouse.Options {
 	opts := &clickhouse.Options{
 		Addr: []string{addr},
 		Auth: clickhouse.Auth{
@@ -225,12 +225,17 @@ func NewWriter(addr, database, username, password string, secure bool, log *slog
 			"wait_for_async_insert": 1,
 			"insert_deduplicate":    0,
 		},
+		// Stay below ClickHouse Cloud's ~5m server-side idle close (driver default is 1h).
+		ConnMaxLifetime: 3 * time.Minute,
 	}
 	if secure {
 		opts.TLS = &tls.Config{}
 	}
+	return opts
+}
 
-	conn, err := clickhouse.Open(opts)
+func NewWriter(addr, database, username, password string, secure bool, log *slog.Logger) (*Writer, error) {
+	conn, err := clickhouse.Open(options(addr, database, username, password, secure))
 	if err != nil {
 		return nil, fmt.Errorf("clickhouse open: %w", err)
 	}

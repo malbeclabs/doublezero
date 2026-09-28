@@ -117,3 +117,8 @@ func TestClickhouseWriterRecordBufferCap(t *testing.T) {
 	require.Len(t, w.buf, maxBufferedRows)
 	w.mu.Unlock()
 }
+
+func TestClickhouseOptionsConnMaxLifetime(t *testing.T) {
+	opts := clickhouseOptions(ClickhouseConfig{Addr: "localhost:8123", Secure: true})
+	require.Equal(t, 3*time.Minute, opts.ConnMaxLifetime)
+}

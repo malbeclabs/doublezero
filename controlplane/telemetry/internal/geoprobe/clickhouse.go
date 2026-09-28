@@ -48,7 +48,7 @@ func ClickhouseConfigFromEnv() *ClickhouseConfig {
 	}
 }
 
-func NewClickhouseConn(cfg ClickhouseConfig) (driver.Conn, error) {
+func clickhouseOptions(cfg ClickhouseConfig) *clickhouse.Options {
 	opts := &clickhouse.Options{
 		Protocol: clickhouse.HTTP,
 		Addr:     []string{cfg.Addr},
@@ -59,12 +59,17 @@ func NewClickhouseConn(cfg ClickhouseConfig) (driver.Conn, error) {
 		},
 		MaxOpenConns: 5,
 		DialTimeout:  30 * time.Second,
+		// Stay below ClickHouse Cloud's ~5m server-side idle close (driver default is 1h).
+		ConnMaxLifetime: 3 * time.Minute,
 	}
 	if cfg.Secure {
 		opts.TLS = &tls.Config{}
 	}
+	return opts
+}
 
-	conn, err := clickhouse.Open(opts)
+func NewClickhouseConn(cfg ClickhouseConfig) (driver.Conn, error) {
+	conn, err := clickhouse.Open(clickhouseOptions(cfg))
 	if err != nil {
 		return nil, fmt.Errorf("clickhouse open: %w", err)
 	}

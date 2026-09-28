@@ -92,3 +92,8 @@ func TestWriter_Append_ConcurrentSafety(t *testing.T) {
 func TestWriter_ImplementsProbeWriter(t *testing.T) {
 	var _ ProbeWriter = (*Writer)(nil)
 }
+
+func TestOptions_ConnMaxLifetime(t *testing.T) {
+	opts := options("localhost:9440", "default", "default", "", true)
+	require.Equal(t, 3*time.Minute, opts.ConnMaxLifetime)
+}

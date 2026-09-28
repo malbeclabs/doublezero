@@ -185,3 +185,8 @@ func TestNewClickHouseClient_StripsScheme(t *testing.T) {
 		})
 	}
 }
+
+func TestOptions_ConnMaxLifetime(t *testing.T) {
+	opts := options("localhost:8123", "default", "default", "", true)
+	assert.Equal(t, 3*time.Minute, opts.ConnMaxLifetime)
+}

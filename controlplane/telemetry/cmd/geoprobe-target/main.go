@@ -620,9 +620,7 @@ func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.U
 		signatureError = signatureUnverifiedMarker
 	}
 
-	// A valid signature never expires, so a captured offset stays verifiable
-	// forever. The slot floor is what stops it being replayed into the table.
-	// Unverified slots stay out of it, or anyone could move any key's floor.
+	// Unverified slots stay out of the floor, or anyone could move any key's floor.
 	if verifySignatures {
 		if ok, reason, floorSlot, floorAge := floor.accept(offset.AuthorityPubkey, offset.MeasurementSlot); !ok {
 			log.Warn("dropping offset outside slot floor",

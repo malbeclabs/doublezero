@@ -1641,13 +1641,17 @@ func TestClient_Liveness_Manager_WithdrawRoute_PassiveMode_NoUninstall_NoDelete(
 
 	addCh := make(chan *routing.Route, 1)
 	delCh := make(chan *routing.Route, 1)
+	forgetCh := make(chan *routing.Route, 1)
 
 	m, err := newTestManager(t, func(cfg *ManagerConfig) {
 		cfg.PassiveMode = true
-		cfg.Netlinker = &MockRouteReaderWriter{
-			RouteAddFunc:        func(r *routing.Route) error { addCh <- r; return nil },
-			RouteDeleteFunc:     func(r *routing.Route) error { delCh <- r; return nil },
-			RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
+		cfg.Netlinker = &forgettingRouteReaderWriter{
+			MockRouteReaderWriter: &MockRouteReaderWriter{
+				RouteAddFunc:        func(r *routing.Route) error { addCh <- r; return nil },
+				RouteDeleteFunc:     func(r *routing.Route) error { delCh <- r; return nil },
+				RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, nil },
+			},
+			forgetCh: forgetCh,
 		}
 	})
 	require.NoError(t, err)
@@ -1680,7 +1684,21 @@ func TestClient_Liveness_Manager_WithdrawRoute_PassiveMode_NoUninstall_NoDelete(
 	require.Equal(t, 0, m.GetSessionsLen(), "session should be removed after withdraw with NoUninstall in PassiveMode")
 	require.False(t, m.HasSession(peer), "session should be removed after withdraw with NoUninstall in PassiveMode")
 	require.False(t, sess.alive, "session should be marked not alive after withdraw with NoUninstall in PassiveMode")
+
+	// The kernel route stays, but the route reconciler must stop restoring it.
+	forgot := wait(t, forgetCh, time.Second, "RouteForget on NoUninstall withdraw")
+	require.Equal(t, r.Dst.String(), forgot.Dst.String())
 }
+
+// forgettingRouteReaderWriter is a MockRouteReaderWriter that is also a
+// routing.RouteForgetter, standing in for the route reconciler.
+type forgettingRouteReaderWriter struct {
+	*MockRouteReaderWriter
+	forgetCh chan *routing.Route
+}
+
+func (f *forgettingRouteReaderWriter) RouteForget(r *routing.Route) { f.forgetCh <- r }
+func (f *forgettingRouteReaderWriter) RouteForgetVia(net.IP)        {}
 
 func TestClient_Liveness_Manager_OnSessionDown_NoUninstall_SkipsRouteDeleteButClearsInstalled(t *testing.T) {
 	t.Parallel()
@@ -2085,6 +2103,10 @@ func newTestManager(t *testing.T, mutate func(*ManagerConfig)) (*manager, error)
 }
 
 func newTestManagerWithMetrics(t *testing.T, mutate func(*ManagerConfig)) (*manager, *prometheus.Registry, error) {
+	return newTestManagerWithRoutesAndMetrics(t, nil, mutate)
+}
+
+func newTestManagerWithRoutesAndMetrics(t *testing.T, cr *routing.ConfiguredRoutes, mutate func(*ManagerConfig)) (*manager, *prometheus.Registry, error) {
 	reg := prometheus.NewRegistry()
 	cfg := &ManagerConfig{
 		Logger:          newTestLogger(t),
@@ -2103,7 +2125,7 @@ func newTestManagerWithMetrics(t *testing.T, mutate func(*ManagerConfig)) (*mana
 	if mutate != nil {
 		mutate(cfg)
 	}
-	m, err := NewManager(t.Context(), cfg, nil)
+	m, err := NewManager(t.Context(), cfg, cr)
 	return m, reg, err
 }
 
@@ -2169,6 +2191,48 @@ func metricHasLabels(m *prom.Metric, labels prometheus.Labels) bool {
 		}
 	}
 	return true
+}
+
+// TestClient_Liveness_Manager_WithdrawRoute_PassiveClearsInstalledBeforeDelete
+// guards the withdraw ordering: in passive mode WithdrawRoute must clear
+// installed[rk] under the lock *before* issuing the kernel RouteDelete, so
+// concurrent observers of the installed map never see a withdrawn route as
+// installed.
+func TestClient_Liveness_Manager_WithdrawRoute_PassiveClearsInstalledBeforeDelete(t *testing.T) {
+	t.Parallel()
+
+	r := newTestRoute(nil)
+	rk := routeKeyFor("lo", r)
+
+	var installedAtDelete bool
+	var deleteCalled bool
+	var mgr *manager
+	mock := &MockRouteReaderWriter{
+		RouteDeleteFunc: func(*routing.Route) error {
+			deleteCalled = true
+			installedAtDelete = mgr.IsInstalled(rk)
+			return nil
+		},
+	}
+
+	m, err := newTestManager(t, func(cfg *ManagerConfig) {
+		cfg.Netlinker = mock
+		cfg.PassiveMode = true
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+	mgr = m
+
+	err = m.RegisterRoute(r, "lo", m.LocalAddr().Port)
+	require.NoError(t, err)
+	require.True(t, mgr.IsInstalled(rk), "route should be installed after RegisterRoute in passive mode")
+
+	err = m.WithdrawRoute(r, "lo")
+	require.NoError(t, err)
+
+	require.True(t, deleteCalled, "passive WithdrawRoute must issue a kernel delete")
+	require.False(t, installedAtDelete, "installed[rk] must be cleared before the kernel RouteDelete")
+	require.False(t, mgr.IsInstalled(rk), "route should not be installed after WithdrawRoute")
 }
 
 func getHistogramCount(t *testing.T, reg *prometheus.Registry, name string, labels prometheus.Labels) float64 {

@@ -2,6 +2,7 @@ package bgp
 
 import (
 	"errors"
+	"net"
 	"testing"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
@@ -12,6 +13,17 @@ type MockRouteReaderWriter struct {
 	RouteAddFunc        func(*routing.Route) error
 	RouteDeleteFunc     func(*routing.Route) error
 	RouteByProtocolFunc func(int) ([]*routing.Route, error)
+
+	forgotten    []*routing.Route
+	forgottenVia []net.IP
+}
+
+func (m *MockRouteReaderWriter) RouteForget(route *routing.Route) {
+	m.forgotten = append(m.forgotten, route)
+}
+
+func (m *MockRouteReaderWriter) RouteForgetVia(nextHop net.IP) {
+	m.forgottenVia = append(m.forgottenVia, nextHop)
 }
 
 func (m *MockRouteReaderWriter) RouteAdd(route *routing.Route) error {
@@ -65,6 +77,17 @@ func TestClient_RouteReaderWriterWithNoUninstall_NoUninstallTrue_SuppressesDelet
 	err = wrapped.RouteDelete(route)
 	require.NoError(t, err, "RouteDelete should be suppressed and return nil when noUninstall=true")
 	require.False(t, deleteCalled, "underlying RouteDeleteFunc should not be called when noUninstall=true")
+	require.Equal(t, []*routing.Route{route}, underlying.forgotten, "a suppressed delete should forget the route so it is not restored")
+}
+
+func TestClient_RouteReaderWriterWithNoUninstall_ForwardsForgetVia(t *testing.T) {
+	t.Parallel()
+
+	underlying := &MockRouteReaderWriter{}
+	wrapped := newRouteReaderWriterWithNoUninstall(underlying, false)
+
+	routing.ForgetRoutesVia(wrapped, net.IP{203, 0, 113, 1})
+	require.Equal(t, []net.IP{{203, 0, 113, 1}}, underlying.forgottenVia)
 }
 
 func TestClient_RouteReaderWriterWithNoUninstall_NoUninstallFalse_DelegatesAddDelete(t *testing.T) {

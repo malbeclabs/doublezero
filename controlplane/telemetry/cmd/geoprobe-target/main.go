@@ -78,6 +78,10 @@ const (
 	// of one captured datagram repeats rather than advances, and a capture
 	// from an episode too short to be adopted holds too few steps.
 	minRivalAdvances = int(rivalConfirm / geoprobe.SlotCacheTTL)
+
+	// maxRivals bounds the out-of-range streams tracked per key. More than one,
+	// so a capture that never advances cannot crowd out the stream that does.
+	maxRivals = 4
 )
 
 // Machine-readable rejection reasons, logged as the "reason" field so an
@@ -293,11 +297,11 @@ type floorEntry struct {
 	slot       uint64
 	advancedAt time.Time
 	lastSeen   time.Time
-	rival      *rivalStream
+	rivals     []*rivalStream
 }
 
-// rivalStream is the highest run of offers a floor has rejected as out of
-// range, tracked so that a floor which turns out to be wrong can be replaced.
+// rivalStream is a run of offers a floor has rejected as out of range, tracked
+// so that a floor which turns out to be wrong can be replaced.
 type rivalStream struct {
 	slot     uint64
 	since    time.Time
@@ -345,7 +349,8 @@ func newSlotFloor(ttl time.Duration) *slotFloor {
 // Advancing is what keeps a replay out of the upward path: a datagram the
 // ceiling rejected sits above the floor forever, but repeating it goes nowhere.
 // A replayer would need a captured run of wrong-cluster offers spanning
-// minRivalAdvances refreshes, which only a sustained misconfiguration produces.
+// minRivalAdvances refreshes, or maxRivals of them too far apart to chain,
+// which only a sustained misconfiguration produces.
 //
 // A rejected offer still refreshes lastSeen, so a sustained replay cannot
 // outlive the entry and reseed from itself. What stays open is a sender that
@@ -382,35 +387,84 @@ func (f *slotFloor) accept(authority [32]byte, slot uint64) (ok bool, reason str
 		return true, "", entry.slot, age
 	}
 
-	if entry.observeRival(slot, now, age) {
-		entry.slot = entry.rival.slot
+	if r := entry.observeRival(slot, now, age); r != nil {
+		entry.slot = r.slot
 		entry.advancedAt = now
-		entry.rival = nil
+		entry.rivals = nil
 		return true, "", entry.slot, 0
 	}
 	return false, reason, entry.slot, age
 }
 
-// observeRival records an out-of-range offer and reports whether its stream
-// has now earned the floor. A lower offer never displaces a higher live rival,
-// so a replayer cannot keep resetting the genuine sender's run.
-func (e *floorEntry) observeRival(slot uint64, now time.Time, floorAge time.Duration) bool {
-	r := e.rival
-	switch {
-	case r == nil || now.Sub(r.lastSeen) > geoprobe.SlotCacheTTL ||
-		(slot > r.slot && slot-r.slot > maxFloorAdvance(now.Sub(r.lastSeen))):
-		e.rival = &rivalStream{slot: slot, since: now, lastSeen: now}
-		return false
-	case slot < r.slot && r.slot-slot > maxSlotRegression:
-		return false
+// observeRival records an out-of-range offer and returns the rival stream that
+// has now earned the floor, if any. Each stream is judged only on its own
+// offers, so a replayed capture cannot reset or evict the genuine sender's run;
+// when the table is full a newcomer displaces only a weaker stream.
+func (e *floorEntry) observeRival(slot uint64, now time.Time, floorAge time.Duration) *rivalStream {
+	live := e.rivals[:0]
+	for _, r := range e.rivals {
+		if now.Sub(r.lastSeen) <= geoprobe.SlotCacheTTL {
+			live = append(live, r)
+		}
+	}
+	e.rivals = live
+
+	var r *rivalStream
+	for _, c := range e.rivals {
+		if c.matches(slot, now) {
+			r = c
+			break
+		}
+	}
+	if r == nil {
+		e.addRival(&rivalStream{slot: slot, since: now, lastSeen: now})
+		return nil
 	}
 	if slot > r.slot {
 		r.slot = slot
 		r.advances++
 	}
 	r.lastSeen = now
-	return now.Sub(r.since) >= rivalConfirm && r.advances >= minRivalAdvances &&
-		(r.slot > e.slot || floorAge > maxFloorStall)
+	if now.Sub(r.since) >= rivalConfirm && r.advances >= minRivalAdvances &&
+		(r.slot > e.slot || floorAge > maxFloorStall) {
+		return r
+	}
+	return nil
+}
+
+// addRival tracks a new stream, displacing the weakest when the table is full.
+// Streams rank by advances, then slot: a repeated capture never advances, and
+// an old capture replayed in order sits below the live signer it was taken from.
+func (e *floorEntry) addRival(n *rivalStream) {
+	if len(e.rivals) < maxRivals {
+		e.rivals = append(e.rivals, n)
+		return
+	}
+	weakest := 0
+	for i, c := range e.rivals {
+		if e.rivals[weakest].outranks(c) {
+			weakest = i
+		}
+	}
+	if n.outranks(e.rivals[weakest]) {
+		e.rivals[weakest] = n
+	}
+}
+
+// matches reports whether slot continues this stream: a repeat, a small
+// regression, or an advance within the ceiling.
+func (r *rivalStream) matches(slot uint64, now time.Time) bool {
+	if slot < r.slot {
+		return r.slot-slot <= maxSlotRegression
+	}
+	return slot-r.slot <= maxFloorAdvance(now.Sub(r.lastSeen))
+}
+
+func (r *rivalStream) outranks(o *rivalStream) bool {
+	if r.advances != o.advances {
+		return r.advances > o.advances
+	}
+	return r.slot > o.slot
 }
 
 // sweep drops keys silent for ttl, bounding the map the same way the offset

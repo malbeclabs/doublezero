@@ -618,3 +618,64 @@ func TestSlotFloor_RepeatedJumpedCaptureCannotSeizeFloor(t *testing.T) {
 		}
 	}
 }
+
+// The regression test for the rival eviction: a captured datagram above the
+// genuine sender, replayed every refresh, never advances and so never takes the
+// floor, but it used to evict the genuine rival each time it arrived. With a
+// stale seed kept alive by a replayed run, the sender then stayed out for good.
+func TestSlotFloor_RepeatedCaptureCannotBlockStaleSeedTakeover(t *testing.T) {
+	floor := newSlotFloor(floorEntryTTL)
+	now := time.Now()
+	floor.nowFunc = func() time.Time { return now }
+	key := [32]byte{1}
+
+	genuine := uint64(100_000_000)
+	replay := genuine - slotsPer(7*24*time.Hour)
+	floor.accept(key, replay)
+	const captured = 400_000_000
+
+	for elapsed := time.Duration(0); elapsed <= rivalConfirm+geoprobe.SlotCacheTTL; elapsed += 30 * time.Second {
+		now = now.Add(30 * time.Second)
+		if elapsed%geoprobe.SlotCacheTTL == 0 {
+			genuine += slotsPer(geoprobe.SlotCacheTTL)
+			floor.accept(key, captured)
+		}
+		replay += slotsPer(30 * time.Second)
+		floor.accept(key, replay)
+		if ok, _, _, _ := floor.accept(key, genuine); ok {
+			return
+		}
+	}
+	t.Fatal("a repeated capture kept the genuine sender from displacing a stale seed")
+}
+
+// After an adopted misconfiguration, a capture from early in the episode sits
+// out of range of both the stalled floor and the repointed sender. Replayed
+// every refresh, it must not keep the sender from recovering.
+func TestSlotFloor_RepeatedCaptureCannotBlockRecovery(t *testing.T) {
+	floor := newSlotFloor(floorEntryTTL)
+	now := time.Now()
+	floor.nowFunc = func() time.Time { return now }
+	key := [32]byte{1}
+
+	const captured = 400_000_000
+	wrong := uint64(captured)
+	for elapsed := time.Duration(0); elapsed < time.Hour; elapsed += 5 * time.Minute {
+		floor.accept(key, wrong)
+		now = now.Add(5 * time.Minute)
+		wrong += slotsPer(5 * time.Minute)
+	}
+
+	genuine := uint64(1_000_000)
+	for elapsed := time.Duration(0); elapsed <= maxFloorStall+rivalConfirm; elapsed += 30 * time.Second {
+		now = now.Add(30 * time.Second)
+		if elapsed%geoprobe.SlotCacheTTL == 0 {
+			genuine += slotsPer(geoprobe.SlotCacheTTL)
+			floor.accept(key, captured)
+		}
+		if ok, _, _, _ := floor.accept(key, genuine); ok {
+			return
+		}
+	}
+	t.Fatal("a repeated capture kept the remediated sender from recovering")
+}

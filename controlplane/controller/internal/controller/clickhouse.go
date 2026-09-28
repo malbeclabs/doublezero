@@ -84,6 +84,8 @@ func buildClickhouseOptions(addr, db, user, pass string, disableTLS bool) *click
 			Username: user,
 			Password: pass,
 		},
+		// Stay below ClickHouse Cloud's ~5m server-side idle close (driver default is 1h).
+		ConnMaxLifetime: 3 * time.Minute,
 	}
 	if !disableTLS {
 		opts.TLS = &tls.Config{}

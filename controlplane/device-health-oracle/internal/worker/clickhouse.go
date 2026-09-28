@@ -25,11 +25,7 @@ type ClickHouseClient struct {
 	db   string
 }
 
-func NewClickHouseClient(addr, db, user, pass string, disableTLS bool) (*ClickHouseClient, error) {
-	if !validDBName.MatchString(db) {
-		return nil, fmt.Errorf("invalid clickhouse database name: %q", db)
-	}
-
+func options(addr, db, user, pass string, disableTLS bool) *clickhouse.Options {
 	addr = strings.TrimPrefix(addr, "https://")
 	addr = strings.TrimPrefix(addr, "http://")
 
@@ -43,12 +39,21 @@ func NewClickHouseClient(addr, db, user, pass string, disableTLS bool) (*ClickHo
 		},
 		MaxOpenConns: 5,
 		DialTimeout:  30 * time.Second,
+		// Stay below ClickHouse Cloud's ~5m server-side idle close (driver default is 1h).
+		ConnMaxLifetime: 3 * time.Minute,
 	}
 	if !disableTLS {
 		opts.TLS = &tls.Config{}
 	}
+	return opts
+}
 
-	conn, err := clickhouse.Open(opts)
+func NewClickHouseClient(addr, db, user, pass string, disableTLS bool) (*ClickHouseClient, error) {
+	if !validDBName.MatchString(db) {
+		return nil, fmt.Errorf("invalid clickhouse database name: %q", db)
+	}
+
+	conn, err := clickhouse.Open(options(addr, db, user, pass, disableTLS))
 	if err != nil {
 		return nil, fmt.Errorf("clickhouse open: %w", err)
 	}

@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/prometheus/client_golang/prometheus"
@@ -114,6 +115,23 @@ func WithClickhouseMetrics(metrics *ClickhouseMetrics) ClickhouseWriterOption {
 	}
 }
 
+func (cw *ClickhouseRecordWriter) options() *clickhouse.Options {
+	opts := &clickhouse.Options{
+		Addr: []string{cw.addr},
+		Auth: clickhouse.Auth{
+			Database: cw.db,
+			Username: cw.user,
+			Password: cw.pass,
+		},
+		// Stay below ClickHouse Cloud's ~5m server-side idle close (driver default is 1h).
+		ConnMaxLifetime: 3 * time.Minute,
+	}
+	if !cw.disableTLS {
+		opts.TLS = &tls.Config{}
+	}
+	return opts
+}
+
 // NewClickhouseRecordWriter creates a new ClickhouseRecordWriter with the given options.
 // The ClickHouse address must be configured via WithClickhouseAddr.
 func NewClickhouseRecordWriter(opts ...ClickhouseWriterOption) (*ClickhouseRecordWriter, error) {
@@ -135,20 +153,7 @@ func NewClickhouseRecordWriter(opts ...ClickhouseWriterOption) (*ClickhouseRecor
 		cw.logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
 	}
 
-	chOpts := &clickhouse.Options{
-		Addr: []string{cw.addr},
-		Auth: clickhouse.Auth{
-			Database: cw.db,
-			Username: cw.user,
-			Password: cw.pass,
-		},
-	}
-
-	if !cw.disableTLS {
-		chOpts.TLS = &tls.Config{}
-	}
-
-	conn, err := clickhouse.Open(chOpts)
+	conn, err := clickhouse.Open(cw.options())
 	if err != nil {
 		return nil, fmt.Errorf("error opening clickhouse connection: %w", err)
 	}

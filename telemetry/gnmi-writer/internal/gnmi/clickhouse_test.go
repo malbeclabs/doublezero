@@ -3,6 +3,7 @@ package gnmi
 import (
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 )
@@ -46,5 +47,12 @@ func TestIsRetryableClickhouseError(t *testing.T) {
 				t.Errorf("IsRetryableClickhouseError() = %v, want %v", got, tt.expected)
 			}
 		})
+	}
+}
+
+func TestClickhouseRecordWriterOptionsConnMaxLifetime(t *testing.T) {
+	cw := &ClickhouseRecordWriter{addr: "localhost:9440"}
+	if got := cw.options().ConnMaxLifetime; got != 3*time.Minute {
+		t.Errorf("ConnMaxLifetime = %v, want 3m", got)
 	}
 }

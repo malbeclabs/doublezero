@@ -451,7 +451,9 @@ func TestSlotFloor_GenuineSenderDisplacesStaleSeed(t *testing.T) {
 	var adoptedAfter time.Duration
 	for elapsed := time.Duration(0); elapsed < 2*rivalConfirm; elapsed += 30 * time.Second {
 		now = now.Add(30 * time.Second)
-		genuine += slotsPer(30 * time.Second)
+		if elapsed%geoprobe.SlotCacheTTL == 0 {
+			genuine += slotsPer(geoprobe.SlotCacheTTL)
+		}
 		replay += slotsPer(30 * time.Second)
 		floor.accept(key, replay)
 		if ok, _, _, _ := floor.accept(key, genuine); ok && adoptedAfter == 0 {
@@ -540,7 +542,9 @@ func TestSlotFloor_RecoversFromWrongClusterSeed(t *testing.T) {
 	var recoveredAfter time.Duration
 	for elapsed := time.Duration(0); elapsed < 2*time.Hour; elapsed += 30 * time.Second {
 		now = now.Add(30 * time.Second)
-		genuine += slotsPer(30 * time.Second)
+		if elapsed%geoprobe.SlotCacheTTL == 0 {
+			genuine += slotsPer(geoprobe.SlotCacheTTL)
+		}
 		if ok, _, _, _ := floor.accept(key, genuine); ok && recoveredAfter == 0 {
 			recoveredAfter = elapsed
 		}
@@ -584,5 +588,33 @@ func TestFormatTextOutput_UnverifiedIsNotInvalid(t *testing.T) {
 	text := formatTextOutput(formatLocationOffset(newTestOffset(), addr, false, signatureUnverifiedMarker))
 	if strings.Contains(text, "INVALID") || !strings.Contains(text, "UNVERIFIED") {
 		t.Errorf("unverified offset rendered as:\n%s", text)
+	}
+}
+
+// The regression test for the repeat takeover: one datagram the ceiling
+// rejected sits above the floor forever, so replaying that one capture every
+// 5 minutes used to pass for a rival stream and seize the floor. A repeat never
+// advances, so it must never qualify.
+func TestSlotFloor_RepeatedJumpedCaptureCannotSeizeFloor(t *testing.T) {
+	floor := newSlotFloor(floorEntryTTL)
+	now := time.Now()
+	floor.nowFunc = func() time.Time { return now }
+	key := [32]byte{1}
+
+	genuine := uint64(1_000_000)
+	floor.accept(key, genuine)
+	const captured = 400_000_000
+	for elapsed := 30 * time.Second; elapsed < 46*time.Hour; elapsed += 30 * time.Second {
+		now = now.Add(30 * time.Second)
+		// The sender stamps from its slot cache, so its slot moves once per refresh.
+		if elapsed%geoprobe.SlotCacheTTL == 0 {
+			genuine += slotsPer(geoprobe.SlotCacheTTL)
+			if ok, _, _, _ := floor.accept(key, captured); ok {
+				t.Fatalf("repeated capture accepted %s in", elapsed)
+			}
+		}
+		if ok, reason, _, _ := floor.accept(key, genuine); !ok {
+			t.Fatalf("genuine sender rejected %s in: %s", elapsed, reason)
+		}
 	}
 }

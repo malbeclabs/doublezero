@@ -72,6 +72,12 @@ const (
 	// takes over a key's floor. It outlasts two consecutive slot-cache
 	// refreshes, so one bad refresh against the wrong RPC is never adopted.
 	rivalConfirm = 3 * geoprobe.SlotCacheTTL
+
+	// minRivalAdvances is how many times a rival must step forward within
+	// rivalConfirm, once per slot-cache refresh a live signer makes. A replay
+	// of one captured datagram repeats rather than advances, and a capture
+	// from an episode too short to be adopted holds too few steps.
+	minRivalAdvances = int(rivalConfirm / geoprobe.SlotCacheTTL)
 )
 
 // Machine-readable rejection reasons, logged as the "reason" field so an
@@ -296,6 +302,7 @@ type rivalStream struct {
 	slot     uint64
 	since    time.Time
 	lastSeen time.Time
+	advances int
 }
 
 // slotFloor bounds offset replay without a ledger clock. MeasurementSlot is
@@ -332,10 +339,13 @@ func newSlotFloor(ttl time.Duration) *slotFloor {
 // capture or a slot from the wrong cluster. Nothing can vouch for a seed — any
 // minted keypair verifies, so other keys' floors are attacker-steerable — so
 // instead no floor is final: an out-of-range stream that persists for
-// rivalConfirm takes over. A higher stream qualifies whatever the floor is
-// doing, because only the key's own signer can produce a slot above what it has
-// already signed; a replay cannot. A lower one qualifies only once the floor has
+// rivalConfirm, advancing as a live signer does, takes over. A higher stream
+// qualifies whatever the floor is doing; a lower one only once the floor has
 // stalled past maxFloorStall, so a replay cannot displace a live sender.
+// Advancing is what keeps a replay out of the upward path: a datagram the
+// ceiling rejected sits above the floor forever, but repeating it goes nowhere.
+// A replayer would need a captured run of wrong-cluster offers spanning
+// minRivalAdvances refreshes, which only a sustained misconfiguration produces.
 //
 // A rejected offer still refreshes lastSeen, so a sustained replay cannot
 // outlive the entry and reseed from itself. What stays open is a sender that
@@ -394,9 +404,13 @@ func (e *floorEntry) observeRival(slot uint64, now time.Time, floorAge time.Dura
 	case slot < r.slot && r.slot-slot > maxSlotRegression:
 		return false
 	}
-	r.slot = max(r.slot, slot)
+	if slot > r.slot {
+		r.slot = slot
+		r.advances++
+	}
 	r.lastSeen = now
-	return now.Sub(r.since) >= rivalConfirm && (r.slot > e.slot || floorAge > maxFloorStall)
+	return now.Sub(r.since) >= rivalConfirm && r.advances >= minRivalAdvances &&
+		(r.slot > e.slot || floorAge > maxFloorStall)
 }
 
 // sweep drops keys silent for ttl, bounding the map the same way the offset

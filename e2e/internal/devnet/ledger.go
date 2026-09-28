@@ -13,8 +13,6 @@ import (
 	"strings"
 	"time"
 
-	mobycontainer "github.com/moby/moby/api/types/container"
-
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	dockervolume "github.com/docker/docker/api/types/volume"
@@ -24,6 +22,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/telemetry"
+	mobycontainer "github.com/moby/moby/api/types/container"
 	"github.com/testcontainers/testcontainers-go"
 	tcwait "github.com/testcontainers/testcontainers-go/wait"
 )

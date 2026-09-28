@@ -13,9 +13,6 @@ import (
 	"strings"
 	"time"
 
-	mobycontainer "github.com/moby/moby/api/types/container"
-	mobynetwork "github.com/moby/moby/api/types/network"
-
 	dockercontainer "github.com/docker/docker/api/types/container"
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/pkg/stdcopy"
@@ -24,6 +21,8 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	"github.com/malbeclabs/doublezero/e2e/internal/solana"
+	mobycontainer "github.com/moby/moby/api/types/container"
+	mobynetwork "github.com/moby/moby/api/types/network"
 	"github.com/testcontainers/testcontainers-go"
 )
 
@@ -289,9 +288,9 @@ func (c *Client) Start(ctx context.Context) error {
 		exposedPorts = append(exposedPorts, fmt.Sprintf("%d/tcp", qaAgentPort))
 	}
 
-	cyoaAddr, err := netip.ParseAddr(clientCYOAIP)
-	if err != nil {
-		return fmt.Errorf("failed to parse client CYOA IP %q: %w", clientCYOAIP, err)
+	cyoaAddr, ok := netip.AddrFromSlice(cyoaIP.To4())
+	if !ok {
+		return fmt.Errorf("invalid client CYOA IP %s", cyoaIP)
 	}
 
 	// Start the client container.

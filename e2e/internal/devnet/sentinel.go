@@ -8,9 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
-	mobycontainer "github.com/moby/moby/api/types/container"
-
 	"github.com/malbeclabs/doublezero/e2e/internal/logging"
+	mobycontainer "github.com/moby/moby/api/types/container"
 	"github.com/testcontainers/testcontainers-go"
 	tcwait "github.com/testcontainers/testcontainers-go/wait"
 )

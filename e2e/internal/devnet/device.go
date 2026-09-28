@@ -13,8 +13,6 @@ import (
 	"text/template"
 	"time"
 
-	mobycontainer "github.com/moby/moby/api/types/container"
-
 	_ "embed"
 
 	"github.com/aristanetworks/goeapi"
@@ -29,6 +27,7 @@ import (
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
 	"github.com/malbeclabs/doublezero/e2e/internal/prometheus"
 	solanautil "github.com/malbeclabs/doublezero/e2e/internal/solana"
+	mobycontainer "github.com/moby/moby/api/types/container"
 	"github.com/testcontainers/testcontainers-go"
 )
 

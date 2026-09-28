@@ -6,10 +6,9 @@ import (
 	"log/slog"
 	"net/netip"
 
-	mobynetwork "github.com/moby/moby/api/types/network"
-
 	dockerfilters "github.com/docker/docker/api/types/filters"
 	dockernetwork "github.com/docker/docker/api/types/network"
+	mobynetwork "github.com/moby/moby/api/types/network"
 	"github.com/testcontainers/testcontainers-go"
 )
 

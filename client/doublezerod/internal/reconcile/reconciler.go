@@ -66,6 +66,19 @@ func keyFor(r *routing.Route) routeKey {
 	}
 }
 
+// slotKey is the kernel's replace identity for our routes: RouteAdd is a
+// RouteReplace, so a new path for the same table and prefix overwrites the old
+// one whatever its next hop or source. The tracked set is keyed the same way so
+// it holds only the current path per prefix.
+type slotKey struct {
+	Table int
+	Dst   string
+}
+
+func slotFor(r *routing.Route) slotKey {
+	return slotKey{Table: r.Table, Dst: dstString(r.Dst)}
+}
+
 // Netlinker is the routing.Netlinker the Reconciler wraps. The reconcile scan
 // needs BGP routes from every table, not just the main table RouteByProtocol
 // covers: edge filtering installs its BGP routes in table 100.
@@ -86,8 +99,11 @@ type Reconciler struct {
 	interval time.Duration
 	metrics  *metrics
 
+	// mu is held across every kernel route write and tunnel deletion together
+	// with the tracked-set update that goes with it, so the tracked set and the
+	// kernel change in the same order.
 	mu      sync.Mutex
-	tracked map[routeKey]*routing.Route
+	tracked map[slotKey]*routing.Route
 
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
@@ -108,40 +124,43 @@ func New(log *slog.Logger, inner Netlinker, interval time.Duration, reg promethe
 		log:       log,
 		interval:  interval,
 		metrics:   newMetrics(reg),
-		tracked:   make(map[routeKey]*routing.Route),
+		tracked:   make(map[slotKey]*routing.Route),
 	}
 }
 
 // RouteAdd installs r via the inner Netlinker and, for BGP routes, records it in
 // the tracked set on success so reconciliation can reinstall it if it later
-// disappears from the kernel. Non-BGP routes (e.g. multicast RTPROT_STATIC
-// mroutes) pass through untracked.
+// disappears from the kernel, superseding any earlier path for the same prefix.
+// Non-BGP routes (e.g. multicast RTPROT_STATIC mroutes) pass through untracked.
 func (rc *Reconciler) RouteAdd(r *routing.Route) error {
 	if r.Protocol != unix.RTPROT_BGP {
 		return rc.Netlinker.RouteAdd(r)
 	}
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
 	if err := rc.Netlinker.RouteAdd(r); err != nil {
 		return err
 	}
-	rc.mu.Lock()
-	rc.tracked[keyFor(r)] = r
-	rc.mu.Unlock()
+	rc.tracked[slotFor(r)] = r
 	return nil
 }
 
-// RouteDelete removes the route from the tracked set under the lock *before*
-// issuing the kernel delete, so a concurrent reconcile tick cannot resurrect a
-// route that is being withdrawn.
+// RouteDelete untracks the route and issues the kernel delete under the lock,
+// so neither a reconcile tick nor a concurrent RouteAdd can interleave with it
+// and leave a withdrawn route tracked.
 //
 // Untracking is deliberately protocol-agnostic: BGP withdraw-driven deletes are
 // constructed without a Protocol (bgp/plugin.go builds them from the withdraw
 // NLRI), so filtering on RTPROT_BGP here would leak those entries and the
-// reconciler would resurrect withdrawn routes. Deleting an untracked key is a
-// no-op, so passing every delete through the untrack path is safe.
+// reconciler would resurrect withdrawn routes. It also ignores the next hop:
+// withdraws carry the peer address, which need not equal the advertised next
+// hop, and leaving a route unguarded is safer than restoring a withdrawn one.
+// Deleting an untracked key is a no-op, so passing every delete through the
+// untrack path is safe.
 func (rc *Reconciler) RouteDelete(r *routing.Route) error {
 	rc.mu.Lock()
-	delete(rc.tracked, keyFor(r))
-	rc.mu.Unlock()
+	defer rc.mu.Unlock()
+	delete(rc.tracked, slotFor(r))
 	return rc.Netlinker.RouteDelete(r)
 }
 
@@ -150,7 +169,7 @@ func (rc *Reconciler) RouteDelete(r *routing.Route) error {
 // RouteDelete, but BGP no longer wants the route, so it must not be restored.
 func (rc *Reconciler) RouteForget(r *routing.Route) {
 	rc.mu.Lock()
-	delete(rc.tracked, keyFor(r))
+	delete(rc.tracked, slotFor(r))
 	rc.mu.Unlock()
 }
 
@@ -159,14 +178,18 @@ func (rc *Reconciler) RouteForget(r *routing.Route) {
 // kernel, so a tracked route already removed from the kernel would otherwise
 // be restored toward a peer that is down.
 func (rc *Reconciler) RouteForgetVia(nextHop net.IP) {
-	nh := ipString(nextHop)
 	rc.mu.Lock()
-	for k := range rc.tracked {
-		if k.NextHop == nh {
+	rc.forgetViaLocked(nextHop)
+	rc.mu.Unlock()
+}
+
+func (rc *Reconciler) forgetViaLocked(nextHop net.IP) {
+	nh := ipString(nextHop)
+	for k, r := range rc.tracked {
+		if ipString(r.NextHop) == nh {
 			delete(rc.tracked, k)
 		}
 	}
-	rc.mu.Unlock()
 }
 
 // TunnelDelete purges tracked routes whose next hop is the tunnel's remote
@@ -174,10 +197,13 @@ func (rc *Reconciler) RouteForgetVia(nextHop net.IP) {
 // their link, but teardown paths that skip route withdrawal (NoUninstall, used
 // by IBRL-with-allocated-IP) never issue a RouteDelete through this layer; the
 // purge mirrors the kernel's own behavior so the reconciler does not try to
-// reinstall routes onto a deleted tunnel forever.
+// reinstall routes onto a deleted tunnel forever. The lock is held through the
+// tunnel deletion so no route via the tunnel can be tracked in between.
 func (rc *Reconciler) TunnelDelete(t *routing.Tunnel) error {
+	rc.mu.Lock()
+	defer rc.mu.Unlock()
 	if t != nil && t.RemoteOverlay != nil {
-		rc.RouteForgetVia(t.RemoteOverlay)
+		rc.forgetViaLocked(t.RemoteOverlay)
 	}
 	return rc.Netlinker.TunnelDelete(t)
 }
@@ -244,15 +270,14 @@ func (rc *Reconciler) reconcile() {
 		if _, present := kernelSet[keyFor(r)]; present {
 			continue
 		}
-		// Re-check and reinstall under the lock. RouteDelete removes the key
-		// under rc.mu *before* issuing its kernel delete, so holding the lock
-		// across the re-check and RouteAdd closes the resurrection race: either
-		// we observe the withdrawal and skip, or our add completes before the
-		// delete lands. The netlink call under the lock only happens for
-		// genuinely-missing routes, which are rare by definition.
+		// Re-check and reinstall under the lock. Every route write holds rc.mu
+		// across its kernel call and tracked-set update, so holding it across
+		// the re-check and RouteAdd closes the resurrection race: either we
+		// observe the withdrawal and skip, or our add completes before the
+		// delete lands. Comparing the pointer also skips a path that a newer
+		// RouteAdd for the same prefix superseded after the snapshot.
 		rc.mu.Lock()
-		k := keyFor(r)
-		if _, still := rc.tracked[k]; !still {
+		if cur, still := rc.tracked[slotFor(r)]; !still || cur != r {
 			rc.mu.Unlock()
 			continue
 		}

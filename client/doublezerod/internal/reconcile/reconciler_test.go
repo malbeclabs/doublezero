@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/prometheus/client_golang/prometheus"
@@ -450,4 +452,164 @@ func TestClient_Reconcile_StartDisabledWithZeroInterval(t *testing.T) {
 	rc := New(testLogger(), &mockNetlinker{}, 0, prometheus.NewRegistry())
 	rc.Start(t.Context())
 	rc.Stop() // must not hang or panic with no ticker goroutine
+}
+
+func TestClient_Reconcile_NewTwiceSameRegistryReusesMetrics(t *testing.T) {
+	t.Parallel()
+
+	// A runtime restart in one process constructs a second Reconciler against
+	// the same registry; it must not panic and must share the counters.
+	reg := prometheus.NewRegistry()
+	first := New(testLogger(), &mockNetlinker{}, 0, reg)
+	var second *Reconciler
+	require.NotPanics(t, func() { second = New(testLogger(), &mockNetlinker{}, 0, reg) })
+	require.Same(t, first.metrics.reinstalls, second.metrics.reinstalls)
+	require.Same(t, first.metrics.failures, second.metrics.failures)
+}
+
+func TestClient_Reconcile_NextHopReplacementSupersedesOldPath(t *testing.T) {
+	t.Parallel()
+
+	// RouteAdd is a RouteReplace: a new next hop for the same prefix replaces
+	// the old path in the kernel, so only the new path may be reinstalled.
+	oldPath := newTestRoute(nil)
+	newPath := newTestRoute(func(r *routing.Route) { r.NextHop = net.IP{10, 5, 0, 2} })
+	kernel := []*routing.Route{newPath}
+	mock := &mockNetlinker{
+		RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return kernel, nil },
+	}
+	rc := New(testLogger(), mock, 0, prometheus.NewRegistry())
+
+	require.NoError(t, rc.RouteAdd(oldPath))
+	require.NoError(t, rc.RouteAdd(newPath))
+
+	rc.reconcile()
+	require.Equal(t, 2, mock.addCount(), "the superseded path must not be reinstalled over the current one")
+
+	kernel = nil
+	rc.reconcile()
+	require.Equal(t, 3, mock.addCount(), "only the current path must be reinstalled")
+	mock.mu.Lock()
+	last := mock.addCalls[len(mock.addCalls)-1]
+	mock.mu.Unlock()
+	require.True(t, last.NextHop.Equal(newPath.NextHop))
+}
+
+func TestClient_Reconcile_WithdrawWithPeerNextHopUntracks(t *testing.T) {
+	t.Parallel()
+
+	// BGP withdraws carry the peer address as next hop, which need not equal
+	// the advertised next hop the route was installed with.
+	mock := &mockNetlinker{}
+	rc := New(testLogger(), mock, 0, prometheus.NewRegistry())
+
+	require.NoError(t, rc.RouteAdd(newTestRoute(nil)))
+	require.NoError(t, rc.RouteDelete(newTestRoute(func(r *routing.Route) {
+		r.Protocol = 0
+		r.NextHop = net.IP{10, 5, 0, 99}
+	})))
+
+	rc.reconcile()
+	require.Equal(t, 1, mock.addCount(), "a withdrawn route must not be reinstalled whatever the withdraw's next hop")
+}
+
+// blockingNetlinker blocks the first BGP RouteAdd or TunnelDelete until
+// released, outside mockNetlinker's own lock, to hold a write in flight.
+type blockingNetlinker struct {
+	*mockNetlinker
+	entered chan struct{}
+	release chan struct{}
+	blocked atomic.Bool
+
+	mu            sync.Mutex
+	tunnelDeleted bool
+}
+
+func newBlockingNetlinker() *blockingNetlinker {
+	return &blockingNetlinker{
+		mockNetlinker: &mockNetlinker{},
+		entered:       make(chan struct{}),
+		release:       make(chan struct{}),
+	}
+}
+
+// block holds only the first caller; later callers pass straight through
+// (sync.Once would make them wait for the first).
+func (b *blockingNetlinker) block() {
+	if b.blocked.CompareAndSwap(false, true) {
+		close(b.entered)
+		<-b.release
+	}
+}
+
+func (b *blockingNetlinker) RouteAdd(r *routing.Route) error {
+	b.block()
+	b.mu.Lock()
+	gone := b.tunnelDeleted
+	b.mu.Unlock()
+	if gone {
+		return errors.New("no such device")
+	}
+	return b.mockNetlinker.RouteAdd(r)
+}
+
+func (b *blockingNetlinker) TunnelDelete(*routing.Tunnel) error {
+	b.block()
+	b.mu.Lock()
+	b.tunnelDeleted = true
+	b.mu.Unlock()
+	return nil
+}
+
+// runConcurrently starts second while first is blocked in the inner
+// Netlinker, gives second time to finish if nothing holds it back, then
+// releases first and waits for both.
+func runConcurrently(t *testing.T, b *blockingNetlinker, first, second func()) {
+	t.Helper()
+	var wg sync.WaitGroup
+	wg.Go(first)
+	<-b.entered
+	secondDone := make(chan struct{})
+	wg.Go(func() { second(); close(secondDone) })
+	select {
+	case <-secondDone:
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(b.release)
+	wg.Wait()
+}
+
+func TestClient_Reconcile_DeleteDuringInFlightAddNotResurrected(t *testing.T) {
+	t.Parallel()
+
+	b := newBlockingNetlinker()
+	rc := New(testLogger(), b, 0, prometheus.NewRegistry())
+	r := newTestRoute(nil)
+
+	runConcurrently(t, b,
+		func() { require.NoError(t, rc.RouteAdd(r)) },
+		func() { require.NoError(t, rc.RouteDelete(newTestRoute(func(r *routing.Route) { r.Protocol = 0 }))) },
+	)
+
+	rc.mu.Lock()
+	tracked := len(rc.tracked)
+	rc.mu.Unlock()
+	require.Equal(t, 0, tracked, "a delete issued while the add was in flight must leave the route untracked")
+}
+
+func TestClient_Reconcile_AddDuringTunnelDeleteNotTracked(t *testing.T) {
+	t.Parallel()
+
+	b := newBlockingNetlinker()
+	rc := New(testLogger(), b, 0, prometheus.NewRegistry())
+
+	runConcurrently(t, b,
+		func() { require.NoError(t, rc.TunnelDelete(&routing.Tunnel{RemoteOverlay: net.IP{10, 5, 0, 1}})) },
+		func() { _ = rc.RouteAdd(newTestRoute(nil)) },
+	)
+
+	rc.mu.Lock()
+	tracked := len(rc.tracked)
+	rc.mu.Unlock()
+	require.Equal(t, 0, tracked, "a route via a tunnel being deleted must not be tracked")
 }

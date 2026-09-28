@@ -68,6 +68,11 @@ const (
 	// -max-offset-age, which tunes the display cache and would otherwise let a
 	// cache setting shorten a security bound.
 	floorEntryTTL = 2 * maxFloorStall
+
+	// rivalConfirm is how long an out-of-range stream must persist before it
+	// takes over a key's floor. It outlasts two consecutive slot-cache
+	// refreshes, so one bad refresh against the wrong RPC is never adopted.
+	rivalConfirm = 3 * geoprobe.SlotCacheTTL
 )
 
 // Machine-readable rejection reasons, logged as the "reason" field so an
@@ -88,35 +93,6 @@ func maxFloorAdvance(elapsed time.Duration) uint64 {
 		elapsed = 0
 	}
 	return maxFloorAdvanceSlack + uint64(elapsed/minSlotDuration)
-}
-
-// referenceSlot returns the highest slot proven by a live key other than
-// authority, plus how long ago that key last advanced. Every sender stamps
-// MeasurementSlot from the same ledger, so what the other keys have proven is
-// the only reading of the current height a target can take from the offset
-// stream — and the offset stream is all it has, by design.
-//
-// A key whose own floor has stalled past maxFloorStall does not count: a slot
-// nobody has advanced in that long has stopped tracking the current height, and
-// leaving it in would let one parked high slot serve as a permissive ceiling
-// indefinitely — including for the wrong-cluster seed this check exists to
-// catch.
-//
-// Callers must hold f.mu.
-func (f *slotFloor) referenceSlot(authority [32]byte, now time.Time) (slot uint64, age time.Duration, ok bool) {
-	for key, entry := range f.entries {
-		if key == authority {
-			continue
-		}
-		entryAge := now.Sub(entry.advancedAt)
-		if entryAge > maxFloorStall {
-			continue
-		}
-		if !ok || entry.slot > slot {
-			slot, age, ok = entry.slot, entryAge, true
-		}
-	}
-	return slot, age, ok
 }
 
 // signatureUnverifiedMarker records in signature_error that no verification ran
@@ -314,6 +290,15 @@ type floorEntry struct {
 	slot       uint64
 	advancedAt time.Time
 	lastSeen   time.Time
+	rival      *rivalStream
+}
+
+// rivalStream is the highest run of offers a floor has rejected as out of
+// range, tracked so that a floor which turns out to be wrong can be replaced.
+type rivalStream struct {
+	slot     uint64
+	since    time.Time
+	lastSeen time.Time
 }
 
 // slotFloor bounds offset replay without a ledger clock. MeasurementSlot is
@@ -343,26 +328,23 @@ func newSlotFloor(ttl time.Duration) *slotFloor {
 
 // accept reports whether an offer may be ingested, advancing the signing key's
 // floor when it does. On rejection it returns a reason token plus the floor
-// state, for the log line.
+// state, for the log line. Callers must only pass slots from a verified
+// signature chain: an unverified slot would let anyone move any key's floor.
 //
-// Callers verify the signature chain first, so in the deployed configuration
-// only a proven slot moves a floor. With -verify-signatures=false nothing is
-// checked and the floor is fed unverified slots along with everything else.
+// A never-seen key seeds its floor from its first offer, which may be a stale
+// capture or a slot from the wrong cluster. Nothing can vouch for a seed — any
+// minted keypair verifies, so other keys' floors are attacker-steerable — so
+// instead no floor is final: an out-of-range stream that persists for
+// rivalConfirm takes over. A higher stream qualifies whatever the floor is
+// doing, because only the key's own signer can produce a slot above what it has
+// already signed; a replay cannot. A lower one qualifies only once the floor has
+// stalled past maxFloorStall, so a replay cannot displace a live sender.
 //
-// A never-seen key seeds its floor from its own first offer, so one stale
-// capture is accepted per key per process restart; the live stream raises the
-// floor past it within minutes. A rejected offer still refreshes lastSeen, so a
-// sustained replay cannot outlive the entry and reseed from itself.
-//
-// A seed is checked against referenceSlot too, because a seed taken on trust is
-// the one unrecoverable wedge: nothing later can lower the floor it sets. On a
-// rejected seed the returned floor is that reference, this key having none yet.
-//
-// Where no live key offers a reference — the first sender a target ever hears
-// from, or a deployment with only one — a seed still sticks until restart. No
-// local state closes that: once a misconfigured sender is repointed, its
-// genuine offers are indistinguishable from a replay, and letting them pull the
-// floor back down is the replay this bound exists to stop.
+// A rejected offer still refreshes lastSeen, so a sustained replay cannot
+// outlive the entry and reseed from itself. What stays open is a sender that
+// has gone quiet: a replayer holding a captured run of its offers can feed them
+// in at their original cadence, and without a ledger clock that run is
+// indistinguishable from the sender itself.
 func (f *slotFloor) accept(authority [32]byte, slot uint64) (ok bool, reason string, floorSlot uint64, floorAge time.Duration) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -370,10 +352,6 @@ func (f *slotFloor) accept(authority [32]byte, slot uint64) (ok bool, reason str
 	now := f.nowFunc()
 	entry, exists := f.entries[authority]
 	if !exists {
-		if ref, refAge, hasRef := f.referenceSlot(authority, now); hasRef &&
-			slot > ref && slot-ref > maxFloorAdvance(refAge) {
-			return false, rejectSlotJumped, ref, refAge
-		}
 		f.entries[authority] = &floorEntry{slot: slot, advancedAt: now, lastSeen: now}
 		return true, "", slot, 0
 	}
@@ -381,22 +359,47 @@ func (f *slotFloor) accept(authority [32]byte, slot uint64) (ok bool, reason str
 
 	age := now.Sub(entry.advancedAt)
 	switch {
+	case slot > entry.slot && slot-entry.slot > maxFloorAdvance(age):
+		// Reject rather than clamp: absorbing it would wedge this key.
+		reason = rejectSlotJumped
+	case slot < entry.slot && entry.slot-slot > maxSlotRegression:
+		reason = rejectSlotRegressed
 	case slot > entry.slot:
-		if slot-entry.slot > maxFloorAdvance(age) {
-			// Reject rather than clamp: absorbing it wedges this key.
-			return false, rejectSlotJumped, entry.slot, age
-		}
 		entry.slot = slot
 		entry.advancedAt = now
-		age = 0
-	case entry.slot-slot > maxSlotRegression:
-		return false, rejectSlotRegressed, entry.slot, age
+		return true, "", entry.slot, 0
 	case age > maxFloorStall:
 		// Repeats stop evidencing a live sender once the floor stops moving.
 		return false, rejectFloorStalled, entry.slot, age
+	default:
+		return true, "", entry.slot, age
 	}
 
-	return true, "", entry.slot, age
+	if entry.observeRival(slot, now, age) {
+		entry.slot = entry.rival.slot
+		entry.advancedAt = now
+		entry.rival = nil
+		return true, "", entry.slot, 0
+	}
+	return false, reason, entry.slot, age
+}
+
+// observeRival records an out-of-range offer and reports whether its stream
+// has now earned the floor. A lower offer never displaces a higher live rival,
+// so a replayer cannot keep resetting the genuine sender's run.
+func (e *floorEntry) observeRival(slot uint64, now time.Time, floorAge time.Duration) bool {
+	r := e.rival
+	switch {
+	case r == nil || now.Sub(r.lastSeen) > geoprobe.SlotCacheTTL ||
+		(slot > r.slot && slot-r.slot > maxFloorAdvance(now.Sub(r.lastSeen))):
+		e.rival = &rivalStream{slot: slot, since: now, lastSeen: now}
+		return false
+	case slot < r.slot && r.slot-slot > maxSlotRegression:
+		return false
+	}
+	r.slot = max(r.slot, slot)
+	r.lastSeen = now
+	return now.Sub(r.since) >= rivalConfirm && (r.slot > e.slot || floorAge > maxFloorStall)
 }
 
 // sweep drops keys silent for ttl, bounding the map the same way the offset
@@ -554,16 +557,19 @@ func handleOffset(log *slog.Logger, offset *geoprobe.LocationOffset, addr *net.U
 
 	// A valid signature never expires, so a captured offset stays verifiable
 	// forever. The slot floor is what stops it being replayed into the table.
-	if ok, reason, floorSlot, floorAge := floor.accept(offset.AuthorityPubkey, offset.MeasurementSlot); !ok {
-		log.Warn("dropping offset outside slot floor",
-			"reason", reason,
-			"from", addr,
-			"authority_pubkey", solana.PublicKeyFromBytes(offset.AuthorityPubkey[:]).String(),
-			"sender_pubkey", solana.PublicKeyFromBytes(offset.SenderPubkey[:]).String(),
-			"offset_slot", offset.MeasurementSlot,
-			"floor_slot", floorSlot,
-			"floor_age_seconds", floorAge.Seconds())
-		return
+	// Unverified slots stay out of it, or anyone could move any key's floor.
+	if verifySignatures {
+		if ok, reason, floorSlot, floorAge := floor.accept(offset.AuthorityPubkey, offset.MeasurementSlot); !ok {
+			log.Warn("dropping offset outside slot floor",
+				"reason", reason,
+				"from", addr,
+				"authority_pubkey", solana.PublicKeyFromBytes(offset.AuthorityPubkey[:]).String(),
+				"sender_pubkey", solana.PublicKeyFromBytes(offset.SenderPubkey[:]).String(),
+				"offset_slot", offset.MeasurementSlot,
+				"floor_slot", floorSlot,
+				"floor_age_seconds", floorAge.Seconds())
+			return
+		}
 	}
 
 	if chWriter != nil {
@@ -729,6 +735,8 @@ func formatTextOutput(output OffsetOutput) string {
 		if len(output.DZDReferenceChain) > 0 {
 			sb.WriteString("  Chain Verification: VALID ✓\n")
 		}
+	} else if output.SignatureError == signatureUnverifiedMarker {
+		sb.WriteString("  Signature: UNVERIFIED (verification disabled)\n")
 	} else {
 		sb.WriteString("  Signature: INVALID ✗\n")
 		if output.SignatureError != "" {

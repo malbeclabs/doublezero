@@ -4,6 +4,7 @@ import (
 	"io"
 	"log/slog"
 	"net"
+	"strings"
 	"testing"
 	"time"
 
@@ -409,85 +410,185 @@ func TestSlotFloor_AllowsCacheRefreshStepWithNoElapsedTime(t *testing.T) {
 	}
 }
 
+// slotsPer is how far a genuine sender's slot moves over d.
+func slotsPer(d time.Duration) uint64 { return uint64(d / dzSlotDuration) }
+
+// One bad slot-cache refresh stamps the same anomalous slot on every offer for
+// SlotCacheTTL, and two in a row for twice that. Neither may take the floor.
+func TestSlotFloor_DoesNotAdoptBriefAnomaly(t *testing.T) {
+	floor := newSlotFloor(floorEntryTTL)
+	now := time.Now()
+	floor.nowFunc = func() time.Time { return now }
+	key := [32]byte{1}
+
+	floor.accept(key, 1_000_000)
+	for elapsed := time.Duration(0); elapsed < 2*geoprobe.SlotCacheTTL; elapsed += 30 * time.Second {
+		now = now.Add(30 * time.Second)
+		if ok, _, _, _ := floor.accept(key, 400_000_000); ok {
+			t.Fatalf("anomalous slot adopted %s into a bad refresh", elapsed)
+		}
+	}
+
+	now = now.Add(30 * time.Second)
+	if ok, reason, _, _ := floor.accept(key, 1_000_000+slotsPer(10*time.Minute)); !ok {
+		t.Fatalf("sender wedged out after a brief anomaly: %s", reason)
+	}
+}
+
+// The regression test for the stale-seed lockout: a replayed capture seeds the
+// floor low, the replayer keeps it advancing by feeding captures at their
+// original cadence, and the advance ceiling then rejects every genuine slot as
+// slot_jumped. The genuine stream is higher than anything a replayer can
+// produce, so it takes over within rivalConfirm and the replay stops landing.
+// Remove the rival takeover and the genuine sender stays out for the week the
+// capture is old.
+func TestSlotFloor_GenuineSenderDisplacesStaleSeed(t *testing.T) {
+	floor := newSlotFloor(floorEntryTTL)
+	now := time.Now()
+	floor.nowFunc = func() time.Time { return now }
+	key := [32]byte{1}
+
+	genuine := uint64(100_000_000)
+	replay := genuine - slotsPer(7*24*time.Hour)
+	if ok, reason, _, _ := floor.accept(key, replay); !ok {
+		t.Fatalf("seed rejected: %s", reason)
+	}
+
+	var adoptedAfter time.Duration
+	for elapsed := time.Duration(0); elapsed < 2*rivalConfirm; elapsed += 30 * time.Second {
+		now = now.Add(30 * time.Second)
+		genuine += slotsPer(30 * time.Second)
+		replay += slotsPer(30 * time.Second)
+		floor.accept(key, replay)
+		if ok, _, _, _ := floor.accept(key, genuine); ok && adoptedAfter == 0 {
+			adoptedAfter = elapsed
+		}
+	}
+	if adoptedAfter == 0 || adoptedAfter > rivalConfirm {
+		t.Fatalf("genuine sender adopted after %s, want within %s", adoptedAfter, rivalConfirm)
+	}
+
+	now = now.Add(30 * time.Second)
+	if ok, _, _, _ := floor.accept(key, replay+slotsPer(30*time.Second)); ok {
+		t.Error("replay still accepted after the genuine sender took the floor")
+	}
+}
+
+// A replayer interleaving old captures must not keep resetting the genuine
+// sender's rival run, or it would hold the stale floor indefinitely.
+func TestSlotFloor_LowerOffersCannotResetRival(t *testing.T) {
+	floor := newSlotFloor(floorEntryTTL)
+	now := time.Now()
+	floor.nowFunc = func() time.Time { return now }
+	key := [32]byte{1}
+
+	floor.accept(key, 1_000_000)
+	genuine := uint64(50_000_000)
+	for elapsed := time.Duration(0); elapsed <= rivalConfirm; elapsed += 30 * time.Second {
+		now = now.Add(30 * time.Second)
+		genuine += slotsPer(30 * time.Second)
+		floor.accept(key, 10_000_000) // out of range, below the genuine run
+		if ok, _, _, _ := floor.accept(key, genuine); ok {
+			return
+		}
+	}
+	t.Fatal("interleaved lower offers kept the genuine sender out past rivalConfirm")
+}
+
+// A replayer holding old captures of a live sender must never displace its
+// floor downward, however long it keeps sending.
+func TestSlotFloor_ReplayCannotDisplaceLiveSender(t *testing.T) {
+	floor := newSlotFloor(floorEntryTTL)
+	now := time.Now()
+	floor.nowFunc = func() time.Time { return now }
+	key := [32]byte{1}
+
+	genuine := uint64(100_000_000)
+	replay := genuine - slotsPer(24*time.Hour)
+	floor.accept(key, genuine)
+	for elapsed := time.Duration(0); elapsed < 6*time.Hour; elapsed += 30 * time.Second {
+		now = now.Add(30 * time.Second)
+		replay += slotsPer(30 * time.Second)
+		if ok, _, _, _ := floor.accept(key, replay); ok {
+			t.Fatalf("replay accepted %s in against a live sender", elapsed)
+		}
+		if elapsed%(5*time.Minute) == 0 {
+			genuine += slotsPer(5 * time.Minute)
+			if ok, reason, _, _ := floor.accept(key, genuine); !ok {
+				t.Fatalf("live sender rejected: %s", reason)
+			}
+		}
+	}
+}
+
 // The regression test for the seeding wedge: a probe pointed at the wrong
-// ledger RPC is ingested fine, then vanishes from location_offsets for good the
-// moment someone repoints it, because its first offer seeded the floor at the
-// wrong cluster's height. Remove the seed check and the remediated offers below
-// all fail slot_regressed.
-func TestSlotFloor_RejectsSeedAboveLiveReferenceAndIngestsAfterRemediation(t *testing.T) {
+// ledger RPC seeds the floor at the wrong cluster's height, and once repointed
+// every genuine offer fails slot_regressed. That floor stops advancing, so the
+// genuine run takes over after maxFloorStall. Remove the rival takeover and
+// the remediated sender never comes back.
+func TestSlotFloor_RecoversFromWrongClusterSeed(t *testing.T) {
 	floor := newSlotFloor(floorEntryTTL)
 	now := time.Now()
 	floor.nowFunc = func() time.Time { return now }
-	healthy, misconfigured := [32]byte{1}, [32]byte{2}
+	key := [32]byte{1}
 
-	// A correctly configured sender establishes what the current height is.
-	if ok, reason, _, _ := floor.accept(healthy, 1_000_000); !ok {
-		t.Fatalf("healthy sender rejected on seed: %s", reason)
-	}
-
-	// The misconfigured probe's first offer carries a Solana-L1-height slot.
-	ok, reason, refSlot, _ := floor.accept(misconfigured, 400_000_000)
-	if ok {
-		t.Fatal("expected a wrong-cluster seed to be rejected, not absorbed into the floor")
-	}
-	if reason != rejectSlotJumped {
-		t.Errorf("reason = %q, want %q", reason, rejectSlotJumped)
-	}
-	if refSlot != 1_000_000 {
-		t.Errorf("reported reference = %d, want the live key's proven slot", refSlot)
-	}
-
-	// Repointed at the real ledger, it seeds and keeps being ingested.
-	now = now.Add(time.Minute)
-	if ok, reason, _, _ := floor.accept(misconfigured, 1_000_150); !ok {
-		t.Fatalf("remediated sender could not seed: %s", reason)
-	}
-	for i := 1; i <= 12; i++ {
+	// Misconfigured for an hour, then repointed.
+	wrong := uint64(400_000_000)
+	for elapsed := time.Duration(0); elapsed < time.Hour; elapsed += 5 * time.Minute {
+		if ok, reason, _, _ := floor.accept(key, wrong); !ok {
+			t.Fatalf("misconfigured sender rejected: %s", reason)
+		}
 		now = now.Add(5 * time.Minute)
-		slot := uint64(1_000_150) + uint64(i)*uint64(5*time.Minute/dzSlotDuration)
-		if ok, reason, _, _ := floor.accept(misconfigured, slot); !ok {
-			t.Fatalf("remediated sender wedged out at offer %d: %s", i, reason)
+		wrong += slotsPer(5 * time.Minute)
+	}
+
+	genuine := uint64(1_000_000)
+	var recoveredAfter time.Duration
+	for elapsed := time.Duration(0); elapsed < 2*time.Hour; elapsed += 30 * time.Second {
+		now = now.Add(30 * time.Second)
+		genuine += slotsPer(30 * time.Second)
+		if ok, _, _, _ := floor.accept(key, genuine); ok && recoveredAfter == 0 {
+			recoveredAfter = elapsed
 		}
+	}
+	if recoveredAfter == 0 || recoveredAfter > maxFloorStall+rivalConfirm {
+		t.Fatalf("remediated sender recovered after %s, want within %s", recoveredAfter, maxFloorStall+rivalConfirm)
 	}
 }
 
-// The seed check must not reject a genuine new sender, whose slot sits somewhat
-// above the last height the reference key proved.
-func TestSlotFloor_SeedsGenuineSenderAboveStaleReference(t *testing.T) {
-	for _, refAge := range []time.Duration{0, 4 * time.Minute, maxFloorStall} {
-		floor := newSlotFloor(floorEntryTTL)
-		now := time.Now()
-		floor.nowFunc = func() time.Time { return now }
-
-		floor.accept([32]byte{1}, 1_000_000)
-		now = now.Add(refAge)
-
-		// The reference's slot is refAge stale, so a current slot is that far above it.
-		slot := uint64(1_000_000) + uint64(refAge/dzSlotDuration)
-		if ok, reason, _, _ := floor.accept([32]byte{2}, slot); !ok {
-			t.Fatalf("genuine seed against a %s-stale reference rejected: %s", refAge, reason)
-		}
-	}
-}
-
-// A parked high slot must stop authorizing seeds once nobody is advancing it,
-// or the wrong-cluster seed it once let in keeps letting the next one in.
-func TestSlotFloor_StalledKeyIsNotAReference(t *testing.T) {
+// Any minted keypair verifies, so no key's floor may bear on another's: a key
+// parked at a low slot must not stop a genuine sender from seeding.
+func TestSlotFloor_ParkedKeyCannotBlockSeed(t *testing.T) {
 	floor := newSlotFloor(floorEntryTTL)
-	now := time.Now()
-	floor.nowFunc = func() time.Time { return now }
+	floor.accept([32]byte{1}, 1_000)
 
-	// The no-reference residual: the first key a target hears from seeds freely.
-	if ok, reason, _, _ := floor.accept([32]byte{1}, 400_000_000); !ok {
-		t.Fatalf("first seed on an empty floor rejected: %s", reason)
+	if ok, reason, _, _ := floor.accept([32]byte{2}, 100_000_000); !ok {
+		t.Fatalf("a parked key blocked a genuine seed: %s", reason)
 	}
+}
 
-	now = now.Add(maxFloorStall + time.Minute)
-	if ok, reason, _, _ := floor.accept([32]byte{2}, 1_000_000); !ok {
-		t.Fatalf("healthy sender rejected on seed: %s", reason)
+// With verification off the slot is attacker-chosen, so it must not move the
+// floor a later verified offer is judged against.
+func TestHandleOffset_UnverifiedOffsetDoesNotMoveFloor(t *testing.T) {
+	log := slog.New(slog.NewTextHandler(io.Discard, nil))
+	writer := geoprobe.NewClickhouseWriter(geoprobe.ClickhouseConfig{Addr: "unused"}, log)
+	addr := &net.UDPAddr{IP: net.IPv4(203, 0, 113, 7), Port: 41234}
+	floor := newSlotFloor(floorEntryTTL)
+
+	offset := newTestOffset()
+	offset.MeasurementSlot = 1 << 40
+	handleOffset(log, offset, addr, false, writer, newTestCaches(), floor)
+
+	if len(floor.entries) != 0 {
+		t.Errorf("unverified offset created %d floor entries", len(floor.entries))
 	}
+}
 
-	if ok, _, refSlot, _ := floor.accept([32]byte{3}, 400_000_000); ok {
-		t.Fatalf("stalled key at 400000000 authorized a wrong-cluster seed (reference %d)", refSlot)
+// Text output must not report a check that never ran as a failed one.
+func TestFormatTextOutput_UnverifiedIsNotInvalid(t *testing.T) {
+	addr := &net.UDPAddr{IP: net.IPv4(203, 0, 113, 7), Port: 41234}
+	text := formatTextOutput(formatLocationOffset(newTestOffset(), addr, false, signatureUnverifiedMarker))
+	if strings.Contains(text, "INVALID") || !strings.Contains(text, "UNVERIFIED") {
+		t.Errorf("unverified offset rendered as:\n%s", text)
 	}
 }

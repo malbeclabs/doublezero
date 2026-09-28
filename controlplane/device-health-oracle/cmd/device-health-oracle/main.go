@@ -140,6 +140,7 @@ func main() {
 
 	// Initialize ClickHouse-dependent criteria.
 	var deviceCriteria []worker.DeviceCriterion
+	var linkPromotionCriteria []worker.LinkCriterion
 	var linkImpairmentCriteria []worker.LinkCriterion
 	var linkRecoveryCriteria []worker.LinkCriterion
 	if chAddr := os.Getenv("CLICKHOUSE_ADDR"); chAddr != "" {
@@ -163,6 +164,8 @@ func main() {
 			controllerSuccess := worker.NewControllerSuccessCriterion(chClient, log)
 			interfaceCounters := worker.NewInterfaceCountersCriterion(chClient, log)
 			deviceCriteria = append(deviceCriteria, controllerSuccess, interfaceCounters)
+			linkPromotionCriteria = append(linkPromotionCriteria,
+				worker.NewLinkHealthCriterion(worker.LinkHealthModePromotion, chClient, *linkLossThreshold, log))
 			linkImpairmentCriteria = append(linkImpairmentCriteria,
 				worker.NewLinkHealthCriterion(worker.LinkHealthModeImpairment, chClient, *linkLossThreshold, log))
 			linkRecoveryCriteria = append(linkRecoveryCriteria,
@@ -178,10 +181,10 @@ func main() {
 		Log:                   log,
 	}
 	linkEvaluator := &worker.LinkHealthEvaluator{
-		// Reusing the impairment criterion stops a link that already reads
-		// impaired from promoting only to demote a tick later. Safe because it
-		// passes on no-data, so links with no telemetry promote as before.
-		ReadyForServiceCriteria: linkImpairmentCriteria,
+		// Running the impairment check on promotion stops a link that already
+		// reads impaired from promoting only to demote a tick later. It passes
+		// on no-data, so links with no telemetry promote as before.
+		ReadyForServiceCriteria: linkPromotionCriteria,
 		ImpairmentCriteria:      linkImpairmentCriteria,
 		RecoveryCriteria:        linkRecoveryCriteria,
 		Log:                     log,

@@ -339,7 +339,7 @@ func TestLinkHealthCriterion_Recovery_PassesThresholdToChecker(t *testing.T) {
 	assert.Equal(t, threshold, observed)
 }
 
-// ReadyForServiceCriteria is wired to the impairment criterion, so a link whose
+// ReadyForServiceCriteria runs the same latest-bucket check, so a link whose
 // latest bucket already reads impaired must not promote to RFS only to be
 // demoted on the next tick. Links with no telemetry still promote.
 func TestLinkHealthEvaluator_Pending_PromotionGatedOnImpairment(t *testing.T) {
@@ -372,16 +372,59 @@ func TestLinkHealthEvaluator_Pending_PromotionGatedOnImpairment(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			criterion := NewLinkHealthCriterion(LinkHealthModeImpairment,
-				&mockLinkHealthChecker{recentFunc: tt.recent}, 5.0, testLogger())
+			checker := &mockLinkHealthChecker{recentFunc: tt.recent}
 			eval := &LinkHealthEvaluator{
-				ReadyForServiceCriteria: []LinkCriterion{criterion},
-				ImpairmentCriteria:      []LinkCriterion{criterion},
-				Log:                     testLogger(),
+				ReadyForServiceCriteria: []LinkCriterion{
+					NewLinkHealthCriterion(LinkHealthModePromotion, checker, 5.0, testLogger()),
+				},
+				ImpairmentCriteria: []LinkCriterion{
+					NewLinkHealthCriterion(LinkHealthModeImpairment, checker, 5.0, testLogger()),
+				},
+				Log: testLogger(),
 			}
 
 			link := serviceability.Link{LinkHealth: serviceability.LinkHealthPending}
 			assert.Equal(t, tt.expected, eval.Evaluate(context.Background(), link))
 		})
 	}
+}
+
+// Passing means "hold" on the RFS path but "advance" on the Pending path, so
+// the promotion check must fail on a query error where the impairment check
+// passes. Otherwise a lake outage promotes every Pending link.
+func TestLinkHealthEvaluator_Pending_QueryError_StaysPending(t *testing.T) {
+	checker := &mockLinkHealthChecker{
+		recentFunc: func(_ context.Context, _ string) (LinkHealthRecentResult, bool, error) {
+			return LinkHealthRecentResult{}, false, errors.New("connection reset")
+		},
+	}
+	eval := &LinkHealthEvaluator{
+		ReadyForServiceCriteria: []LinkCriterion{
+			NewLinkHealthCriterion(LinkHealthModePromotion, checker, 5.0, testLogger()),
+		},
+		Log: testLogger(),
+	}
+
+	before := testutil.ToFloat64(MetricErrors.WithLabelValues(MetricErrorTypeLinkHealthQuery))
+	link := serviceability.Link{LinkHealth: serviceability.LinkHealthPending}
+	assert.Equal(t, serviceability.LinkHealthPending, eval.Evaluate(context.Background(), link))
+	assert.Equal(t, before+1, testutil.ToFloat64(MetricErrors.WithLabelValues(MetricErrorTypeLinkHealthQuery)))
+}
+
+func TestLinkHealthCriterion_Recovery_QueryError_CountsOutage(t *testing.T) {
+	now := time.Now()
+	ctx := ContextWithBurnInTimes(context.Background(), BurnInTimes{
+		DrainedStart: now.Add(-30 * time.Minute),
+		Now:          now,
+	})
+	checker := &mockLinkHealthChecker{
+		windowFunc: func(_ context.Context, _ string, _, _ time.Time, _ float64) (LinkHealthWindowResult, bool, error) {
+			return LinkHealthWindowResult{}, false, errors.New("boom")
+		},
+	}
+	c := NewLinkHealthCriterion(LinkHealthModeRecovery, checker, 5.0, testLogger())
+
+	before := testutil.ToFloat64(MetricErrors.WithLabelValues(MetricErrorTypeLinkHealthQuery))
+	_, _ = c.Check(ctx, serviceability.Link{})
+	assert.Equal(t, before+1, testutil.ToFloat64(MetricErrors.WithLabelValues(MetricErrorTypeLinkHealthQuery)))
 }

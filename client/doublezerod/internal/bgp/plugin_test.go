@@ -113,13 +113,16 @@ func TestClient_BGPPlugin_OnCloseDeletesRoutesAndSendsDownStatus(t *testing.T) {
 
 	var gotProtocol int
 	var deletedRoutes []*routing.Route
+	var forgottenBeforeListing int
 
 	peerIP := net.ParseIP("203.0.113.1")
 	otherPeerIP := net.ParseIP("203.0.113.2")
 
-	mockRW := &MockRouteReaderWriter{
+	var mockRW *MockRouteReaderWriter
+	mockRW = &MockRouteReaderWriter{
 		RouteByProtocolFunc: func(p int) ([]*routing.Route, error) {
 			gotProtocol = p
+			forgottenBeforeListing = len(mockRW.forgottenVia)
 			return []*routing.Route{
 				{
 					Dst:     &net.IPNet{IP: net.IP{1, 1, 1, 1}, Mask: net.CIDRMask(32, 32)},
@@ -161,9 +164,11 @@ func TestClient_BGPPlugin_OnCloseDeletesRoutesAndSendsDownStatus(t *testing.T) {
 	require.True(t, deletedRoutes[0].NextHop.Equal(peerIP))
 
 	// Routes via the peer that are already gone from the kernel get no delete,
-	// so the close must also forget everything via the peer.
+	// so the close must also forget everything via the peer, before listing so
+	// a reconcile tick cannot reinstall one in between.
 	require.Len(t, mockRW.forgottenVia, 1)
 	require.True(t, mockRW.forgottenVia[0].Equal(peerIP))
+	require.Equal(t, 1, forgottenBeforeListing, "the forget must happen before the kernel listing")
 }
 
 func TestClient_BGPPlugin_OnCloseSkipsRouteDeletionWhenNoInstall(t *testing.T) {

@@ -194,6 +194,12 @@ func (p *Plugin) OnClose(peer corebgp.PeerConfig) {
 		peerGw := peer.RemoteAddress.AsSlice()
 		slog.Info("bgp: flushing routes for peer", "peer", peer.RemoteAddress)
 
+		// Stop the route reconciler restoring routes via the peer before the
+		// flush: routes already gone from the kernel get no RouteDelete below,
+		// and forgetting after the listing would let a reconcile tick in between
+		// reinstall one toward a peer that is down.
+		routing.ForgetRoutesVia(p.RouteReaderWriter, net.IP(peerGw))
+
 		protocol := unix.RTPROT_BGP // 186
 		routes, err := p.RouteReaderWriter.RouteByProtocol(protocol)
 		if err != nil {
@@ -208,9 +214,6 @@ func (p *Plugin) OnClose(peer corebgp.PeerConfig) {
 				continue
 			}
 		}
-		// Routes already gone from the kernel got no RouteDelete above; stop the
-		// route reconciler from restoring them toward a peer that is down.
-		routing.ForgetRoutesVia(p.RouteReaderWriter, net.IP(peerGw))
 	}
 
 	MetricSessionStatus.Set(0)

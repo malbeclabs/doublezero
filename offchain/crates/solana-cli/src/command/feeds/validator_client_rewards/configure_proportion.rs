@@ -1,11 +1,10 @@
 use std::io::Write;
 
-use anyhow::{Context, Result, bail, ensure};
+use anyhow::{Context, Result, ensure};
 use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_solana_client_tools::{
     payer::{TransactionOutcome, Wallet},
-    rpc::SolanaConnection,
     squads::{OptionalSquadsArgs, try_write_vault_transaction},
 };
 use doublezero_solana_sdk::{
@@ -16,8 +15,8 @@ use doublezero_solana_sdk::{
             account::ConfigureValidatorClientRewardsProportionAccounts,
         },
         state::{
-            MAX_VALIDATOR_CLIENT_REWARDS_PROPORTION_BPS, ValidatorClientRewards,
-            find_program_config_address, find_validator_client_rewards_address, is_program_paused,
+            MAX_VALIDATOR_CLIENT_REWARDS_PROPORTION_BPS, ProgramConfig, ValidatorClientRewards,
+            find_program_config_address, find_validator_client_rewards_address,
         },
     },
     try_build_instruction,
@@ -96,7 +95,22 @@ impl ConfigureProportionCommand {
         };
         let actor_key = actor.key();
 
-        try_check_not_paused(&connection).await?;
+        // The program refuses this instruction while paused. Stopping here saves a payload the
+        // multisig could never execute from using up an approval round.
+        let program_config_key = find_program_config_address().0;
+        let program_config = connection
+            .try_fetch_zero_copy_data_with_commitment::<ProgramConfig>(
+                &program_config_key,
+                CommitmentConfig::confirmed(),
+            )
+            .await
+            .with_context(|| {
+                format!("fetching the feed subscription program config (PDA {program_config_key})")
+            })?;
+        ensure!(
+            !program_config.is_paused(),
+            "the feed subscription program is paused, so it refuses this"
+        );
 
         let validator_client_rewards_key = find_validator_client_rewards_address(self.client_id).0;
         let validator_client_rewards = connection
@@ -189,26 +203,6 @@ impl ConfigureProportionCommand {
     }
 }
 
-// The program refuses this instruction while paused. Stopping here saves a payload the multisig
-// could never execute from using up an approval round.
-async fn try_check_not_paused(connection: &SolanaConnection) -> Result<()> {
-    let program_config_key = find_program_config_address().0;
-    let account = connection
-        .get_account_with_commitment(&program_config_key, CommitmentConfig::confirmed())
-        .await
-        .context("fetching the feed subscription program config")?
-        .value
-        .with_context(|| format!("program {} has no config on this cluster", *ID))?;
-
-    match is_program_paused(&account.data) {
-        Some(false) => Ok(()),
-        Some(true) => bail!("the feed subscription program is paused, so it refuses this"),
-        None => {
-            bail!("the account at {program_config_key} is not a feed subscription program config")
-        }
-    }
-}
-
 /// The instruction list the wallet signs: the proportion write and the
 /// compute budget.
 fn direct_instructions(
@@ -283,9 +277,15 @@ mod tests {
 
     #[test]
     fn test_parses_multisig_and_vault_index() {
-        let multisig = Pubkey::new_unique();
-        let cmd = parse(&["--multisig", &multisig.to_string(), "--vault-index", "2"]).unwrap();
-        assert_eq!(cmd.squads.multisig, Some(multisig));
+        let multisig_key = Pubkey::new_unique();
+        let cmd = parse(&[
+            "--multisig",
+            &multisig_key.to_string(),
+            "--vault-index",
+            "2",
+        ])
+        .unwrap();
+        assert_eq!(cmd.squads.multisig, Some(multisig_key));
         assert_eq!(cmd.squads.vault_index, 2);
     }
 

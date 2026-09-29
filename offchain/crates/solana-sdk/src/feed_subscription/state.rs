@@ -101,12 +101,14 @@ mod tests {
             data
         };
 
+        let running_data = account_data(0b0100);
         let (config, _) =
-            checked_from_bytes_with_discriminator::<ProgramConfig>(&account_data(0b0100)).unwrap();
+            checked_from_bytes_with_discriminator::<ProgramConfig>(&running_data).unwrap();
         assert!(!config.is_paused());
 
+        let paused_data = account_data(0b0101);
         let (config, _) =
-            checked_from_bytes_with_discriminator::<ProgramConfig>(&account_data(0b0101)).unwrap();
+            checked_from_bytes_with_discriminator::<ProgramConfig>(&paused_data).unwrap();
         assert!(config.is_paused());
     }
 

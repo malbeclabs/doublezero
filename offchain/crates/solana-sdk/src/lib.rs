@@ -1,3 +1,4 @@
+pub mod feed_subscription;
 pub mod passport;
 pub mod revenue_distribution;
 pub mod shred_subscription;

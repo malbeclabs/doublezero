@@ -1,3 +1,4 @@
+mod feeds;
 mod passport;
 mod revenue_distribution;
 mod shreds;
@@ -111,6 +112,9 @@ pub enum DoubleZeroSolanaCommand {
 
     /// Shred subscription program commands.
     Shreds(shreds::ShredsCommand),
+
+    /// Feed subscription program commands.
+    Feeds(feeds::FeedsCommand),
 }
 
 impl DoubleZeroSolanaCommand {
@@ -121,6 +125,7 @@ impl DoubleZeroSolanaCommand {
                 revenue_distribution.command.execute(ctx, out).await
             }
             Self::Shreds(shreds) => shreds.execute(ctx, out).await,
+            Self::Feeds(feeds) => feeds.execute(ctx, out).await,
         }
     }
 }

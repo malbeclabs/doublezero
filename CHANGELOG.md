@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+  - New `doublezero-solana feeds validator-client-rewards configure-proportion`, which sets a validator client's share of the feed rewards, up to 35%. The client's manager signs it, or a Squads vault does with `--multisig`. (malbeclabs/infra#2805)
 - Client
   - Add periodic kernel route reconciliation to `doublezerod` that detects and reinstalls BGP routes deleted from the kernel by external processes. Implemented as a standalone netlink decorator (`-route-reconcile-interval`, default 30s, `0` disables) that works with route liveness in passive or active mode and equally with liveness disabled; excluded destinations are never tracked. Exposes `doublezero_route_reconcile_reinstalls_total` and `doublezero_route_reconcile_failures_total` ([#3669](https://github.com/malbeclabs/doublezero/issues/3669))
 - Telemetry

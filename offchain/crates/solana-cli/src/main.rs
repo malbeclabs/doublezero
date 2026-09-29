@@ -398,4 +398,20 @@ mod tests {
         DoubleZeroSolanaApp::try_parse_from(["doublezero-solana", "shreds", "price", "-ul"])
             .expect("trailing -u on `shreds price` should parse");
     }
+
+    /// The feed program's proportion verb parses under `feeds`.
+    #[test]
+    fn test_feeds_validator_client_rewards_configure_proportion_parses() {
+        DoubleZeroSolanaApp::try_parse_from([
+            "doublezero-solana",
+            "feeds",
+            "validator-client-rewards",
+            "configure-proportion",
+            "--client-id",
+            "9",
+            "--proportion",
+            "12.5",
+        ])
+        .expect("`feeds validator-client-rewards configure-proportion` should parse");
+    }
 }

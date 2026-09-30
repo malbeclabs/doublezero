@@ -15,7 +15,7 @@ All notable changes to this project will be documented in this file.
 - DevContainer
   - The devcontainer's Solana CLI moves from v2.3.1 to v3.0.12, matching `solana/Dockerfile`, so its `cargo-build-sbf` matches the solana 3.0 program tree. Rebuild the devcontainer to pick it up.
 - Serviceability
-  - `CreateFeed` refuses a feed with a builder and a chain, and `UpdateFeed` refuses to give such a feed any chain except `unspecified`. The rewards process uses either the builder or the chain to find who gets the rewards. (malbeclabs/infra#2857)
+  - `CreateFeed` refuses a feed with a builder and a chain, and `UpdateFeed` refuses to give such a feed any chain except `unspecified`. The rewards process uses either the builder or the chain to find who gets the rewards. (#4385)
 - Telemetry
   - Cap pooled ClickHouse connections at 3 minutes in gnmi-writer, flow-enricher, global-monitor, the controller, device-health-oracle and the geoprobe writer. The driver default of 1 hour let a parked connection outlive ClickHouse Cloud's ~5 minute idle close, so the next write failed with `read: EOF` and tripped the error alerts.
 

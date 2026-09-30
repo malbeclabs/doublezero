@@ -127,8 +127,6 @@ pub enum RevenueDistributionInstructionData {
     /// the integration can verify the caller.
     CollectIntegrationRewards,
 
-    /// Anyone may create the account for a calendar month. Only year and month
-    /// are written, and they are the PDA seeds.
     InitializeMonthlyContributorDistribution {
         year: u16,
         month: u8,

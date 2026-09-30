@@ -49,7 +49,7 @@ RUN curl https://gotest-release.s3.amazonaws.com/gotest_linux > gotest && \
 
 # Install Solana CLI tools (provides cargo-build-sbf for onchain program compilation)
 # Skipped on arm64 — Solana does not publish arm64 binaries.
-ARG SOLANA_VERSION=v2.3.1
+ARG SOLANA_VERSION=v3.0.12
 RUN if [ "$(uname -m)" != "aarch64" ]; then \
         curl -sSfL "https://release.anza.xyz/${SOLANA_VERSION}/install" | bash && \
         mv /root/.local/share/solana/install/active_release /usr/local/solana && \

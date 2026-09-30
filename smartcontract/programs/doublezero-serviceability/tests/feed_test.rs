@@ -576,6 +576,36 @@ async fn test_feed_create_partial_stake_terms_rejected() {
     }
 }
 
+/// A staked feed cannot name a chain. A feed with both a builder and a chain would not show clearly
+/// who gets the rewards.
+#[tokio::test]
+async fn test_feed_create_staked_with_a_chain_rejected() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+    enable_staked_feeds(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
+
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "polymarket", &exchange);
+    let mut args = staked_args("polymarket", exchange);
+    args.feed_chain = FeedChain::Solana;
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(args),
+        vec![
+            AccountMeta::new(feed_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+        &[],
+    )
+    .await;
+
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::InvalidArgument));
+}
+
 /// Stake terms without a builder are refused too: they would be recorded against nobody.
 #[tokio::test]
 async fn test_feed_create_stake_terms_without_builder_rejected() {
@@ -737,6 +767,67 @@ async fn test_feed_create_covered_by_stake_tier() {
         .get_stake_mirror()
         .unwrap();
     assert_eq!(mirror.feed_key, feed_pubkey);
+}
+
+/// An update cannot give a staked feed a chain, but it can set the chain back to unspecified.
+#[tokio::test]
+async fn test_feed_update_refuses_a_chain_on_a_staked_feed() {
+    let (mut banks_client, program_id, payer, globalstate_pubkey, builder, stake_ref) =
+        init_staked(StakeTier::UpTo5Gbps).await;
+
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "polymarket", &exchange);
+    let (mirror_pubkey, _) = get_stake_mirror_pda(&program_id, &stake_ref);
+
+    let mut args = staked_args("polymarket", exchange);
+    args.builder = builder;
+    args.stake_ref = stake_ref;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(args),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &payer,
+        &[AccountMeta::new(mirror_pubkey, false)],
+    )
+    .await;
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
+            name: None,
+            groups: None,
+            feed_chain: Some(FeedChain::Solana),
+        }),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &payer,
+        &[],
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::InvalidArgument));
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
+            name: None,
+            groups: None,
+            feed_chain: Some(FeedChain::Unspecified),
+        }),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &payer,
+    )
+    .await;
+    assert_eq!(
+        get_feed(&mut banks_client, feed_pubkey).await.feed_chain as u8,
+        0
+    );
 }
 
 /// One bit over the tier ceiling is refused. The bond was sized against the tier, so a rate

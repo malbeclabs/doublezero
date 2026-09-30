@@ -330,6 +330,12 @@ pub(crate) fn validate_feed_stake_terms(
         msg!("Staked feed must commit to a rate");
         return Err(DoubleZeroError::InvalidArgument);
     }
+    // The rewards process uses the chain or the builder of a feed to find who gets the rewards.
+    // A feed with both would not show clearly who gets them.
+    if value.feed_chain != FeedChain::Unspecified {
+        msg!("Staked feed must not name a chain");
+        return Err(DoubleZeroError::InvalidArgument);
+    }
 
     Ok(())
 }

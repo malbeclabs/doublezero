@@ -77,6 +77,12 @@ pub fn process_update_feed(
         feed.groups = groups.clone();
     }
     if let Some(feed_chain) = value.feed_chain {
+        // The rewards process uses the chain or the builder of a feed to find who gets the
+        // rewards. A feed with both would not show clearly who gets them.
+        if feed.builder != Pubkey::default() && feed_chain != FeedChain::Unspecified {
+            msg!("Staked feed must not name a chain");
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
         feed.feed_chain = feed_chain;
     }
 

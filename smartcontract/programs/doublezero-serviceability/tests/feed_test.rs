@@ -226,6 +226,78 @@ async fn test_feed_create_and_update_persist_chain() {
 }
 
 #[tokio::test]
+async fn test_feed_create_and_update_persist_the_edge_builder_chain() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "polymarket", &exchange);
+    let accounts = vec![
+        AccountMeta::new(feed_pubkey, false),
+        AccountMeta::new(globalstate_pubkey, false),
+    ];
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
+            code: "polymarket".to_string(),
+            name: "Polymarket".to_string(),
+            exchange,
+            groups: vec![Pubkey::new_unique()],
+            feed_chain: FeedChain::EdgeBuilder,
+            ..Default::default()
+        }),
+        accounts.clone(),
+        &payer,
+    )
+    .await;
+
+    let feed = get_feed(&mut banks_client, feed_pubkey).await;
+    assert_eq!(feed.feed_chain, FeedChain::EdgeBuilder);
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
+            name: None,
+            groups: None,
+            feed_chain: Some(FeedChain::Solana),
+        }),
+        accounts.clone(),
+        &payer,
+    )
+    .await;
+    assert_eq!(
+        get_feed(&mut banks_client, feed_pubkey).await.feed_chain,
+        FeedChain::Solana
+    );
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
+            name: None,
+            groups: None,
+            feed_chain: Some(FeedChain::EdgeBuilder),
+        }),
+        accounts,
+        &payer,
+    )
+    .await;
+    assert_eq!(
+        get_feed(&mut banks_client, feed_pubkey).await.feed_chain,
+        FeedChain::EdgeBuilder
+    );
+}
+
+#[tokio::test]
 async fn test_feed_same_code_different_exchange_allowed() {
     // One code is one SKU offered in many metros; each (code, exchange) is a distinct feed account.
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;

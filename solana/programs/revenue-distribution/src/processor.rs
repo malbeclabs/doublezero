@@ -34,8 +34,8 @@ use crate::{
     integration::{IntegrationInstructionData, WithdrawIntegrationRewardsAccounts},
     state::{
         self, CommunityBurnRateParameters, ContributorRewards, Distribution, Journal,
-        ProgramConfig, RecipientShare, RecipientShares, RelayParameters, RewardsIntegration,
-        SolanaValidatorDeposit, SolanaValidatorFeeParameters,
+        MonthlyContributorDistribution, ProgramConfig, RecipientShare, RecipientShares,
+        RelayParameters, RewardsIntegration, SolanaValidatorDeposit, SolanaValidatorFeeParameters,
     },
     types::{BurnRate, ByteFlags, DoubleZeroEpoch, RewardShare, SolanaValidatorDebt, ValidatorFee},
     DOUBLEZERO_MINT_KEY, ID,
@@ -49,6 +49,7 @@ use crate::{
 // allocated to each of those accounts.
 const _: () = assert!(size_of::<ContributorRewards>() == 600);
 const _: () = assert!(size_of::<Distribution>() == 448);
+const _: () = assert!(size_of::<MonthlyContributorDistribution>() == 208);
 const _: () = assert!(size_of::<RewardsIntegration>() == 176);
 const _: () = assert!(size_of::<SolanaValidatorDeposit>() == 96);
 
@@ -147,6 +148,21 @@ fn try_process_instruction(
         }
         RevenueDistributionInstructionData::CollectIntegrationRewards => {
             try_collect_integration_rewards(accounts)
+        }
+        RevenueDistributionInstructionData::InitializeMonthlyContributorDistribution {
+            year,
+            month,
+        } => try_initialize_monthly_contributor_distribution(accounts, year, month),
+        RevenueDistributionInstructionData::ConfigureMonthlyContributorDistributionRewards {
+            total_contributors,
+            merkle_root,
+        } => try_configure_monthly_contributor_distribution_rewards(
+            accounts,
+            total_contributors,
+            merkle_root,
+        ),
+        RevenueDistributionInstructionData::FinalizeMonthlyContributorDistributionRewards => {
+            try_finalize_monthly_contributor_distribution_rewards(accounts)
         }
     }
 }
@@ -3010,6 +3026,271 @@ fn try_withdraw_solana_validator_deposit(accounts: &[AccountInfo]) -> ProgramRes
     Ok(())
 }
 
+fn try_initialize_monthly_contributor_distribution(
+    accounts: &[AccountInfo],
+    year: u16,
+    month: u8,
+) -> ProgramResult {
+    msg!("Initialize monthly contributor distribution");
+
+    // We expect the following accounts for this instruction:
+    // - 0: Program config.
+    // - 1: Payer.
+    // - 2: New monthly distribution.
+    // - 3: New monthly distribution's 2Z token account.
+    // - 4: 2Z mint.
+    // - 5: SPL Token program.
+    // - 6: System program.
+    let mut accounts_iter = accounts.iter().enumerate();
+
+    // Account 0 must be the program config.
+    let program_config =
+        ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // Make sure the program is not paused.
+    program_config.try_require_unpaused()?;
+
+    // Initialization is permissionless because year and month are the only
+    // fields written, and they are the PDA seeds. Future months are allowed.
+    if !(1..=12).contains(&month) {
+        msg!("Invalid month: {}", month);
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
+    // Account 1 must be a signer and writable because it will send lamports to
+    // the new accounts. The create-account workflow enforces both.
+    let (_, payer_info) = try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
+    // Account 2 must be the new monthly distribution account. The
+    // create-account workflow requires that this account does not exist yet and
+    // is writable.
+    let (account_index, new_monthly_distribution_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
+    let (expected_monthly_distribution_key, monthly_distribution_bump) =
+        MonthlyContributorDistribution::find_address(year, month);
+
+    // Enforce this account location and seed validity.
+    if new_monthly_distribution_info.key != &expected_monthly_distribution_key {
+        msg!(
+            "Invalid seeds for monthly contributor distribution (account {})",
+            account_index
+        );
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    let rent_sysvar = Rent::get().unwrap();
+
+    try_create_account(
+        Invoker::Signer(payer_info.key),
+        Invoker::Pda {
+            key: &expected_monthly_distribution_key,
+            signer_seeds: &[
+                MonthlyContributorDistribution::SEED_PREFIX,
+                &year.to_le_bytes(),
+                &[month],
+                &[monthly_distribution_bump],
+            ],
+        },
+        new_monthly_distribution_info.lamports(),
+        zero_copy::data_end::<MonthlyContributorDistribution>(),
+        &ID,
+        accounts,
+        CreateAccountOptions {
+            rent_sysvar: Some(&rent_sysvar),
+            additional_lamports: None,
+        },
+    )?;
+
+    // Account 3 must be the new 2Z token account. The create-account workflow
+    // requires that this account does not exist yet and is writable.
+    let (_, new_token_2z_pda_info, token_2z_pda_bump) = try_next_2z_token_pda_info(
+        &mut accounts_iter,
+        &expected_monthly_distribution_key,
+        "monthly distribution's",
+        None, // bump_seed
+    )?;
+
+    // Account 4 must be the 2Z mint.
+    try_next_2z_mint_info(&mut accounts_iter)?;
+
+    // Account 5 must be the SPL Token program.
+    try_next_token_program_info(&mut accounts_iter)?;
+
+    try_create_token_account(
+        Invoker::Signer(payer_info.key),
+        Invoker::Pda {
+            key: new_token_2z_pda_info.key,
+            signer_seeds: &[
+                state::TOKEN_2Z_PDA_SEED_PREFIX,
+                expected_monthly_distribution_key.as_ref(),
+                &[token_2z_pda_bump],
+            ],
+        },
+        &DOUBLEZERO_MINT_KEY,
+        &expected_monthly_distribution_key,
+        new_token_2z_pda_info.lamports(),
+        accounts,
+        Some(&rent_sysvar),
+    )?;
+
+    let (mut monthly_distribution, _) =
+        zero_copy::try_initialize::<MonthlyContributorDistribution>(new_monthly_distribution_info)?;
+    monthly_distribution.year = year;
+    monthly_distribution.month = month;
+    monthly_distribution.bump_seed = monthly_distribution_bump;
+    monthly_distribution.token_2z_pda_bump_seed = token_2z_pda_bump;
+
+    msg!(
+        "Initialized monthly contributor distribution for {}-{:02}",
+        year,
+        month
+    );
+
+    Ok(())
+}
+
+fn try_configure_monthly_contributor_distribution_rewards(
+    accounts: &[AccountInfo],
+    total_contributors: u32,
+    merkle_root: Hash,
+) -> ProgramResult {
+    msg!("Configure monthly contributor distribution rewards");
+
+    // We expect the following accounts for this instruction:
+    // - 0: Program config.
+    // - 1: Rewards accountant.
+    // - 2: Monthly distribution.
+    let mut accounts_iter = accounts.iter().enumerate();
+
+    // Accounts 0 and 1 must be the program config and its rewards accountant,
+    // who must sign.
+    let authorized_use = VerifiedProgramAuthority::try_next_accounts(
+        &mut accounts_iter,
+        Authority::RewardsAccountant,
+    )?;
+
+    // Make sure the program is not paused.
+    authorized_use.program_config.try_require_unpaused()?;
+
+    // Account 2 must be the monthly distribution.
+    let mut monthly_distribution =
+        ZeroCopyMutAccount::<MonthlyContributorDistribution>::try_next_accounts(
+            &mut accounts_iter,
+            Some(&ID),
+        )?;
+    msg!(
+        "Month: {}-{:02}",
+        monthly_distribution.year,
+        monthly_distribution.month
+    );
+
+    monthly_distribution.try_require_unfinalized_rewards_calculation()?;
+
+    msg!("Set total_contributors: {}", total_contributors);
+    monthly_distribution.total_contributors = total_contributors;
+
+    msg!("Set rewards_merkle_root: {}", merkle_root);
+    monthly_distribution.rewards_merkle_root = merkle_root;
+
+    Ok(())
+}
+
+/// Locks the rewards root and the collected 2Z pool that per-leaf amounts are
+/// computed from. Collect is refused once a month is finalized, so finalizing
+/// before all feed 2Z is collected strands it in the feed bucket. That is why
+/// only the rewards accountant may finalize, unlike `Distribution`.
+fn try_finalize_monthly_contributor_distribution_rewards(
+    accounts: &[AccountInfo],
+) -> ProgramResult {
+    msg!("Finalize monthly contributor distribution rewards");
+
+    // We expect the following accounts for this instruction:
+    // - 0: Program config.
+    // - 1: Rewards accountant.
+    // - 2: Monthly distribution.
+    // - 3: Payer (funder of realloc lamports).
+    // - 4: System program.
+    let mut accounts_iter = accounts.iter().enumerate();
+
+    // Accounts 0 and 1 must be the program config and its rewards accountant,
+    // who must sign.
+    let authorized_use = VerifiedProgramAuthority::try_next_accounts(
+        &mut accounts_iter,
+        Authority::RewardsAccountant,
+    )?;
+
+    // Make sure the program is not paused.
+    authorized_use.program_config.try_require_unpaused()?;
+
+    // Account 2 must be the monthly distribution.
+    let mut monthly_distribution =
+        ZeroCopyMutAccount::<MonthlyContributorDistribution>::try_next_accounts(
+            &mut accounts_iter,
+            Some(&ID),
+        )?;
+    msg!(
+        "Month: {}-{:02}",
+        monthly_distribution.year,
+        monthly_distribution.month
+    );
+
+    monthly_distribution.try_require_unfinalized_rewards_calculation()?;
+
+    // A null root leaves no leaf to pay collected 2Z to, stranding it.
+    if monthly_distribution.rewards_merkle_root == Hash::default()
+        && monthly_distribution.collected_2z_amount != 0
+    {
+        msg!("Rewards root cannot be null with collected 2Z");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    monthly_distribution.set_is_rewards_calculation_finalized(true);
+
+    // One bit per contributor tracks which rewards have been distributed.
+    let additional_data_len = monthly_distribution.total_contributors.div_ceil(8);
+
+    monthly_distribution.processed_rewards_start_index =
+        monthly_distribution.remaining_data.len() as u32;
+    monthly_distribution.processed_rewards_end_index = monthly_distribution
+        .processed_rewards_start_index
+        .saturating_add(additional_data_len);
+
+    // Avoid borrowing while in mutable borrow state.
+    let monthly_distribution_info = monthly_distribution.info;
+    drop(monthly_distribution);
+
+    let new_data_len = monthly_distribution_info
+        .data_len()
+        .saturating_add(additional_data_len as usize);
+    monthly_distribution_info.resize(new_data_len)?;
+
+    let additional_lamports_for_resize = Rent::get()
+        .unwrap()
+        .minimum_balance(new_data_len)
+        .saturating_sub(monthly_distribution_info.lamports());
+
+    // Account 3 must be the payer. In order to transfer lamports from the payer
+    // to the monthly distribution, this account must be writable.
+    let (_, payer_info) = try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
+    let transfer_ix = system_instruction::transfer(
+        payer_info.key,
+        monthly_distribution_info.key,
+        additional_lamports_for_resize,
+    );
+
+    invoke_signed_unchecked(&transfer_ix, accounts, &[])?;
+
+    msg!(
+        "Increase monthly distribution account size by {} byte{}",
+        additional_data_len,
+        if additional_data_len == 1 { "" } else { "s" }
+    );
+
+    Ok(())
+}
+
 //
 // Account info handling.
 //
@@ -3274,6 +3555,18 @@ impl Distribution {
 
         if !is_allowed {
             msg!("Distribution calculation is not allowed yet");
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        Ok(())
+    }
+}
+
+impl MonthlyContributorDistribution {
+    #[inline(always)]
+    fn try_require_unfinalized_rewards_calculation(&self) -> ProgramResult {
+        if self.is_rewards_calculation_finalized() {
+            msg!("Monthly contributor distribution rewards have already been finalized");
             return Err(ProgramError::InvalidAccountData);
         }
 

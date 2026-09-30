@@ -27,12 +27,15 @@ use doublezero_revenue_distribution::{
         account::{
             CollectIntegrationRewardsAccounts, ConfigureContributorRewardsAccounts,
             ConfigureDistributionDebtAccounts, ConfigureDistributionRewardsAccounts,
-            ConfigureProgramAccounts, DistributeRewardsAccounts,
-            EnableSolanaValidatorDebtWriteOffAccounts, FinalizeDistributionDebtAccounts,
-            FinalizeDistributionRewardsAccounts, InitializeContributorRewardsAccounts,
-            InitializeDistributionAccounts, InitializeJournalAccounts, InitializeProgramAccounts,
-            InitializeRewardsIntegrationAccounts, InitializeSolanaValidatorDepositAccounts,
-            InitializeSwapDestinationAccounts, PaySolanaValidatorDebtAccounts, SetAdminAccounts,
+            ConfigureMonthlyContributorDistributionRewardsAccounts, ConfigureProgramAccounts,
+            DistributeRewardsAccounts, EnableSolanaValidatorDebtWriteOffAccounts,
+            FinalizeDistributionDebtAccounts, FinalizeDistributionRewardsAccounts,
+            FinalizeMonthlyContributorDistributionRewardsAccounts,
+            InitializeContributorRewardsAccounts, InitializeDistributionAccounts,
+            InitializeJournalAccounts, InitializeMonthlyContributorDistributionAccounts,
+            InitializeProgramAccounts, InitializeRewardsIntegrationAccounts,
+            InitializeSolanaValidatorDepositAccounts, InitializeSwapDestinationAccounts,
+            PaySolanaValidatorDebtAccounts, SetAdminAccounts,
             SetDistributionEconomicBurnRateAccounts, SetRewardsManagerAccounts,
             SweepDistributionTokensAccounts, VerifyDistributionMerkleRootAccounts,
             WithdrawSolanaValidatorDepositAccounts, WriteOffSolanaValidatorDebtAccounts,
@@ -41,8 +44,8 @@ use doublezero_revenue_distribution::{
         ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
     state::{
-        self, ContributorRewards, Distribution, Journal, ProgramConfig, RewardsIntegration,
-        SolanaValidatorDeposit,
+        self, ContributorRewards, Distribution, Journal, MonthlyContributorDistribution,
+        ProgramConfig, RewardsIntegration, SolanaValidatorDeposit,
     },
     types::{DoubleZeroEpoch, RewardShare, SolanaValidatorDebt},
     DOUBLEZERO_MINT_KEY, ID,
@@ -691,6 +694,105 @@ impl ProgramTestWithOwner {
         Ok(self)
     }
 
+    pub async fn initialize_monthly_contributor_distribution(
+        &mut self,
+        year: u16,
+        month: u8,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.context.payer;
+
+        let initialize_ix = try_build_instruction(
+            &ID,
+            InitializeMonthlyContributorDistributionAccounts::new(
+                &payer_signer.pubkey(),
+                year,
+                month,
+                &DOUBLEZERO_MINT_KEY,
+            ),
+            &RevenueDistributionInstructionData::InitializeMonthlyContributorDistribution {
+                year,
+                month,
+            },
+        )
+        .unwrap();
+
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
+            &[initialize_ix],
+            &[payer_signer],
+        )
+        .await?;
+
+        Ok(self)
+    }
+
+    pub async fn configure_monthly_contributor_distribution_rewards(
+        &mut self,
+        year: u16,
+        month: u8,
+        rewards_accountant_signer: &Keypair,
+        total_contributors: u32,
+        merkle_root: Hash,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.context.payer;
+
+        let configure_ix = try_build_instruction(
+            &ID,
+            ConfigureMonthlyContributorDistributionRewardsAccounts::new(
+                &rewards_accountant_signer.pubkey(),
+                year,
+                month,
+            ),
+            &RevenueDistributionInstructionData::ConfigureMonthlyContributorDistributionRewards {
+                total_contributors,
+                merkle_root,
+            },
+        )
+        .unwrap();
+
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
+            &[configure_ix],
+            &[payer_signer, rewards_accountant_signer],
+        )
+        .await?;
+
+        Ok(self)
+    }
+
+    pub async fn finalize_monthly_contributor_distribution_rewards(
+        &mut self,
+        year: u16,
+        month: u8,
+        rewards_accountant_signer: &Keypair,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.context.payer;
+
+        let finalize_ix = try_build_instruction(
+            &ID,
+            FinalizeMonthlyContributorDistributionRewardsAccounts::new(
+                &rewards_accountant_signer.pubkey(),
+                year,
+                month,
+                &payer_signer.pubkey(),
+            ),
+            &RevenueDistributionInstructionData::FinalizeMonthlyContributorDistributionRewards,
+        )
+        .unwrap();
+
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
+            &[finalize_ix],
+            &[payer_signer, rewards_accountant_signer],
+        )
+        .await?;
+
+        Ok(self)
+    }
+
     pub async fn distribute_rewards(
         &mut self,
         dz_epoch: DoubleZeroEpoch,
@@ -1285,6 +1387,49 @@ impl ProgramTestWithOwner {
             distribution_remaining_data.to_vec(),
             distribution_account_info.lamports,
             token_pda,
+        )
+    }
+
+    pub async fn fetch_monthly_contributor_distribution(
+        &self,
+        year: u16,
+        month: u8,
+    ) -> (
+        Pubkey,
+        MonthlyContributorDistribution,
+        Vec<u8>,
+        u64,
+        TokenAccount,
+    ) {
+        let monthly_distribution_key = MonthlyContributorDistribution::find_address(year, month).0;
+
+        let monthly_distribution_account_info = self
+            .context
+            .banks_client
+            .get_account(monthly_distribution_key)
+            .await
+            .unwrap()
+            .unwrap();
+
+        let (monthly_distribution, remaining_data) =
+            checked_from_bytes_with_discriminator(&monthly_distribution_account_info.data).unwrap();
+
+        let token_pda_key = state::find_2z_token_pda_address(&monthly_distribution_key).0;
+        let token_pda_data = self
+            .context
+            .banks_client
+            .get_account(token_pda_key)
+            .await
+            .unwrap()
+            .unwrap()
+            .data;
+
+        (
+            monthly_distribution_key,
+            *monthly_distribution,
+            remaining_data.to_vec(),
+            monthly_distribution_account_info.lamports,
+            TokenAccount::unpack(&token_pda_data).unwrap(),
         )
     }
 

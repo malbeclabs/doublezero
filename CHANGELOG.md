@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
   - Add periodic kernel route reconciliation to `doublezerod` that detects and reinstalls BGP routes deleted from the kernel by external processes. Implemented as a standalone netlink decorator (`-route-reconcile-interval`, default 30s, `0` disables) that works with route liveness in passive or active mode and equally with liveness disabled; excluded destinations are never tracked. Exposes `doublezero_route_reconcile_reinstalls_total` and `doublezero_route_reconcile_failures_total` ([#3669](https://github.com/malbeclabs/doublezero/issues/3669))
 - DevContainer
   - The devcontainer's Solana CLI moves from v2.3.1 to v3.0.12, matching `solana/Dockerfile`, so its `cargo-build-sbf` matches the solana 3.0 program tree. Rebuild the devcontainer to pick it up.
+- SDK
+  - The revenue-distribution Go, Python and TypeScript SDKs can fetch and decode the new `MonthlyContributorDistribution` account and derive its PDA from a year and month. (malbeclabs/infra#2693)
 - Serviceability
   - `CreateFeed` refuses a feed with a builder and a chain, and `UpdateFeed` refuses to give such a feed any chain except `unspecified`. The rewards process uses either the builder or the chain to find who gets the rewards. (#4385)
 - Telemetry

@@ -8,7 +8,7 @@ use crate::{
     state::{
         find_2z_token_pda_address, find_swap_authority_address,
         find_withdraw_sol_authority_address, ContributorRewards, Distribution, Journal,
-        ProgramConfig, RewardsIntegration, SolanaValidatorDeposit,
+        MonthlyContributorDistribution, ProgramConfig, RewardsIntegration, SolanaValidatorDeposit,
     },
     types::DoubleZeroEpoch,
 };
@@ -1193,5 +1193,125 @@ mod tests {
         // Debug assert should not panic.
         let accounts = Vec::from(accounts);
         assert_eq!(accounts.len(), 11);
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InitializeMonthlyContributorDistributionAccounts {
+    pub program_config_key: Pubkey,
+    pub payer_key: Pubkey,
+    pub new_monthly_distribution_key: Pubkey,
+    pub new_monthly_distribution_2z_token_pda_key: Pubkey,
+    pub dz_mint_key: Pubkey,
+}
+
+impl InitializeMonthlyContributorDistributionAccounts {
+    pub fn new(payer_key: &Pubkey, year: u16, month: u8, dz_mint_key: &Pubkey) -> Self {
+        let new_monthly_distribution_key =
+            MonthlyContributorDistribution::find_address(year, month).0;
+
+        Self {
+            program_config_key: ProgramConfig::find_address().0,
+            payer_key: *payer_key,
+            new_monthly_distribution_key,
+            new_monthly_distribution_2z_token_pda_key: find_2z_token_pda_address(
+                &new_monthly_distribution_key,
+            )
+            .0,
+            dz_mint_key: *dz_mint_key,
+        }
+    }
+}
+
+impl From<InitializeMonthlyContributorDistributionAccounts> for Vec<AccountMeta> {
+    fn from(accounts: InitializeMonthlyContributorDistributionAccounts) -> Self {
+        let InitializeMonthlyContributorDistributionAccounts {
+            program_config_key,
+            payer_key,
+            new_monthly_distribution_key,
+            new_monthly_distribution_2z_token_pda_key,
+            dz_mint_key,
+        } = accounts;
+
+        vec![
+            AccountMeta::new_readonly(program_config_key, false),
+            AccountMeta::new(payer_key, true),
+            AccountMeta::new(new_monthly_distribution_key, false),
+            AccountMeta::new(new_monthly_distribution_2z_token_pda_key, false),
+            AccountMeta::new_readonly(dz_mint_key, false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
+            AccountMeta::new_readonly(system_program::ID, false),
+        ]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConfigureMonthlyContributorDistributionRewardsAccounts {
+    pub program_config_key: Pubkey,
+    pub rewards_accountant_key: Pubkey,
+    pub monthly_distribution_key: Pubkey,
+}
+
+impl ConfigureMonthlyContributorDistributionRewardsAccounts {
+    pub fn new(rewards_accountant_key: &Pubkey, year: u16, month: u8) -> Self {
+        Self {
+            program_config_key: ProgramConfig::find_address().0,
+            rewards_accountant_key: *rewards_accountant_key,
+            monthly_distribution_key: MonthlyContributorDistribution::find_address(year, month).0,
+        }
+    }
+}
+
+impl From<ConfigureMonthlyContributorDistributionRewardsAccounts> for Vec<AccountMeta> {
+    fn from(accounts: ConfigureMonthlyContributorDistributionRewardsAccounts) -> Self {
+        let ConfigureMonthlyContributorDistributionRewardsAccounts {
+            program_config_key,
+            rewards_accountant_key,
+            monthly_distribution_key,
+        } = accounts;
+
+        vec![
+            AccountMeta::new_readonly(program_config_key, false),
+            AccountMeta::new_readonly(rewards_accountant_key, true),
+            AccountMeta::new(monthly_distribution_key, false),
+        ]
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FinalizeMonthlyContributorDistributionRewardsAccounts {
+    pub program_config_key: Pubkey,
+    pub rewards_accountant_key: Pubkey,
+    pub monthly_distribution_key: Pubkey,
+    pub payer_key: Pubkey,
+}
+
+impl FinalizeMonthlyContributorDistributionRewardsAccounts {
+    pub fn new(rewards_accountant_key: &Pubkey, year: u16, month: u8, payer_key: &Pubkey) -> Self {
+        Self {
+            program_config_key: ProgramConfig::find_address().0,
+            rewards_accountant_key: *rewards_accountant_key,
+            monthly_distribution_key: MonthlyContributorDistribution::find_address(year, month).0,
+            payer_key: *payer_key,
+        }
+    }
+}
+
+impl From<FinalizeMonthlyContributorDistributionRewardsAccounts> for Vec<AccountMeta> {
+    fn from(accounts: FinalizeMonthlyContributorDistributionRewardsAccounts) -> Self {
+        let FinalizeMonthlyContributorDistributionRewardsAccounts {
+            program_config_key,
+            rewards_accountant_key,
+            monthly_distribution_key,
+            payer_key,
+        } = accounts;
+
+        vec![
+            AccountMeta::new_readonly(program_config_key, false),
+            AccountMeta::new_readonly(rewards_accountant_key, true),
+            AccountMeta::new(monthly_distribution_key, false),
+            AccountMeta::new(payer_key, true),
+            AccountMeta::new_readonly(system_program::ID, false),
+        ]
     }
 }

@@ -1178,24 +1178,6 @@ impl From<CollectIntegrationRewardsAccounts> for Vec<AccountMeta> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_from_sweep_distribution_tokens() {
-        let accounts = SweepDistributionTokensAccounts::new(
-            DoubleZeroEpoch::new(69),
-            &Pubkey::new_unique(),
-            &Pubkey::new_unique(),
-        );
-
-        // Debug assert should not panic.
-        let accounts = Vec::from(accounts);
-        assert_eq!(accounts.len(), 11);
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InitializeMonthlyContributorDistributionAccounts {
     pub program_config_key: Pubkey,
@@ -1313,5 +1295,23 @@ impl From<FinalizeMonthlyContributorDistributionRewardsAccounts> for Vec<Account
             AccountMeta::new(payer_key, true),
             AccountMeta::new_readonly(system_program::ID, false),
         ]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_from_sweep_distribution_tokens() {
+        let accounts = SweepDistributionTokensAccounts::new(
+            DoubleZeroEpoch::new(69),
+            &Pubkey::new_unique(),
+            &Pubkey::new_unique(),
+        );
+
+        // Debug assert should not panic.
+        let accounts = Vec::from(accounts);
+        assert_eq!(accounts.len(), 11);
     }
 }

@@ -172,26 +172,39 @@ async fn test_finalize_monthly_contributor_distribution_rewards_null_root_withou
 //
 
 #[tokio::test]
-async fn test_cannot_finalize_monthly_contributor_distribution_rewards_null_root_with_2z() {
-    let FinalizeMonthlyRewardsSetup {
-        mut test_setup,
-        rewards_accountant_signer,
-        ..
-    } = setup_for_finalize_monthly_rewards().await;
+async fn test_cannot_finalize_monthly_contributor_distribution_rewards_unpayable_with_2z() {
+    // A null root or a root with zero contributors has no leaf to pay.
+    for (total_contributors, merkle_root) in [(1, Hash::default()), (0, Hash::new_unique())] {
+        let FinalizeMonthlyRewardsSetup {
+            mut test_setup,
+            rewards_accountant_signer,
+            ..
+        } = setup_for_finalize_monthly_rewards().await;
 
-    override_collected_2z_amount(&mut test_setup, 1).await;
+        test_setup
+            .configure_monthly_contributor_distribution_rewards(
+                YEAR,
+                MONTH,
+                &rewards_accountant_signer,
+                total_contributors,
+                merkle_root,
+            )
+            .await
+            .unwrap();
+        override_collected_2z_amount(&mut test_setup, 1).await;
 
-    let (tx_err, program_logs) = simulate_finalize(&mut test_setup, &rewards_accountant_signer)
-        .await
-        .unwrap();
-    assert_eq!(
-        tx_err,
-        TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
-    );
-    assert_eq!(
-        program_logs.get(3).unwrap(),
-        "Program log: Rewards root cannot be null with collected 2Z"
-    );
+        let (tx_err, program_logs) = simulate_finalize(&mut test_setup, &rewards_accountant_signer)
+            .await
+            .unwrap();
+        assert_eq!(
+            tx_err,
+            TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+        );
+        assert_eq!(
+            program_logs.get(3).unwrap(),
+            "Program log: Rewards root cannot be null or empty with collected 2Z"
+        );
+    }
 }
 
 #[tokio::test]

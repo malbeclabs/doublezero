@@ -3237,11 +3237,13 @@ fn try_finalize_monthly_contributor_distribution_rewards(
 
     monthly_distribution.try_require_unfinalized_rewards_calculation()?;
 
-    // A null root leaves no leaf to pay collected 2Z to, stranding it.
-    if monthly_distribution.rewards_merkle_root == Hash::default()
+    // A null root or zero contributors leaves no leaf to pay collected 2Z to,
+    // stranding it.
+    if (monthly_distribution.rewards_merkle_root == Hash::default()
+        || monthly_distribution.total_contributors == 0)
         && monthly_distribution.collected_2z_amount != 0
     {
-        msg!("Rewards root cannot be null with collected 2Z");
+        msg!("Rewards root cannot be null or empty with collected 2Z");
         return Err(ProgramError::InvalidAccountData);
     }
 

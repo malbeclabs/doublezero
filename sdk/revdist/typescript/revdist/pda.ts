@@ -5,6 +5,9 @@ import bs58 from "bs58";
 
 const SEED_PROGRAM_CONFIG = Buffer.from("program_config");
 const SEED_DISTRIBUTION = Buffer.from("distribution");
+const SEED_MONTHLY_CONTRIBUTOR_DISTRIBUTION = Buffer.from(
+  "monthly_contributor_distribution",
+);
 const SEED_SOLANA_VALIDATOR_DEPOSIT = Buffer.from(
   "solana_validator_deposit",
 );
@@ -49,6 +52,19 @@ export function deriveDistributionPda(
   epochBuf.writeBigUInt64LE(epoch);
   return PublicKey.findProgramAddressSync(
     [SEED_DISTRIBUTION, epochBuf],
+    programId,
+  );
+}
+
+export function deriveMonthlyContributorDistributionPda(
+  programId: PublicKey,
+  year: number,
+  month: number,
+): [PublicKey, number] {
+  const yearBuf = Buffer.alloc(2);
+  yearBuf.writeUInt16LE(year);
+  return PublicKey.findProgramAddressSync(
+    [SEED_MONTHLY_CONTRIBUTOR_DISTRIBUTION, yearBuf, Buffer.from([month])],
     programId,
   );
 }

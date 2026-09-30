@@ -353,6 +353,65 @@ export function deserializeDistribution(
   };
 }
 
+export interface MonthlyContributorDistribution {
+  year: number;
+  month: number;
+  bumpSeed: number;
+  token2zPdaBumpSeed: number;
+  flags: bigint;
+  rewardsMerkleRoot: Uint8Array;
+  totalContributors: number;
+  distributedRewardsCount: number;
+  collected2zAmount: bigint;
+  distributed2zAmount: bigint;
+  processedRewardsStartIndex: number;
+  processedRewardsEndIndex: number;
+}
+
+export const MONTHLY_CONTRIBUTOR_DISTRIBUTION_STRUCT_SIZE = 208;
+
+export function deserializeMonthlyContributorDistribution(
+  data: Uint8Array,
+  discriminator: Uint8Array,
+): MonthlyContributorDistribution {
+  const dv = deserializeBody(
+    data,
+    discriminator,
+    MONTHLY_CONTRIBUTOR_DISTRIBUTION_STRUCT_SIZE,
+  );
+  const year = dv.getUint16(0, true);
+  const month = dv.getUint8(2);
+  const bumpSeed = dv.getUint8(3);
+  const token2zPdaBumpSeed = dv.getUint8(4);
+  // 3 bytes padding
+  const flags = dv.getBigUint64(8, true);
+  const rewardsMerkleRoot = new Uint8Array(
+    dv.buffer,
+    dv.byteOffset + 16,
+    32,
+  );
+  const totalContributors = dv.getUint32(48, true);
+  const distributedRewardsCount = dv.getUint32(52, true);
+  const collected2zAmount = dv.getBigUint64(56, true);
+  const distributed2zAmount = dv.getBigUint64(64, true);
+  const processedRewardsStartIndex = dv.getUint32(72, true);
+  const processedRewardsEndIndex = dv.getUint32(76, true);
+  return {
+    year,
+    month,
+    bumpSeed,
+    token2zPdaBumpSeed,
+    flags,
+    rewardsMerkleRoot,
+    totalContributors,
+    distributedRewardsCount,
+    collected2zAmount,
+    distributed2zAmount,
+    processedRewardsStartIndex,
+    processedRewardsEndIndex,
+  };
+}
+
 export interface SolanaValidatorDeposit {
   nodeId: PublicKey;
   writtenOffSolDebt: bigint;

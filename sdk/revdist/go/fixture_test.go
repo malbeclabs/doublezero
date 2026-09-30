@@ -138,6 +138,35 @@ func TestFixtureDistribution(t *testing.T) {
 	})
 }
 
+func TestFixtureMonthlyContributorDistribution(t *testing.T) {
+	data, meta := loadFixture(t, "monthly_contributor_distribution")
+
+	if got := int(unsafe.Sizeof(MonthlyContributorDistribution{})); got != meta.StructSize {
+		t.Fatalf("sizeof(MonthlyContributorDistribution) = %d, Rust says %d", got, meta.StructSize)
+	}
+
+	// Trailing bytes stand in for the processed-rewards bitmap.
+	data = append(data, 0xff, 0x0f)
+	dist, err := deserializeAccount[MonthlyContributorDistribution](data, DiscriminatorMonthlyContributorDistribution)
+	if err != nil {
+		t.Fatalf("deserializing: %v", err)
+	}
+
+	assertFields(t, meta.Fields, map[string]any{
+		"Year":                       dist.Year,
+		"Month":                      dist.Month,
+		"BumpSeed":                   dist.BumpSeed,
+		"Token2ZPDABumpSeed":         dist.Token2ZPDABumpSeed,
+		"Flags":                      dist.Flags,
+		"TotalContributors":          dist.TotalContributors,
+		"DistributedRewardsCount":    dist.DistributedRewardsCount,
+		"Collected2ZAmount":          dist.Collected2ZAmount,
+		"Distributed2ZAmount":        dist.Distributed2ZAmount,
+		"ProcessedRewardsStartIndex": dist.ProcessedRewardsStartIndex,
+		"ProcessedRewardsEndIndex":   dist.ProcessedRewardsEndIndex,
+	})
+}
+
 func TestFixtureJournal(t *testing.T) {
 	data, meta := loadFixture(t, "journal")
 

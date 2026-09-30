@@ -131,6 +131,18 @@ func (c *Client) FetchDistribution(ctx context.Context, epoch uint64) (*Distribu
 	return deserializeAccount[Distribution](data, DiscriminatorDistribution)
 }
 
+func (c *Client) FetchMonthlyContributorDistribution(ctx context.Context, year uint16, month uint8) (*MonthlyContributorDistribution, error) {
+	addr, _, err := DeriveMonthlyContributorDistributionPDA(c.programID, year, month)
+	if err != nil {
+		return nil, fmt.Errorf("deriving monthly contributor distribution PDA: %w", err)
+	}
+	data, err := c.fetchAccountData(ctx, addr)
+	if err != nil {
+		return nil, err
+	}
+	return deserializeAccount[MonthlyContributorDistribution](data, DiscriminatorMonthlyContributorDistribution)
+}
+
 func (c *Client) FetchJournal(ctx context.Context) (*Journal, error) {
 	addr, _, err := DeriveJournalPDA(c.programID)
 	if err != nil {

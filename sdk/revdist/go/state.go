@@ -106,6 +106,26 @@ type Distribution struct {
 	Reserved2                                      [6][32]byte
 }
 
+// MonthlyContributorDistribution represents contributor rewards for one
+// calendar month. Account data may be followed by a processed-rewards bitmap.
+// On-chain size: 8 (discriminator) + 208 = 216 bytes.
+type MonthlyContributorDistribution struct {
+	Year                       uint16      // 2 bytes
+	Month                      uint8       // 1 byte
+	BumpSeed                   uint8       // 1 byte
+	Token2ZPDABumpSeed         uint8       // 1 byte
+	Reserved0                  [3]byte     // 3 bytes padding
+	Flags                      uint64      // 8 bytes
+	RewardsMerkleRoot          [32]byte    // 32 bytes
+	TotalContributors          uint32      // 4 bytes
+	DistributedRewardsCount    uint32      // 4 bytes
+	Collected2ZAmount          uint64      // 8 bytes
+	Distributed2ZAmount        uint64      // 8 bytes
+	ProcessedRewardsStartIndex uint32      // 4 bytes
+	ProcessedRewardsEndIndex   uint32      // 4 bytes
+	Reserved1                  [4][32]byte // 128 bytes storage gap
+}
+
 // SolanaValidatorDeposit represents a validator's deposit account.
 // On-chain size: 8 (discriminator) + 96 = 104 bytes.
 type SolanaValidatorDeposit struct {

@@ -17,7 +17,8 @@ use std::path::Path;
 use bytemuck::bytes_of;
 use doublezero_program_tools::PrecomputedDiscriminator;
 use doublezero_revenue_distribution::state::{
-    ContributorRewards, Distribution, Journal, ProgramConfig, SolanaValidatorDeposit,
+    ContributorRewards, Distribution, Journal, MonthlyContributorDistribution, ProgramConfig,
+    SolanaValidatorDeposit,
 };
 use doublezero_revenue_distribution::types::{BurnRate, DoubleZeroEpoch, ValidatorFee};
 use serde::Serialize;
@@ -70,6 +71,7 @@ fn main() {
 
     generate_program_config(&fixtures_dir);
     generate_distribution(&fixtures_dir);
+    generate_monthly_contributor_distribution(&fixtures_dir);
     generate_journal(&fixtures_dir);
     generate_solana_validator_deposit(&fixtures_dir);
     generate_contributor_rewards(&fixtures_dir);
@@ -224,6 +226,49 @@ fn generate_distribution(dir: &Path) {
     };
 
     write_fixture(dir, "distribution", disc, bytes_of(&dist), &meta);
+}
+
+fn generate_monthly_contributor_distribution(dir: &Path) {
+    let mut dist = MonthlyContributorDistribution::default();
+    dist.year = 2026;
+    dist.month = 9;
+    dist.bump_seed = 252;
+    dist.token_2z_pda_bump_seed = 251;
+    dist.set_is_rewards_calculation_finalized(true);
+    dist.total_contributors = 17;
+    dist.distributed_rewards_count = 11;
+    dist.collected_2z_amount = 7_000_000;
+    dist.distributed_2z_amount = 4_500_000;
+    dist.processed_rewards_start_index = 21;
+    dist.processed_rewards_end_index = 24;
+
+    let disc = MonthlyContributorDistribution::discriminator_slice();
+    let meta = FixtureMeta {
+        name: "MonthlyContributorDistribution".into(),
+        struct_size: std::mem::size_of::<MonthlyContributorDistribution>(),
+        discriminator_hex: hex_encode(disc),
+        fields: vec![
+            field_u16("Year", 2026),
+            field_u8("Month", 9),
+            field_u8("BumpSeed", 252),
+            field_u8("Token2ZPDABumpSeed", 251),
+            field_u64("Flags", 1),
+            field_u32("TotalContributors", 17),
+            field_u32("DistributedRewardsCount", 11),
+            field_u64("Collected2ZAmount", 7_000_000),
+            field_u64("Distributed2ZAmount", 4_500_000),
+            field_u32("ProcessedRewardsStartIndex", 21),
+            field_u32("ProcessedRewardsEndIndex", 24),
+        ],
+    };
+
+    write_fixture(
+        dir,
+        "monthly_contributor_distribution",
+        disc,
+        bytes_of(&dist),
+        &meta,
+    );
 }
 
 fn generate_journal(dir: &Path) {

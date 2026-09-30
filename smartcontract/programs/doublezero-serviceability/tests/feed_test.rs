@@ -255,8 +255,9 @@ async fn test_feed_create_and_update_persist_the_edge_builder_chain() {
     )
     .await;
 
+    // The feed program reads this byte, so an edge builder feed must store 3.
     let feed = get_feed(&mut banks_client, feed_pubkey).await;
-    assert_eq!(feed.feed_chain, FeedChain::EdgeBuilder);
+    assert_eq!(feed.feed_chain as u8, 3);
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     execute_transaction(
@@ -273,8 +274,8 @@ async fn test_feed_create_and_update_persist_the_edge_builder_chain() {
     )
     .await;
     assert_eq!(
-        get_feed(&mut banks_client, feed_pubkey).await.feed_chain,
-        FeedChain::Solana
+        get_feed(&mut banks_client, feed_pubkey).await.feed_chain as u8,
+        1
     );
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
@@ -292,8 +293,8 @@ async fn test_feed_create_and_update_persist_the_edge_builder_chain() {
     )
     .await;
     assert_eq!(
-        get_feed(&mut banks_client, feed_pubkey).await.feed_chain,
-        FeedChain::EdgeBuilder
+        get_feed(&mut banks_client, feed_pubkey).await.feed_chain as u8,
+        3
     );
 }
 

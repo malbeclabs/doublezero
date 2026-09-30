@@ -1283,6 +1283,7 @@ export const FEED_STATUS_RETIRING = 4;
 export const FEED_CHAIN_UNSPECIFIED = 0;
 export const FEED_CHAIN_SOLANA = 1;
 export const FEED_CHAIN_HYPERLIQUID = 2;
+export const FEED_CHAIN_EDGE_BUILDER = 3;
 
 export function deserializeFeed(data: Uint8Array): Feed {
   const r = new DefensiveReader(data);

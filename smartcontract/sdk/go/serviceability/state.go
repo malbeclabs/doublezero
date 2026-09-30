@@ -1454,6 +1454,7 @@ const (
 	FeedChainUnspecified FeedChain = 0
 	FeedChainSolana      FeedChain = 1
 	FeedChainHyperliquid FeedChain = 2
+	FeedChainEdgeBuilder FeedChain = 3
 )
 
 func (c FeedChain) String() string {
@@ -1464,6 +1465,8 @@ func (c FeedChain) String() string {
 		return "solana"
 	case FeedChainHyperliquid:
 		return "hyperliquid"
+	case FeedChainEdgeBuilder:
+		return "edge-builder"
 	default:
 		return "unknown"
 	}

@@ -57,6 +57,7 @@ pub enum FeedChain {
     Unspecified = 0,
     Solana = 1,
     Hyperliquid = 2,
+    EdgeBuilder = 3,
 }
 
 impl fmt::Display for FeedChain {
@@ -65,6 +66,7 @@ impl fmt::Display for FeedChain {
             FeedChain::Unspecified => "unspecified",
             FeedChain::Solana => "solana",
             FeedChain::Hyperliquid => "hyperliquid",
+            FeedChain::EdgeBuilder => "edge-builder",
         };
         write!(f, "{s}")
     }
@@ -78,6 +80,7 @@ impl FromStr for FeedChain {
             "unspecified" => Ok(FeedChain::Unspecified),
             "solana" => Ok(FeedChain::Solana),
             "hyperliquid" => Ok(FeedChain::Hyperliquid),
+            "edge-builder" => Ok(FeedChain::EdgeBuilder),
             _ => Err(format!("Invalid feed chain: {s}")),
         }
     }
@@ -418,6 +421,7 @@ mod tests {
             FeedChain::Unspecified,
             FeedChain::Solana,
             FeedChain::Hyperliquid,
+            FeedChain::EdgeBuilder,
         ] {
             assert_eq!(chain.to_string().parse::<FeedChain>().unwrap(), chain);
         }
@@ -433,6 +437,7 @@ mod tests {
             (FeedChain::Unspecified, 0u8),
             (FeedChain::Solana, 1),
             (FeedChain::Hyperliquid, 2),
+            (FeedChain::EdgeBuilder, 3),
         ] {
             let mut feed = feed_with(Pubkey::new_unique(), vec![]);
             feed.feed_chain = chain;

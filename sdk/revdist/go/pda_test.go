@@ -44,24 +44,6 @@ func TestDeriveDistributionPDA(t *testing.T) {
 	}
 }
 
-func TestDeriveMonthlyContributorDistributionPDA(t *testing.T) {
-	addr, _, err := DeriveMonthlyContributorDistributionPDA(testProgramID, 2026, 9)
-	if err != nil {
-		t.Fatalf("DeriveMonthlyContributorDistributionPDA 2026-09: %v", err)
-	}
-	nextMonth, _, err := DeriveMonthlyContributorDistributionPDA(testProgramID, 2026, 10)
-	if err != nil {
-		t.Fatalf("DeriveMonthlyContributorDistributionPDA 2026-10: %v", err)
-	}
-	prevYear, _, err := DeriveMonthlyContributorDistributionPDA(testProgramID, 2025, 9)
-	if err != nil {
-		t.Fatalf("DeriveMonthlyContributorDistributionPDA 2025-09: %v", err)
-	}
-	if addr == nextMonth || addr == prevYear {
-		t.Error("different months produced same PDA")
-	}
-}
-
 func TestDeriveValidatorDepositPDA(t *testing.T) {
 	nodeID := solana.NewWallet().PublicKey()
 	addr, _, err := DeriveValidatorDepositPDA(testProgramID, nodeID)

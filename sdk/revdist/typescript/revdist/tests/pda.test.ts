@@ -3,7 +3,6 @@ import { PublicKey } from "@solana/web3.js";
 import {
   deriveConfigPda,
   deriveDistributionPda,
-  deriveMonthlyContributorDistributionPda,
   deriveJournalPda,
   deriveValidatorDepositPda,
   deriveContributorRewardsPda,
@@ -26,30 +25,6 @@ describe("PDA derivation", () => {
     const [addr1] = deriveDistributionPda(PROGRAM_ID, 1n);
     const [addr2] = deriveDistributionPda(PROGRAM_ID, 2n);
     expect(addr1.equals(addr2)).toBe(false);
-  });
-
-  test("monthly contributor distribution PDA differs by month", () => {
-    const [addr] = deriveMonthlyContributorDistributionPda(PROGRAM_ID, 2026, 9);
-    const [nextMonth] = deriveMonthlyContributorDistributionPda(
-      PROGRAM_ID,
-      2026,
-      10,
-    );
-    const [prevYear] = deriveMonthlyContributorDistributionPda(
-      PROGRAM_ID,
-      2025,
-      9,
-    );
-    expect(addr.equals(nextMonth)).toBe(false);
-    expect(addr.equals(prevYear)).toBe(false);
-  });
-
-  test("monthly contributor distribution PDA rejects invalid months", () => {
-    for (const month of [0, 13, 265, -247, 9.5]) {
-      expect(() =>
-        deriveMonthlyContributorDistributionPda(PROGRAM_ID, 2026, month),
-      ).toThrow(RangeError);
-    }
   });
 
   test("journal PDA", () => {

@@ -20,7 +20,6 @@ func TestStructSizes(t *testing.T) {
 	}{
 		{"ProgramConfig", unsafe.Sizeof(ProgramConfig{}), 600},
 		{"Distribution", unsafe.Sizeof(Distribution{}), 448},
-		{"MonthlyContributorDistribution", unsafe.Sizeof(MonthlyContributorDistribution{}), 208},
 		{"SolanaValidatorDeposit", unsafe.Sizeof(SolanaValidatorDeposit{}), 96},
 		{"ContributorRewards", unsafe.Sizeof(ContributorRewards{}), 600},
 		{"Journal", unsafe.Sizeof(Journal{}), 64},

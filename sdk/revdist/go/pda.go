@@ -9,15 +9,14 @@ import (
 )
 
 var (
-	seedProgramConfig                  = []byte("program_config")
-	seedDistribution                   = []byte("distribution")
-	seedMonthlyContributorDistribution = []byte("monthly_contributor_distribution")
-	seedSolanaValidatorDeposit         = []byte("solana_validator_deposit")
-	seedContributorRewards             = []byte("contributor_rewards")
-	seedJournal                        = []byte("journal")
-	seedSolanaValidatorDebt            = []byte("solana_validator_debt")
-	seedDZContributorRewards           = []byte("dz_contributor_rewards")
-	seedShapleyOutput                  = []byte("shapley_output")
+	seedProgramConfig          = []byte("program_config")
+	seedDistribution           = []byte("distribution")
+	seedSolanaValidatorDeposit = []byte("solana_validator_deposit")
+	seedContributorRewards     = []byte("contributor_rewards")
+	seedJournal                = []byte("journal")
+	seedSolanaValidatorDebt    = []byte("solana_validator_debt")
+	seedDZContributorRewards   = []byte("dz_contributor_rewards")
+	seedShapleyOutput          = []byte("shapley_output")
 )
 
 // RecordProgramID is the on-chain program ID for the doublezero-record program.
@@ -55,12 +54,6 @@ func DeriveDistributionPDA(programID solana.PublicKey, epoch uint64) (solana.Pub
 	epochBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(epochBytes, epoch)
 	return solana.FindProgramAddress([][]byte{seedDistribution, epochBytes}, programID)
-}
-
-func DeriveMonthlyContributorDistributionPDA(programID solana.PublicKey, year uint16, month uint8) (solana.PublicKey, uint8, error) {
-	yearBytes := make([]byte, 2)
-	binary.LittleEndian.PutUint16(yearBytes, year)
-	return solana.FindProgramAddress([][]byte{seedMonthlyContributorDistribution, yearBytes, {month}}, programID)
 }
 
 func DeriveJournalPDA(programID solana.PublicKey) (solana.PublicKey, uint8, error) {

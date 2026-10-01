@@ -16,7 +16,6 @@ from revdist.discriminator import (
     DISCRIMINATOR_CONTRIBUTOR_REWARDS,
     DISCRIMINATOR_DISTRIBUTION,
     DISCRIMINATOR_JOURNAL,
-    DISCRIMINATOR_MONTHLY_CONTRIBUTOR_DISTRIBUTION,
     DISCRIMINATOR_PROGRAM_CONFIG,
     DISCRIMINATOR_SOLANA_VALIDATOR_DEPOSIT,
 )
@@ -26,7 +25,6 @@ from revdist.pda import (
     derive_contributor_rewards_pda,
     derive_distribution_pda,
     derive_journal_pda,
-    derive_monthly_contributor_distribution_pda,
     derive_reward_share_record_key,
     derive_validator_debt_record_key,
     derive_validator_deposit_pda,
@@ -36,7 +34,6 @@ from revdist.state import (
     ContributorRewards,
     Distribution,
     Journal,
-    MonthlyContributorDistribution,
     ProgramConfig,
     ShapleyOutputStorage,
     SolanaValidatorDeposit,
@@ -104,17 +101,6 @@ class Client:
         addr, _ = derive_distribution_pda(self._program_id, epoch)
         data = await self._fetch_solana_account_data(addr)
         return Distribution.from_bytes(data, DISCRIMINATOR_DISTRIBUTION)
-
-    async def fetch_monthly_contributor_distribution(
-        self, year: int, month: int
-    ) -> MonthlyContributorDistribution:
-        addr, _ = derive_monthly_contributor_distribution_pda(
-            self._program_id, year, month
-        )
-        data = await self._fetch_solana_account_data(addr)
-        return MonthlyContributorDistribution.from_bytes(
-            data, DISCRIMINATOR_MONTHLY_CONTRIBUTOR_DISTRIBUTION
-        )
 
     async def fetch_journal(self) -> Journal:
         addr, _ = derive_journal_pda(self._program_id)

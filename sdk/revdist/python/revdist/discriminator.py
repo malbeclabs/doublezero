@@ -9,9 +9,6 @@ def _sha256_first8(s: str) -> bytes:
 
 DISCRIMINATOR_PROGRAM_CONFIG = _sha256_first8("dz::account::program_config")
 DISCRIMINATOR_DISTRIBUTION = _sha256_first8("dz::account::distribution")
-DISCRIMINATOR_MONTHLY_CONTRIBUTOR_DISTRIBUTION = _sha256_first8(
-    "dz::account::monthly_contributor_distribution"
-)
 DISCRIMINATOR_SOLANA_VALIDATOR_DEPOSIT = _sha256_first8(
     "dz::account::solana_validator_deposit"
 )

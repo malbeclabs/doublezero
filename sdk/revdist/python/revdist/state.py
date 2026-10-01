@@ -301,59 +301,6 @@ class Distribution:
 
 
 @dataclass
-class MonthlyContributorDistribution:
-    year: int  # u16
-    month: int  # u8
-    bump_seed: int  # u8
-    token_2z_pda_bump_seed: int  # u8
-    reserved0: Reserved  # [3]byte padding
-    flags: int  # u64
-    rewards_merkle_root: bytes  # 32 bytes
-    total_contributors: int  # u32
-    distributed_rewards_count: int  # u32
-    collected_2z_amount: int  # u64
-    distributed_2z_amount: int  # u64
-    processed_rewards_start_index: int  # u32
-    processed_rewards_end_index: int  # u32
-    reserved1: Reserved  # [4][32]byte storage gap (128 bytes)
-
-    STRUCT_SIZE = 208
-
-    @classmethod
-    def from_bytes(
-        cls, data: bytes, discriminator: bytes
-    ) -> MonthlyContributorDistribution:
-        b = _deserialize(data, discriminator, cls.STRUCT_SIZE)
-        off = 0
-        year = struct.unpack_from("<H", b, off)[0]; off += 2
-        month, bump, t2z_bump = struct.unpack_from("<3B", b, off); off += 3
-        reserved0 = Reserved(b[off : off + 3]); off += 3
-        flags = struct.unpack_from("<Q", b, off)[0]; off += 8
-        rewards_root = b[off : off + 32]; off += 32
-        total_contrib, dist_rew_count = struct.unpack_from("<2I", b, off); off += 8
-        coll_2z, dist_2z = struct.unpack_from("<2Q", b, off); off += 16
-        pr_start, pr_end = struct.unpack_from("<2I", b, off); off += 8
-        reserved1 = Reserved(b[off : off + 128]); off += 128
-        assert off == cls.STRUCT_SIZE, f"MonthlyContributorDistribution byte coverage: {off} != {cls.STRUCT_SIZE}"
-        return cls(
-            year=year,
-            month=month,
-            bump_seed=bump,
-            token_2z_pda_bump_seed=t2z_bump,
-            reserved0=reserved0,
-            flags=flags,
-            rewards_merkle_root=rewards_root,
-            total_contributors=total_contrib,
-            distributed_rewards_count=dist_rew_count,
-            collected_2z_amount=coll_2z,
-            distributed_2z_amount=dist_2z,
-            processed_rewards_start_index=pr_start,
-            processed_rewards_end_index=pr_end,
-            reserved1=reserved1,
-        )
-
-
-@dataclass
 class SolanaValidatorDeposit:
     node_id: Pubkey  # 32 bytes
     written_off_sol_debt: int  # u64

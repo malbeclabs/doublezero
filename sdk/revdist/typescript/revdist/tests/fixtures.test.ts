@@ -16,7 +16,6 @@ import { PublicKey } from "@solana/web3.js";
 import {
   DISCRIMINATOR_PROGRAM_CONFIG,
   DISCRIMINATOR_DISTRIBUTION,
-  DISCRIMINATOR_MONTHLY_CONTRIBUTOR_DISTRIBUTION,
   DISCRIMINATOR_JOURNAL,
   DISCRIMINATOR_SOLANA_VALIDATOR_DEPOSIT,
   DISCRIMINATOR_CONTRIBUTOR_REWARDS,
@@ -24,13 +23,11 @@ import {
 import {
   deserializeProgramConfig,
   deserializeDistribution,
-  deserializeMonthlyContributorDistribution,
   deserializeJournal,
   deserializeSolanaValidatorDeposit,
   deserializeContributorRewards,
   PROGRAM_CONFIG_STRUCT_SIZE,
   DISTRIBUTION_STRUCT_SIZE,
-  MONTHLY_CONTRIBUTOR_DISTRIBUTION_STRUCT_SIZE,
   JOURNAL_STRUCT_SIZE,
   SOLANA_VALIDATOR_DEPOSIT_STRUCT_SIZE,
   CONTRIBUTOR_REWARDS_STRUCT_SIZE,
@@ -195,48 +192,6 @@ describe("Distribution fixture", () => {
     for (const field of meta.fields) {
       assertField(field, fieldMap);
     }
-  });
-});
-
-describe("MonthlyContributorDistribution fixture", () => {
-  test("deserialize", () => {
-    const [data, meta] = loadFixture("monthly_contributor_distribution");
-    expect(MONTHLY_CONTRIBUTOR_DISTRIBUTION_STRUCT_SIZE).toBe(meta.struct_size);
-
-    const dist = deserializeMonthlyContributorDistribution(
-      data,
-      DISCRIMINATOR_MONTHLY_CONTRIBUTOR_DISTRIBUTION,
-    );
-
-    const fieldMap: Record<string, unknown> = {
-      Year: dist.year,
-      Month: dist.month,
-      BumpSeed: dist.bumpSeed,
-      Token2ZPDABumpSeed: dist.token2zPdaBumpSeed,
-      Flags: dist.flags,
-      TotalContributors: dist.totalContributors,
-      DistributedRewardsCount: dist.distributedRewardsCount,
-      Collected2ZAmount: dist.collected2zAmount,
-      Distributed2ZAmount: dist.distributed2zAmount,
-      ProcessedRewardsStartIndex: dist.processedRewardsStartIndex,
-      ProcessedRewardsEndIndex: dist.processedRewardsEndIndex,
-    };
-
-    for (const field of meta.fields) {
-      assertField(field, fieldMap);
-    }
-  });
-
-  test("tolerates trailing bitmap", () => {
-    const [data] = loadFixture("monthly_contributor_distribution");
-    const extended = new Uint8Array(data.length + 2);
-    extended.set(data);
-    extended.set([0xff, 0x0f], data.length);
-    const dist = deserializeMonthlyContributorDistribution(
-      extended,
-      DISCRIMINATOR_MONTHLY_CONTRIBUTOR_DISTRIBUTION,
-    );
-    expect(dist.processedRewardsEndIndex).toBe(24);
   });
 });
 

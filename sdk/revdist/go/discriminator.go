@@ -9,12 +9,11 @@ import (
 const discriminatorSize = 8
 
 var (
-	DiscriminatorProgramConfig                  = sha256First8("dz::account::program_config")
-	DiscriminatorDistribution                   = sha256First8("dz::account::distribution")
-	DiscriminatorMonthlyContributorDistribution = sha256First8("dz::account::monthly_contributor_distribution")
-	DiscriminatorSolanaValidatorDeposit         = sha256First8("dz::account::solana_validator_deposit")
-	DiscriminatorContributorRewards             = sha256First8("dz::account::contributor_rewards")
-	DiscriminatorJournal                        = sha256First8("dz::account::journal")
+	DiscriminatorProgramConfig          = sha256First8("dz::account::program_config")
+	DiscriminatorDistribution           = sha256First8("dz::account::distribution")
+	DiscriminatorSolanaValidatorDeposit = sha256First8("dz::account::solana_validator_deposit")
+	DiscriminatorContributorRewards     = sha256First8("dz::account::contributor_rewards")
+	DiscriminatorJournal                = sha256First8("dz::account::journal")
 
 	ErrInvalidDiscriminator = errors.New("invalid account discriminator")
 )

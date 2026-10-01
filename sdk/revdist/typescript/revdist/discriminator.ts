@@ -13,9 +13,6 @@ export const DISCRIMINATOR_PROGRAM_CONFIG = sha256First8(
 export const DISCRIMINATOR_DISTRIBUTION = sha256First8(
   "dz::account::distribution",
 );
-export const DISCRIMINATOR_MONTHLY_CONTRIBUTOR_DISTRIBUTION = sha256First8(
-  "dz::account::monthly_contributor_distribution",
-);
 export const DISCRIMINATOR_SOLANA_VALIDATOR_DEPOSIT = sha256First8(
   "dz::account::solana_validator_deposit",
 );

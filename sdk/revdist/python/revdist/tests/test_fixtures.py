@@ -18,7 +18,6 @@ from revdist.discriminator import (
     DISCRIMINATOR_CONTRIBUTOR_REWARDS,
     DISCRIMINATOR_DISTRIBUTION,
     DISCRIMINATOR_JOURNAL,
-    DISCRIMINATOR_MONTHLY_CONTRIBUTOR_DISTRIBUTION,
     DISCRIMINATOR_PROGRAM_CONFIG,
     DISCRIMINATOR_SOLANA_VALIDATOR_DEPOSIT,
 )
@@ -26,7 +25,6 @@ from revdist.state import (
     ContributorRewards,
     Distribution,
     Journal,
-    MonthlyContributorDistribution,
     ProgramConfig,
     SolanaValidatorDeposit,
 )
@@ -136,41 +134,6 @@ class TestFixtureDistribution:
 
         for field in meta["fields"]:
             _assert_field(dist, field, field_map)
-
-
-class TestFixtureMonthlyContributorDistribution:
-    def test_deserialize(self):
-        data, meta = _load_fixture("monthly_contributor_distribution")
-        assert MonthlyContributorDistribution.STRUCT_SIZE == meta["struct_size"]
-
-        dist = MonthlyContributorDistribution.from_bytes(
-            data, DISCRIMINATOR_MONTHLY_CONTRIBUTOR_DISTRIBUTION
-        )
-
-        field_map = {
-            "Year": dist.year,
-            "Month": dist.month,
-            "BumpSeed": dist.bump_seed,
-            "Token2ZPDABumpSeed": dist.token_2z_pda_bump_seed,
-            "Flags": dist.flags,
-            "TotalContributors": dist.total_contributors,
-            "DistributedRewardsCount": dist.distributed_rewards_count,
-            "Collected2ZAmount": dist.collected_2z_amount,
-            "Distributed2ZAmount": dist.distributed_2z_amount,
-            "ProcessedRewardsStartIndex": dist.processed_rewards_start_index,
-            "ProcessedRewardsEndIndex": dist.processed_rewards_end_index,
-        }
-
-        for field in meta["fields"]:
-            _assert_field(dist, field, field_map)
-
-    def test_tolerates_trailing_bitmap(self):
-        data, _ = _load_fixture("monthly_contributor_distribution")
-        extended = data + b"\xff\x0f"
-        dist = MonthlyContributorDistribution.from_bytes(
-            extended, DISCRIMINATOR_MONTHLY_CONTRIBUTOR_DISTRIBUTION
-        )
-        assert dist.processed_rewards_end_index == 24
 
 
 class TestFixtureJournal:

@@ -8,7 +8,6 @@ from solders.pubkey import Pubkey  # type: ignore[import-untyped]
 
 SEED_PROGRAM_CONFIG = b"program_config"
 SEED_DISTRIBUTION = b"distribution"
-SEED_MONTHLY_CONTRIBUTOR_DISTRIBUTION = b"monthly_contributor_distribution"
 SEED_SOLANA_VALIDATOR_DEPOSIT = b"solana_validator_deposit"
 SEED_CONTRIBUTOR_REWARDS = b"contributor_rewards"
 SEED_JOURNAL = b"journal"
@@ -30,16 +29,6 @@ def derive_distribution_pda(
     epoch_bytes = struct.pack("<Q", epoch)
     return Pubkey.find_program_address(
         [SEED_DISTRIBUTION, epoch_bytes], program_id
-    )
-
-
-def derive_monthly_contributor_distribution_pda(
-    program_id: Pubkey, year: int, month: int
-) -> tuple[Pubkey, int]:
-    year_bytes = struct.pack("<H", year)
-    return Pubkey.find_program_address(
-        [SEED_MONTHLY_CONTRIBUTOR_DISTRIBUTION, year_bytes, bytes([month])],
-        program_id,
     )
 
 

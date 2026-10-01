@@ -8,7 +8,6 @@ import { newConnection } from "./rpc.js";
 import {
   DISCRIMINATOR_PROGRAM_CONFIG,
   DISCRIMINATOR_DISTRIBUTION,
-  DISCRIMINATOR_MONTHLY_CONTRIBUTOR_DISTRIBUTION,
   DISCRIMINATOR_JOURNAL,
   DISCRIMINATOR_SOLANA_VALIDATOR_DEPOSIT,
   DISCRIMINATOR_CONTRIBUTOR_REWARDS,
@@ -16,7 +15,6 @@ import {
 import {
   deserializeProgramConfig,
   deserializeDistribution,
-  deserializeMonthlyContributorDistribution,
   deserializeJournal,
   deserializeSolanaValidatorDeposit,
   deserializeContributorRewards,
@@ -26,7 +24,6 @@ import {
 import type {
   ProgramConfig,
   Distribution,
-  MonthlyContributorDistribution,
   Journal,
   SolanaValidatorDeposit,
   ContributorRewards,
@@ -37,7 +34,6 @@ import {
   RECORD_HEADER_SIZE,
   deriveConfigPda,
   deriveDistributionPda,
-  deriveMonthlyContributorDistributionPda,
   deriveJournalPda,
   deriveValidatorDepositPda,
   deriveContributorRewardsPda,
@@ -97,22 +93,6 @@ export class Client {
     const [addr] = deriveDistributionPda(this.programId, epoch);
     const data = await this.fetchSolanaAccountData(addr);
     return deserializeDistribution(data, DISCRIMINATOR_DISTRIBUTION);
-  }
-
-  async fetchMonthlyContributorDistribution(
-    year: number,
-    month: number,
-  ): Promise<MonthlyContributorDistribution> {
-    const [addr] = deriveMonthlyContributorDistributionPda(
-      this.programId,
-      year,
-      month,
-    );
-    const data = await this.fetchSolanaAccountData(addr);
-    return deserializeMonthlyContributorDistribution(
-      data,
-      DISCRIMINATOR_MONTHLY_CONTRIBUTOR_DISTRIBUTION,
-    );
   }
 
   async fetchJournal(): Promise<Journal> {

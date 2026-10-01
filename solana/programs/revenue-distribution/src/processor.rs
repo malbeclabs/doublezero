@@ -3237,6 +3237,10 @@ fn try_finalize_monthly_contributor_distribution_rewards(
 
     monthly_distribution.try_require_unfinalized_rewards_calculation()?;
 
+    // Finalize cannot be undone and shuts collect out, so it must wait for
+    // all of the month's feed 2Z to be collectable.
+    monthly_distribution.try_require_month_ended()?;
+
     // A null root or zero contributors leaves no leaf to pay collected 2Z to,
     // stranding it.
     if (monthly_distribution.rewards_merkle_root == Hash::default()
@@ -3569,6 +3573,21 @@ impl MonthlyContributorDistribution {
     fn try_require_unfinalized_rewards_calculation(&self) -> ProgramResult {
         if self.is_rewards_calculation_finalized() {
             msg!("Monthly contributor distribution rewards have already been finalized");
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        Ok(())
+    }
+
+    fn try_require_month_ended(&self) -> ProgramResult {
+        let current_timestamp = Clock::get().unwrap().unix_timestamp;
+
+        let has_ended = self
+            .checked_month_end_timestamp()
+            .is_some_and(|end_timestamp| current_timestamp >= end_timestamp);
+
+        if !has_ended {
+            msg!("Month has not ended yet");
             return Err(ProgramError::InvalidAccountData);
         }
 

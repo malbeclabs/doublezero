@@ -26,6 +26,8 @@ use svm_hash::sha2::Hash;
 
 const YEAR: u16 = 2026;
 const MONTH: u8 = 9;
+/// 2026-10-01T00:00:00Z.
+const MONTH_END_TIMESTAMP: i64 = 1_790_812_800;
 
 struct FinalizeMonthlyRewardsSetup {
     test_setup: common::ProgramTestWithOwner,
@@ -39,6 +41,10 @@ async fn setup_for_finalize_monthly_rewards() -> FinalizeMonthlyRewardsSetup {
 
     test_setup
         .initialize_monthly_contributor_distribution(YEAR, MONTH)
+        .await
+        .unwrap();
+    test_setup
+        .set_unix_timestamp(MONTH_END_TIMESTAMP)
         .await
         .unwrap();
 
@@ -205,6 +211,40 @@ async fn test_cannot_finalize_monthly_contributor_distribution_rewards_unpayable
             "Program log: Rewards root cannot be null or empty with collected 2Z"
         );
     }
+}
+
+#[tokio::test]
+async fn test_cannot_finalize_monthly_contributor_distribution_rewards_before_month_end() {
+    let FinalizeMonthlyRewardsSetup {
+        mut test_setup,
+        rewards_accountant_signer,
+        ..
+    } = setup_for_finalize_monthly_rewards().await;
+
+    test_setup
+        .set_unix_timestamp(MONTH_END_TIMESTAMP - 1)
+        .await
+        .unwrap();
+
+    let (tx_err, program_logs) = simulate_finalize(&mut test_setup, &rewards_accountant_signer)
+        .await
+        .unwrap();
+    assert_eq!(
+        tx_err,
+        TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+    );
+    assert_eq!(
+        program_logs.get(3).unwrap(),
+        "Program log: Month has not ended yet"
+    );
+
+    test_setup
+        .set_unix_timestamp(MONTH_END_TIMESTAMP)
+        .await
+        .unwrap()
+        .finalize_monthly_contributor_distribution_rewards(YEAR, MONTH, &rewards_accountant_signer)
+        .await
+        .unwrap();
 }
 
 #[tokio::test]

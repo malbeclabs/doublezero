@@ -24,6 +24,8 @@ use svm_hash::sha2::Hash;
 
 const YEAR: u16 = 2026;
 const MONTH: u8 = 9;
+/// 2026-10-01T00:00:00Z, the earliest time this month can be finalized.
+const MONTH_END_TIMESTAMP: i64 = 1_790_812_800;
 
 struct ConfigureMonthlyRewardsSetup {
     test_setup: common::ProgramTestWithOwner,
@@ -194,6 +196,9 @@ async fn test_cannot_configure_monthly_contributor_distribution_rewards_after_fi
             1,
             Hash::new_unique(),
         )
+        .await
+        .unwrap()
+        .set_unix_timestamp(MONTH_END_TIMESTAMP)
         .await
         .unwrap()
         .finalize_monthly_contributor_distribution_rewards(YEAR, MONTH, &rewards_accountant_signer)

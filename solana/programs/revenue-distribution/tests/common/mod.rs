@@ -302,6 +302,17 @@ impl ProgramTestWithOwner {
         Ok(self)
     }
 
+    pub async fn set_unix_timestamp(
+        &mut self,
+        timestamp: i64,
+    ) -> Result<&mut Self, BanksClientError> {
+        let mut clock = self.get_clock().await;
+        clock.unix_timestamp = timestamp;
+        self.context.set_sysvar::<Clock>(&clock);
+
+        Ok(self)
+    }
+
     pub async fn get_latest_blockhash(&mut self) -> Result<Hash, BanksClientError> {
         self.context
             .get_new_latest_blockhash()

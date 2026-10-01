@@ -61,6 +61,10 @@ export function deriveMonthlyContributorDistributionPda(
   year: number,
   month: number,
 ): [PublicKey, number] {
+  // Buffer.from([month]) truncates to one byte, so 265 or 9.5 would alias month 9.
+  if (!Number.isInteger(month) || month < 1 || month > 12) {
+    throw new RangeError(`invalid month: ${month}`);
+  }
   const yearBuf = Buffer.alloc(2);
   yearBuf.writeUInt16LE(year);
   return PublicKey.findProgramAddressSync(

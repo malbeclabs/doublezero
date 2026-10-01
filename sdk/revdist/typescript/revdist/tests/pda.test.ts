@@ -44,6 +44,14 @@ describe("PDA derivation", () => {
     expect(addr.equals(prevYear)).toBe(false);
   });
 
+  test("monthly contributor distribution PDA rejects invalid months", () => {
+    for (const month of [0, 13, 265, -247, 9.5]) {
+      expect(() =>
+        deriveMonthlyContributorDistributionPda(PROGRAM_ID, 2026, month),
+      ).toThrow(RangeError);
+    }
+  });
+
   test("journal PDA", () => {
     const [addr] = deriveJournalPda(PROGRAM_ID);
     expect(addr.equals(PublicKey.default)).toBe(false);

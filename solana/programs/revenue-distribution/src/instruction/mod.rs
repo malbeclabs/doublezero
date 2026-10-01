@@ -126,6 +126,16 @@ pub enum RevenueDistributionInstructionData {
     /// `RewardsIntegration` PDA; rev-distr signs the `Distribution` PDA so
     /// the integration can verify the caller.
     CollectIntegrationRewards,
+
+    InitializeMonthlyContributorDistribution {
+        year: u16,
+        month: u8,
+    },
+    ConfigureMonthlyContributorDistributionRewards {
+        total_contributors: u32,
+        merkle_root: Hash,
+    },
+    FinalizeMonthlyContributorDistributionRewards,
 }
 
 impl RevenueDistributionInstructionData {
@@ -179,6 +189,12 @@ impl RevenueDistributionInstructionData {
         Discriminator::new_sha2(b"dz::ix::initialize_rewards_integration");
     pub const COLLECT_INTEGRATION_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::collect_integration_rewards");
+    pub const INITIALIZE_MONTHLY_CONTRIBUTOR_DISTRIBUTION: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::initialize_monthly_contributor_distribution");
+    pub const CONFIGURE_MONTHLY_CONTRIBUTOR_DISTRIBUTION_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::configure_monthly_contributor_distribution_rewards");
+    pub const FINALIZE_MONTHLY_CONTRIBUTOR_DISTRIBUTION_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::finalize_monthly_contributor_distribution_rewards");
 
     //
     // Versioned instruction selectors.
@@ -279,6 +295,24 @@ impl BorshDeserialize for RevenueDistributionInstructionData {
             Self::WITHDRAW_SOLANA_VALIDATOR_DEPOSIT => Ok(Self::WithdrawSolanaValidatorDeposit),
             Self::INITIALIZE_REWARDS_INTEGRATION => Ok(Self::InitializeRewardsIntegration),
             Self::COLLECT_INTEGRATION_REWARDS => Ok(Self::CollectIntegrationRewards),
+            Self::INITIALIZE_MONTHLY_CONTRIBUTOR_DISTRIBUTION => {
+                let year = BorshDeserialize::deserialize_reader(reader)?;
+                let month = BorshDeserialize::deserialize_reader(reader)?;
+
+                Ok(Self::InitializeMonthlyContributorDistribution { year, month })
+            }
+            Self::CONFIGURE_MONTHLY_CONTRIBUTOR_DISTRIBUTION_REWARDS => {
+                let total_contributors = BorshDeserialize::deserialize_reader(reader)?;
+                let merkle_root = BorshDeserialize::deserialize_reader(reader)?;
+
+                Ok(Self::ConfigureMonthlyContributorDistributionRewards {
+                    total_contributors,
+                    merkle_root,
+                })
+            }
+            Self::FINALIZE_MONTHLY_CONTRIBUTOR_DISTRIBUTION_REWARDS => {
+                Ok(Self::FinalizeMonthlyContributorDistributionRewards)
+            }
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "Invalid discriminator",
@@ -385,6 +419,22 @@ impl BorshSerialize for RevenueDistributionInstructionData {
                 Self::INITIALIZE_REWARDS_INTEGRATION.serialize(writer)
             }
             Self::CollectIntegrationRewards => Self::COLLECT_INTEGRATION_REWARDS.serialize(writer),
+            Self::InitializeMonthlyContributorDistribution { year, month } => {
+                Self::INITIALIZE_MONTHLY_CONTRIBUTOR_DISTRIBUTION.serialize(writer)?;
+                year.serialize(writer)?;
+                month.serialize(writer)
+            }
+            Self::ConfigureMonthlyContributorDistributionRewards {
+                total_contributors,
+                merkle_root,
+            } => {
+                Self::CONFIGURE_MONTHLY_CONTRIBUTOR_DISTRIBUTION_REWARDS.serialize(writer)?;
+                total_contributors.serialize(writer)?;
+                merkle_root.serialize(writer)
+            }
+            Self::FinalizeMonthlyContributorDistributionRewards => {
+                Self::FINALIZE_MONTHLY_CONTRIBUTOR_DISTRIBUTION_REWARDS.serialize(writer)
+            }
         }
     }
 }

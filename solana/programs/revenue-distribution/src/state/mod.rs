@@ -1,6 +1,7 @@
 mod contributor_rewards;
 mod distribution;
 mod journal;
+mod monthly_contributor_distribution;
 mod program_config;
 mod rewards_integration;
 mod solana_validator_deposit;
@@ -8,6 +9,7 @@ mod solana_validator_deposit;
 pub use contributor_rewards::*;
 pub use distribution::*;
 pub use journal::*;
+pub use monthly_contributor_distribution::*;
 pub use program_config::*;
 pub use rewards_integration::*;
 pub use solana_validator_deposit::*;

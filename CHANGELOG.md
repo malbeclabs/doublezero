@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+## [v0.44.0](https://github.com/malbeclabs/doublezero/compare/client/v0.43.0...client/v0.44.0) - 2026-10-02
+
+### Breaking
+
+### Changes
+
 - CLI
   - New `doublezero-solana feeds validator-client-rewards configure-proportion`, which sets a validator client's share of the feed rewards, up to 35%. The client's manager signs it, or a Squads vault does with `--multisig`. (malbeclabs/infra#2805)
 - Client

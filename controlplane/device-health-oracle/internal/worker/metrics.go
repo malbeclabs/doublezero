@@ -18,6 +18,11 @@ const (
 	MetricLabelCriterion = "criterion"
 	MetricLabelResult    = "result"
 	MetricLabelKind      = "kind"
+
+	// MetricErrorTypeLinkHealthQuery counts link health rollup queries that
+	// failed. These are held apart from criterion results so a ClickHouse
+	// outage is visible without reading as link impairment.
+	MetricErrorTypeLinkHealthQuery = "link_health_query"
 )
 
 var (

@@ -69,7 +69,8 @@ func TestQA_MulticastConnectivity(t *testing.T) {
 		publisher = test.GetClient(*multicastPublisherFlag)
 		require.NotNil(t, publisher, "failed to find publisher client for host %s", *multicastPublisherFlag)
 	} else {
-		publisher = test.RandomClient()
+		publisher = test.RandomNonAllocateAddrClient()
+		require.NotNil(t, publisher, "no non-allocate-addr client to publish from")
 	}
 	log.Debug("Determined publisher", "host", publisher.Host)
 
@@ -220,7 +221,8 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 	}
 
 	// Select publisher and two different subscribers.
-	publisher := test.RandomClient()
+	publisher := test.RandomNonAllocateAddrClient()
+	require.NotNil(t, publisher, "no non-allocate-addr client to publish from")
 	var subscriberA, subscriberB *qa.Client
 	for _, c := range clients {
 		if c.Host == publisher.Host {

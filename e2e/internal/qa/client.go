@@ -128,6 +128,7 @@ type Client struct {
 	grpcConn       *grpc.ClientConn
 	publicIP       net.IP
 	doubleZeroIP   net.IP
+	userClientIP   net.IP
 	serviceability *serviceability.Client
 	devices        map[string]*Device
 
@@ -256,6 +257,33 @@ func (c *Client) DoublezeroOrPublicIP() net.IP {
 	return c.publicIP
 }
 
+// onchainClientIP returns the client IP on this host's onchain users. On a NAT'd
+// allocate-addr host that is the NAT address, not publicIP, so it is resolved
+// from the user holding doubleZeroIP and cached.
+func (c *Client) onchainClientIP(ctx context.Context) string {
+	if c.userClientIP == nil && c.AllocateAddr && c.doubleZeroIP != nil {
+		data, err := getProgramDataWithRetry(ctx, c.serviceability)
+		if err != nil {
+			c.log.Debug("Failed to resolve onchain client IP, using public IP", "host", c.Host, "error", err)
+		} else {
+			c.userClientIP = clientIPForDzIP(data.Users, c.doubleZeroIP)
+		}
+	}
+	if c.userClientIP != nil {
+		return c.userClientIP.String()
+	}
+	return c.publicIP.To4().String()
+}
+
+func clientIPForDzIP(users []serviceability.User, dzIP net.IP) net.IP {
+	for _, user := range users {
+		if net.IP(user.DzIp[:]).Equal(dzIP) {
+			return net.IP(user.ClientIp[:]).To4()
+		}
+	}
+	return nil
+}
+
 func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitForDeletion bool) error {
 	ctx, cancel := context.WithTimeout(ctx, disconnectTimeout)
 	defer cancel()
@@ -264,6 +292,11 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 	if err != nil {
 		return fmt.Errorf("failed to get user status on host %s: %w", c.Host, err)
 	}
+	var clientIP string
+	if waitForDeletion {
+		clientIP = c.onchainClientIP(ctx)
+	}
+
 	// Log if any tunnel is not already disconnected.
 	for _, s := range resp.Status {
 		if s.SessionStatus != UserStatusDisconnected {
@@ -304,8 +337,6 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 	}
 
 	if waitForDeletion {
-		publicIP := c.publicIP.To4().String()
-
 		data, err := getProgramDataWithRetry(ctx, c.serviceability)
 		if err != nil {
 			// RPC errors (e.g. 429 rate limiting) during the initial check are not fatal —
@@ -315,13 +346,13 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 			userFound := false
 			for _, user := range data.Users {
 				userClientIP := net.IP(user.ClientIp[:]).String()
-				if userClientIP == publicIP {
+				if userClientIP == clientIP {
 					userFound = true
 					break
 				}
 			}
 			if !userFound {
-				c.log.Debug("User already deleted onchain", "ip", publicIP)
+				c.log.Debug("User already deleted onchain", "ip", clientIP)
 				return nil
 			}
 		}
@@ -340,8 +371,8 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 
 			for _, user := range data.Users {
 				userClientIP := net.IP(user.ClientIp[:]).String()
-				if userClientIP == publicIP {
-					c.log.Debug("Waiting for user to be deleted onchain", "ip", publicIP, "status", user.Status)
+				if userClientIP == clientIP {
+					c.log.Debug("Waiting for user to be deleted onchain", "ip", clientIP, "status", user.Status)
 					return false, nil
 				}
 			}
@@ -349,9 +380,9 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 			return true, nil
 		}, waitForUserDeletionTimeout, waitInterval)
 		if err != nil {
-			return fmt.Errorf("timed out waiting for user deletion for IP %s on host %s: %w", publicIP, c.Host, err)
+			return fmt.Errorf("timed out waiting for user deletion for IP %s on host %s: %w", clientIP, c.Host, err)
 		}
-		c.log.Debug("Confirmed user deleted onchain", "ip", publicIP)
+		c.log.Debug("Confirmed user deleted onchain", "ip", clientIP)
 	}
 
 	return nil
@@ -823,7 +854,10 @@ func (c *Client) waitForStatus(ctx context.Context, wantStatus string, timeout t
 			}
 		}
 		if len(resp.Status) > 0 {
-			finalStatus = resp.Status[0]
+			finalStatus = FindIBRLStatus(resp.Status)
+			if finalStatus == nil {
+				finalStatus = resp.Status[0]
+			}
 		}
 		return true, nil
 	}, timeout, interval)

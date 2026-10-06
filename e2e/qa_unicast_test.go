@@ -59,14 +59,14 @@ func TestQA_UnicastConnectivity(t *testing.T) {
 		require.NoError(t, err, "failed to wait for status")
 	}
 
+	requireAllocateAddrExchangeIsolation(t, ctx, clients)
 	validateUnicastConnectivity(t, ctx, log, clients)
 }
 
-// validateUnicastConnectivity verifies unicast routes and ping connectivity
-// between all client pairs. Clients must already be connected with status up.
-func validateUnicastConnectivity(t *testing.T, ctx context.Context, log *slog.Logger, clients []*qa.Client) {
+// requireAllocateAddrExchangeIsolation fails if an any-device connect left an
+// allocate-addr client on another client's exchange.
+func requireAllocateAddrExchangeIsolation(t *testing.T, ctx context.Context, clients []*qa.Client) {
 	t.Helper()
-
 	exchangeByHost := make(map[string]string, len(clients))
 	for _, c := range clients {
 		device, err := c.GetUnicastDevice(ctx, false)
@@ -74,6 +74,12 @@ func validateUnicastConnectivity(t *testing.T, ctx context.Context, log *slog.Lo
 		exchangeByHost[c.Host] = device.ExchangeCode
 	}
 	require.NoError(t, qa.CheckAllocateAddrExchangeIsolation(exchangeByHost, allocateAddrHostsArg))
+}
+
+// validateUnicastConnectivity verifies unicast routes and ping connectivity
+// between all client pairs. Clients must already be connected with status up.
+func validateUnicastConnectivity(t *testing.T, ctx context.Context, log *slog.Logger, clients []*qa.Client) {
+	t.Helper()
 
 	// Wait for routes to be installed on each host.
 	for _, c := range clients {

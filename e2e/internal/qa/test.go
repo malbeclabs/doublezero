@@ -61,10 +61,16 @@ func (t *Test) Clients() []*Client {
 	return clients
 }
 
-func (t *Test) RandomClient() *Client {
+// RandomNonAllocateAddrClient returns nil if every client uses allocate-addr.
+func (t *Test) RandomNonAllocateAddrClient() *Client {
 	clients := make([]*Client, 0, len(t.clients))
 	for _, client := range t.clients {
-		clients = append(clients, client)
+		if !client.AllocateAddr {
+			clients = append(clients, client)
+		}
+	}
+	if len(clients) == 0 {
+		return nil
 	}
 	return clients[t.rand.Intn(len(clients))]
 }

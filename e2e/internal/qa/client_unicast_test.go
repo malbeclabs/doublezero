@@ -1,9 +1,11 @@
 package qa
 
 import (
+	"net"
 	"testing"
 
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
+	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/stretchr/testify/require"
 )
 
@@ -355,5 +357,18 @@ func TestPingFailureError(t *testing.T) {
 			require.EqualError(t, err, tt.want)
 			require.NotContains(t, err.Error(), "%!w", "must not format a nil error with %%w")
 		})
+	}
+}
+
+func TestClientIPForDzIP(t *testing.T) {
+	users := []serviceability.User{
+		{ClientIp: [4]uint8{203, 0, 113, 1}, DzIp: [4]uint8{203, 0, 113, 1}},
+		{ClientIp: [4]uint8{198, 51, 100, 7}, DzIp: [4]uint8{100, 64, 0, 9}},
+	}
+	if got := clientIPForDzIP(users, net.ParseIP("100.64.0.9")); !got.Equal(net.ParseIP("198.51.100.7")) {
+		t.Errorf("expected NAT client IP 198.51.100.7, got %v", got)
+	}
+	if got := clientIPForDzIP(users, net.ParseIP("100.64.0.10")); got != nil {
+		t.Errorf("expected nil for unknown DZ IP, got %v", got)
 	}
 }

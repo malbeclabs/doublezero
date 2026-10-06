@@ -68,6 +68,8 @@ func TestQA_MultiTunnel(t *testing.T) {
 			})
 		}
 		require.NoError(t, g.Wait(), "failed to wait for unicast status up")
+
+		requireAllocateAddrExchangeIsolation(t, ctx, clients)
 	})
 	if t.Failed() {
 		return
@@ -102,7 +104,8 @@ func TestQA_MultiTunnel(t *testing.T) {
 			publisher = test.GetClient(*multicastPublisherFlag)
 			require.NotNil(t, publisher, "failed to find publisher client for host %s", *multicastPublisherFlag)
 		} else {
-			publisher = test.RandomClient()
+			publisher = test.RandomNonAllocateAddrClient()
+			require.NotNil(t, publisher, "no non-allocate-addr client to publish from")
 		}
 		log.Debug("Determined publisher", "host", publisher.Host)
 

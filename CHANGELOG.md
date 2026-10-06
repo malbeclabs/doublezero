@@ -9,7 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - E2E/QA
-  - `-allocate-addr-hosts` now applies to `TestQA_UnicastConnectivity`, `TestQA_MulticastConnectivity`, `TestQA_MulticastPublisherMultipleGroups` and `TestQA_MultiTunnel`, not only `TestQA_AllDevices_UnicastConnectivity`, so QA can run on cloud hosts whose public IP is NAT'd and not on the NIC. Unicast route checks wait on a peer's DZ IP instead of its public IP, a run fails fast when an allocate-addr host is not in `-hosts`, and the unicast and multi-tunnel tests fail with a clear message when an allocate-addr host shares an exchange with another host.
+  - `TestQA_UnicastConnectivity` and `TestQA_MultiTunnel` connect `-allocate-addr-hosts` with `--allocate-addr`, as `TestQA_AllDevices_UnicastConnectivity` already did, so their unicast checks can run on cloud hosts whose public IP is NAT'd and not on the NIC. Route checks wait on a peer's DZ IP, a run fails fast when an allocate-addr host is not in `-hosts`, and the tests fail with a clear message when an allocate-addr host shares an exchange with another host. Multicast tests never pick an allocate-addr host as a random publisher, and waiting for onchain user deletion on an allocate-addr host matches users by the NAT address the daemon registered rather than the NIC address.
 
 ## [v0.44.0](https://github.com/malbeclabs/doublezero/compare/client/v0.43.0...client/v0.44.0) - 2026-10-02
 

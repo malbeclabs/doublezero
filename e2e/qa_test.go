@@ -8,6 +8,7 @@ import (
 	"log"
 	"log/slog"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -19,20 +20,22 @@ import (
 )
 
 var (
-	hostsFlag       = flag.String("hosts", "", "comma separated list of hosts to run tests against")
-	portFlag        = flag.String("port", "7009", "port to connect to on each host")
-	envFlag         = flag.String("env", "", "environment to run in (devnet, testnet, mainnet-beta)")
-	debug           = flag.Bool("debug", false, "enable debug logging")
-	multiTunnelFlag = flag.Bool("multi-tunnel", false, "enable multi-tunnel mode (connect unicast + multicast simultaneously)")
-	deviceFlag      = flag.String("device", "", "device code for provisioning test (e.g., chi-dn-dzd4)")
-	bmHostFlag      = flag.String("bm-host", "", "BM host to SSH to for CLI commands (e.g., chi-dn-bm4)")
+	hostsFlag             = flag.String("hosts", "", "comma separated list of hosts to run tests against")
+	allocateAddrHostsFlag = flag.String("allocate-addr-hosts", "", "comma separated list of hosts that will have `--allocate-addr` passed to `doublezero connect ibrl`")
+	portFlag              = flag.String("port", "7009", "port to connect to on each host")
+	envFlag               = flag.String("env", "", "environment to run in (devnet, testnet, mainnet-beta)")
+	debug                 = flag.Bool("debug", false, "enable debug logging")
+	multiTunnelFlag       = flag.Bool("multi-tunnel", false, "enable multi-tunnel mode (connect unicast + multicast simultaneously)")
+	deviceFlag            = flag.String("device", "", "device code for provisioning test (e.g., chi-dn-dzd4)")
+	bmHostFlag            = flag.String("bm-host", "", "BM host to SSH to for CLI commands (e.g., chi-dn-bm4)")
 
-	hostsArg      []string
-	portArg       int
-	envArg        string
-	deviceArg     string
-	bmHostArg     string
-	networkConfig *config.NetworkConfig
+	hostsArg             []string
+	allocateAddrHostsArg map[string]struct{}
+	portArg              int
+	envArg               string
+	deviceArg            string
+	bmHostArg            string
+	networkConfig        *config.NetworkConfig
 )
 
 func TestMain(m *testing.M) {
@@ -46,6 +49,17 @@ func TestMain(m *testing.M) {
 	}
 
 	hostsArg = strings.Split(*hostsFlag, ",")
+	allocateAddrHostsArg = make(map[string]struct{})
+	for _, host := range strings.Split(*allocateAddrHostsFlag, ",") {
+		host = strings.TrimSpace(host)
+		if host == "" {
+			continue
+		}
+		if !slices.Contains(hostsArg, host) {
+			log.Fatalf("-allocate-addr-hosts entry %q is not in -hosts", host)
+		}
+		allocateAddrHostsArg[host] = struct{}{}
+	}
 	var err error
 	portArg, err = strconv.Atoi(*portFlag)
 	if err != nil {

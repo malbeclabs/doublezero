@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- E2E/QA
+  - `-allocate-addr-hosts` now applies to `TestQA_UnicastConnectivity`, `TestQA_MulticastConnectivity`, `TestQA_MulticastPublisherMultipleGroups` and `TestQA_MultiTunnel`, not only `TestQA_AllDevices_UnicastConnectivity`, so QA can run on cloud hosts whose public IP is NAT'd and not on the NIC. Unicast route checks wait on a peer's DZ IP instead of its public IP, a run fails fast when an allocate-addr host is not in `-hosts`, and the unicast and multi-tunnel tests fail with a clear message when an allocate-addr host shares an exchange with another host.
+
 ## [v0.44.0](https://github.com/malbeclabs/doublezero/compare/client/v0.43.0...client/v0.44.0) - 2026-10-02
 
 ### Breaking

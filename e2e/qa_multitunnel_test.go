@@ -21,7 +21,7 @@ func TestQA_MultiTunnel(t *testing.T) {
 
 	log := newTestLogger(t)
 	ctx := t.Context()
-	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, nil)
+	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, allocateAddrHostsArg)
 	require.NoError(t, err, "failed to create test")
 	clients := test.Clients()
 	providedGroups := parseMulticastGroups()

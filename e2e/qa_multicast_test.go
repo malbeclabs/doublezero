@@ -41,7 +41,7 @@ func TestQA_MulticastConnectivity(t *testing.T) {
 
 	log := newTestLogger(t)
 	ctx := t.Context()
-	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, nil)
+	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, allocateAddrHostsArg)
 	require.NoError(t, err, "failed to create test")
 	clients := test.Clients()
 
@@ -207,7 +207,7 @@ func validateMulticastConnectivity(t *testing.T, ctx context.Context, log *slog.
 func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 	log := newTestLogger(t)
 	ctx := t.Context()
-	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, nil)
+	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, allocateAddrHostsArg)
 	require.NoError(t, err, "failed to create test")
 	clients := test.Clients()
 	require.GreaterOrEqual(t, len(clients), 3, "need at least 3 clients for this test (1 publisher + 2 subscribers)")

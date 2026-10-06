@@ -23,7 +23,6 @@ import (
 
 var (
 	devicesFlag             = flag.String("devices", "", "comma separated list of devices to run tests against")
-	allocateAddrHosts       = flag.String("allocate-addr-hosts", "", "comma separated list of hosts that will have `--allocate-addr` passed to `doublezero connect ibrl`")
 	failureThreshold        = flag.Float64("failure-threshold", 0.1, "maximum allowed overall device failure rate (0.0-1.0) before the test is marked as failed")
 	perHostFailureThreshold = flag.Float64("per-host-failure-threshold", 0.2, "maximum allowed per-host device failure rate (0.0-1.0) before the test is marked as failed")
 	skippedThreshold        = flag.Float64("skipped-threshold", 0.5, "maximum allowed rate of assigned devices skipped for not accepting users (0.0-1.0) before the test is marked as failed")
@@ -41,15 +40,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	log := newTestLogger(t)
 	ctx := t.Context()
 
-	// Record which clients should use allocate-addr
-	allocateAddrHostsSet := make(map[string]struct{})
-	if *allocateAddrHosts != "" {
-		for _, host := range strings.Split(*allocateAddrHosts, ",") {
-			allocateAddrHostsSet[strings.TrimSpace(host)] = struct{}{}
-		}
-	}
-
-	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, allocateAddrHostsSet)
+	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, allocateAddrHostsArg)
 	require.NoError(t, err, "failed to create test")
 
 	clients := test.Clients()
@@ -119,7 +110,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	log.Debug("    Otherwise, associate each device with the client with the lowest latency)")
 
 	log.Debug("Assign devices to clients based on latency")
-	batchData := qa.AssignDevicesToClients(devices, clients, clientLatencies, allocateAddrHostsSet, test.ShuffleDevices)
+	batchData := qa.AssignDevicesToClients(devices, clients, clientLatencies, allocateAddrHostsArg, test.ShuffleDevices)
 
 	batchCount := len(batchData)
 	if batchCount == 0 {

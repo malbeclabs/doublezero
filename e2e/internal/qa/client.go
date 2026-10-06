@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"syscall"
@@ -259,26 +260,36 @@ func (c *Client) DoublezeroOrPublicIP() net.IP {
 
 // onchainClientIP returns the client IP on this host's onchain users. On a NAT'd
 // allocate-addr host that is the NAT address, not publicIP, so it is resolved
-// from the user holding doubleZeroIP and cached.
-func (c *Client) onchainClientIP(ctx context.Context) string {
-	if c.userClientIP == nil && c.AllocateAddr && c.doubleZeroIP != nil {
-		data, err := getProgramDataWithRetry(ctx, c.serviceability)
-		if err != nil {
-			c.log.Debug("Failed to resolve onchain client IP, using public IP", "host", c.Host, "error", err)
-		} else {
-			c.userClientIP = clientIPForDzIP(data.Users, c.doubleZeroIP)
+// from the user holding one of the host's DZ IPs (any tunnel type) and cached.
+func (c *Client) onchainClientIP(ctx context.Context, statuses []*pb.Status) (string, error) {
+	if c.userClientIP == nil && c.AllocateAddr {
+		dzIPs := []net.IP{c.doubleZeroIP}
+		for _, s := range statuses {
+			dzIPs = append(dzIPs, net.ParseIP(s.DoubleZeroIp))
+		}
+		if slices.ContainsFunc(dzIPs, func(ip net.IP) bool { return ip != nil }) {
+			data, err := getProgramDataWithRetry(ctx, c.serviceability)
+			if err != nil {
+				return "", fmt.Errorf("failed to resolve onchain client IP on host %s: %w", c.Host, err)
+			}
+			c.userClientIP = clientIPForDzIPs(data.Users, dzIPs)
 		}
 	}
 	if c.userClientIP != nil {
-		return c.userClientIP.String()
+		return c.userClientIP.String(), nil
 	}
-	return c.publicIP.To4().String()
+	return c.publicIP.To4().String(), nil
 }
 
-func clientIPForDzIP(users []serviceability.User, dzIP net.IP) net.IP {
-	for _, user := range users {
-		if net.IP(user.DzIp[:]).Equal(dzIP) {
-			return net.IP(user.ClientIp[:]).To4()
+func clientIPForDzIPs(users []serviceability.User, dzIPs []net.IP) net.IP {
+	for _, dzIP := range dzIPs {
+		if dzIP == nil {
+			continue
+		}
+		for _, user := range users {
+			if net.IP(user.DzIp[:]).Equal(dzIP) {
+				return net.IP(user.ClientIp[:]).To4()
+			}
 		}
 	}
 	return nil
@@ -294,7 +305,9 @@ func (c *Client) DisconnectUser(ctx context.Context, waitForStatus bool, waitFor
 	}
 	var clientIP string
 	if waitForDeletion {
-		clientIP = c.onchainClientIP(ctx)
+		if clientIP, err = c.onchainClientIP(ctx, resp.Status); err != nil {
+			return err
+		}
 	}
 
 	// Log if any tunnel is not already disconnected.

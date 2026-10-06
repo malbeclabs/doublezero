@@ -360,15 +360,19 @@ func TestPingFailureError(t *testing.T) {
 	}
 }
 
-func TestClientIPForDzIP(t *testing.T) {
+func TestClientIPForDzIPs(t *testing.T) {
 	users := []serviceability.User{
 		{ClientIp: [4]uint8{203, 0, 113, 1}, DzIp: [4]uint8{203, 0, 113, 1}},
 		{ClientIp: [4]uint8{198, 51, 100, 7}, DzIp: [4]uint8{100, 64, 0, 9}},
 	}
-	if got := clientIPForDzIP(users, net.ParseIP("100.64.0.9")); !got.Equal(net.ParseIP("198.51.100.7")) {
-		t.Errorf("expected NAT client IP 198.51.100.7, got %v", got)
+	if got := clientIPForDzIPs(users, []net.IP{nil, net.ParseIP("100.64.0.9")}); !got.Equal(net.ParseIP("198.51.100.7")) {
+		t.Errorf("expected NAT client IP 198.51.100.7 for allocated DZ IP, got %v", got)
 	}
-	if got := clientIPForDzIP(users, net.ParseIP("100.64.0.10")); got != nil {
+	// A multicast subscriber's DZ IP is its client IP.
+	if got := clientIPForDzIPs(users, []net.IP{net.ParseIP("203.0.113.1")}); !got.Equal(net.ParseIP("203.0.113.1")) {
+		t.Errorf("expected 203.0.113.1 for subscriber DZ IP, got %v", got)
+	}
+	if got := clientIPForDzIPs(users, []net.IP{nil, net.ParseIP("100.64.0.10")}); got != nil {
 		t.Errorf("expected nil for unknown DZ IP, got %v", got)
 	}
 }

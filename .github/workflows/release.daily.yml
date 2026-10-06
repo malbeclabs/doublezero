@@ -68,6 +68,12 @@ jobs:
           sudo apt-get install squashfs-tools rpm gcc-x86-64-linux-gnu musl-tools -y
       - name: Set build date
         run: echo "BUILD_DATE=$(date -u +%Y%m%d%H%M%S)" >> $GITHUB_ENV
+      - name: Authenticate to Cloudsmith (OIDC)
+        uses: cloudsmith-io/cloudsmith-cli-action@69e169e2ad9bc9a1599c2dff464061a00fe9f8ba # v3.1.1
+        with:
+          oidc-namespace: malbeclabs
+          oidc-service-slug: github-actions-publish
+          export-auth-token: "true"
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
@@ -76,7 +82,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
-          CLOUDSMITH_TOKEN: ${{ secrets.CLOUDSMITH_TOKEN }}
+          CLOUDSMITH_TOKEN: ${{ env.CLOUDSMITH_API_KEY }}
       - name: Read the deb version GoReleaser built
         id: deb
         run: |

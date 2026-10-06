@@ -22,7 +22,7 @@ func TestQA_UnicastConnectivity(t *testing.T) {
 
 	log := newTestLogger(t)
 	ctx := t.Context()
-	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, nil)
+	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, allocateAddrHostsArg)
 	require.NoError(t, err, "failed to create test")
 	clients := test.Clients()
 
@@ -59,7 +59,21 @@ func TestQA_UnicastConnectivity(t *testing.T) {
 		require.NoError(t, err, "failed to wait for status")
 	}
 
+	requireAllocateAddrExchangeIsolation(t, ctx, clients)
 	validateUnicastConnectivity(t, ctx, log, clients)
+}
+
+// requireAllocateAddrExchangeIsolation fails if an any-device connect left an
+// allocate-addr client on another client's exchange.
+func requireAllocateAddrExchangeIsolation(t *testing.T, ctx context.Context, clients []*qa.Client) {
+	t.Helper()
+	exchangeByHost := make(map[string]string, len(clients))
+	for _, c := range clients {
+		device, err := c.GetUnicastDevice(ctx, false)
+		require.NoError(t, err, "failed to get current device for client %s", c.Host)
+		exchangeByHost[c.Host] = device.ExchangeCode
+	}
+	require.NoError(t, qa.CheckAllocateAddrExchangeIsolation(exchangeByHost, allocateAddrHostsArg))
 }
 
 // validateUnicastConnectivity verifies unicast routes and ping connectivity
@@ -79,7 +93,7 @@ func validateUnicastConnectivity(t *testing.T, ctx context.Context, log *slog.Lo
 			if other.Host == c.Host || otherDevice.ExchangeCode == device.ExchangeCode {
 				return nil, false
 			}
-			return other.PublicIP(), true
+			return other.DoublezeroOrPublicIP(), true
 		}))
 		require.NoError(t, err, "failed to wait for routes")
 	}

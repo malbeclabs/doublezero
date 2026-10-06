@@ -41,7 +41,7 @@ func TestQA_MulticastConnectivity(t *testing.T) {
 
 	log := newTestLogger(t)
 	ctx := t.Context()
-	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, nil)
+	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, allocateAddrHostsArg)
 	require.NoError(t, err, "failed to create test")
 	clients := test.Clients()
 
@@ -69,7 +69,8 @@ func TestQA_MulticastConnectivity(t *testing.T) {
 		publisher = test.GetClient(*multicastPublisherFlag)
 		require.NotNil(t, publisher, "failed to find publisher client for host %s", *multicastPublisherFlag)
 	} else {
-		publisher = test.RandomClient()
+		publisher = test.RandomNonAllocateAddrClient()
+		require.NotNil(t, publisher, "no non-allocate-addr client to publish from")
 	}
 	log.Debug("Determined publisher", "host", publisher.Host)
 
@@ -207,7 +208,7 @@ func validateMulticastConnectivity(t *testing.T, ctx context.Context, log *slog.
 func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 	log := newTestLogger(t)
 	ctx := t.Context()
-	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, nil)
+	test, err := qa.NewTest(ctx, log, hostsArg, portArg, networkConfig, allocateAddrHostsArg)
 	require.NoError(t, err, "failed to create test")
 	clients := test.Clients()
 	require.GreaterOrEqual(t, len(clients), 3, "need at least 3 clients for this test (1 publisher + 2 subscribers)")
@@ -220,20 +221,25 @@ func TestQA_MulticastPublisherMultipleGroups(t *testing.T) {
 	}
 
 	// Select publisher and two different subscribers.
-	publisher := test.RandomClient()
+	publisher := test.RandomNonAllocateAddrClient()
+	require.NotNil(t, publisher, "no non-allocate-addr client to publish from")
+	// SubscriberA also publishes in phase 3, so it can't be an allocate-addr host.
 	var subscriberA, subscriberB *qa.Client
 	for _, c := range clients {
-		if c.Host == publisher.Host {
-			continue
-		}
-		if subscriberA == nil {
+		if c.Host != publisher.Host && !c.AllocateAddr {
 			subscriberA = c
-		} else if subscriberB == nil {
+			break
+		}
+	}
+	if subscriberA == nil {
+		t.Skip("Skipping: needs two non-allocate-addr hosts, since subscriberA also publishes")
+	}
+	for _, c := range clients {
+		if c.Host != publisher.Host && c.Host != subscriberA.Host {
 			subscriberB = c
 			break
 		}
 	}
-	require.NotNil(t, subscriberA, "failed to find first subscriber")
 	require.NotNil(t, subscriberB, "failed to find second subscriber")
 	log.Debug("Selected clients", "publisher", publisher.Host, "subscriberA", subscriberA.Host, "subscriberB", subscriberB.Host)
 

@@ -195,6 +195,24 @@ func ComputeRouteTargets(client *Client, connectedClients []*Client, batch map[s
 	return targets
 }
 
+// CheckAllocateAddrExchangeIsolation returns an error if an allocate-addr host
+// shares an exchange with any other host, since allocate-addr clients have no
+// intra-exchange routing.
+func CheckAllocateAddrExchangeIsolation(exchangeByHost map[string]string, allocateAddrHosts map[string]struct{}) error {
+	hosts := slices.Sorted(maps.Keys(exchangeByHost))
+	for _, host := range hosts {
+		if _, ok := allocateAddrHosts[host]; !ok {
+			continue
+		}
+		for _, other := range hosts {
+			if other != host && exchangeByHost[other] == exchangeByHost[host] {
+				return fmt.Errorf("allocate-addr host %s shares exchange %s with host %s: host placement must give each allocate-addr host a unique nearest exchange", host, exchangeByHost[host], other)
+			}
+		}
+	}
+	return nil
+}
+
 // AssignDevicesToClients considers latency between each client and device to assign devices to clients:
 // If multiple clients have < LatencyThresholdMs latency, the device goes to the client with fewest devices.
 // Otherwise, the device goes to the client with the lowest latency.

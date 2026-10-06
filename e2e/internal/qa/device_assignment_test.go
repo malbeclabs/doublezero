@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"reflect"
+	"strings"
 	"testing"
 
 	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -911,6 +912,51 @@ func TestFailureStatsSkippedRate(t *testing.T) {
 			}
 			if got := stats.SkippedRate(); got != tt.want {
 				t.Errorf("SkippedRate() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCheckAllocateAddrExchangeIsolation(t *testing.T) {
+	tests := []struct {
+		name          string
+		exchanges     map[string]string
+		allocateAddr  map[string]struct{}
+		wantErrSubstr string
+	}{
+		{
+			name:      "no allocate-addr hosts",
+			exchanges: map[string]string{"plain1": "ex1", "plain2": "ex1"},
+		},
+		{
+			name:         "allocate-addr hosts on distinct exchanges",
+			exchanges:    map[string]string{"plain": "ex1", "alloc1": "ex2", "alloc2": "ex3"},
+			allocateAddr: map[string]struct{}{"alloc1": {}, "alloc2": {}},
+		},
+		{
+			name:          "allocate-addr host shares exchange with plain host",
+			exchanges:     map[string]string{"plain": "ex1", "alloc": "ex1"},
+			allocateAddr:  map[string]struct{}{"alloc": {}},
+			wantErrSubstr: "allocate-addr host alloc shares exchange ex1 with host plain",
+		},
+		{
+			name:          "two allocate-addr hosts share exchange",
+			exchanges:     map[string]string{"plain": "ex1", "alloc1": "ex2", "alloc2": "ex2"},
+			allocateAddr:  map[string]struct{}{"alloc1": {}, "alloc2": {}},
+			wantErrSubstr: "allocate-addr host alloc1 shares exchange ex2 with host alloc2",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := CheckAllocateAddrExchangeIsolation(tt.exchanges, tt.allocateAddr)
+			if tt.wantErrSubstr == "" {
+				if err != nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tt.wantErrSubstr) {
+				t.Fatalf("expected error containing %q, got %v", tt.wantErrSubstr, err)
 			}
 		})
 	}

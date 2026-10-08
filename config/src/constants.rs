@@ -28,7 +28,7 @@ pub const ENV_MAINNET_BETA_SERVICEABILITY_PUBKEY: Pubkey =
 pub const ENV_MAINNET_BETA_TELEMETRY_PUBKEY: Pubkey =
     Pubkey::from_str_const("tE1exJ5VMyoC9ByZeSmgtNzJCFF74G9JAv338sJiqkC");
 pub const ENV_MAINNET_BETA_INTERNET_LATENCY_COLLECTOR_PUBKEY: Pubkey =
-    Pubkey::from_str_const("8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH");
+    Pubkey::from_str_const("3Fs61T6u4etthEkFSy2cBwEA5i2ZqxQ5AEMd36mBkWsn");
 pub const ENV_MAINNET_BETA_GEOLOCATION_PUBKEY: Pubkey =
     Pubkey::from_str_const("8H7nS6eZiuf7rGQtz3PPz2q9m4eJRL37PPM678KHnspG");
 // The shred-subscription program for mainnet-beta runs on Solana mainnet-beta.

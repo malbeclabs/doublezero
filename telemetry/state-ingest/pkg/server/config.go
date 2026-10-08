@@ -23,8 +23,10 @@ var (
 	defaultStateToCollectShowCommands = map[string]string{
 		"snmp-mib-ifmib-ifindex":    "show snmp mib ifmib ifindex",
 		"isis-database-detail":      "show isis database detail",
+		"ip-route":                  "show ip route vrf all",
 		"ip-mroute":                 "show ip mroute",
 		"ip-mroute-count":           "show ip mroute count",
+		"ip-pim-neighbor":           "show ip pim neighbor",
 		"ip-msdp-summary":           "show ip msdp summary",
 		"ip-msdp-pim-sa-cache":      "show ip msdp pim sa-cache",
 		"ip-msdp-sa-cache-rejected": "show ip msdp sa-cache rejected",

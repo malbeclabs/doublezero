@@ -20,6 +20,7 @@ on:
         default: false
 
 permissions:
+  id-token: write
   contents: read
 
 env:
@@ -341,9 +342,15 @@ jobs:
     steps:
       - name: Install Cloudsmith CLI
         run: pip install cloudsmith-cli==1.13.0
+      - name: Authenticate to Cloudsmith (OIDC)
+        uses: cloudsmith-io/cloudsmith-cli-action@69e169e2ad9bc9a1599c2dff464061a00fe9f8ba # v3.1.1
+        with:
+          oidc-namespace: malbeclabs
+          oidc-service-slug: github-actions-publish
+          export-auth-token: "true"
       - name: Wait for all packages to publish
         env:
-          CLOUDSMITH_API_KEY: ${{ secrets.CLOUDSMITH_TOKEN }}
+          CLOUDSMITH_API_KEY: ${{ env.CLOUDSMITH_API_KEY }}
           VERSION: ${{ inputs.dry_run && needs.preflight.outputs.prev_version || inputs.version }}
         run: |
           set -euo pipefail

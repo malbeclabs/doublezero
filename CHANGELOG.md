@@ -12,6 +12,8 @@ All notable changes to this project will be documented in this file.
   - The mainnet-beta internet latency collector key moves from the retired `8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH` to `3Fs61T6u4etthEkFSy2cBwEA5i2ZqxQ5AEMd36mBkWsn`. The monitor, telemetry data-api, data CLI and funder (`-env mainnet-beta`) find or fund the collector by this key.
 - E2E/QA
   - `TestQA_UnicastConnectivity` and `TestQA_MultiTunnel` connect `-allocate-addr-hosts` with `--allocate-addr`, as `TestQA_AllDevices_UnicastConnectivity` already did, so their unicast checks can run on cloud hosts whose public IP is NAT'd and not on the NIC. Route checks wait on a peer's DZ IP, a run fails fast when an allocate-addr host is not in `-hosts`, and the tests fail with a clear message when an allocate-addr host shares an exchange with another host. Multicast tests never pick an allocate-addr host as a random publisher, `TestQA_MulticastPublisherMultipleGroups` skips unless two hosts are not allocate-addr (its first subscriber also publishes), and waiting for onchain user deletion on an allocate-addr host matches users by the NAT address the daemon registered rather than the NIC address.
+- CI
+  - Release workflows publish to Cloudsmith with a short-lived token from GitHub OIDC instead of a stored API key.
 
 ## [v0.44.0](https://github.com/malbeclabs/doublezero/compare/client/v0.43.0...client/v0.44.0) - 2026-10-02
 

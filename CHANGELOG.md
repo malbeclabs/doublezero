@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Client
+  - New `doublezerod -ibrl-route-table` flag selects the kernel routing table for IBRL routes. It defaults to the main table, so nothing changes unless it is set. With a separate table, an operator adds an ip rule so that only chosen traffic, such as one application's source ports, uses DoubleZero while the rest of the host keeps its normal routing.
 - Config
   - The mainnet-beta internet latency collector key moves from the retired `8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH` to `3Fs61T6u4etthEkFSy2cBwEA5i2ZqxQ5AEMd36mBkWsn`. The monitor, telemetry data-api, data CLI and funder (`-env mainnet-beta`) find or fund the collector by this key.
 - E2E/QA

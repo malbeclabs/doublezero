@@ -8,6 +8,7 @@ import (
 	"net"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
@@ -134,6 +135,14 @@ func WithNetwork(network string) Option {
 }
 
 // WithFetchTimeout sets the timeout for onchain data fetches during reconciliation.
+// WithIBRLRouteTable sets the kernel routing table IBRL services install
+// learned routes into. A non-main table needs an ip rule to select traffic.
+func WithIBRLRouteTable(table int) Option {
+	return func(n *NetlinkManager) {
+		n.ibrlRouteTable = table
+	}
+}
+
 func WithFetchTimeout(d time.Duration) Option {
 	return func(n *NetlinkManager) {
 		n.fetchTimeout = d
@@ -189,16 +198,19 @@ type NetlinkManager struct {
 	// Status enrichment fields
 	latencyProvider LatencyProvider
 	network         string
+
+	// ibrlRouteTable is the kernel routing table IBRL services install routes into.
+	ibrlRouteTable int
 }
 
 // CreateService creates the appropriate service based on the provisioned
 // user type.
-func CreateService(u api.UserType, bgp services.BGPReaderWriter, nl routing.Netlinker, pim services.PIMWriter, heartbeat services.HeartbeatWriter, register services.RegisterWriter) (Provisioner, error) {
+func CreateService(u api.UserType, bgp services.BGPReaderWriter, nl routing.Netlinker, pim services.PIMWriter, heartbeat services.HeartbeatWriter, register services.RegisterWriter, ibrlRouteTable int) (Provisioner, error) {
 	switch u {
 	case api.UserTypeIBRL:
-		return services.NewIBRLService(bgp, nl), nil
+		return services.NewIBRLService(bgp, nl, ibrlRouteTable), nil
 	case api.UserTypeIBRLWithAllocatedIP:
-		return services.NewIBRLServiceWithAllocatedAddress(bgp, nl), nil
+		return services.NewIBRLServiceWithAllocatedAddress(bgp, nl, ibrlRouteTable), nil
 	case api.UserTypeEdgeFiltering:
 		return services.NewEdgeFilteringService(bgp, nl), nil
 	case api.UserTypeMulticast:
@@ -219,6 +231,7 @@ func NewNetlinkManager(netlink routing.Netlinker, bgp BGPServer, pim services.PI
 		fetchTimeout:   defaultFetchTimeout,
 		enableCh:       make(chan reconcilerCmd, 1),
 		tunnelSrcCache: make(map[string]net.IP),
+		ibrlRouteTable: syscall.RT_TABLE_MAIN,
 	}
 	for _, o := range opts {
 		o(n)
@@ -237,7 +250,7 @@ func (n *NetlinkManager) Provision(pr api.ProvisionRequest) error {
 // provisionLocked creates and sets up a service for the given provision request.
 // Caller must hold n.mu.
 func (n *NetlinkManager) provisionLocked(pr api.ProvisionRequest) error {
-	svc, err := CreateService(pr.UserType, n.bgp, n.netlink, n.pim, n.heartbeat, n.register)
+	svc, err := CreateService(pr.UserType, n.bgp, n.netlink, n.pim, n.heartbeat, n.register, n.ibrlRouteTable)
 	if err != nil {
 		return fmt.Errorf("error creating service: %v", err)
 	}

@@ -43,6 +43,7 @@ var (
 	reconcilerFetchTimeout      = flag.Int("reconciler-fetch-timeout", 60, "timeout in seconds for onchain data fetches during reconciliation")
 	onchainRPCTimeout           = flag.Duration("onchain-rpc-timeout", defaultOnchainRPCTimeout, "Timeout for GetProgramData RPC calls inside the onchain caching fetcher.")
 	stateDir                    = flag.String("state-dir", "/var/lib/doublezerod", "directory for persistent state files")
+	ibrlRouteTable              = flag.Int("ibrl-route-table", syscall.RT_TABLE_MAIN, "kernel routing table for IBRL routes; a non-main table needs an ip rule to select traffic for it")
 	routeReconcileInterval      = flag.Duration("route-reconcile-interval", defaultRouteReconcileInterval, "interval for periodic kernel route reconciliation (reinstalls externally-deleted BGP routes); 0 disables")
 
 	// Route liveness configuration flags.
@@ -84,6 +85,11 @@ const (
 
 func main() {
 	flag.Parse()
+
+	if *ibrlRouteTable <= 0 || *ibrlRouteTable == syscall.RT_TABLE_DEFAULT || *ibrlRouteTable == syscall.RT_TABLE_LOCAL {
+		fmt.Fprintf(os.Stderr, "invalid -ibrl-route-table %d: use main (254) or an unreserved table\n", *ibrlRouteTable)
+		os.Exit(1)
+	}
 
 	level := slog.LevelInfo
 	if *enableVerboseLogging {
@@ -195,7 +201,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if err := runtime.Run(ctx, *sockFile, *routeConfigPath, *enableLatencyProbing, *enableLatencyMetrics, *latencyProbeTunnelEndpoints, *latencySingleSocket, networkConfig, *probeInterval, *cacheUpdateInterval, lmc, *clientIP, *reconcilerPollInterval, *reconcilerFetchTimeout, *stateDir, *onchainRPCTimeout, *routeReconcileInterval); err != nil {
+	if err := runtime.Run(ctx, *sockFile, *routeConfigPath, *enableLatencyProbing, *enableLatencyMetrics, *latencyProbeTunnelEndpoints, *latencySingleSocket, networkConfig, *probeInterval, *cacheUpdateInterval, lmc, *clientIP, *reconcilerPollInterval, *reconcilerFetchTimeout, *stateDir, *onchainRPCTimeout, *routeReconcileInterval, *ibrlRouteTable); err != nil {
 		slog.Error("runtime error", "error", err)
 		os.Exit(1)
 	}

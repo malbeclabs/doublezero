@@ -75,7 +75,7 @@ func restoreClientIPPin(pinned string, isAssigned func(net.IP) (bool, error)) st
 	return pinned
 }
 
-func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics, latencyProbeTunnelEndpoints, latencySingleSocket bool, networkConfig *config.NetworkConfig, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig, clientIP string, reconcilerPollInterval int, reconcilerFetchTimeout int, stateDir string, onchainRPCTimeout time.Duration, routeReconcileInterval time.Duration) error {
+func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLatencyProbing, enableLatencyMetrics, latencyProbeTunnelEndpoints, latencySingleSocket bool, networkConfig *config.NetworkConfig, probeInterval, cacheUpdateInterval int, lmc *liveness.ManagerConfig, clientIP string, reconcilerPollInterval int, reconcilerFetchTimeout int, stateDir string, onchainRPCTimeout time.Duration, routeReconcileInterval time.Duration, ibrlRouteTable int) error {
 	// The route reconciler decorates raw netlink at the base of the routing
 	// chain, so every kernel route write and tunnel deletion in the daemon flows
 	// through it regardless of which subsystem (route liveness, the BGP server
@@ -199,6 +199,7 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 		manager.WithClientIPFlag(clientIP),
 		manager.WithStateDir(stateDir),
 		manager.WithNetwork(networkConfig.Moniker),
+		manager.WithIBRLRouteTable(ibrlRouteTable),
 	}
 	if latencyManager != nil {
 		nlmOpts = append(nlmOpts, manager.WithLatencyProvider(latencyManager))

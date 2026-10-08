@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"syscall"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
@@ -18,15 +17,19 @@ type IBRLService struct {
 	Tunnel         *routing.Tunnel
 	DoubleZeroAddr net.IP
 	provisionReq   *api.ProvisionRequest
+	routeTable     int
 }
 
 func (s *IBRLService) UserType() api.UserType   { return api.UserTypeIBRL }
 func (s *IBRLService) ServiceType() ServiceType { return ServiceTypeUnicast }
 
-func NewIBRLService(bgp BGPReaderWriter, nl routing.Netlinker) *IBRLService {
+// NewIBRLService creates an IBRL service that installs learned routes into
+// routeTable. Pass syscall.RT_TABLE_MAIN for the default behavior.
+func NewIBRLService(bgp BGPReaderWriter, nl routing.Netlinker, routeTable int) *IBRLService {
 	return &IBRLService{
-		bgp: bgp,
-		nl:  nl,
+		bgp:        bgp,
+		nl:         nl,
+		routeTable: routeTable,
 	}
 }
 
@@ -61,7 +64,7 @@ func (s *IBRLService) Setup(p *api.ProvisionRequest) error {
 		LocalAs:       p.BgpLocalAsn,
 		RemoteAs:      p.BgpRemoteAsn,
 		RouteSrc:      p.DoubleZeroIP,
-		RouteTable:    syscall.RT_TABLE_MAIN,
+		RouteTable:    s.routeTable,
 		NoUninstall:   noUninstall,
 		Interface:     "doublezero0",
 
@@ -138,11 +141,12 @@ type IBRLServiceWithAllocatedAddress struct {
 	IBRLService
 }
 
-func NewIBRLServiceWithAllocatedAddress(bgp BGPReaderWriter, nl routing.Netlinker) *IBRLServiceWithAllocatedAddress {
+func NewIBRLServiceWithAllocatedAddress(bgp BGPReaderWriter, nl routing.Netlinker, routeTable int) *IBRLServiceWithAllocatedAddress {
 	return &IBRLServiceWithAllocatedAddress{
 		IBRLService{
-			bgp: bgp,
-			nl:  nl,
+			bgp:        bgp,
+			nl:         nl,
+			routeTable: routeTable,
 		},
 	}
 }

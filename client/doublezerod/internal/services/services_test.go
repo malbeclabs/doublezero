@@ -35,9 +35,9 @@ type Provisioner interface {
 func createTestService(u api.UserType, bgp services.BGPReaderWriter, nl routing.Netlinker, p services.PIMWriter, hb services.HeartbeatWriter) (Provisioner, error) {
 	switch u {
 	case api.UserTypeIBRL:
-		return services.NewIBRLService(bgp, nl), nil
+		return services.NewIBRLService(bgp, nl, syscall.RT_TABLE_MAIN), nil
 	case api.UserTypeIBRLWithAllocatedIP:
-		return services.NewIBRLServiceWithAllocatedAddress(bgp, nl), nil
+		return services.NewIBRLServiceWithAllocatedAddress(bgp, nl, syscall.RT_TABLE_MAIN), nil
 	case api.UserTypeEdgeFiltering:
 		return services.NewEdgeFilteringService(bgp, nl), nil
 	case api.UserTypeMulticast:
@@ -749,6 +749,46 @@ func TestServices(t *testing.T) {
 					t.Errorf("unexpected rules removed (-want +got):\n%s", diff)
 				}
 			})
+		})
+	}
+}
+
+func TestIBRLService_RouteTable(t *testing.T) {
+	const table = 120
+	req := &api.ProvisionRequest{
+		UserType:  api.UserTypeIBRL,
+		TunnelSrc: net.IPv4(192, 168, 1, 1),
+		TunnelDst: net.IPv4(192, 168, 1, 2),
+		TunnelNet: &net.IPNet{
+			IP:   net.IPv4(169, 254, 0, 0),
+			Mask: net.CIDRMask(31, 32),
+		},
+		DoubleZeroIP:       net.IPv4(192, 168, 1, 1),
+		DoubleZeroPrefixes: []*net.IPNet{},
+		BgpLocalAsn:        65000,
+		BgpRemoteAsn:       65001,
+	}
+
+	newServices := map[string]func(*MockBgpServer) Provisioner{
+		"ibrl": func(b *MockBgpServer) Provisioner {
+			return services.NewIBRLService(b, &MockNetlink{}, table)
+		},
+		"ibrl_with_allocated_ip": func(b *MockBgpServer) Provisioner {
+			return services.NewIBRLServiceWithAllocatedAddress(b, &MockNetlink{}, table)
+		},
+	}
+	for name, newService := range newServices {
+		t.Run(name, func(t *testing.T) {
+			b := &MockBgpServer{}
+			if err := newService(b).Setup(req); err != nil {
+				t.Fatalf("setup: %v", err)
+			}
+			if b.addPeer == nil {
+				t.Fatal("expected a bgp peer to be added")
+			}
+			if got := b.addPeer.RouteTable; got != table {
+				t.Fatalf("peer route table = %d, want %d", got, table)
+			}
 		})
 	}
 }

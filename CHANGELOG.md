@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CI
+  - Release jobs check the goreleaser they download before running it: goreleaser-action moves from v6 to v7.2.3, pinned by commit, which checks the archive against its `checksums.txt`. Each job installs cosign first, so the action also checks the sigstore signature of that file. goreleaser-pro is pinned to v2.18.2 instead of floating on `~> v2`.
 - Config
   - The mainnet-beta internet latency collector key moves from the retired `8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH` to `3Fs61T6u4etthEkFSy2cBwEA5i2ZqxQ5AEMd36mBkWsn`. The monitor, telemetry data-api, data CLI and funder (`-env mainnet-beta`) find or fund the collector by this key.
 - E2E/QA

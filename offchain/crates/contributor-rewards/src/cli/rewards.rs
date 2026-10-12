@@ -1,10 +1,12 @@
 use std::path::PathBuf;
 
 use anyhow::{Result, ensure};
+use chrono::DateTime;
 use clap::Subcommand;
-use doublezero_solana_client_tools::rpc::SolanaConnection;
-use doublezero_solana_sdk::revenue_distribution::fetch::{
-    SolConversionState, try_fetch_config, try_fetch_distribution,
+use doublezero_solana_client_tools::rpc::{DoubleZeroLedgerConnection, SolanaConnection};
+use doublezero_solana_sdk::revenue_distribution::{
+    fetch::{SolConversionState, try_fetch_config, try_fetch_distribution},
+    types::UnitShare32,
 };
 use slack_notifier::contributor_rewards::{
     DistributionRewardRow, WriteResultInfo, post_contributor_rewards, post_distribution_rewards,
@@ -14,7 +16,13 @@ use tabled::{builder::Builder as TableBuilder, settings::Style};
 use tracing::{info, warn};
 
 use crate::{
-    calculator::{ledger_operations::WriteResult, orchestrator::Orchestrator},
+    calculator::{
+        ledger_operations::{
+            RewardEntry, WriteResult, format_unit_share_proportion, try_fetch_contributor_labels,
+        },
+        monthly,
+        orchestrator::Orchestrator,
+    },
     cli::snapshot::CompleteSnapshot,
 };
 
@@ -88,6 +96,28 @@ pub enum RewardsCommands {
         /// Send Slack notification after completion (requires Slack settings in config)
         #[arg(long)]
         slack_notify: bool,
+    },
+    #[command(
+        about = "Average a UTC month's posted epoch shares into monthly contributor shares",
+        after_help = r#"Examples:
+    # Calculate the shares for September 2026
+    calculate-monthly-rewards --year 2026 --month 9
+
+    # Output as JSON
+    calculate-monthly-rewards --year 2026 --month 9 --json"#
+    )]
+    CalculateMonthlyRewards {
+        /// UTC calendar year
+        #[arg(long, value_name = "YEAR")]
+        year: u16,
+
+        /// UTC calendar month, 1 through 12
+        #[arg(long, value_name = "MONTH", value_parser = clap::value_parser!(u8).range(1..=12))]
+        month: u8,
+
+        /// Output as JSON instead of tables
+        #[arg(long)]
+        json: bool,
     },
     #[command(
         about = "Read and display telemetry aggregate statistics from the ledger",
@@ -429,6 +459,87 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
                     warn!("[WARN] Slack notification requested but Slack settings not configured");
                 }
             }
+
+            Ok(())
+        }
+        RewardsCommands::CalculateMonthlyRewards { year, month, json } => {
+            let monthly_rewards =
+                monthly::try_calculate_monthly_rewards(&orchestrator.settings, year, month).await?;
+            let total_units = monthly_rewards
+                .rewards
+                .iter()
+                .map(|reward| u64::from(reward.unit_share))
+                .sum::<u64>();
+
+            if json {
+                let rewards = monthly_rewards
+                    .rewards
+                    .iter()
+                    .map(|reward| RewardEntry {
+                        contributor: reward.contributor_key.to_string(),
+                        unit_share: reward.unit_share,
+                    })
+                    .collect::<Vec<_>>();
+                let output = serde_json::json!({
+                    "year": year,
+                    "month": month,
+                    "epochs": monthly_rewards.epochs,
+                    "total_units": total_units,
+                    "rewards": rewards,
+                });
+                println!("{output}");
+
+                return Ok(());
+            }
+
+            let dz_connection =
+                DoubleZeroLedgerConnection::new(orchestrator.settings.rpc.dz_url.clone());
+            let labels = try_fetch_contributor_labels(
+                &dz_connection,
+                &orchestrator.settings.programs.serviceability_program_id,
+            )
+            .await
+            .unwrap_or_default();
+
+            let mut epoch_table = TableBuilder::default();
+            epoch_table.push_record(["dz_epoch".to_string(), "end_time".to_string()]);
+            for epoch_end in &monthly_rewards.epochs {
+                epoch_table.push_record([
+                    epoch_end.epoch.to_string(),
+                    DateTime::from_timestamp(epoch_end.end_time, 0).map_or_else(
+                        || epoch_end.end_time.to_string(),
+                        |end_time| end_time.to_rfc3339(),
+                    ),
+                ]);
+            }
+
+            let mut reward_table = TableBuilder::default();
+            reward_table.push_record([
+                "contributor".to_string(),
+                "pubkey".to_string(),
+                "unit_share".to_string(),
+                "proportion".to_string(),
+            ]);
+            for reward in &monthly_rewards.rewards {
+                reward_table.push_record([
+                    labels
+                        .get(&reward.contributor_key)
+                        .cloned()
+                        .unwrap_or_else(|| reward.contributor_key.to_string()),
+                    reward.contributor_key.to_string(),
+                    reward.unit_share.to_string(),
+                    format_unit_share_proportion(reward.unit_share, u32::from(UnitShare32::MAX)),
+                ]);
+            }
+
+            for table in [epoch_table, reward_table] {
+                let table = table
+                    .build()
+                    .with(Style::psql().remove_horizontals())
+                    .to_string();
+                println!("{table}\n");
+            }
+            println!("Total units: {total_units}");
 
             Ok(())
         }

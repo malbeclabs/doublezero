@@ -1,0 +1,26 @@
+name: install goreleaser-pro
+description: >
+  Download goreleaser-pro for Linux x86_64, check it against a pinned sha256 and
+  put it on PATH. Any failed download or mismatch fails the job: an unchecked
+  binary never runs.
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        VERSION: v2.18.2
+        # goreleaser-pro_Linux_x86_64.tar.gz from that release's checksums.txt, whose
+        # sigstore bundle verifies against goreleaser-pro-internal's release-pro.yml
+        # at that tag. To upgrade: verify the new checksums.txt with cosign the
+        # same way, then change both values together.
+        SHA256: f2701d66dd3f89af4ebf8598f82102659b999e9ccf690ba0f7df7976323153e5
+      run: |
+        set -euo pipefail
+        dir="$RUNNER_TEMP/goreleaser-pro"
+        mkdir -p "$dir"
+        curl -fsSL --retry 3 -o "$dir/goreleaser.tar.gz" \
+          "https://github.com/goreleaser/goreleaser-pro/releases/download/$VERSION/goreleaser-pro_Linux_x86_64.tar.gz"
+        echo "$SHA256  $dir/goreleaser.tar.gz" | sha256sum -c -
+        tar -xzf "$dir/goreleaser.tar.gz" -C "$dir" goreleaser
+        echo "$dir" >> "$GITHUB_PATH"

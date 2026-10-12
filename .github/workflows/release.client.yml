@@ -38,15 +38,9 @@ jobs:
         run: |
           sudo apt update
           sudo apt-get install squashfs-tools rpm musl-tools -y
-      # With cosign on PATH, goreleaser-action checks the signature as well as the checksum.
-      - name: Install cosign
-        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - uses: ./.github/actions/install-goreleaser-pro
       - name: build client release
-        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
-        with:
-          distribution: goreleaser-pro
-          version: v2.18.2
-          args: release -f release/.goreleaser.testnet.client.yaml --clean
+        run: goreleaser release -f release/.goreleaser.testnet.client.yaml --clean
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_BOTS_WEBHOOK }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

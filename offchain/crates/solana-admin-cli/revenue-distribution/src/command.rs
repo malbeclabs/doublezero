@@ -163,6 +163,10 @@ pub struct ConfigureRevenueDistributionOptions {
     #[arg(long, value_name = "PUBKEY")]
     pub sol_2z_swap_program: Option<Pubkey>,
 
+    /// Set the program that pays monthly contributor rewards.
+    #[arg(long, value_name = "PUBKEY")]
+    pub monthly_contributor_rewards_program: Option<Pubkey>,
+
     /// Solana validator base block rewards fee percentage (max: 100%).
     #[arg(long, value_name = "PERCENTAGE")]
     pub solana_validator_base_block_rewards_fee_pct: Option<String>,
@@ -408,6 +412,7 @@ pub async fn try_execute_configure_program(
         rewards_accountant,
         contributor_manager,
         sol_2z_swap_program,
+        monthly_contributor_rewards_program,
         solana_validator_base_block_rewards_fee_pct,
         solana_validator_priority_block_rewards_fee_pct,
         solana_validator_inflation_rewards_fee_pct,
@@ -490,6 +495,17 @@ pub async fn try_execute_configure_program(
 
         let (_, bump) = state::find_withdraw_sol_authority_address(&sol_2z_swap_program_id);
         compute_unit_limit += Wallet::compute_units_for_bump_seed(bump);
+    }
+
+    if let Some(monthly_contributor_rewards_program_id) = monthly_contributor_rewards_program {
+        let configure_program_ix = try_build_configure_program_instruction(
+            &wallet_key,
+            ProgramConfiguration::MonthlyContributorRewardsProgram(
+                monthly_contributor_rewards_program_id,
+            ),
+        )?;
+        instructions.push(configure_program_ix);
+        compute_unit_limit += 3_000;
     }
 
     if let Some(calculation_grace_period_minutes) = calculation_grace_period_minutes {

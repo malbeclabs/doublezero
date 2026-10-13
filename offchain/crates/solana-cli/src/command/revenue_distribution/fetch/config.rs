@@ -97,6 +97,11 @@ impl ConfigCommand {
                 note: Default::default(),
             },
             ConfigTableRow {
+                field: "Monthly contributor rewards program",
+                value: config.monthly_contributor_rewards_program_id.to_string(),
+                note: Default::default(),
+            },
+            ConfigTableRow {
                 field: "Next distribution",
                 value: config.next_completed_dz_epoch.value().to_string(),
                 note: "Current DoubleZero Ledger epoch".to_string(),

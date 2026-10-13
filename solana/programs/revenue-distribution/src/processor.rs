@@ -31,7 +31,10 @@ use crate::{
         DistributionMerkleRootKind, ProgramConfiguration, ProgramFeatureConfiguration,
         ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
-    integration::{IntegrationInstructionData, WithdrawIntegrationRewardsAccounts},
+    integration::{
+        IntegrationInstructionData, WithdrawIntegrationRewardsAccounts,
+        WithdrawMonthlyContributorRewardsAccounts,
+    },
     state::{
         self, CommunityBurnRateParameters, ContributorRewards, Distribution, Journal,
         MonthlyContributorDistribution, ProgramConfig, RecipientShare, RecipientShares,
@@ -163,6 +166,9 @@ fn try_process_instruction(
         ),
         RevenueDistributionInstructionData::FinalizeMonthlyContributorDistributionRewards => {
             try_finalize_monthly_contributor_distribution_rewards(accounts)
+        }
+        RevenueDistributionInstructionData::CollectMonthlyContributorRewards => {
+            try_collect_monthly_contributor_rewards(accounts)
         }
     }
 }
@@ -3297,6 +3303,118 @@ fn try_finalize_monthly_contributor_distribution_rewards(
     Ok(())
 }
 
+// Collects a month's contributor 2Z from the feed-subscription program's ContributorRewardsBucket.
+fn try_collect_monthly_contributor_rewards(accounts: &[AccountInfo]) -> ProgramResult {
+    msg!("Collect monthly contributor rewards");
+
+    // We expect the following accounts for this instruction:
+    // - 0: Program config.
+    // - 1: Monthly distribution.
+    // - 2: Rewards integration.
+    // - 3: Integration's rewards bucket.
+    // - 4: Integration's 2Z token account.
+    // - 5: Monthly distribution's 2Z token account.
+    // - 6: Integration program.
+    // - 7: SPL Token program.
+    let mut accounts_iter = accounts.iter().enumerate();
+
+    // Account 0 must be the program config.
+    let program_config =
+        ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // Make sure the program is not paused.
+    program_config.try_require_unpaused()?;
+
+    // Account 1 must be the monthly distribution.
+    let mut monthly_distribution =
+        ZeroCopyMutAccount::<MonthlyContributorDistribution>::try_next_accounts(
+            &mut accounts_iter,
+            Some(&ID),
+        )?;
+    msg!(
+        "Month: {}-{:02}",
+        monthly_distribution.year,
+        monthly_distribution.month
+    );
+
+    monthly_distribution.try_require_month_ended()?;
+    monthly_distribution.try_require_unfinalized_rewards_calculation()?;
+    monthly_distribution.try_require_uncollected()?;
+
+    // Account 2 must be the rewards integration. The CPI below targets the
+    // program it names, so a caller cannot route the withdraw elsewhere.
+    let rewards_integration =
+        ZeroCopyAccount::<RewardsIntegration>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // Accounts 3 and 4 must be the integration's rewards bucket and its 2Z
+    // token account. They are opaque to rev-distr and forwarded to the CPI,
+    // where the integration enforces its own layout.
+    let (_, integration_rewards_bucket_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+    let (_, integration_2z_token_account_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
+    // Account 5 must be the monthly distribution's 2Z token account.
+    let (_, destination_token_account_info, _) = try_next_2z_token_pda_info(
+        &mut accounts_iter,
+        monthly_distribution.info.key,
+        "monthly distribution's",
+        Some(monthly_distribution.token_2z_pda_bump_seed),
+    )?;
+
+    let balance_before = try_token_account_amount(destination_token_account_info)?;
+
+    let withdraw_ix = try_build_instruction(
+        &rewards_integration.program_id,
+        WithdrawMonthlyContributorRewardsAccounts {
+            integration_rewards_bucket_key: *integration_rewards_bucket_info.key,
+            integration_2z_token_account_key: *integration_2z_token_account_info.key,
+            destination_token_account_key: *destination_token_account_info.key,
+            monthly_distribution_key: *monthly_distribution.info.key,
+        },
+        &IntegrationInstructionData::WithdrawMonthlyContributorRewards,
+    )
+    .unwrap();
+
+    let year_seed = monthly_distribution.year.to_le_bytes();
+    let monthly_distribution_signer_seeds = &[
+        MonthlyContributorDistribution::SEED_PREFIX,
+        &year_seed,
+        &[monthly_distribution.month],
+        &[monthly_distribution.bump_seed],
+    ];
+
+    invoke_signed_unchecked(&withdraw_ix, accounts, &[monthly_distribution_signer_seeds])?;
+
+    let balance_after = try_token_account_amount(destination_token_account_info)?;
+    // No underflow: destination is rev-distr's monthly distribution 2Z PDA.
+    let collected_amount = balance_after - balance_before;
+
+    // A registered program that accepts the call but moves nothing would
+    // otherwise mark the month collected and shut out its real 2Z.
+    if collected_amount == 0 {
+        msg!(
+            "Integration {} transferred no 2Z",
+            rewards_integration.program_id
+        );
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    monthly_distribution.collected_2z_amount = monthly_distribution
+        .collected_2z_amount
+        .checked_add(collected_amount)
+        .expect("MonthlyContributorDistribution.collected_2z_amount overflowed");
+    monthly_distribution.set_is_collected(true);
+
+    msg!(
+        "Collected {} 2Z from integration {}",
+        collected_amount,
+        rewards_integration.program_id
+    );
+
+    Ok(())
+}
+
 //
 // Account info handling.
 //
@@ -3573,6 +3691,16 @@ impl MonthlyContributorDistribution {
     fn try_require_unfinalized_rewards_calculation(&self) -> ProgramResult {
         if self.is_rewards_calculation_finalized() {
             msg!("Monthly contributor distribution rewards have already been finalized");
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn try_require_uncollected(&self) -> ProgramResult {
+        if self.is_collected() {
+            msg!("Monthly contributor distribution has already been collected");
             return Err(ProgramError::InvalidAccountData);
         }
 

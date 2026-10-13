@@ -1298,6 +1298,67 @@ impl From<FinalizeMonthlyContributorDistributionRewardsAccounts> for Vec<Account
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CollectMonthlyContributorRewardsAccounts {
+    pub program_config_key: Pubkey,
+    pub monthly_distribution_key: Pubkey,
+    pub rewards_integration_key: Pubkey,
+    pub integration_rewards_bucket_key: Pubkey,
+    pub integration_2z_token_account_key: Pubkey,
+    pub destination_token_account_key: Pubkey,
+    pub integration_program_key: Pubkey,
+    pub token_program_key: Pubkey,
+}
+
+impl CollectMonthlyContributorRewardsAccounts {
+    pub fn new(
+        year: u16,
+        month: u8,
+        integration_program_id: &Pubkey,
+        integration_rewards_bucket_key: &Pubkey,
+        integration_2z_token_account_key: &Pubkey,
+    ) -> Self {
+        let monthly_distribution_key = MonthlyContributorDistribution::find_address(year, month).0;
+
+        Self {
+            program_config_key: ProgramConfig::find_address().0,
+            monthly_distribution_key,
+            rewards_integration_key: RewardsIntegration::find_address(integration_program_id).0,
+            integration_rewards_bucket_key: *integration_rewards_bucket_key,
+            integration_2z_token_account_key: *integration_2z_token_account_key,
+            destination_token_account_key: find_2z_token_pda_address(&monthly_distribution_key).0,
+            integration_program_key: *integration_program_id,
+            token_program_key: spl_token_interface::ID,
+        }
+    }
+}
+
+impl From<CollectMonthlyContributorRewardsAccounts> for Vec<AccountMeta> {
+    fn from(accounts: CollectMonthlyContributorRewardsAccounts) -> Self {
+        let CollectMonthlyContributorRewardsAccounts {
+            program_config_key,
+            monthly_distribution_key,
+            rewards_integration_key,
+            integration_rewards_bucket_key,
+            integration_2z_token_account_key,
+            destination_token_account_key,
+            integration_program_key,
+            token_program_key,
+        } = accounts;
+
+        vec![
+            AccountMeta::new_readonly(program_config_key, false),
+            AccountMeta::new(monthly_distribution_key, false),
+            AccountMeta::new_readonly(rewards_integration_key, false),
+            AccountMeta::new(integration_rewards_bucket_key, false),
+            AccountMeta::new(integration_2z_token_account_key, false),
+            AccountMeta::new(destination_token_account_key, false),
+            AccountMeta::new_readonly(integration_program_key, false),
+            AccountMeta::new_readonly(token_program_key, false),
+        ]
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

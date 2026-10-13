@@ -13,7 +13,7 @@ use solana_instruction::{AccountMeta, Instruction};
 use solana_pubkey::Pubkey;
 use solana_system_interface::program as system_program;
 
-use crate::ID;
+use crate::{state::MockMonthlyRewardsBucket, ID};
 
 /// Mock integration instructions. The mock's processor first checks whether
 /// incoming data starts with byte 0 (the shared
@@ -24,11 +24,16 @@ use crate::ID;
 pub enum MockRewardsIntegrationInstructionData {
     /// Create the mock's per-epoch integration distribution PDA.
     InitializeIntegrationDistribution { dz_epoch: DoubleZeroEpoch },
+
+    /// Create the mock's monthly rewards bucket PDA.
+    InitializeMonthlyRewardsBucket { year: u16, month: u8 },
 }
 
 impl MockRewardsIntegrationInstructionData {
     pub const INITIALIZE_INTEGRATION_DISTRIBUTION: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new([1, 0, 0, 0, 0, 0, 0, 0]);
+    pub const INITIALIZE_MONTHLY_REWARDS_BUCKET: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new([2, 0, 0, 0, 0, 0, 0, 0]);
 }
 
 impl BorshDeserialize for MockRewardsIntegrationInstructionData {
@@ -37,6 +42,11 @@ impl BorshDeserialize for MockRewardsIntegrationInstructionData {
             Self::INITIALIZE_INTEGRATION_DISTRIBUTION => {
                 let dz_epoch = BorshDeserialize::deserialize_reader(reader)?;
                 Ok(Self::InitializeIntegrationDistribution { dz_epoch })
+            }
+            Self::INITIALIZE_MONTHLY_REWARDS_BUCKET => {
+                let year = BorshDeserialize::deserialize_reader(reader)?;
+                let month = BorshDeserialize::deserialize_reader(reader)?;
+                Ok(Self::InitializeMonthlyRewardsBucket { year, month })
             }
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
@@ -52,6 +62,11 @@ impl BorshSerialize for MockRewardsIntegrationInstructionData {
             Self::InitializeIntegrationDistribution { dz_epoch } => {
                 Self::INITIALIZE_INTEGRATION_DISTRIBUTION.serialize(writer)?;
                 dz_epoch.serialize(writer)
+            }
+            Self::InitializeMonthlyRewardsBucket { year, month } => {
+                Self::INITIALIZE_MONTHLY_REWARDS_BUCKET.serialize(writer)?;
+                year.serialize(writer)?;
+                month.serialize(writer)
             }
         }
     }
@@ -78,6 +93,28 @@ pub fn initialize_integration_distribution(
             AccountMeta::new_readonly(system_program::ID, false),
         ],
         &MockRewardsIntegrationInstructionData::InitializeIntegrationDistribution { dz_epoch },
+    )
+    .unwrap()
+}
+
+/// Build the instruction for creating the mock's monthly rewards bucket PDA
+/// along with its 2Z token account.
+pub fn initialize_monthly_rewards_bucket(payer_key: &Pubkey, year: u16, month: u8) -> Instruction {
+    let (monthly_rewards_bucket_key, _) = MockMonthlyRewardsBucket::find_address(year, month);
+    let (monthly_rewards_bucket_2z_key, _) =
+        find_integration_bucket_address(&ID, &monthly_rewards_bucket_key);
+
+    try_build_instruction(
+        &ID,
+        vec![
+            AccountMeta::new(*payer_key, true),
+            AccountMeta::new(monthly_rewards_bucket_key, false),
+            AccountMeta::new(monthly_rewards_bucket_2z_key, false),
+            AccountMeta::new_readonly(DOUBLEZERO_MINT_KEY, false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
+            AccountMeta::new_readonly(system_program::ID, false),
+        ],
+        &MockRewardsIntegrationInstructionData::InitializeMonthlyRewardsBucket { year, month },
     )
     .unwrap()
 }

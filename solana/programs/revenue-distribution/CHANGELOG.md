@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- collect a calendar month's contributor 2Z from an integration into its monthly contributor distribution, once per month (malbeclabs/infra#2694)
 - add per-calendar-month contributor distributions: initialize, post rewards root, finalize once the month has ended (malbeclabs/infra#2693)
 - reject null-root rewards finalize while 2Z is owed to contributors (malbeclabs/infra#1868)
 - reject collecting an integration registered after a distribution's snapshot (malbeclabs/infra#1868)

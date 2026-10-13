@@ -29,6 +29,7 @@ All notable changes to this project will be documented in this file.
   - The devcontainer's Solana CLI moves from v2.3.1 to v3.0.12, matching `solana/Dockerfile`, so its `cargo-build-sbf` matches the solana 3.0 program tree. Rebuild the devcontainer to pick it up.
 - Solana programs
   - `revenue-distribution` adds monthly contributor distributions. (malbeclabs/infra#2693)
+  - `revenue-distribution` collects a month's contributor 2Z from the feed-subscription program into its monthly contributor distribution. (malbeclabs/infra#2694)
 - Serviceability
   - `CreateFeed` refuses a feed with a builder and a chain, and `UpdateFeed` refuses to give such a feed any chain except `unspecified`. The rewards process uses either the builder or the chain to find who gets the rewards. (#4385)
 - Telemetry

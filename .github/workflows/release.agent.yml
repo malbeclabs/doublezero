@@ -27,11 +27,9 @@ jobs:
         run: |
           sudo apt update
           sudo apt-get install squashfs-tools rpm -y
+      - uses: ./.github/actions/install-goreleaser-pro
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser-pro
-          args: release -f release/.goreleaser.testnet.agent.yaml --clean
+        run: goreleaser release -f release/.goreleaser.testnet.agent.yaml --clean
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_BOTS_WEBHOOK }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -67,11 +67,9 @@ jobs:
       - name: Set env vars
         run: ./scripts/env.sh >> $GITHUB_ENV
 
+      - uses: ./.github/actions/install-goreleaser-pro
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser-pro
-          args: release --snapshot -f release/.goreleaser.base.${{ matrix.release }}.yaml --clean
+        run: goreleaser release --snapshot -f release/.goreleaser.base.${{ matrix.release }}.yaml --clean
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_BOTS_WEBHOOK }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

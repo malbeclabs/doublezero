@@ -66,11 +66,9 @@ jobs:
 
       # goreleaser runs from the repository root and its `mix release` hooks name
       # offchain/scheduler as their directory.
+      - uses: ./.github/actions/install-goreleaser-pro
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser-pro
-          args: release -f offchain/release/.goreleaser.doublezero-offchain-scheduler.yaml --clean --verbose
+        run: goreleaser release -f offchain/release/.goreleaser.doublezero-offchain-scheduler.yaml --clean --verbose
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_BOTS_WEBHOOK }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -30,11 +30,9 @@ jobs:
       # goreleaser runs from the repository root, not from offchain/: the merged
       # workspace writes to the root target/ directory, which is where the rust
       # builder looks for the binary it packages.
+      - uses: ./.github/actions/install-goreleaser-pro
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          distribution: goreleaser-pro
-          args: release -f offchain/release/.goreleaser.sentinel.yaml --clean
+        run: goreleaser release -f offchain/release/.goreleaser.sentinel.yaml --clean
         env:
           SLACK_WEBHOOK: ${{ secrets.SLACK_BOTS_WEBHOOK }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

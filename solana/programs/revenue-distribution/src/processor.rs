@@ -3387,8 +3387,15 @@ fn try_collect_monthly_contributor_rewards(accounts: &[AccountInfo]) -> ProgramR
     invoke_signed_unchecked(&withdraw_ix, accounts, &[monthly_distribution_signer_seeds])?;
 
     let balance_after = try_token_account_amount(destination_token_account_info)?;
-    // No underflow: destination is rev-distr's monthly distribution 2Z PDA.
-    let collected_amount = balance_after - balance_before;
+    // The integration holds the monthly distribution's signature during the
+    // CPI, so it could move 2Z out of the destination.
+    let collected_amount = balance_after.checked_sub(balance_before).ok_or_else(|| {
+        msg!(
+            "Integration {} reduced the monthly distribution's 2Z balance",
+            rewards_integration.program_id
+        );
+        ProgramError::InvalidAccountData
+    })?;
 
     // A registered program that accepts the call but moves nothing would
     // otherwise mark the month collected and shut out its real 2Z.

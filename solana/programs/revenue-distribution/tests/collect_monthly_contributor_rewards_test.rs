@@ -356,7 +356,7 @@ async fn test_cannot_collect_monthly_contributor_rewards_from_another_month() {
         .await
         .unwrap();
 
-    let (tx_err, _) = simulate_collect(
+    let (tx_err, program_logs) = simulate_collect(
         &mut test_setup,
         &mock_rewards_integration::ID,
         &august_bucket_key,
@@ -367,6 +367,10 @@ async fn test_cannot_collect_monthly_contributor_rewards_from_another_month() {
     assert_eq!(
         tx_err,
         TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+    );
+    assert_eq!(
+        program_logs.get(5).unwrap(),
+        "Program log: Month mismatch: integration=2026-08, monthly distribution=2026-09"
     );
 
     let (_, monthly_distribution, _, _, _) = test_setup

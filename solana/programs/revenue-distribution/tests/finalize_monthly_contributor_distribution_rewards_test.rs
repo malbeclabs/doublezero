@@ -8,9 +8,11 @@ use doublezero_revenue_distribution::{
         account::FinalizeMonthlyContributorDistributionRewardsAccounts, ProgramConfiguration,
         ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
+    integration::find_integration_bucket_address,
     state::MonthlyContributorDistribution,
     ID,
 };
+use mock_rewards_integration::state::MockMonthlyRewardsBucket;
 use solana_program_test::{tokio, BanksClientError};
 use solana_sdk::{
     instruction::InstructionError,
@@ -74,25 +76,6 @@ async fn simulate_finalize(
     test_setup
         .unwrap_simulation_error(&[finalize_ix], &[signer])
         .await
-}
-
-/// Collect does not exist yet, so write `collected_2z_amount` directly.
-async fn override_collected_2z_amount(test_setup: &mut common::ProgramTestWithOwner, amount: u64) {
-    let key = MonthlyContributorDistribution::find_address(YEAR, MONTH).0;
-    let mut account = test_setup
-        .context
-        .banks_client
-        .get_account(key)
-        .await
-        .unwrap()
-        .unwrap();
-
-    bytemuck::from_bytes_mut::<MonthlyContributorDistribution>(
-        &mut account.data[zero_copy::data_range::<MonthlyContributorDistribution>()],
-    )
-    .collected_2z_amount = amount;
-
-    test_setup.context.set_account(&key, &account.into());
 }
 
 //
@@ -183,9 +166,13 @@ async fn test_cannot_finalize_monthly_contributor_distribution_rewards_unpayable
     for (total_contributors, merkle_root) in [(1, Hash::default()), (0, Hash::new_unique())] {
         let FinalizeMonthlyRewardsSetup {
             mut test_setup,
+            admin_signer,
             rewards_accountant_signer,
-            ..
         } = setup_for_finalize_monthly_rewards().await;
+
+        let bucket_key = MockMonthlyRewardsBucket::find_address(YEAR, MONTH).0;
+        let bucket_2z_key =
+            find_integration_bucket_address(&mock_rewards_integration::ID, &bucket_key).0;
 
         test_setup
             .configure_monthly_contributor_distribution_rewards(
@@ -196,8 +183,25 @@ async fn test_cannot_finalize_monthly_contributor_distribution_rewards_unpayable
                 merkle_root,
             )
             .await
+            .unwrap()
+            .initialize_rewards_integration(&admin_signer, &mock_rewards_integration::ID)
+            .await
+            .unwrap()
+            .mock_initialize_monthly_rewards_bucket(YEAR, MONTH)
+            .await
+            .unwrap()
+            .transfer_2z(&bucket_2z_key, 1)
+            .await
+            .unwrap()
+            .collect_monthly_contributor_rewards(
+                YEAR,
+                MONTH,
+                &mock_rewards_integration::ID,
+                &bucket_key,
+                &bucket_2z_key,
+            )
+            .await
             .unwrap();
-        override_collected_2z_amount(&mut test_setup, 1).await;
 
         let (tx_err, program_logs) = simulate_finalize(&mut test_setup, &rewards_accountant_signer)
             .await

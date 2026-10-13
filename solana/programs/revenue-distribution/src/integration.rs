@@ -15,7 +15,7 @@ use solana_program_error::ProgramError;
 use solana_program_pack::Pack;
 use solana_pubkey::Pubkey;
 
-use crate::state::Distribution;
+use crate::state::{Distribution, MonthlyContributorDistribution};
 
 /// Seed prefix every integration program must use for its per-epoch
 /// "integration distribution" PDA (seeded as `[PREFIX, dz_epoch.as_seed()]`).
@@ -61,17 +61,29 @@ pub enum IntegrationInstructionData {
     /// and any revenue they've already accumulated for it stays with the
     /// integration.
     WithdrawIntegrationRewards,
+
+    /// Transfer one calendar month's contributor 2Z from the integration's
+    /// monthly bucket to that month's `MonthlyContributorDistribution`. The
+    /// feed-subscription program implements this for its
+    /// `ContributorRewardsBucket`. See
+    /// [`WithdrawMonthlyContributorRewardsAccounts`] for the account list.
+    WithdrawMonthlyContributorRewards,
 }
 
 impl IntegrationInstructionData {
     pub const WITHDRAW_INTEGRATION_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::integration_ix::withdraw_integration_rewards");
+    pub const WITHDRAW_MONTHLY_CONTRIBUTOR_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::integration_ix::withdraw_monthly_contributor_rewards");
 }
 
 impl BorshDeserialize for IntegrationInstructionData {
     fn deserialize_reader<R: io::Read>(reader: &mut R) -> io::Result<Self> {
         match Discriminator::deserialize_reader(reader)? {
             Self::WITHDRAW_INTEGRATION_REWARDS => Ok(Self::WithdrawIntegrationRewards),
+            Self::WITHDRAW_MONTHLY_CONTRIBUTOR_REWARDS => {
+                Ok(Self::WithdrawMonthlyContributorRewards)
+            }
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "Invalid discriminator",
@@ -85,6 +97,9 @@ impl BorshSerialize for IntegrationInstructionData {
         match self {
             Self::WithdrawIntegrationRewards => {
                 Self::WITHDRAW_INTEGRATION_REWARDS.serialize(writer)
+            }
+            Self::WithdrawMonthlyContributorRewards => {
+                Self::WITHDRAW_MONTHLY_CONTRIBUTOR_REWARDS.serialize(writer)
             }
         }
     }
@@ -194,6 +209,116 @@ impl<'a, 'b> TryNextAccounts<'a, 'b, crate::types::DoubleZeroEpoch>
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WithdrawMonthlyContributorRewardsAccounts {
+    pub integration_rewards_bucket_key: Pubkey,
+    pub integration_2z_token_account_key: Pubkey,
+    pub destination_token_account_key: Pubkey,
+    pub monthly_distribution_key: Pubkey,
+}
+
+impl From<WithdrawMonthlyContributorRewardsAccounts> for Vec<AccountMeta> {
+    fn from(accounts: WithdrawMonthlyContributorRewardsAccounts) -> Self {
+        let WithdrawMonthlyContributorRewardsAccounts {
+            integration_rewards_bucket_key,
+            integration_2z_token_account_key,
+            destination_token_account_key,
+            monthly_distribution_key,
+        } = accounts;
+
+        vec![
+            AccountMeta::new(integration_rewards_bucket_key, false),
+            AccountMeta::new(integration_2z_token_account_key, false),
+            AccountMeta::new(destination_token_account_key, false),
+            AccountMeta::new_readonly(monthly_distribution_key, true),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
+        ]
+    }
+}
+
+/// Handler-side view of [`WithdrawMonthlyContributorRewardsAccounts`].
+/// Integration programs peel this out of their `accounts_iter` in one call,
+/// which enforces the slot ordering, the writable and signer flags, that the
+/// `MonthlyContributorDistribution`'s year and month match the integration's
+/// bucket, and that the destination token account's authority is that
+/// `MonthlyContributorDistribution`.
+pub struct WithdrawMonthlyContributorRewardsHandlerAccounts<'a, 'b> {
+    pub integration_rewards_bucket_info: (usize, &'a AccountInfo<'b>),
+    pub integration_2z_token_account_info: (usize, &'a AccountInfo<'b>),
+    pub destination_token_account_info: (usize, &'a AccountInfo<'b>),
+    pub monthly_distribution: ZeroCopyAccount<'a, 'b, MonthlyContributorDistribution>,
+}
+
+impl<'a, 'b> TryNextAccounts<'a, 'b, (u16, u8)>
+    for WithdrawMonthlyContributorRewardsHandlerAccounts<'a, 'b>
+{
+    fn try_next_accounts(
+        accounts_iter: &mut EnumeratedAccountInfoIter<'a, 'b>,
+        (integration_year, integration_month): (u16, u8),
+    ) -> Result<Self, ProgramError> {
+        let integration_rewards_bucket_info = try_next_enumerated_account(
+            accounts_iter,
+            NextAccountOptions {
+                must_be_writable: true,
+                ..Default::default()
+            },
+        )?;
+        let integration_2z_token_account_info = try_next_enumerated_account(
+            accounts_iter,
+            NextAccountOptions {
+                must_be_writable: true,
+                ..Default::default()
+            },
+        )?;
+        let destination_token_account_info = try_next_enumerated_account(
+            accounts_iter,
+            NextAccountOptions {
+                must_be_writable: true,
+                ..Default::default()
+            },
+        )?;
+        let monthly_distribution =
+            ZeroCopyAccount::<MonthlyContributorDistribution>::try_next_accounts(
+                accounts_iter,
+                Some(&crate::ID),
+            )?;
+        if !monthly_distribution.info.is_signer {
+            msg!("Account {} must be signer", monthly_distribution.index);
+            return Err(ProgramError::MissingRequiredSignature);
+        }
+        if (monthly_distribution.year, monthly_distribution.month)
+            != (integration_year, integration_month)
+        {
+            msg!(
+                "Month mismatch: integration={}-{:02}, monthly distribution={}-{:02}",
+                integration_year,
+                integration_month,
+                monthly_distribution.year,
+                monthly_distribution.month,
+            );
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        let destination_token_account = spl_token_interface::state::Account::unpack(
+            &destination_token_account_info.1.data.borrow()[..],
+        )?;
+        if destination_token_account.owner != *monthly_distribution.info.key {
+            msg!(
+                "Destination token account (account {}) authority must be monthly distribution",
+                destination_token_account_info.0,
+            );
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        Ok(Self {
+            integration_rewards_bucket_info,
+            integration_2z_token_account_info,
+            destination_token_account_info,
+            monthly_distribution,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -252,5 +377,57 @@ mod tests {
         // Slot 4 (SPL Token program) is read-only, not signer.
         assert!(!metas[4].is_writable);
         assert!(!metas[4].is_signer);
+    }
+
+    #[test]
+    fn withdraw_monthly_contributor_rewards_borsh_roundtrip() {
+        let ix = IntegrationInstructionData::WithdrawMonthlyContributorRewards;
+
+        let serialized = borsh::to_vec(&ix).unwrap();
+        assert_eq!(
+            serialized,
+            borsh::to_vec(&IntegrationInstructionData::WITHDRAW_MONTHLY_CONTRIBUTOR_REWARDS)
+                .unwrap()
+        );
+        assert_eq!(
+            IntegrationInstructionData::try_from_slice(&serialized).unwrap(),
+            ix
+        );
+    }
+
+    #[test]
+    fn withdraw_monthly_contributor_rewards_accounts_into_meta_preserves_order_and_flags() {
+        let accounts = WithdrawMonthlyContributorRewardsAccounts {
+            integration_rewards_bucket_key: Pubkey::new_unique(),
+            integration_2z_token_account_key: Pubkey::new_unique(),
+            destination_token_account_key: Pubkey::new_unique(),
+            monthly_distribution_key: Pubkey::new_unique(),
+        };
+        let keys = [
+            accounts.integration_rewards_bucket_key,
+            accounts.integration_2z_token_account_key,
+            accounts.destination_token_account_key,
+            accounts.monthly_distribution_key,
+            spl_token_interface::ID,
+        ];
+
+        let metas = Vec::<AccountMeta>::from(accounts);
+        assert_eq!(
+            metas.iter().map(|meta| meta.pubkey).collect::<Vec<_>>(),
+            keys
+        );
+        assert_eq!(
+            metas
+                .iter()
+                .map(|meta| (meta.is_writable, meta.is_signer))
+                .collect::<Vec<_>>(),
+            [
+                (true, false),
+                (true, false),
+                (true, false),
+                (false, true),
+                (false, false),
+            ]
+        );
     }
 }

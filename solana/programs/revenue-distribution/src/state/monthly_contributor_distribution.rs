@@ -48,6 +48,7 @@ impl MonthlyContributorDistribution {
     pub const SEED_PREFIX: &'static [u8] = b"monthly_contributor_distribution";
 
     pub const FLAG_IS_REWARDS_CALCULATION_FINALIZED_BIT: usize = 0;
+    pub const FLAG_IS_COLLECTED_BIT: usize = 1;
 
     pub fn find_address(year: u16, month: u8) -> (Pubkey, u8) {
         Pubkey::find_program_address(
@@ -67,6 +68,16 @@ impl MonthlyContributorDistribution {
             Self::FLAG_IS_REWARDS_CALCULATION_FINALIZED_BIT,
             should_finalize,
         );
+    }
+
+    #[inline]
+    pub fn is_collected(&self) -> bool {
+        self.flags.bit(Self::FLAG_IS_COLLECTED_BIT)
+    }
+
+    pub fn set_is_collected(&mut self, should_collect: bool) {
+        self.flags
+            .set_bit(Self::FLAG_IS_COLLECTED_BIT, should_collect);
     }
 
     /// Unix timestamp of the first second after this month ends (UTC), or
@@ -122,6 +133,19 @@ mod tests {
 
         distribution.set_is_rewards_calculation_finalized(false);
         assert!(!distribution.is_rewards_calculation_finalized());
+    }
+
+    #[test]
+    fn test_is_collected() {
+        let mut distribution = MonthlyContributorDistribution::default();
+        assert!(!distribution.is_collected());
+
+        distribution.set_is_collected(true);
+        assert!(distribution.is_collected());
+        assert!(!distribution.is_rewards_calculation_finalized());
+
+        distribution.set_is_collected(false);
+        assert!(!distribution.is_collected());
     }
 
     #[test]

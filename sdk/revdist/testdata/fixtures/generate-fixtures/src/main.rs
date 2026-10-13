@@ -135,6 +135,7 @@ fn generate_program_config(dir: &Path) {
     config.relay_parameters.distribute_rewards_lamports = 10000;
     config.last_initialized_distribution_timestamp = 1_700_000_000;
     config.debt_write_off_feature_activation_epoch = DoubleZeroEpoch::new(91);
+    config.monthly_contributor_rewards_program_id = pubkey_from_byte(7);
 
     let disc = ProgramConfig::discriminator_slice();
     let meta = FixtureMeta {
@@ -163,6 +164,7 @@ fn generate_program_config(dir: &Path) {
             field_u32("FixedSOLAmount", 50000),
             field_u32("DistributeRewardsLamports", 10000),
             field_u64("DebtWriteOffFeatureActivationEpoch", 91),
+            field_pubkey("MonthlyContributorRewardsProgramID", &pubkey_from_byte(7)),
         ],
     };
 

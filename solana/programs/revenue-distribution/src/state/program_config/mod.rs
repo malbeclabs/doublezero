@@ -72,6 +72,11 @@ pub struct ProgramConfig {
     ///
     /// [RFC-0002]: https://github.com/malbeclabs/doublezero-solana/blob/main/docs/rfc/0002_IMPROVED_DEBT_WRITE_OFF_TRACKING.md
     pub debt_write_off_feature_activation_epoch: DoubleZeroEpoch,
+
+    /// The only program `CollectMonthlyContributorRewards` calls. It is kept
+    /// out of the rewards integration registry so that paying monthly rewards
+    /// never adds a collect every epoch distribution has to wait for.
+    pub monthly_contributor_rewards_program_id: Pubkey,
 }
 
 impl PrecomputedDiscriminator for ProgramConfig {

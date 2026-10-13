@@ -25,8 +25,9 @@ use doublezero_program_tools::{
 use doublezero_revenue_distribution::{
     instruction::{
         account::{
-            CollectIntegrationRewardsAccounts, ConfigureContributorRewardsAccounts,
-            ConfigureDistributionDebtAccounts, ConfigureDistributionRewardsAccounts,
+            CollectIntegrationRewardsAccounts, CollectMonthlyContributorRewardsAccounts,
+            ConfigureContributorRewardsAccounts, ConfigureDistributionDebtAccounts,
+            ConfigureDistributionRewardsAccounts,
             ConfigureMonthlyContributorDistributionRewardsAccounts, ConfigureProgramAccounts,
             DistributeRewardsAccounts, EnableSolanaValidatorDebtWriteOffAccounts,
             FinalizeDistributionDebtAccounts, FinalizeDistributionRewardsAccounts,
@@ -1049,6 +1050,40 @@ impl ProgramTestWithOwner {
         Ok(self)
     }
 
+    pub async fn collect_monthly_contributor_rewards(
+        &mut self,
+        year: u16,
+        month: u8,
+        integration_program_id: &Pubkey,
+        integration_rewards_bucket_key: &Pubkey,
+        integration_2z_token_account_key: &Pubkey,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.context.payer;
+
+        let collect_ix = try_build_instruction(
+            &ID,
+            CollectMonthlyContributorRewardsAccounts::new(
+                year,
+                month,
+                integration_program_id,
+                integration_rewards_bucket_key,
+                integration_2z_token_account_key,
+            ),
+            &RevenueDistributionInstructionData::CollectMonthlyContributorRewards,
+        )
+        .unwrap();
+
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
+            &[collect_ix],
+            &[payer_signer],
+        )
+        .await?;
+
+        Ok(self)
+    }
+
     pub async fn pay_solana_validator_debt(
         &mut self,
         dz_epoch: DoubleZeroEpoch,
@@ -1236,6 +1271,30 @@ impl ProgramTestWithOwner {
         let ix = mock_rewards_integration::instruction::initialize_integration_distribution(
             &payer_signer.pubkey(),
             dz_epoch,
+        );
+
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
+            &[ix],
+            &[payer_signer],
+        )
+        .await?;
+
+        Ok(self)
+    }
+
+    pub async fn mock_initialize_monthly_rewards_bucket(
+        &mut self,
+        year: u16,
+        month: u8,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.context.payer;
+
+        let ix = mock_rewards_integration::instruction::initialize_monthly_rewards_bucket(
+            &payer_signer.pubkey(),
+            year,
+            month,
         );
 
         self.context.last_blockhash = process_instructions_for_test(

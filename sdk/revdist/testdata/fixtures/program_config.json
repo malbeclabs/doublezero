@@ -1,6 +1,6 @@
 {
   "name": "ProgramConfig",
-  "struct_size": 600,
+  "struct_size": 632,
   "discriminator_hex": "cfb485ec3027f11b",
   "fields": [
     {
@@ -107,6 +107,11 @@
       "name": "DebtWriteOffFeatureActivationEpoch",
       "value": "91",
       "typ": "u64"
+    },
+    {
+      "name": "MonthlyContributorRewardsProgramID",
+      "value": "UKrXU5bFrTzrqqpZXs8GVDbp4xPweiM65ADXNAy3ddR",
+      "typ": "pubkey"
     }
   ]
 }

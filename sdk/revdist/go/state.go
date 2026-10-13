@@ -5,7 +5,7 @@ import (
 )
 
 // ProgramConfig represents the on-chain program configuration account.
-// On-chain size: 8 (discriminator) + 600 = 608 bytes.
+// On-chain size: 8 (discriminator) + 632 = 640 bytes.
 type ProgramConfig struct {
 	Flags                                uint64           // 8 bytes
 	NextCompletedDZEpoch                 uint64           // 8 bytes
@@ -25,7 +25,8 @@ type ProgramConfig struct {
 	RelayParameters                      RelayParameters
 	LastInitializedDistributionTimestamp uint32  // 4 bytes
 	Reserved1                            [4]byte // 4 bytes padding
-	DebtWriteOffFeatureActivationEpoch   uint64  // 8 bytes
+	DebtWriteOffFeatureActivationEpoch   uint64           // 8 bytes
+	MonthlyContributorRewardsProgramID   solana.PublicKey // 32 bytes
 }
 
 // DistributionParameters contains epoch distribution configuration.

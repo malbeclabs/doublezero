@@ -156,9 +156,10 @@ export interface ProgramConfig {
   relayParameters: RelayParameters;
   lastInitializedDistributionTimestamp: number;
   debtWriteOffFeatureActivationEpoch: bigint;
+  monthlyContributorRewardsProgramId: PublicKey;
 }
 
-export const PROGRAM_CONFIG_STRUCT_SIZE = 600;
+export const PROGRAM_CONFIG_STRUCT_SIZE = 632;
 
 export function deserializeProgramConfig(
   data: Uint8Array,
@@ -196,6 +197,8 @@ export function deserializeProgramConfig(
   off += 4;
   off += 4; // 4 bytes padding
   const debtWriteOffFeatureActivationEpoch = dv.getBigUint64(off, true);
+  off += 8;
+  const monthlyContributorRewardsProgramId = readPubkey(dv, off);
 
   return {
     flags,
@@ -215,6 +218,7 @@ export function deserializeProgramConfig(
     relayParameters,
     lastInitializedDistributionTimestamp,
     debtWriteOffFeatureActivationEpoch,
+    monthlyContributorRewardsProgramId,
   };
 }
 

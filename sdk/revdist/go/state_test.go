@@ -18,7 +18,7 @@ func TestStructSizes(t *testing.T) {
 		size     uintptr
 		expected uintptr
 	}{
-		{"ProgramConfig", unsafe.Sizeof(ProgramConfig{}), 600},
+		{"ProgramConfig", unsafe.Sizeof(ProgramConfig{}), 632},
 		{"Distribution", unsafe.Sizeof(Distribution{}), 448},
 		{"SolanaValidatorDeposit", unsafe.Sizeof(SolanaValidatorDeposit{}), 96},
 		{"ContributorRewards", unsafe.Sizeof(ContributorRewards{}), 600},

@@ -10,7 +10,7 @@ use doublezero_revenue_distribution::{
     integration::{
         find_integration_bucket_address, find_integration_distribution_address,
         IntegrationInstructionData, WithdrawIntegrationRewardsHandlerAccounts,
-        INTEGRATION_DISTRIBUTION_SEED_PREFIX,
+        WithdrawMonthlyContributorRewardsHandlerAccounts, INTEGRATION_DISTRIBUTION_SEED_PREFIX,
     },
     state::TOKEN_2Z_PDA_SEED_PREFIX,
     types::DoubleZeroEpoch,
@@ -24,7 +24,9 @@ use solana_pubkey::Pubkey;
 use spl_token_interface::instruction as token_instruction;
 
 use crate::{
-    instruction::MockRewardsIntegrationInstructionData, state::MockIntegrationDistribution, ID,
+    instruction::MockRewardsIntegrationInstructionData,
+    state::{MockIntegrationDistribution, MockMonthlyRewardsBucket},
+    ID,
 };
 
 solana_program_entrypoint::entrypoint!(try_process_instruction);
@@ -43,6 +45,9 @@ fn try_process_instruction(
             IntegrationInstructionData::WithdrawIntegrationRewards => {
                 try_withdraw_integration_rewards(accounts)
             }
+            IntegrationInstructionData::WithdrawMonthlyContributorRewards => {
+                try_withdraw_monthly_contributor_rewards(accounts)
+            }
         },
         Err(_) => {
             let ix = BorshDeserialize::try_from_slice(data)
@@ -51,6 +56,10 @@ fn try_process_instruction(
                 MockRewardsIntegrationInstructionData::InitializeIntegrationDistribution {
                     dz_epoch,
                 } => try_initialize_integration_distribution(accounts, dz_epoch),
+                MockRewardsIntegrationInstructionData::InitializeMonthlyRewardsBucket {
+                    year,
+                    month,
+                } => try_initialize_monthly_rewards_bucket(accounts, year, month),
             }
         }
     }
@@ -193,6 +202,145 @@ fn try_withdraw_integration_rewards(accounts: &[AccountInfo]) -> ProgramResult {
         "Integration transferred {} 2Z for DZ epoch {}",
         bucket_amount,
         integration_distribution_dz_epoch,
+    );
+
+    Ok(())
+}
+
+fn try_initialize_monthly_rewards_bucket(
+    accounts: &[AccountInfo],
+    year: u16,
+    month: u8,
+) -> ProgramResult {
+    msg!("Initialize monthly rewards bucket");
+
+    // We expect the following accounts:
+    // - 0: Payer (funder for the new PDAs).
+    // - 1: New monthly rewards bucket PDA.
+    // - 2: New monthly rewards bucket 2Z token account.
+    // - 3: 2Z mint.
+    // - 4: SPL Token program.
+    // - 5: System program.
+    let mut accounts_iter = accounts.iter().enumerate();
+
+    let (_, payer_info) = try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+    let (_, new_monthly_rewards_bucket_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
+    let (expected_key, bump_seed) = MockMonthlyRewardsBucket::find_address(year, month);
+    if new_monthly_rewards_bucket_info.key != &expected_key {
+        msg!("Invalid seeds for monthly rewards bucket");
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    try_create_account(
+        Invoker::Signer(payer_info.key),
+        Invoker::Pda {
+            key: &expected_key,
+            signer_seeds: &[
+                MockMonthlyRewardsBucket::SEED_PREFIX,
+                &year.to_le_bytes(),
+                &[month],
+                &[bump_seed],
+            ],
+        },
+        new_monthly_rewards_bucket_info.lamports(),
+        zero_copy::data_end::<MockMonthlyRewardsBucket>(),
+        &ID,
+        accounts,
+        Default::default(),
+    )?;
+
+    let (mut monthly_rewards_bucket, _) =
+        zero_copy::try_initialize::<MockMonthlyRewardsBucket>(new_monthly_rewards_bucket_info)?;
+    monthly_rewards_bucket.year = year;
+    monthly_rewards_bucket.month = month;
+    monthly_rewards_bucket.bump_seed = bump_seed;
+    drop(monthly_rewards_bucket);
+
+    let (_, new_token_account_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+    let (expected_token_account_key, token_account_bump) =
+        find_integration_bucket_address(&ID, &expected_key);
+    if new_token_account_info.key != &expected_token_account_key {
+        msg!("Invalid seeds for monthly rewards bucket 2Z token account");
+        return Err(ProgramError::InvalidSeeds);
+    }
+
+    try_create_token_account(
+        Invoker::Signer(payer_info.key),
+        Invoker::Pda {
+            key: new_token_account_info.key,
+            signer_seeds: &[
+                TOKEN_2Z_PDA_SEED_PREFIX,
+                expected_key.as_ref(),
+                &[token_account_bump],
+            ],
+        },
+        &doublezero_revenue_distribution::DOUBLEZERO_MINT_KEY,
+        &expected_key,
+        new_token_account_info.lamports(),
+        accounts,
+        None,
+    )?;
+
+    Ok(())
+}
+
+fn try_withdraw_monthly_contributor_rewards(accounts: &[AccountInfo]) -> ProgramResult {
+    msg!("Withdraw monthly contributor rewards");
+
+    let mut accounts_iter = accounts.iter().enumerate();
+
+    // Read the bucket's month from slot 0 first so the shared helper can
+    // validate it against the signing `MonthlyContributorDistribution`.
+    let (year, month, bump_seed) = {
+        let info = accounts.first().ok_or(ProgramError::NotEnoughAccountKeys)?;
+        let state =
+            ZeroCopyAccount::<MockMonthlyRewardsBucket>::try_from_account_info(0, info, Some(&ID))?;
+        (state.year, state.month, state.bump_seed)
+    };
+
+    let interface = WithdrawMonthlyContributorRewardsHandlerAccounts::try_next_accounts(
+        &mut accounts_iter,
+        (year, month),
+    )?;
+
+    let (_, monthly_rewards_bucket_info) = interface.integration_rewards_bucket_info;
+    let (_, token_account_info) = interface.integration_2z_token_account_info;
+    let (_, destination_token_account_info) = interface.destination_token_account_info;
+
+    let amount =
+        spl_token_interface::state::Account::unpack(&token_account_info.try_borrow_data()?[..])
+            .map_err(|_| ProgramError::InvalidAccountData)?
+            .amount;
+
+    let token_transfer_ix = token_instruction::transfer(
+        &spl_token_interface::ID,
+        token_account_info.key,
+        destination_token_account_info.key,
+        monthly_rewards_bucket_info.key,
+        &[],
+        amount,
+    )
+    .unwrap();
+
+    invoke_signed_unchecked(
+        &token_transfer_ix,
+        accounts,
+        &[&[
+            MockMonthlyRewardsBucket::SEED_PREFIX,
+            &year.to_le_bytes(),
+            &[month],
+            &[bump_seed],
+        ]],
+    )?;
+
+    msg!(
+        "Integration transferred {} 2Z for {}-{:02}",
+        amount,
+        year,
+        month
     );
 
     Ok(())

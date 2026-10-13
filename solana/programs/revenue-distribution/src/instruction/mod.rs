@@ -42,6 +42,7 @@ pub enum ProgramConfiguration {
         feature: ProgramFeatureConfiguration,
         activation_epoch: DoubleZeroEpoch,
     },
+    MonthlyContributorRewardsProgram(Pubkey),
 }
 
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]
@@ -136,6 +137,14 @@ pub enum RevenueDistributionInstructionData {
         merkle_root: Hash,
     },
     FinalizeMonthlyContributorDistributionRewards,
+
+    /// CPIs into the `WithdrawMonthlyContributorRewards` handler of the program
+    /// set by `ProgramConfiguration::MonthlyContributorRewardsProgram`, which is
+    /// the feed-subscription program, and credits the transferred 2Z into the
+    /// month's `MonthlyContributorDistribution`, which it then marks collected.
+    /// Rev-distr signs the `MonthlyContributorDistribution` PDA so the program
+    /// can verify the caller.
+    CollectMonthlyContributorRewards,
 }
 
 impl RevenueDistributionInstructionData {
@@ -195,6 +204,8 @@ impl RevenueDistributionInstructionData {
         Discriminator::new_sha2(b"dz::ix::configure_monthly_contributor_distribution_rewards");
     pub const FINALIZE_MONTHLY_CONTRIBUTOR_DISTRIBUTION_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::finalize_monthly_contributor_distribution_rewards");
+    pub const COLLECT_MONTHLY_CONTRIBUTOR_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::collect_monthly_contributor_rewards");
 
     //
     // Versioned instruction selectors.
@@ -313,6 +324,7 @@ impl BorshDeserialize for RevenueDistributionInstructionData {
             Self::FINALIZE_MONTHLY_CONTRIBUTOR_DISTRIBUTION_REWARDS => {
                 Ok(Self::FinalizeMonthlyContributorDistributionRewards)
             }
+            Self::COLLECT_MONTHLY_CONTRIBUTOR_REWARDS => Ok(Self::CollectMonthlyContributorRewards),
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "Invalid discriminator",
@@ -434,6 +446,9 @@ impl BorshSerialize for RevenueDistributionInstructionData {
             }
             Self::FinalizeMonthlyContributorDistributionRewards => {
                 Self::FINALIZE_MONTHLY_CONTRIBUTOR_DISTRIBUTION_REWARDS.serialize(writer)
+            }
+            Self::CollectMonthlyContributorRewards => {
+                Self::COLLECT_MONTHLY_CONTRIBUTOR_REWARDS.serialize(writer)
             }
         }
     }

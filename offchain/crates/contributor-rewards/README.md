@@ -40,6 +40,15 @@ The protocol cannot yet reliably estimate public internet latencies for large tr
 
 [2] Koneva et al. arXiv:2406.16452, 2024.
 
+## Monthly contributor shares
+
+`calculate-monthly-rewards --year <YEAR> --month <MONTH> [--json]` averages the posted shares of a UTC month's DoubleZero epochs into contributor shares that total exactly 1,000,000,000. It is read-only.
+
+- An epoch belongs to the month in which the block time of its last block falls.
+- Each contributor's share is its average over all of the month's epochs, counting zero for an epoch it is absent from. Averages are floored, and the leftover units go one each to the largest remainders, ties to the lower pubkey.
+- The command refuses a month that has not closed, a month with no epochs, and a month with an epoch whose shapley output record does not match the merkle root and contributor count posted to that epoch's `Distribution`. It reads records at the current rewards accountant's addresses, so it also refuses any month with an epoch recorded under an earlier accountant key. Calculate a month before rotating that key.
+- Block times come from the DoubleZero Ledger RPC, and selecting a month reads blocks from before it starts. The command refuses a month when the RPC no longer serves those blocks. Testnet and devnet RPCs keep about 18 days of blocks, so every testnet and devnet month is refused for now.
+
 ## Fetching snapshots from S3
 
 Replace `<num>` with DZ Epoch (50, 51, .. etc)

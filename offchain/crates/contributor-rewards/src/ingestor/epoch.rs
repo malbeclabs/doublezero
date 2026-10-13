@@ -333,8 +333,11 @@ impl EpochFinder {
     /// Transport failures are retried; a slot that produced no block and a pruned
     /// ledger are not, since both are settled and retrying only burns the backoff
     /// schedule before arriving at the same answer.
-    async fn try_get_block_time(&self, slot: u64) -> Result<Option<i64>> {
-        let block_time = (|| async { self.solana_read_client.get_block_time(slot).await })
+    pub(crate) async fn try_get_block_time(
+        rpc_client: &RpcClient,
+        slot: u64,
+    ) -> Result<Option<i64>> {
+        let block_time = (|| async { rpc_client.get_block_time(slot).await })
             .retry(&ExponentialBuilder::default().with_jitter())
             .when(|err: &SolanaClientError| !is_settled_block_error(err))
             .notify(|err: &SolanaClientError, dur: Duration| {
@@ -349,8 +352,10 @@ impl EpochFinder {
         match block_time {
             Ok(block_time) => Ok(Some(block_time)),
             Err(err) if is_block_unavailable(&err) => Ok(None),
+            Err(err) if is_block_cleaned_up(&err) => Err(redacted_error(err))
+                .with_context(|| format!("The RPC no longer holds slot {slot}")),
             Err(err) => Err(redacted_error(err))
-                .with_context(|| format!("Failed to get block time for Solana slot {slot}")),
+                .with_context(|| format!("Failed to get block time for slot {slot}")),
         }
     }
 
@@ -426,8 +431,7 @@ impl EpochFinder {
              its start late enough that timestamps inside the gap resolve to the previous epoch"
         );
 
-        let block_time = self
-            .try_get_block_time(first_block_slot)
+        let block_time = Self::try_get_block_time(&self.solana_read_client, first_block_slot)
             .await?
             .with_context(|| {
                 format!(
@@ -453,7 +457,9 @@ impl EpochFinder {
         let oldest_slot_to_search = current_slot.saturating_sub(MAX_CHAIN_TIP_SEARCH_SLOTS - 1);
 
         for slot in (oldest_slot_to_search..=current_slot).rev() {
-            if let Some(block_time) = self.try_get_block_time(slot).await? {
+            if let Some(block_time) =
+                Self::try_get_block_time(&self.solana_read_client, slot).await?
+            {
                 return Ok((slot, block_time));
             }
         }

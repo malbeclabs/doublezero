@@ -626,7 +626,7 @@ pub struct AllRewardsOutput {
     pub rewards: Vec<RewardEntry>,
 }
 
-fn format_unit_share_proportion(unit_share: u32, total_units: u32) -> String {
+pub(crate) fn format_unit_share_proportion(unit_share: u32, total_units: u32) -> String {
     let proportion = if total_units == 0 {
         0.0
     } else {

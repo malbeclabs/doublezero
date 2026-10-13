@@ -79,7 +79,7 @@ func TestFetchConfig(t *testing.T) {
 	programID := testProgramID
 	configAddr, _, _ := DeriveConfigPDA(programID)
 
-	data := buildAccountData(DiscriminatorProgramConfig, 600)
+	data := buildAccountData(DiscriminatorProgramConfig, 632)
 	// Set NextCompletedDZEpoch at offset 8+8 = 16 from start.
 	binary.LittleEndian.PutUint64(data[discriminatorSize+8:], 42)
 
@@ -147,7 +147,7 @@ func clientWithLedger(ledger LedgerRecordClient) *Client {
 	mock := &mockRPC{
 		accounts: map[solana.PublicKey]*rpc.Account{
 			configAddr: {
-				Data: rpc.DataBytesOrJSONFromBytes(buildAccountData(DiscriminatorProgramConfig, 600)),
+				Data: rpc.DataBytesOrJSONFromBytes(buildAccountData(DiscriminatorProgramConfig, 632)),
 			},
 		},
 	}

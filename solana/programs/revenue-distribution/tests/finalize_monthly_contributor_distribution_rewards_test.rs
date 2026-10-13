@@ -184,7 +184,12 @@ async fn test_cannot_finalize_monthly_contributor_distribution_rewards_unpayable
             )
             .await
             .unwrap()
-            .initialize_rewards_integration(&admin_signer, &mock_rewards_integration::ID)
+            .configure_program(
+                &admin_signer,
+                [ProgramConfiguration::MonthlyContributorRewardsProgram(
+                    mock_rewards_integration::ID,
+                )],
+            )
             .await
             .unwrap()
             .mock_initialize_monthly_rewards_bucket(YEAR, MONTH)

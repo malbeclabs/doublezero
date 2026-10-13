@@ -99,6 +99,7 @@ func TestFixtureProgramConfig(t *testing.T) {
 		"FixedSOLAmount":                        config.DistributionParameters.SolanaValidatorFeeParameters.FixedSOLAmount,
 		"DistributeRewardsLamports":             config.RelayParameters.DistributeRewardsLamports,
 		"DebtWriteOffFeatureActivationEpoch":    config.DebtWriteOffFeatureActivationEpoch,
+		"MonthlyContributorRewardsProgramID":    config.MonthlyContributorRewardsProgramID,
 	})
 }
 

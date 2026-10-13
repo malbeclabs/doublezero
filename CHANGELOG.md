@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
   - The mainnet-beta internet latency collector key moves from the retired `8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH` to `3Fs61T6u4etthEkFSy2cBwEA5i2ZqxQ5AEMd36mBkWsn`. The monitor, telemetry data-api, data CLI and funder (`-env mainnet-beta`) find or fund the collector by this key.
 - E2E/QA
   - `TestQA_UnicastConnectivity` and `TestQA_MultiTunnel` connect `-allocate-addr-hosts` with `--allocate-addr`, as `TestQA_AllDevices_UnicastConnectivity` already did, so their unicast checks can run on cloud hosts whose public IP is NAT'd and not on the NIC. Route checks wait on a peer's DZ IP, a run fails fast when an allocate-addr host is not in `-hosts`, and the tests fail with a clear message when an allocate-addr host shares an exchange with another host. Multicast tests never pick an allocate-addr host as a random publisher, `TestQA_MulticastPublisherMultipleGroups` skips unless two hosts are not allocate-addr (its first subscriber also publishes), and waiting for onchain user deletion on an allocate-addr host matches users by the NAT address the daemon registered rather than the NIC address.
+- Solana programs
+  - `revenue-distribution` collects a month's contributor 2Z from the program the admin sets with `MonthlyContributorRewardsProgram`, the feed-subscription program, into its monthly contributor distribution. (malbeclabs/infra#2694)
 
 ## [v0.44.0](https://github.com/malbeclabs/doublezero/compare/client/v0.43.0...client/v0.44.0) - 2026-10-02
 
@@ -29,7 +31,6 @@ All notable changes to this project will be documented in this file.
   - The devcontainer's Solana CLI moves from v2.3.1 to v3.0.12, matching `solana/Dockerfile`, so its `cargo-build-sbf` matches the solana 3.0 program tree. Rebuild the devcontainer to pick it up.
 - Solana programs
   - `revenue-distribution` adds monthly contributor distributions. (malbeclabs/infra#2693)
-  - `revenue-distribution` collects a month's contributor 2Z from the feed-subscription program into its monthly contributor distribution. (malbeclabs/infra#2694)
 - Serviceability
   - `CreateFeed` refuses a feed with a builder and a chain, and `UpdateFeed` refuses to give such a feed any chain except `unspecified`. The rewards process uses either the builder or the chain to find who gets the rewards. (#4385)
 - Telemetry

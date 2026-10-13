@@ -45,7 +45,12 @@ async fn setup_for_collect_monthly_rewards() -> CollectMonthlyRewardsSetup {
         find_integration_bucket_address(&mock_rewards_integration::ID, &bucket_key).0;
 
     test_setup
-        .initialize_rewards_integration(&configured.admin_signer, &mock_rewards_integration::ID)
+        .configure_program(
+            &configured.admin_signer,
+            [ProgramConfiguration::MonthlyContributorRewardsProgram(
+                mock_rewards_integration::ID,
+            )],
+        )
         .await
         .unwrap()
         .initialize_monthly_contributor_distribution(YEAR, MONTH)
@@ -311,7 +316,48 @@ async fn test_cannot_collect_monthly_contributor_rewards_when_paused() {
 }
 
 #[tokio::test]
-async fn test_cannot_collect_monthly_contributor_rewards_when_unregistered() {
+async fn test_cannot_collect_monthly_contributor_rewards_when_program_is_not_set() {
+    let mut test_setup = common::start_test().await;
+    test_setup.setup_configured_program().await.unwrap();
+
+    let bucket_key = MockMonthlyRewardsBucket::find_address(YEAR, MONTH).0;
+    let bucket_2z_key =
+        find_integration_bucket_address(&mock_rewards_integration::ID, &bucket_key).0;
+
+    test_setup
+        .initialize_monthly_contributor_distribution(YEAR, MONTH)
+        .await
+        .unwrap()
+        .mock_initialize_monthly_rewards_bucket(YEAR, MONTH)
+        .await
+        .unwrap()
+        .transfer_2z(&bucket_2z_key, SEEDED_BUCKET_AMOUNT)
+        .await
+        .unwrap()
+        .set_unix_timestamp(MONTH_END_TIMESTAMP)
+        .await
+        .unwrap();
+
+    let (tx_err, program_logs) = simulate_collect(
+        &mut test_setup,
+        &mock_rewards_integration::ID,
+        &bucket_key,
+        &bucket_2z_key,
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        tx_err,
+        TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+    );
+    assert_eq!(
+        program_logs.get(3).unwrap(),
+        "Program log: Monthly contributor rewards program is not set"
+    );
+}
+
+#[tokio::test]
+async fn test_cannot_collect_monthly_contributor_rewards_from_another_program() {
     let CollectMonthlyRewardsSetup {
         mut test_setup,
         bucket_key,
@@ -319,9 +365,7 @@ async fn test_cannot_collect_monthly_contributor_rewards_when_unregistered() {
         ..
     } = setup_for_collect_monthly_rewards().await;
 
-    // The PDA derived from an unregistered program ID has no onchain data, so
-    // the `ZeroCopyAccount` owner check fires.
-    let (tx_err, _) = simulate_collect(
+    let (tx_err, program_logs) = simulate_collect(
         &mut test_setup,
         &Pubkey::new_unique(),
         &bucket_key,
@@ -331,7 +375,11 @@ async fn test_cannot_collect_monthly_contributor_rewards_when_unregistered() {
     .unwrap();
     assert_eq!(
         tx_err,
-        TransactionError::InstructionError(0, InstructionError::InvalidAccountOwner)
+        TransactionError::InstructionError(0, InstructionError::IncorrectProgramId)
+    );
+    assert_eq!(
+        program_logs.get(3).unwrap(),
+        "Program log: Account 5 must be the monthly contributor rewards program"
     );
 }
 
@@ -390,7 +438,12 @@ async fn test_cannot_collect_monthly_contributor_rewards_when_nothing_moves() {
 
     // The bucket is never funded, so the mock withdraw moves 0 2Z.
     test_setup
-        .initialize_rewards_integration(&configured.admin_signer, &mock_rewards_integration::ID)
+        .configure_program(
+            &configured.admin_signer,
+            [ProgramConfiguration::MonthlyContributorRewardsProgram(
+                mock_rewards_integration::ID,
+            )],
+        )
         .await
         .unwrap()
         .initialize_monthly_contributor_distribution(YEAR, MONTH)

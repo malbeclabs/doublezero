@@ -42,6 +42,7 @@ pub enum ProgramConfiguration {
         feature: ProgramFeatureConfiguration,
         activation_epoch: DoubleZeroEpoch,
     },
+    MonthlyContributorRewardsProgram(Pubkey),
 }
 
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]
@@ -137,12 +138,12 @@ pub enum RevenueDistributionInstructionData {
     },
     FinalizeMonthlyContributorDistributionRewards,
 
-    /// CPIs into a whitelisted integration's
-    /// `WithdrawMonthlyContributorRewards` handler and credits the transferred
-    /// 2Z into the month's `MonthlyContributorDistribution`, which it then
-    /// marks collected. Rev-distr signs the `MonthlyContributorDistribution`
-    /// PDA so the integration can verify the caller. The feed-subscription
-    /// program is the integration that pays monthly contributor rewards.
+    /// CPIs into the `WithdrawMonthlyContributorRewards` handler of the program
+    /// set by `ProgramConfiguration::MonthlyContributorRewardsProgram`, which is
+    /// the feed-subscription program, and credits the transferred 2Z into the
+    /// month's `MonthlyContributorDistribution`, which it then marks collected.
+    /// Rev-distr signs the `MonthlyContributorDistribution` PDA so the program
+    /// can verify the caller.
     CollectMonthlyContributorRewards,
 }
 

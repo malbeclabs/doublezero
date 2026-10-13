@@ -137,6 +137,8 @@ describe("ProgramConfig fixture", () => {
         config.relayParameters.distributeRewardsLamports,
       DebtWriteOffFeatureActivationEpoch:
         config.debtWriteOffFeatureActivationEpoch,
+      MonthlyContributorRewardsProgramID:
+        config.monthlyContributorRewardsProgramId,
     };
 
     for (const field of meta.fields) {

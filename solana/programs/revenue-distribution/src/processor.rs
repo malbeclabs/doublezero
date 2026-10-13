@@ -609,6 +609,10 @@ fn try_configure_program(accounts: &[AccountInfo], setting: ProgramConfiguration
                 }
             }
         }
+        ProgramConfiguration::MonthlyContributorRewardsProgram(program_id) => {
+            msg!("Set monthly_contributor_rewards_program_id: {}", program_id);
+            program_config.monthly_contributor_rewards_program_id = program_id;
+        }
     }
 
     Ok(())
@@ -3310,12 +3314,11 @@ fn try_collect_monthly_contributor_rewards(accounts: &[AccountInfo]) -> ProgramR
     // We expect the following accounts for this instruction:
     // - 0: Program config.
     // - 1: Monthly distribution.
-    // - 2: Rewards integration.
-    // - 3: Integration's rewards bucket.
-    // - 4: Integration's 2Z token account.
-    // - 5: Monthly distribution's 2Z token account.
-    // - 6: Integration program.
-    // - 7: SPL Token program.
+    // - 2: Integration's rewards bucket.
+    // - 3: Integration's 2Z token account.
+    // - 4: Monthly distribution's 2Z token account.
+    // - 5: Monthly contributor rewards program.
+    // - 6: SPL Token program.
     let mut accounts_iter = accounts.iter().enumerate();
 
     // Account 0 must be the program config.
@@ -3324,6 +3327,9 @@ fn try_collect_monthly_contributor_rewards(accounts: &[AccountInfo]) -> ProgramR
 
     // Make sure the program is not paused.
     program_config.try_require_unpaused()?;
+
+    let monthly_contributor_rewards_program_id =
+        program_config.monthly_contributor_rewards_program_id;
 
     // Account 1 must be the monthly distribution.
     let mut monthly_distribution =
@@ -3341,12 +3347,12 @@ fn try_collect_monthly_contributor_rewards(accounts: &[AccountInfo]) -> ProgramR
     monthly_distribution.try_require_unfinalized_rewards_calculation()?;
     monthly_distribution.try_require_uncollected()?;
 
-    // Account 2 must be the rewards integration. The CPI below targets the
-    // program it names, so a caller cannot route the withdraw elsewhere.
-    let rewards_integration =
-        ZeroCopyAccount::<RewardsIntegration>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+    if monthly_contributor_rewards_program_id == Pubkey::default() {
+        msg!("Monthly contributor rewards program is not set");
+        return Err(ProgramError::InvalidAccountData);
+    }
 
-    // Accounts 3 and 4 must be the integration's rewards bucket and its 2Z
+    // Accounts 2 and 3 must be the integration's rewards bucket and its 2Z
     // token account. They are opaque to rev-distr and forwarded to the CPI,
     // where the integration enforces its own layout.
     let (_, integration_rewards_bucket_info) =
@@ -3354,7 +3360,7 @@ fn try_collect_monthly_contributor_rewards(accounts: &[AccountInfo]) -> ProgramR
     let (_, integration_2z_token_account_info) =
         try_next_enumerated_account(&mut accounts_iter, Default::default())?;
 
-    // Account 5 must be the monthly distribution's 2Z token account.
+    // Account 4 must be the monthly distribution's 2Z token account.
     let (_, destination_token_account_info, _) = try_next_2z_token_pda_info(
         &mut accounts_iter,
         monthly_distribution.info.key,
@@ -3362,10 +3368,22 @@ fn try_collect_monthly_contributor_rewards(accounts: &[AccountInfo]) -> ProgramR
         Some(monthly_distribution.token_2z_pda_bump_seed),
     )?;
 
+    // Account 5 must be the monthly contributor rewards program the admin
+    // configured. The CPI below targets only that program.
+    let (integration_program_index, integration_program_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+    if integration_program_info.key != &monthly_contributor_rewards_program_id {
+        msg!(
+            "Account {} must be the monthly contributor rewards program",
+            integration_program_index
+        );
+        return Err(ProgramError::IncorrectProgramId);
+    }
+
     let balance_before = try_token_account_amount(destination_token_account_info)?;
 
     let withdraw_ix = try_build_instruction(
-        &rewards_integration.program_id,
+        &monthly_contributor_rewards_program_id,
         WithdrawMonthlyContributorRewardsAccounts {
             integration_rewards_bucket_key: *integration_rewards_bucket_info.key,
             integration_2z_token_account_key: *integration_2z_token_account_info.key,
@@ -3392,17 +3410,17 @@ fn try_collect_monthly_contributor_rewards(accounts: &[AccountInfo]) -> ProgramR
     let collected_amount = balance_after.checked_sub(balance_before).ok_or_else(|| {
         msg!(
             "Integration {} reduced the monthly distribution's 2Z balance",
-            rewards_integration.program_id
+            monthly_contributor_rewards_program_id
         );
         ProgramError::InvalidAccountData
     })?;
 
-    // A registered program that accepts the call but moves nothing would
-    // otherwise mark the month collected and shut out its real 2Z.
+    // A call that moves nothing would otherwise mark the month collected and
+    // shut out its real 2Z.
     if collected_amount == 0 {
         msg!(
             "Integration {} transferred no 2Z",
-            rewards_integration.program_id
+            monthly_contributor_rewards_program_id
         );
         return Err(ProgramError::InvalidAccountData);
     }
@@ -3416,7 +3434,7 @@ fn try_collect_monthly_contributor_rewards(accounts: &[AccountInfo]) -> ProgramR
     msg!(
         "Collected {} 2Z from integration {}",
         collected_amount,
-        rewards_integration.program_id
+        monthly_contributor_rewards_program_id
     );
 
     Ok(())

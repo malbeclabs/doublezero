@@ -62,6 +62,7 @@ async fn test_configure_program() {
     let rewards_accountant_key = Pubkey::new_unique();
     let contributor_manager_key = Pubkey::new_unique();
     let sol_2z_swap_program_id = Pubkey::new_unique();
+    let monthly_contributor_rewards_program_id = Pubkey::new_unique();
 
     // Distribution settings.
     let calculation_grace_period_minutes = 6 * 60;
@@ -122,6 +123,9 @@ async fn test_configure_program() {
                     feature: ProgramFeatureConfiguration::SolanaValidatorDebtWriteOff,
                     activation_epoch: debt_write_off_feature_activation_epoch,
                 },
+                ProgramConfiguration::MonthlyContributorRewardsProgram(
+                    monthly_contributor_rewards_program_id,
+                ),
             ],
         )
         .await
@@ -145,6 +149,8 @@ async fn test_configure_program() {
     expected_program_config.sol_2z_swap_program_id = sol_2z_swap_program_id;
     expected_program_config.debt_write_off_feature_activation_epoch =
         debt_write_off_feature_activation_epoch;
+    expected_program_config.monthly_contributor_rewards_program_id =
+        monthly_contributor_rewards_program_id;
 
     let expected_distribution_params = &mut expected_program_config.distribution_parameters;
     expected_distribution_params.calculation_grace_period_minutes =

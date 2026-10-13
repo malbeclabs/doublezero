@@ -90,6 +90,7 @@ class TestFixtureProgramConfig:
             "FixedSOLAmount": config.distribution_parameters.solana_validator_fee_parameters.fixed_sol_amount,
             "DistributeRewardsLamports": config.relay_parameters.distribute_rewards_lamports,
             "DebtWriteOffFeatureActivationEpoch": config.debt_write_off_feature_activation_epoch,
+            "MonthlyContributorRewardsProgramID": config.monthly_contributor_rewards_program_id,
         }
 
         for field in meta["fields"]:

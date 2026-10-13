@@ -158,8 +158,9 @@ class ProgramConfig:
     last_initialized_distribution_timestamp: int  # u32
     reserved1: Reserved  # [4]byte padding
     debt_write_off_feature_activation_epoch: int  # u64
+    monthly_contributor_rewards_program_id: Pubkey
 
-    STRUCT_SIZE = 600
+    STRUCT_SIZE = 632
 
     @classmethod
     def from_bytes(
@@ -181,6 +182,7 @@ class ProgramConfig:
         last_ts = struct.unpack_from("<I", b, off)[0]; off += 4
         reserved1 = Reserved(b[off : off + 4]); off += 4
         debt_wo_epoch = struct.unpack_from("<Q", b, off)[0]; off += 8
+        monthly_prog = _pubkey(b, off); off += 32
         assert off == cls.STRUCT_SIZE, f"ProgramConfig byte coverage: {off} != {cls.STRUCT_SIZE}"
         return cls(
             flags=flags,
@@ -202,6 +204,7 @@ class ProgramConfig:
             last_initialized_distribution_timestamp=last_ts,
             reserved1=reserved1,
             debt_write_off_feature_activation_epoch=debt_wo_epoch,
+            monthly_contributor_rewards_program_id=monthly_prog,
         )
 
 

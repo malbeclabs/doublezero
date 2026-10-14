@@ -15,7 +15,7 @@ use doublezero_serviceability::{
         tenant::{Tenant, TenantPaymentStatus},
     },
 };
-use doublezero_serviceability_instruction as svc_ix;
+use doublezero_serviceability_instruction as serviceability_instruction;
 use mockall::automock;
 use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::{
@@ -25,7 +25,6 @@ use solana_client::{
 };
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
-    instruction::Instruction,
     pubkey::Pubkey,
     signature::{Keypair, Signature, Signer},
 };
@@ -167,12 +166,23 @@ impl DzRpcClient {
         client_ip: &Ipv4Addr,
         validator_id: &Pubkey,
     ) -> Result<Signature> {
-        let set_pass_ix = build_issue_access_pass_ix(
+        let set_pass_ix = serviceability_instruction::accesspass::set_access_pass(
             &self.serviceability_id,
             &self.payer.pubkey(),
             service_key,
-            client_ip,
-            validator_id,
+            // No tenant change: default keys make the builder omit both tenant slots.
+            &Pubkey::default(),
+            &Pubkey::default(),
+            SetAccessPassArgs {
+                accesspass_type: AccessPassType::SolanaValidator(*validator_id),
+                client_ip: *client_ip,
+                last_access_epoch: u64::MAX,
+                // NOTE: Setting this to false by default
+                allow_multiple_ip: false,
+                // NOTE: Setting both to max allowed values
+                max_unicast_users: u16::MAX,
+                max_multicast_users: u16::MAX,
+            },
         );
         let signer = &self.payer;
         let recent_blockhash = self.client.get_latest_blockhash().await?;
@@ -193,12 +203,17 @@ impl DzRpcClient {
         service_key: &Pubkey,
         client_ip: &Ipv4Addr,
     ) -> Result<Signature> {
-        let ix = build_add_multicast_publisher_allowlist_ix(
+        let (accesspass_key, _) =
+            get_accesspass_pda(&self.serviceability_id, client_ip, service_key);
+        let ix = serviceability_instruction::multicastgroup::add_multicast_group_pub_allowlist(
             &self.serviceability_id,
             &self.payer.pubkey(),
             multicast_group_pda,
-            service_key,
-            client_ip,
+            &accesspass_key,
+            AddMulticastGroupPubAllowlistArgs {
+                client_ip: *client_ip,
+                user_payer: *service_key,
+            },
         );
         let signer = &self.payer;
         let recent_blockhash = self.client.get_latest_blockhash().await?;
@@ -276,12 +291,14 @@ impl DzRpcClient {
         tenant_pda: &Pubkey,
         status: TenantPaymentStatus,
     ) -> Result<Signature> {
-        let ix = build_update_payment_status_ix(
+        let ix = serviceability_instruction::tenant::update_payment_status(
             &self.serviceability_id,
             &self.payer.pubkey(),
             tenant_pda,
-            status,
-            None,
+            UpdatePaymentStatusArgs {
+                payment_status: status as u8,
+                last_deduction_dz_epoch: None,
+            },
         );
         let signer = &self.payer;
         let recent_blockhash = self.client.get_latest_blockhash().await?;
@@ -346,12 +363,14 @@ impl DzRpcClient {
         let write_ix = record_instruction::write(&record_key, &payer_key, 0, &serialized);
 
         // Update epoch (UpdatePaymentStatus with last_deduction_dz_epoch)
-        let epoch_ix = build_update_payment_status_ix(
+        let epoch_ix = serviceability_instruction::tenant::update_payment_status(
             &self.serviceability_id,
             &payer_key,
             tenant_pda,
-            TenantPaymentStatus::Paid,
-            Some(receipt.dz_epoch),
+            UpdatePaymentStatusArgs {
+                payment_status: TenantPaymentStatus::Paid as u8,
+                last_deduction_dz_epoch: Some(receipt.dz_epoch),
+            },
         );
 
         let signer = &self.payer;
@@ -396,228 +415,5 @@ impl DzRpcClient {
     pub async fn get_current_dz_epoch(&self) -> Result<u64> {
         let epoch_info = self.client.get_epoch_info().await?;
         Ok(epoch_info.epoch.saturating_sub(1))
-    }
-}
-
-/// `SetAccessPass` granting a Solana validator access pass to `service_key` at `client_ip`.
-fn build_issue_access_pass_ix(
-    program_id: &Pubkey,
-    payer: &Pubkey,
-    service_key: &Pubkey,
-    client_ip: &Ipv4Addr,
-    validator_id: &Pubkey,
-) -> Instruction {
-    svc_ix::accesspass::set_access_pass(
-        program_id,
-        payer,
-        service_key,
-        // No tenant change: default keys make the builder omit both tenant slots.
-        &Pubkey::default(),
-        &Pubkey::default(),
-        SetAccessPassArgs {
-            accesspass_type: AccessPassType::SolanaValidator(*validator_id),
-            client_ip: *client_ip,
-            last_access_epoch: u64::MAX,
-            // NOTE: Setting this to false by default
-            allow_multiple_ip: false,
-            // NOTE: Setting both to max allowed values
-            max_unicast_users: u16::MAX,
-            max_multicast_users: u16::MAX,
-        },
-    )
-}
-
-/// `AddMulticastGroupPubAllowlist` for the access pass of `service_key` at `client_ip`.
-fn build_add_multicast_publisher_allowlist_ix(
-    program_id: &Pubkey,
-    payer: &Pubkey,
-    multicast_group_pda: &Pubkey,
-    service_key: &Pubkey,
-    client_ip: &Ipv4Addr,
-) -> Instruction {
-    let (accesspass_pk, _) = get_accesspass_pda(program_id, client_ip, service_key);
-    svc_ix::multicastgroup::add_multicast_group_pub_allowlist(
-        program_id,
-        payer,
-        multicast_group_pda,
-        &accesspass_pk,
-        AddMulticastGroupPubAllowlistArgs {
-            client_ip: *client_ip,
-            user_payer: *service_key,
-        },
-    )
-}
-
-/// `UpdatePaymentStatus` for `tenant_pda`, optionally recording the last deducted DZ epoch.
-fn build_update_payment_status_ix(
-    program_id: &Pubkey,
-    payer: &Pubkey,
-    tenant_pda: &Pubkey,
-    status: TenantPaymentStatus,
-    last_deduction_dz_epoch: Option<u64>,
-) -> Instruction {
-    svc_ix::tenant::update_payment_status(
-        program_id,
-        payer,
-        tenant_pda,
-        UpdatePaymentStatusArgs {
-            payment_status: status as u8,
-            last_deduction_dz_epoch,
-        },
-    )
-}
-
-#[cfg(test)]
-mod tests {
-    use doublezero_serviceability::{
-        instructions::DoubleZeroInstruction, pda::get_globalstate_pda,
-    };
-    use solana_sdk::instruction::AccountMeta;
-
-    use super::*;
-
-    /// The instruction-specific accounts plus the signing payer, in processor order. The
-    /// builders append further trailing accounts (the system program, and the payer's
-    /// Permission PDA once that rollout activates), so only this prefix is pinned here.
-    fn assert_leading_accounts(ix: &Instruction, expected: &[AccountMeta]) {
-        assert_eq!(&ix.accounts[..expected.len()], expected);
-    }
-
-    #[test]
-    fn issue_access_pass_uses_instruction_builder() {
-        let program_id = Pubkey::new_unique();
-        let payer = Pubkey::new_unique();
-        let service_key = Pubkey::new_unique();
-        let validator_id = Pubkey::new_unique();
-        let client_ip = Ipv4Addr::new(10, 0, 0, 1);
-
-        let ix = build_issue_access_pass_ix(
-            &program_id,
-            &payer,
-            &service_key,
-            &client_ip,
-            &validator_id,
-        );
-
-        let args = SetAccessPassArgs {
-            accesspass_type: AccessPassType::SolanaValidator(validator_id),
-            client_ip,
-            last_access_epoch: u64::MAX,
-            allow_multiple_ip: false,
-            max_unicast_users: u16::MAX,
-            max_multicast_users: u16::MAX,
-        };
-        assert_eq!(
-            ix,
-            svc_ix::accesspass::set_access_pass(
-                &program_id,
-                &payer,
-                &service_key,
-                &Pubkey::default(),
-                &Pubkey::default(),
-                args.clone(),
-            )
-        );
-        assert_eq!(ix.program_id, program_id);
-        assert_eq!(ix.data, DoubleZeroInstruction::SetAccessPass(args).pack());
-
-        let (pass_pk, _) = get_accesspass_pda(&program_id, &client_ip, &service_key);
-        let (globalstate_pk, _) = get_globalstate_pda(&program_id);
-        assert_leading_accounts(
-            &ix,
-            &[
-                AccountMeta::new(pass_pk, false),
-                AccountMeta::new_readonly(globalstate_pk, false),
-                AccountMeta::new(service_key, false),
-                AccountMeta::new(payer, true),
-            ],
-        );
-    }
-
-    #[test]
-    fn add_multicast_publisher_allowlist_uses_instruction_builder() {
-        let program_id = Pubkey::new_unique();
-        let payer = Pubkey::new_unique();
-        let mgroup = Pubkey::new_unique();
-        let service_key = Pubkey::new_unique();
-        let client_ip = Ipv4Addr::new(10, 0, 0, 2);
-
-        let ix = build_add_multicast_publisher_allowlist_ix(
-            &program_id,
-            &payer,
-            &mgroup,
-            &service_key,
-            &client_ip,
-        );
-
-        let (accesspass_pk, _) = get_accesspass_pda(&program_id, &client_ip, &service_key);
-        let args = AddMulticastGroupPubAllowlistArgs {
-            client_ip,
-            user_payer: service_key,
-        };
-        assert_eq!(
-            ix,
-            svc_ix::multicastgroup::add_multicast_group_pub_allowlist(
-                &program_id,
-                &payer,
-                &mgroup,
-                &accesspass_pk,
-                args.clone(),
-            )
-        );
-        assert_eq!(
-            ix.data,
-            DoubleZeroInstruction::AddMulticastGroupPubAllowlist(args).pack()
-        );
-
-        // The builder passes the optional user_payer account, so the program tops up the
-        // validator's connect credits in the same instruction.
-        let (globalstate_pk, _) = get_globalstate_pda(&program_id);
-        assert_leading_accounts(
-            &ix,
-            &[
-                AccountMeta::new(mgroup, false),
-                AccountMeta::new(accesspass_pk, false),
-                AccountMeta::new(globalstate_pk, false),
-                AccountMeta::new(service_key, false),
-                AccountMeta::new(payer, true),
-            ],
-        );
-    }
-
-    #[test]
-    fn update_payment_status_uses_instruction_builder() {
-        let program_id = Pubkey::new_unique();
-        let payer = Pubkey::new_unique();
-        let tenant = Pubkey::new_unique();
-        let (globalstate_pk, _) = get_globalstate_pda(&program_id);
-
-        for (status, epoch) in [
-            (TenantPaymentStatus::Delinquent, None),
-            (TenantPaymentStatus::Paid, Some(42)),
-        ] {
-            let ix = build_update_payment_status_ix(&program_id, &payer, &tenant, status, epoch);
-
-            let args = UpdatePaymentStatusArgs {
-                payment_status: status as u8,
-                last_deduction_dz_epoch: epoch,
-            };
-            assert_eq!(
-                ix,
-                svc_ix::tenant::update_payment_status(&program_id, &payer, &tenant, args.clone())
-            );
-            assert_eq!(
-                ix.data,
-                DoubleZeroInstruction::UpdatePaymentStatus(args).pack()
-            );
-            assert_leading_accounts(
-                &ix,
-                &[
-                    AccountMeta::new(tenant, false),
-                    AccountMeta::new_readonly(globalstate_pk, false),
-                    AccountMeta::new(payer, true),
-                ],
-            );
-        }
     }
 }

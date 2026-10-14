@@ -291,17 +291,24 @@ mod tests {
 
     #[test]
     fn build_instructions_rejects_device_without_dz_prefixes() {
+        let user = test_user();
         let err = build_create_multicast_publisher_instructions(
             &Pubkey::new_unique(),
             &Pubkey::new_unique(),
             &Pubkey::new_unique(),
             &Pubkey::new_unique(),
-            &test_user(),
+            &user,
             Ipv4Addr::UNSPECIFIED,
             0,
         )
         .err()
         .expect("dz_prefix_count = 0 must be rejected");
-        assert!(err.to_string().contains("no dz_prefixes"), "{err}");
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "device {} has no dz_prefixes; CreateSubscribeUser requires onchain allocation",
+                user.device_pk
+            )
+        );
     }
 }

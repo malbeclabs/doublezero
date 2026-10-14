@@ -29,8 +29,9 @@ use doublezero_revenue_distribution::{
             ConfigureContributorRewardsAccounts, ConfigureDistributionDebtAccounts,
             ConfigureDistributionRewardsAccounts,
             ConfigureMonthlyContributorDistributionRewardsAccounts, ConfigureProgramAccounts,
-            DistributeRewardsAccounts, EnableSolanaValidatorDebtWriteOffAccounts,
-            FinalizeDistributionDebtAccounts, FinalizeDistributionRewardsAccounts,
+            DistributeMonthlyContributorRewardsAccounts, DistributeRewardsAccounts,
+            EnableSolanaValidatorDebtWriteOffAccounts, FinalizeDistributionDebtAccounts,
+            FinalizeDistributionRewardsAccounts,
             FinalizeMonthlyContributorDistributionRewardsAccounts,
             InitializeContributorRewardsAccounts, InitializeDistributionAccounts,
             InitializeJournalAccounts, InitializeMonthlyContributorDistributionAccounts,
@@ -1077,6 +1078,43 @@ impl ProgramTestWithOwner {
             &mut self.context.banks_client,
             &self.context.last_blockhash,
             &[collect_ix],
+            &[payer_signer],
+        )
+        .await?;
+
+        Ok(self)
+    }
+
+    pub async fn distribute_monthly_contributor_rewards(
+        &mut self,
+        year: u16,
+        month: u8,
+        reward_share: &RewardShare,
+        recipient_keys: &[&Pubkey],
+        proof: MerkleProof,
+    ) -> Result<&mut Self, BanksClientError> {
+        let payer_signer = &self.context.payer;
+
+        let distribute_ix = try_build_instruction(
+            &ID,
+            DistributeMonthlyContributorRewardsAccounts::new(
+                year,
+                month,
+                &reward_share.contributor_key,
+                &DOUBLEZERO_MINT_KEY,
+                recipient_keys,
+            ),
+            &RevenueDistributionInstructionData::DistributeMonthlyContributorRewards {
+                unit_share: reward_share.unit_share,
+                proof,
+            },
+        )
+        .unwrap();
+
+        self.context.last_blockhash = process_instructions_for_test(
+            &mut self.context.banks_client,
+            &self.context.last_blockhash,
+            &[distribute_ix],
             &[payer_signer],
         )
         .await?;

@@ -8,8 +8,10 @@ use doublezero_revenue_distribution::{
         account::ConfigureMonthlyContributorDistributionRewardsAccounts, ProgramConfiguration,
         ProgramFlagConfiguration, RevenueDistributionInstructionData,
     },
+    integration::find_integration_bucket_address,
     ID,
 };
+use mock_rewards_integration::state::MockMonthlyRewardsBucket;
 use solana_program_test::{tokio, BanksClientError};
 use solana_sdk::{
     instruction::InstructionError,
@@ -184,9 +186,13 @@ async fn test_cannot_configure_monthly_contributor_distribution_rewards_when_pau
 async fn test_cannot_configure_monthly_contributor_distribution_rewards_after_finalize() {
     let ConfigureMonthlyRewardsSetup {
         mut test_setup,
+        admin_signer,
         rewards_accountant_signer,
-        ..
     } = setup_for_configure_monthly_rewards().await;
+
+    let bucket_key = MockMonthlyRewardsBucket::find_address(YEAR, MONTH).0;
+    let bucket_2z_key =
+        find_integration_bucket_address(&mock_rewards_integration::ID, &bucket_key).0;
 
     test_setup
         .configure_monthly_contributor_distribution_rewards(
@@ -198,7 +204,30 @@ async fn test_cannot_configure_monthly_contributor_distribution_rewards_after_fi
         )
         .await
         .unwrap()
+        .configure_program(
+            &admin_signer,
+            [ProgramConfiguration::MonthlyContributorRewardsProgram(
+                mock_rewards_integration::ID,
+            )],
+        )
+        .await
+        .unwrap()
+        .mock_initialize_monthly_rewards_bucket(YEAR, MONTH)
+        .await
+        .unwrap()
+        .transfer_2z(&bucket_2z_key, 1)
+        .await
+        .unwrap()
         .set_unix_timestamp(MONTH_END_TIMESTAMP)
+        .await
+        .unwrap()
+        .collect_monthly_contributor_rewards(
+            YEAR,
+            MONTH,
+            &mock_rewards_integration::ID,
+            &bucket_key,
+            &bucket_2z_key,
+        )
         .await
         .unwrap()
         .finalize_monthly_contributor_distribution_rewards(YEAR, MONTH, &rewards_accountant_signer)

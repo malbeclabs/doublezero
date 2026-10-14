@@ -1355,6 +1355,70 @@ impl From<CollectMonthlyContributorRewardsAccounts> for Vec<AccountMeta> {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DistributeMonthlyContributorRewardsAccounts {
+    pub program_config_key: Pubkey,
+    pub monthly_distribution_key: Pubkey,
+    pub contributor_rewards_key: Pubkey,
+    pub monthly_distribution_2z_token_pda_key: Pubkey,
+    pub recipient_ata_keys: Vec<Pubkey>,
+}
+
+impl DistributeMonthlyContributorRewardsAccounts {
+    pub fn new(
+        year: u16,
+        month: u8,
+        service_key: &Pubkey,
+        dz_mint_key: &Pubkey,
+        recipient_keys: &[&Pubkey],
+    ) -> Self {
+        let monthly_distribution_key = MonthlyContributorDistribution::find_address(year, month).0;
+        let recipient_ata_keys = recipient_keys
+            .iter()
+            .map(|owner_key| get_associated_token_address(owner_key, dz_mint_key))
+            .collect();
+
+        Self {
+            program_config_key: ProgramConfig::find_address().0,
+            monthly_distribution_key,
+            contributor_rewards_key: ContributorRewards::find_address(service_key).0,
+            monthly_distribution_2z_token_pda_key: find_2z_token_pda_address(
+                &monthly_distribution_key,
+            )
+            .0,
+            recipient_ata_keys,
+        }
+    }
+}
+
+impl From<DistributeMonthlyContributorRewardsAccounts> for Vec<AccountMeta> {
+    fn from(accounts: DistributeMonthlyContributorRewardsAccounts) -> Self {
+        let DistributeMonthlyContributorRewardsAccounts {
+            program_config_key,
+            monthly_distribution_key,
+            contributor_rewards_key,
+            monthly_distribution_2z_token_pda_key,
+            recipient_ata_keys,
+        } = accounts;
+
+        let mut accounts = vec![
+            AccountMeta::new_readonly(program_config_key, false),
+            AccountMeta::new(monthly_distribution_key, false),
+            AccountMeta::new_readonly(contributor_rewards_key, false),
+            AccountMeta::new(monthly_distribution_2z_token_pda_key, false),
+            AccountMeta::new_readonly(spl_token_interface::ID, false),
+        ];
+
+        let recipient_ata_accounts = recipient_ata_keys
+            .into_iter()
+            .map(|key| AccountMeta::new(key, false));
+
+        accounts.extend(recipient_ata_accounts);
+
+        accounts
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

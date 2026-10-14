@@ -29,7 +29,7 @@ build-sbf:
 	cargo build-sbf --features $(CARGO_FEATURES) --manifest-path $(REVENUE_DISTRIBUTION_PATH)
 
 artifacts-$(NETWORK):
-	DOCKER_BUILDKIT=1 docker build \
+	DOCKER_BUILDKIT=1 docker build $(DOCKER_BUILD_FLAGS) \
 	--build-arg NETWORK=${NETWORK} \
 	--platform linux/amd64 \
 	--output type=local,dest=./artifacts-${NETWORK} \
@@ -80,8 +80,9 @@ write-checksums:
 	shasum -a 256 artifacts-mainnet-beta/*.so > programs/sha256sums_mainnet_beta.txt && \
 	shasum -a 256 artifacts-development/*.so > programs/sha256sums_development.txt
 
-# The Docker build's cache mounts outlive `cargo clean` and `--no-cache`.
+# The Docker build's cache mounts outlive `cargo clean` and `--no-cache`. `--no-cache` stops
+# Docker from reusing the compile step of an earlier build of the same sources.
 .PHONY: clean-write-checksums
 clean-write-checksums: clean
 	docker builder prune -f --filter type=exec.cachemount --filter description~=doublezero-verified-build-
-	$(MAKE) write-checksums
+	$(MAKE) write-checksums DOCKER_BUILD_FLAGS=--no-cache

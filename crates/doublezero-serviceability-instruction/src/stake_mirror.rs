@@ -23,9 +23,9 @@ use crate::common;
 
 /// `WriteStakeMirror` (variant 119).
 ///
-/// Returns `[stake_mirror, globalstate, payer, system_program]`. The caller appends its own
-/// `Permission` account after those, which for this instruction is required rather than optional:
-/// nothing else authorizes `STAKE_ORACLE`.
+/// Returns `[stake_mirror, globalstate, payer, system_program, permission]`. The payer's
+/// `Permission` account is required rather than optional for this instruction: nothing else
+/// authorizes `STAKE_ORACLE`, so it must exist onchain and grant the flag.
 ///
 /// `globalstate` is read-only. The processor reads `feature_flags` and hands it to `authorize`,
 /// and writes nothing, so marking it writable would take a lock it does not need.
@@ -91,6 +91,8 @@ mod tests {
         assert_eq!(ix.accounts[2].pubkey, payer);
         assert!(ix.accounts[2].is_signer);
         assert_eq!(ix.accounts[3].pubkey, solana_system_interface::program::ID);
+        assert_eq!(ix.accounts[4], common::permission_meta(&program_id, &payer));
+        assert_eq!(ix.accounts.len(), 5);
     }
 
     /// Keyed on the stake, not the builder. Two stakes held by one builder mirror to two accounts,

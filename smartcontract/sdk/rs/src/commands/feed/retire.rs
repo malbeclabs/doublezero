@@ -1,4 +1,4 @@
-use crate::{commands::common::append_payer_permission_account, DoubleZeroClient};
+use crate::DoubleZeroClient;
 use doublezero_serviceability_instruction::feed::retire_feed;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -12,9 +12,8 @@ pub struct RetireFeedCommand {
 
 impl RetireFeedCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<Signature> {
-        let mut ix = retire_feed(&client.get_program_id(), &client.get_payer(), &self.pubkey);
+        let ix = retire_feed(&client.get_program_id(), &client.get_payer(), &self.pubkey);
 
-        append_payer_permission_account(client, &mut ix)?;
         client.send_transaction(ix)
     }
 }
@@ -25,12 +24,10 @@ mod tests {
         commands::feed::retire::RetireFeedCommand, tests::utils::create_test_client,
         DoubleZeroClient,
     };
-    use doublezero_serviceability::pda::get_permission_pda;
+
     use doublezero_serviceability_instruction::feed::retire_feed;
     use mockall::predicate;
-    use solana_sdk::{
-        account::Account, instruction::AccountMeta, pubkey::Pubkey, signature::Signature,
-    };
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     /// Retiring is authorized, unlike finalizing. The `Permission` account goes last, after the accounts the instruction builder names,
     /// because that is where `authorize` reads it.
@@ -42,16 +39,8 @@ mod tests {
         let feed_pk = Pubkey::new_unique();
         let signature = Signature::new_unique();
 
-        let mut expected = retire_feed(&program_id, &payer, &feed_pk);
-        let (permission_pda, _) = get_permission_pda(&program_id, &payer);
-        expected
-            .accounts
-            .push(AccountMeta::new_readonly(permission_pda, false));
+        let expected = retire_feed(&program_id, &payer, &feed_pk);
 
-        client
-            .expect_get_multiple_accounts()
-            .with(predicate::eq(vec![permission_pda]))
-            .returning(move |_| Ok(vec![Some(Account::new(0, 0, &program_id))]));
         client
             .expect_send_transaction()
             .with(predicate::eq(expected))

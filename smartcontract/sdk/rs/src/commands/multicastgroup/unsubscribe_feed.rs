@@ -1,7 +1,8 @@
 use crate::{
     commands::{
         accesspass::get::resolve_user_accesspass,
-        multicastgroup::subscribe_feed::MAX_FEED_TX_ACCOUNTS, user::get::GetUserCommand,
+        multicastgroup::subscribe_feed::{feed_tx_capacity, for_payer},
+        user::get::GetUserCommand,
     },
     DoubleZeroClient,
 };
@@ -140,16 +141,23 @@ impl UnsubscribeFeedCommand {
             }
         }
 
-        if self.feed_pks.len() + retained_pks.len() + groups.len() <= MAX_FEED_TX_ACCOUNTS {
-            return client.send_transaction(unsubscribe_feed(
-                &client.get_program_id(),
-                &client.get_payer(),
-                &accesspass_pubkey,
-                &self.user_pk,
-                &user.device_pk,
-                &self.feed_pks,
-                &retained_pks,
-                &groups,
+        let payer_is_pass_owner = accesspass.user_payer == client.get_payer();
+        if self.feed_pks.len() + retained_pks.len() + groups.len()
+            <= feed_tx_capacity(payer_is_pass_owner)
+        {
+            return client.send_transaction(for_payer(
+                client,
+                payer_is_pass_owner,
+                unsubscribe_feed(
+                    &client.get_program_id(),
+                    &client.get_payer(),
+                    &accesspass_pubkey,
+                    &self.user_pk,
+                    &user.device_pk,
+                    &self.feed_pks,
+                    &retained_pks,
+                    &groups,
+                ),
             ));
         }
 
@@ -190,15 +198,19 @@ impl UnsubscribeFeedCommand {
                 .copied()
                 .collect();
 
-            let result = client.send_transaction(unsubscribe_feed(
-                &client.get_program_id(),
-                &client.get_payer(),
-                &accesspass_pubkey,
-                &self.user_pk,
-                &user.device_pk,
-                &[target_pk],
-                &tx_retained_pks,
-                &tx_groups,
+            let result = client.send_transaction(for_payer(
+                client,
+                payer_is_pass_owner,
+                unsubscribe_feed(
+                    &client.get_program_id(),
+                    &client.get_payer(),
+                    &accesspass_pubkey,
+                    &self.user_pk,
+                    &user.device_pk,
+                    &[target_pk],
+                    &tx_retained_pks,
+                    &tx_groups,
+                ),
             ));
             // A failure mid-sequence leaves earlier targets already left; name them so the
             // operator knows to rerun with only the remaining feeds.
@@ -224,6 +236,15 @@ impl UnsubscribeFeedCommand {
 
 #[cfg(test)]
 mod tests {
+
+    /// The fixture's payer is the pass's own `user_payer`, so the command drops the Permission
+    /// account the builder appends.
+    fn as_pass_owner(
+        mut ix: solana_sdk::instruction::Instruction,
+    ) -> solana_sdk::instruction::Instruction {
+        ix.accounts.pop();
+        ix
+    }
     use super::*;
     use crate::tests::utils::create_test_client;
     use doublezero_serviceability::{
@@ -359,7 +380,7 @@ mod tests {
             ],
         );
 
-        let expected = unsubscribe_feed(
+        let expected = as_pass_owner(unsubscribe_feed(
             &program_id,
             &payer,
             &f.accesspass_pk,
@@ -368,7 +389,7 @@ mod tests {
             &[feed2_pk],
             &[feed1_pk],
             &[g1],
-        );
+        ));
         client
             .expect_send_transaction()
             .with(predicate::eq(expected))
@@ -399,7 +420,7 @@ mod tests {
             vec![(feed_pk, feed_with("only", vec![g0, g1]))],
         );
 
-        let expected = unsubscribe_feed(
+        let expected = as_pass_owner(unsubscribe_feed(
             &program_id,
             &payer,
             &f.accesspass_pk,
@@ -408,7 +429,7 @@ mod tests {
             &[feed_pk],
             &[],
             &[g0, g1],
-        );
+        ));
         client
             .expect_send_transaction()
             .with(predicate::eq(expected))
@@ -458,7 +479,7 @@ mod tests {
             ],
         );
 
-        let expected1 = unsubscribe_feed(
+        let expected1 = as_pass_owner(unsubscribe_feed(
             &program_id,
             &payer,
             &f.accesspass_pk,
@@ -467,8 +488,8 @@ mod tests {
             &[feed1_pk],
             &[feed2_pk, kept_pk],
             &groups1,
-        );
-        let expected2 = unsubscribe_feed(
+        ));
+        let expected2 = as_pass_owner(unsubscribe_feed(
             &program_id,
             &payer,
             &f.accesspass_pk,
@@ -477,7 +498,7 @@ mod tests {
             &[feed2_pk],
             &[kept_pk],
             &groups2,
-        );
+        ));
         client
             .expect_send_transaction()
             .with(predicate::eq(expected1))
@@ -613,7 +634,7 @@ mod tests {
             .with(predicate::eq(exact_pk))
             .returning(|_| Err(eyre::eyre!("account not found")));
 
-        let expected = unsubscribe_feed(
+        let expected = as_pass_owner(unsubscribe_feed(
             &program_id,
             &payer,
             &f.accesspass_pk,
@@ -622,7 +643,7 @@ mod tests {
             &[stale_pk],
             &[],
             &[g0],
-        );
+        ));
         client
             .expect_send_transaction()
             .with(predicate::eq(expected))
@@ -683,7 +704,7 @@ mod tests {
             vec![(live_pk, feed_with("live", vec![g0]))],
         );
 
-        let expected = unsubscribe_feed(
+        let expected = as_pass_owner(unsubscribe_feed(
             &program_id,
             &payer,
             &f.accesspass_pk,
@@ -692,7 +713,7 @@ mod tests {
             &[live_pk],
             &[],
             &[g0],
-        );
+        ));
         client
             .expect_send_transaction()
             .with(predicate::eq(expected))

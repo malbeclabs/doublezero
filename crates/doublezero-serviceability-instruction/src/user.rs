@@ -48,10 +48,10 @@ use solana_program::{
 /// `CreateSubscribeUser` is in the **`split_trailing_permission`** family (it
 /// routes through `authorize()` for the USER_ADMIN owner-override), NOT the
 /// length-detected family. The optional `feed` sits in the leading slice (before
-/// `[payer, system]`); a Permission account, once activated, is appended *after*
+/// `[payer, system]`); the payer's Permission PDA is appended *after*
 /// `[payer, system]` and the processor peels it by PDA match — so the two never
-/// collide. This builder is therefore assigned to `common::build_with_permission`
-/// (permission deferred for now). `dz_prefix_count` is written back into the args
+/// collide. This builder is therefore assigned to `common::build_with_permission`.
+/// `dz_prefix_count` is written back into the args
 /// so it always matches the number of `dz_prefix_block` accounts produced, and
 /// `extra_group_count` is likewise DERIVED from `extra_groups.len()`.
 #[allow(clippy::too_many_arguments)]
@@ -115,7 +115,7 @@ pub fn create_subscribe_user(
     accounts.extend(extra_groups.iter().map(|g| AccountMeta::new(*g, false)));
 
     // Optional trailing Feed account (EdgeSeat metro gate), appended BEFORE
-    // payer/system. A Permission PDA, once activated, is appended AFTER payer/system
+    // payer/system. The Permission PDA is appended AFTER payer/system
     // (not after the feed) and the processor peels it by PDA match, so the feed and
     // the Permission account never collide.
     if let Some(feed) = feed {
@@ -621,6 +621,7 @@ mod tests {
                 AccountMeta::new(dz_prefix0, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -645,16 +646,18 @@ mod tests {
             base_args(client_ip),
         );
 
-        // 8 fixed + 1 dz_prefix + feed + payer + system = 12.
-        assert_eq!(ix.accounts.len(), 12);
+        // 8 fixed + 1 dz_prefix + feed + payer + system + permission = 13.
+        assert_eq!(ix.accounts.len(), 13);
         // Feed sits right before the payer/system trailing pair, read-only.
-        let feed_meta = &ix.accounts[ix.accounts.len() - 3];
+        let feed_meta = &ix.accounts[ix.accounts.len() - 4];
         assert_eq!(feed_meta.pubkey, feed);
         assert!(!feed_meta.is_writable);
         assert!(!feed_meta.is_signer);
-        // Permission append is deferred (build_with_permission delegates to build
-        // today), so the last account is the system program.
-        assert_eq!(ix.accounts.last().unwrap().pubkey, system_program::ID);
+        // The payer's Permission PDA is last, read-only.
+        assert_eq!(
+            ix.accounts.last().unwrap(),
+            &common::permission_meta(&pid, &payer)
+        );
     }
 
     #[test]
@@ -684,22 +687,26 @@ mod tests {
             )
         };
 
-        // Without a proof the account list is untouched: 8 fixed + 1 dz_prefix + payer + system.
+        // Without a proof the account list is untouched: 8 fixed + 1 dz_prefix + payer + system
+        // + permission.
         let without = build(None);
-        assert_eq!(without.accounts.len(), 11);
-        assert_eq!(without.accounts.last().unwrap().pubkey, system_program::ID);
+        assert_eq!(without.accounts.len(), 12);
+        assert_eq!(
+            without.accounts.last().unwrap(),
+            &common::permission_meta(&pid, &payer)
+        );
 
         // With one, the sysvar is appended last and read-only. The processor cannot verify the
         // proof without it, so building a transaction that is certain to fail with
         // `IpProofInstructionsSysvarMissing` must not be reachable through the builder.
         let with = build(Some(dummy_proof(client_ip)));
-        assert_eq!(with.accounts.len(), 12);
+        assert_eq!(with.accounts.len(), 13);
         let sysvar = with.accounts.last().unwrap();
         assert_eq!(sysvar.pubkey, solana_program::sysvar::instructions::ID);
         assert!(!sysvar.is_writable);
         assert!(!sysvar.is_signer);
-        // Everything ahead of it is exactly the no-proof layout.
-        assert_eq!(with.accounts[..11], without.accounts[..]);
+        // Everything ahead of it is exactly the no-proof layout, Permission included.
+        assert_eq!(with.accounts[..12], without.accounts[..]);
     }
 
     #[test]
@@ -766,8 +773,8 @@ mod tests {
             other => panic!("unexpected variant: {other:?}"),
         }
 
-        // 8 fixed + 1 dz_prefix + 2 extras + feed + payer + system = 14.
-        assert_eq!(ix.accounts.len(), 14);
+        // 8 fixed + 1 dz_prefix + 2 extras + feed + payer + system + permission = 15.
+        assert_eq!(ix.accounts.len(), 15);
         let (dz_prefix0, _, _) =
             get_resource_extension_pda(&pid, ResourceType::DzPrefixBlock(device, 0));
         assert_eq!(ix.accounts[8].pubkey, dz_prefix0);
@@ -883,10 +890,11 @@ mod tests {
             }
         };
 
-        assert_eq!(max_dz_prefix_count(build(None)), 19);
+        // One slot fewer than before the Permission PDA was appended (19 / 8).
+        assert_eq!(max_dz_prefix_count(build(None)), 18);
         assert_eq!(
             max_dz_prefix_count(build(Some(dummy_proof(client_ip)))),
-            8,
+            7,
             "RFC-27 must leave room for a realistic dz_prefix_count"
         );
     }
@@ -1021,6 +1029,7 @@ mod tests {
                 AccountMeta::new(new_tenant, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -1059,6 +1068,7 @@ mod tests {
                 AccountMeta::new(new_tenant, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -1079,8 +1089,8 @@ mod tests {
             &Pubkey::new_unique(),
             UserUpdateArgs::default(),
         );
-        // 5 fixed + 1 dz_prefix + payer + system = 8 (no tenant accounts).
-        assert_eq!(ix.accounts.len(), 8);
+        // 5 fixed + 1 dz_prefix + payer + system + permission = 9 (no tenant accounts).
+        assert_eq!(ix.accounts.len(), 9);
     }
 
     #[test]
@@ -1171,6 +1181,7 @@ mod tests {
                 AccountMeta::new(owner, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -1220,6 +1231,7 @@ mod tests {
                 AccountMeta::new(owner, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
 
@@ -1236,8 +1248,8 @@ mod tests {
             AccessPassKind::Prepaid,
             UserDeleteArgs::default(),
         );
-        assert_eq!(ix2.accounts.len(), 11);
-        assert_eq!(ix2.accounts[ix2.accounts.len() - 3].pubkey, owner);
+        assert_eq!(ix2.accounts.len(), 12);
+        assert_eq!(ix2.accounts[ix2.accounts.len() - 4].pubkey, owner);
     }
 
     #[test]
@@ -1280,6 +1292,7 @@ mod tests {
                 AccountMeta::new(dz0, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -1308,6 +1321,7 @@ mod tests {
                 AccountMeta::new(globalstate, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }

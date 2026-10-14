@@ -196,6 +196,7 @@ mod tests {
                 AccountMeta::new_readonly(globalstate, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -221,6 +222,7 @@ mod tests {
                 AccountMeta::new_readonly(globalstate, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -250,15 +252,16 @@ mod tests {
                 AccountMeta::new(links[1], false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
 
         // 19 links -> 2 chunks (16 + 3).
         let batched = clear_topology_batched(&pid, &payer, &links, args);
         assert_eq!(batched.len(), 2);
-        // First chunk: 2 fixed + 16 links + payer + system = 20.
-        assert_eq!(batched[0].accounts.len(), 20);
-        assert_eq!(batched[1].accounts.len(), 2 + 3 + 2);
+        // First chunk: 2 fixed + 16 links + payer + system + permission = 21.
+        assert_eq!(batched[0].accounts.len(), 21);
+        assert_eq!(batched[1].accounts.len(), 2 + 3 + 3);
 
         // No links -> no instructions (no empty clear is ever emitted).
         assert!(clear_topology_batched(
@@ -298,14 +301,15 @@ mod tests {
                 AccountMeta::new(devices[0], false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
 
         // 5 devices -> 2 chunks (4 + 1).
         let batched = assign_topology_node_segments_batched(&pid, &payer, &devices, args);
         assert_eq!(batched.len(), 2);
-        assert_eq!(batched[0].accounts.len(), 3 + 4 + 2);
-        assert_eq!(batched[1].accounts.len(), 3 + 1 + 2);
+        assert_eq!(batched[0].accounts.len(), 3 + 4 + 3);
+        assert_eq!(batched[1].accounts.len(), 3 + 1 + 3);
 
         // No devices -> no instructions.
         assert!(assign_topology_node_segments_batched(

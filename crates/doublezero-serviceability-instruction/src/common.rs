@@ -48,68 +48,63 @@ pub(crate) fn build(
     Instruction::new_with_bytes(*program_id, &instruction.pack(), accounts)
 }
 
-/// Assemble an instruction whose processor routes through `authorize()` and will
-/// therefore carry a trailing, read-only Permission PDA (derived from the payer,
-/// never a caller-supplied argument) once the permission model is rolled out.
+/// Assemble an instruction whose processor routes through `authorize()`: the
+/// instruction-specific metas, the shared trailing `[payer, system]`, and then the
+/// payer's Permission PDA as a read-only account (RFC-26 "Permission account").
 ///
-/// Builders are **assigned** to this method per-instruction as they are
-/// implemented; the append itself is **deferred** here (RFC-26 "Permission
-/// account"). Today it simply delegates to [`build`], so assigning a builder
-/// here is behavior-preserving. The Rust SDK activates the append caller-side,
-/// after an RPC existence check (`append_payer_permission_account`), for a
-/// subset of gated commands: feed create/update/delete, user delete/update, and
-/// multicast role updates (`UpdateMulticastGroupRoles`). Other builders assigned
-/// here still emit `[payer, system]` only. Central activation here remains the
-/// rollout that turns the append on for every assigned builder at once; it still
-/// waits on the precondition below.
+/// The PDA is derived from the payer, never taken as a caller-supplied argument,
+/// and it is appended **unconditionally**: a pure builder cannot know whether the
+/// account exists onchain, and it does not need to. `authorize()` treats the
+/// payer's PDA while it is still uninitialized (system-owned, no data, whatever its
+/// lamports) exactly like no Permission account at all, so a payer without one is
+/// authorized by the legacy `GlobalState` allowlists while
+/// `RequirePermissionAccounts` is off, as before.
 ///
-/// The Permission account MUST be appended **last**: `authorize()` reads it as
-/// the final account and identifies it by PDA match (`get_permission_pda(payer)`)
-/// — so the variable-length / length-detected families tolerate it (the feed /
-/// tenant slots sit ahead of the payer and are never confused with it). To
-/// activate, assemble here instead of delegating:
+/// **Deploy ordering.** That tolerance is a program change: older serviceability
+/// programs fail an uninitialized trailing PDA with `InvalidAccountData`, because
+/// their ownership check runs before the legacy fallback. The program carrying the
+/// tolerance must therefore be deployed on a cluster before clients built from this
+/// crate are shipped against it.
 ///
-/// ```ignore
-/// accounts.push(AccountMeta::new(*payer, true));
-/// accounts.push(AccountMeta::new(solana_system_interface::program::ID, false));
-/// let (permission, _) =
-///     doublezero_serviceability::pda::get_permission_pda(program_id, payer);
-/// accounts.push(AccountMeta::new_readonly(permission, false)); // MUST be last
-/// Instruction::new_with_bytes(*program_id, &instruction.pack(), accounts)
-/// ```
-///
-/// **Activation precondition.** This append is a pure, offline operation: it
-/// cannot check whether the payer's Permission PDA actually exists onchain. When
-/// the account does not exist, `authorize()` fails **hard** with
-/// `InvalidAccountData` — the program-ownership check runs before the
-/// foundation-recovery/legacy fallback (see `authorize.rs`), so a missing
-/// Permission account is never routed to the legacy allowlist path. Today's SDK
-/// sidesteps this by appending the PDA only after an RPC existence check, which a
-/// pure builder cannot replicate. The append MUST therefore stay deferred until
-/// every payer is guaranteed a Permission account (e.g. `RequirePermissionAccounts`
-/// enforced), or activating it would break every payer without one.
-///
-/// Prior art for whoever resumes this: the shred oracle hit the same constraint
-/// and solved it caller-side, appending its own read-only Permission meta only
-/// after an RPC existence check that it memoizes per process
-/// (`doublezero-shreds`, `crates/shred-oracle/src/dz_ledger.rs`,
-/// `permission_account_meta`). That is the shape a pure builder cannot own, so
-/// activation here needs either the guarantee above or a caller-supplied
-/// "permission exists" input threaded in from the command layer.
+/// The Permission account MUST be appended **last** (before only the RFC-27
+/// Instructions sysvar, which [`append_instructions_sysvar`] places after it):
+/// `authorize()` reads it as the final account and identifies it by PDA match
+/// (`get_permission_pda(payer)`) — so the variable-length / length-detected
+/// families tolerate it (the feed / tenant slots sit ahead of the payer and are
+/// never confused with it).
 pub(crate) fn build_with_permission(
     program_id: &Pubkey,
     instruction: DoubleZeroInstruction,
     accounts: Vec<AccountMeta>,
     payer: &Pubkey,
 ) -> Instruction {
-    build(program_id, instruction, accounts, payer)
+    build_with_permission_after_system(program_id, instruction, accounts, Vec::new(), payer)
+}
+
+/// [`build_with_permission`] for an instruction that also carries accounts *after*
+/// `[payer, system]` (the feed stake mirror, which its processors find by address).
+/// Those land between the system program and the Permission PDA, so the Permission
+/// account stays last.
+pub(crate) fn build_with_permission_after_system(
+    program_id: &Pubkey,
+    instruction: DoubleZeroInstruction,
+    accounts: Vec<AccountMeta>,
+    after_system: Vec<AccountMeta>,
+    payer: &Pubkey,
+) -> Instruction {
+    let mut ix = build(program_id, instruction, accounts, payer);
+    ix.accounts.extend(after_system);
+    let (permission, _) = doublezero_serviceability::pda::get_permission_pda(program_id, payer);
+    ix.accounts
+        .push(AccountMeta::new_readonly(permission, false)); // MUST be last
+    ix
 }
 
 /// Append the RFC-27 Instructions sysvar as the **very last** account.
 ///
 /// Called on the already-built instruction, not from inside [`build`], because it has to land
 /// after everything the shared trailing convention appends — including the Permission PDA that
-/// [`build_with_permission`] will append once that rollout activates. `split_trailing_permission`
+/// [`build_with_permission`] appends. `split_trailing_permission`
 /// identifies the Permission account by PDA match and `split_trailing_instructions_sysvar`
 /// identifies this one by its fixed key, and the processor peels the sysvar first, so "sysvar
 /// last, Permission second-to-last" is the only order both can parse.
@@ -136,6 +131,14 @@ pub(crate) fn build_globalstate_only(
         vec![AccountMeta::new(globalstate, false)],
         payer,
     )
+}
+
+/// The read-only payer Permission PDA meta [`build_with_permission`] appends, for
+/// asserting builder account layouts in tests.
+#[cfg(test)]
+pub(crate) fn permission_meta(program_id: &Pubkey, payer: &Pubkey) -> AccountMeta {
+    let (permission, _) = doublezero_serviceability::pda::get_permission_pda(program_id, payer);
+    AccountMeta::new_readonly(permission, false)
 }
 
 /// The transaction-level compute-budget prelude: set the compute-unit limit and

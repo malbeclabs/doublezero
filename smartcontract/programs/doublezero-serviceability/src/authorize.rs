@@ -24,10 +24,27 @@ use solana_program::{
 /// `any_of_flags` uses OR semantics: the payer is authorized if their Permission account has
 /// at least one of the specified `permission_flags::*` bits set.
 ///
+/// A trailing account that matches the payer's Permission PDA but has never been
+/// initialized (owned by the system program with empty data) is treated exactly like
+/// no Permission account at all. This lets clients append the payer's Permission PDA
+/// unconditionally and offline, without first checking whether it exists onchain.
+/// Lamports are deliberately ignored: anyone can transfer lamports to any address,
+/// so a pre-funded but still system-owned PDA must not change the outcome.
+///
+/// Without a usable Permission account (absent, or uninitialized as above):
+///   - while `FeatureFlag::RequirePermissionAccounts` is clear, the legacy
+///     `GlobalState` allowlists/authority keys decide (mapping below);
+///   - once it is set, only the foundation `PERMISSION_ADMIN` recovery applies (see
+///     `foundation_permission_recovery`); everyone else is denied with `NotAllowed`.
+///
+/// A trailing account that is not the payer's Permission PDA fails with
+/// `InvalidArgument`; one owned by neither this program nor the system program, or
+/// system-owned but carrying data, fails with `InvalidAccountData`.
+///
 /// Legacy fallback mapping (used whenever `FeatureFlag::RequirePermissionAccounts`
-/// is not set — both when no Permission account is provided and when the provided
-/// Permission account exists but does not grant the requested flag, so the SDK
-/// auto-injecting the payer's Permission PDA can never lock out a legacy key):
+/// is not set — when no usable Permission account is provided and when the provided
+/// Permission account exists but does not grant the requested flag, so a client
+/// appending the payer's Permission PDA can never lock out a legacy key):
 ///   FOUNDATION        → foundation_allowlist
 ///   QA                → qa_allowlist
 ///   ACTIVATOR         → activator_authority_pk
@@ -60,70 +77,83 @@ pub fn authorize<'a, 'b: 'a, I>(
 where
     I: Iterator<Item = &'a AccountInfo<'b>>,
 {
-    match next_account_info(accounts_iter).ok() {
-        Some(permission_account) => {
-            // New path: validate Permission PDA and bitmask.
-            let (expected_pda, _) = get_permission_pda(program_id, payer_key);
-            if permission_account.key != &expected_pda {
-                return Err(ProgramError::InvalidArgument);
-            }
-            // Verify program ownership immediately after the PDA-address check, before
-            // inspecting the account's contents.
-            if permission_account.owner != program_id {
-                return Err(ProgramError::InvalidAccountData);
-            }
-            // Whether the supplied Permission account itself grants one of the flags.
-            let granted = !permission_account.data_is_empty()
-                && Permission::try_from(permission_account)
-                    .map(|p| {
-                        p.status == PermissionStatus::Activated && p.permissions & any_of_flags != 0
-                    })
-                    .unwrap_or(false);
-            if !granted {
-                // The SDK auto-appends the payer's Permission PDA whenever it exists
-                // on-chain. Without the recovery below, a foundation member whose own
-                // Permission account is suspended, under-privileged, or uninitialized
-                // would be routed through this branch and denied the very PERMISSION_ADMIN
-                // instruction needed to repair it — re-introducing the lockout the
-                // None-branch fallback exists to prevent.
-                if foundation_permission_recovery(globalstate, payer_key, any_of_flags) {
-                    return Ok(());
-                }
-                // While strict mode is off, the legacy allowlists/authorities remain
-                // authoritative — exactly as in the None branch. Because the SDK
-                // auto-appends the payer's Permission PDA whenever one exists on-chain,
-                // a present-but-insufficient Permission account must not lock out a key
-                // that legacy authorization would still accept (e.g. a foundation member
-                // who also holds an unrelated, under-privileged Permission account).
-                // Once RequirePermissionAccounts is enabled, only the Permission account
-                // (or the foundation PERMISSION_ADMIN recovery above) authorizes.
-                if !is_feature_enabled(
-                    globalstate.feature_flags,
-                    FeatureFlag::RequirePermissionAccounts,
-                ) && check_legacy_any(payer_key, globalstate, any_of_flags)
-                {
-                    return Ok(());
-                }
-                return Err(DoubleZeroError::NotAllowed.into());
-            }
+    let Some(permission_account) = next_account_info(accounts_iter).ok() else {
+        return authorize_without_permission(payer_key, globalstate, any_of_flags);
+    };
+
+    // New path: validate Permission PDA and bitmask.
+    let (expected_pda, _) = get_permission_pda(program_id, payer_key);
+    if permission_account.key != &expected_pda {
+        return Err(ProgramError::InvalidArgument);
+    }
+    // The payer's PDA, but never created: identical to supplying no account.
+    if is_uninitialized(permission_account) {
+        return authorize_without_permission(payer_key, globalstate, any_of_flags);
+    }
+    // Verify program ownership immediately after the PDA-address check, before
+    // inspecting the account's contents.
+    if permission_account.owner != program_id {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    // Whether the supplied Permission account itself grants one of the flags.
+    let granted = !permission_account.data_is_empty()
+        && Permission::try_from(permission_account)
+            .map(|p| p.status == PermissionStatus::Activated && p.permissions & any_of_flags != 0)
+            .unwrap_or(false);
+    if granted {
+        return Ok(());
+    }
+    // Without the recovery below, a foundation member whose own Permission account
+    // is suspended or under-privileged would be denied the very PERMISSION_ADMIN
+    // instruction needed to repair it — re-introducing the lockout the no-account
+    // fallback exists to prevent.
+    if foundation_permission_recovery(globalstate, payer_key, any_of_flags) {
+        return Ok(());
+    }
+    // While strict mode is off, the legacy allowlists/authorities remain
+    // authoritative — exactly as with no Permission account. A present-but-
+    // insufficient Permission account must not lock out a key that legacy
+    // authorization would still accept (e.g. a foundation member who also holds an
+    // unrelated, under-privileged Permission account). Once
+    // RequirePermissionAccounts is enabled, only the Permission account (or the
+    // foundation PERMISSION_ADMIN recovery above) authorizes.
+    if !is_feature_enabled(
+        globalstate.feature_flags,
+        FeatureFlag::RequirePermissionAccounts,
+    ) && check_legacy_any(payer_key, globalstate, any_of_flags)
+    {
+        return Ok(());
+    }
+    Err(DoubleZeroError::NotAllowed.into())
+}
+
+/// Whether `account` has never been initialized: still owned by the system program
+/// and carrying no data. Lamports are ignored on purpose — a third party can always
+/// pre-fund an address, which must not turn "no permission" into a hard failure.
+fn is_uninitialized(account: &AccountInfo) -> bool {
+    account.owner == &solana_system_interface::program::ID && account.data_is_empty()
+}
+
+/// Authorization when the payer supplies no usable Permission account (none at all,
+/// or the payer's PDA while still uninitialized).
+fn authorize_without_permission(
+    payer_key: &Pubkey,
+    globalstate: &GlobalState,
+    any_of_flags: u128,
+) -> ProgramResult {
+    if is_feature_enabled(
+        globalstate.feature_flags,
+        FeatureFlag::RequirePermissionAccounts,
+    ) {
+        // Even in strict mode, foundation members can manage permissions to
+        // prevent being locked out of the permission system.
+        if foundation_permission_recovery(globalstate, payer_key, any_of_flags) {
+            return Ok(());
         }
-        None => {
-            // Legacy path: check GlobalState allowlists / authority keys.
-            if is_feature_enabled(
-                globalstate.feature_flags,
-                FeatureFlag::RequirePermissionAccounts,
-            ) {
-                // Even in strict mode, foundation members can manage permissions to
-                // prevent being locked out of the permission system.
-                if foundation_permission_recovery(globalstate, payer_key, any_of_flags) {
-                    return Ok(());
-                }
-                return Err(DoubleZeroError::NotAllowed.into());
-            }
-            if !check_legacy_any(payer_key, globalstate, any_of_flags) {
-                return Err(DoubleZeroError::NotAllowed.into());
-            }
-        }
+        return Err(DoubleZeroError::NotAllowed.into());
+    }
+    if !check_legacy_any(payer_key, globalstate, any_of_flags) {
+        return Err(DoubleZeroError::NotAllowed.into());
     }
     Ok(())
 }
@@ -171,7 +201,8 @@ pub fn foundation_strict_mode_disable_recovery(
 ///
 /// `permission_account` is the caller's own trailing Permission account (the one the
 /// SDK auto-appends), if present. It is bound to `payer_key` by re-deriving the PDA,
-/// so a caller cannot pass someone else's FOUNDATION permission.
+/// so a caller cannot pass someone else's FOUNDATION permission. An uninitialized
+/// (system-owned, empty) PDA grants nothing, matching [`authorize`].
 pub fn can_grant_foundation(
     program_id: &Pubkey,
     permission_account: Option<&AccountInfo>,
@@ -430,9 +461,13 @@ pub fn legacy_keys_for_flags(
 ///
 /// Variable-length instructions (e.g. topology clear / assign-node-segments)
 /// place a caller-controlled list of accounts first; the SDK client then
-/// appends `payer`, `system_program`, and — when one exists on-chain — the
-/// payer's Permission PDA. `remaining` is everything left after the
-/// instruction's own fixed leading accounts have been consumed.
+/// appends `payer`, `system_program`, and optionally the payer's Permission
+/// PDA. `remaining` is everything left after the instruction's own fixed
+/// leading accounts have been consumed.
+///
+/// The Permission account is recognized by address alone, never by owner or
+/// contents, so an uninitialized PDA is peeled off the same way as a real one;
+/// [`authorize`] then treats it as no Permission account.
 ///
 /// With a Permission account present the layout is `[leading.., payer, system,
 /// permission]`, so the payer sits at `n - 3` and the last account is the
@@ -1389,14 +1424,17 @@ mod tests {
         let mut iter = accounts.iter();
         let gs = GlobalState::default();
 
-        assert!(authorize(
-            &program_id,
-            &mut iter,
-            &payer,
-            &gs,
-            permission_flags::USER_ADMIN
-        )
-        .is_err());
+        assert_eq!(
+            authorize(
+                &program_id,
+                &mut iter,
+                &payer,
+                &gs,
+                permission_flags::USER_ADMIN
+            )
+            .unwrap_err(),
+            DoubleZeroError::NotAllowed.into()
+        );
     }
 
     #[test]
@@ -1425,14 +1463,261 @@ mod tests {
         let mut iter = accounts.iter();
         let gs = GlobalState::default();
 
-        assert!(authorize(
+        assert_eq!(
+            authorize(
+                &program_id,
+                &mut iter,
+                &payer,
+                &gs,
+                permission_flags::USER_ADMIN
+            )
+            .unwrap_err(),
+            ProgramError::InvalidAccountData
+        );
+    }
+
+    // ── Uninitialized Permission PDA (appended unconditionally by clients) ────
+
+    /// Run `authorize` with the payer's Permission PDA as an uninitialized,
+    /// system-owned account holding `lamports` (0 = never touched, >0 = pre-funded
+    /// by a third party).
+    fn authorize_with_uninitialized_pda(
+        program_id: &Pubkey,
+        payer: &Pubkey,
+        globalstate: &GlobalState,
+        flags: u128,
+        lamports: u64,
+    ) -> ProgramResult {
+        let (pda, _) = get_permission_pda(program_id, payer);
+        let mut lamports = lamports;
+        let mut data: Vec<u8> = vec![];
+        let system_program = solana_system_interface::program::ID;
+        let account = AccountInfo::new(
+            &pda,
+            false,
+            false,
+            &mut lamports,
+            &mut data,
+            &system_program,
+            false,
+        );
+        let accounts = [account];
+        let mut iter = accounts.iter();
+        authorize(program_id, &mut iter, payer, globalstate, flags)
+    }
+
+    #[test]
+    fn test_uninitialized_pda_strict_off_legacy_key_allowed() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let gs = gs_with_foundation(&payer);
+        for lamports in [0, 1_000_000] {
+            assert_eq!(
+                authorize_with_uninitialized_pda(
+                    &program_id,
+                    &payer,
+                    &gs,
+                    permission_flags::NETWORK_ADMIN,
+                    lamports
+                ),
+                Ok(()),
+                "lamports={lamports}"
+            );
+        }
+        // A non-foundation legacy authority is honored too.
+        let sentinel = Pubkey::new_unique();
+        let gs = gs_with_sentinel(&sentinel);
+        assert_eq!(
+            authorize_with_uninitialized_pda(
+                &program_id,
+                &sentinel,
+                &gs,
+                permission_flags::ACCESS_PASS_ADMIN,
+                0
+            ),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn test_uninitialized_pda_strict_off_unauthorized_key_denied() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let gs = gs_with_foundation(&Pubkey::new_unique());
+        for lamports in [0, 1_000_000] {
+            assert_eq!(
+                authorize_with_uninitialized_pda(
+                    &program_id,
+                    &payer,
+                    &gs,
+                    permission_flags::NETWORK_ADMIN,
+                    lamports
+                )
+                .unwrap_err(),
+                DoubleZeroError::NotAllowed.into(),
+                "lamports={lamports}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_uninitialized_pda_strict_on_legacy_key_denied() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let mut gs = gs_with_foundation(&payer);
+        gs.feature_flags = FeatureFlag::RequirePermissionAccounts.to_mask();
+        for lamports in [0, 1_000_000] {
+            assert_eq!(
+                authorize_with_uninitialized_pda(
+                    &program_id,
+                    &payer,
+                    &gs,
+                    permission_flags::NETWORK_ADMIN,
+                    lamports
+                )
+                .unwrap_err(),
+                DoubleZeroError::NotAllowed.into(),
+                "lamports={lamports}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_uninitialized_pda_strict_on_foundation_permission_admin_recovery() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let mut gs = gs_with_foundation(&payer);
+        gs.feature_flags = FeatureFlag::RequirePermissionAccounts.to_mask();
+        for lamports in [0, 1_000_000] {
+            assert_eq!(
+                authorize_with_uninitialized_pda(
+                    &program_id,
+                    &payer,
+                    &gs,
+                    permission_flags::PERMISSION_ADMIN,
+                    lamports
+                ),
+                Ok(()),
+                "lamports={lamports}"
+            );
+        }
+        // The recovery is foundation-only.
+        let outsider = Pubkey::new_unique();
+        assert_eq!(
+            authorize_with_uninitialized_pda(
+                &program_id,
+                &outsider,
+                &gs,
+                permission_flags::PERMISSION_ADMIN,
+                0
+            )
+            .unwrap_err(),
+            DoubleZeroError::NotAllowed.into()
+        );
+    }
+
+    #[test]
+    fn test_uninitialized_wrong_pda_still_invalid_argument() {
+        // An uninitialized account that is not the payer's PDA (here: another
+        // payer's PDA) is rejected on the address check, before the empty-account
+        // shortcut can apply.
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let (other_pda, _) = get_permission_pda(&program_id, &Pubkey::new_unique());
+        let system_program = solana_system_interface::program::ID;
+        let mut lamports = 0u64;
+        let mut data: Vec<u8> = vec![];
+        let account = AccountInfo::new(
+            &other_pda,
+            false,
+            false,
+            &mut lamports,
+            &mut data,
+            &system_program,
+            false,
+        );
+        let accounts = [account];
+        let mut iter = accounts.iter();
+        let gs = gs_with_foundation(&payer);
+        assert_eq!(
+            authorize(
+                &program_id,
+                &mut iter,
+                &payer,
+                &gs,
+                permission_flags::NETWORK_ADMIN
+            )
+            .unwrap_err(),
+            ProgramError::InvalidArgument
+        );
+    }
+
+    #[test]
+    fn test_system_owned_pda_with_data_invalid_account_data() {
+        // Only an *empty* system-owned PDA means "no permission"; a system-owned
+        // account carrying data is not a state this program ever produces.
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let (pda, _) = get_permission_pda(&program_id, &payer);
+        let system_program = solana_system_interface::program::ID;
+        let mut lamports = 1_000_000u64;
+        let mut data = vec![0u8; 8];
+        let account = AccountInfo::new(
+            &pda,
+            false,
+            false,
+            &mut lamports,
+            &mut data,
+            &system_program,
+            false,
+        );
+        let accounts = [account];
+        let mut iter = accounts.iter();
+        let gs = gs_with_foundation(&payer);
+        assert_eq!(
+            authorize(
+                &program_id,
+                &mut iter,
+                &payer,
+                &gs,
+                permission_flags::NETWORK_ADMIN
+            )
+            .unwrap_err(),
+            ProgramError::InvalidAccountData
+        );
+    }
+
+    #[test]
+    fn test_can_grant_foundation_uninitialized_pda() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let (pda, _) = get_permission_pda(&program_id, &payer);
+        let system_program = solana_system_interface::program::ID;
+        let mut lamports = 1_000_000u64;
+        let mut data: Vec<u8> = vec![];
+        let account = AccountInfo::new(
+            &pda,
+            false,
+            false,
+            &mut lamports,
+            &mut data,
+            &system_program,
+            false,
+        );
+        // Grants nothing on its own...
+        assert!(!can_grant_foundation(
             &program_id,
-            &mut iter,
+            Some(&account),
             &payer,
-            &gs,
-            permission_flags::USER_ADMIN
-        )
-        .is_err());
+            &GlobalState::default()
+        ));
+        // ...and does not hide an allowlist membership.
+        assert!(can_grant_foundation(
+            &program_id,
+            Some(&account),
+            &payer,
+            &gs_with_foundation(&payer)
+        ));
     }
 
     // ── Foundation lockout recovery (Permission account present but unusable) ──

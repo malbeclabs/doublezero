@@ -12,10 +12,9 @@ use doublezero_serviceability::{
 
 use solana_program_test::*;
 use solana_sdk::{
-    instruction::{AccountMeta, InstructionError},
+    instruction::AccountMeta,
     pubkey::Pubkey,
     signature::{Keypair, Signer},
-    transaction::TransactionError,
 };
 
 mod test_helpers;
@@ -613,7 +612,7 @@ async fn test_non_foundation_cannot_disable_strict_mode() {
     .await;
     assert_custom_error(&result.unwrap_err(), DoubleZeroError::NotAllowed);
 
-    // The uninitialized PDA is not program-owned, so authorize() rejects it outright.
+    // An uninitialized PDA counts as no Permission account.
     let result = try_set_flags(
         &mut banks_client,
         program_id,
@@ -623,13 +622,7 @@ async fn test_non_foundation_cannot_disable_strict_mode() {
         &[AccountMeta::new_readonly(no_permission_pda, false)],
     )
     .await;
-    match result.unwrap_err() {
-        BanksClientError::TransactionError(TransactionError::InstructionError(
-            0,
-            InstructionError::InvalidAccountData,
-        )) => {}
-        other => panic!("expected InvalidAccountData, got {other:?}"),
-    }
+    assert_custom_error(&result.unwrap_err(), DoubleZeroError::NotAllowed);
 
     let result = try_set_flags(
         &mut banks_client,

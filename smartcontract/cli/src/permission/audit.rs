@@ -462,6 +462,32 @@ mod tests {
     }
 
     #[test]
+    fn test_feed_authority_is_audited() {
+        // The feed instructions gate on FEED_AUTHORITY, so a feed authority without a
+        // Permission account would lose access in strict mode and must surface a gap.
+        let feed = Pubkey::new_unique();
+        let mut gs = globalstate_with_foundation(vec![], 0);
+        gs.feed_authority_pk = feed;
+
+        let report = build_report(&gs, &HashMap::new());
+        assert!(report
+            .gaps
+            .iter()
+            .any(|g| g.flag == "feed-authority" && g.key == feed.to_string()));
+
+        let permissions = HashMap::from([(
+            Pubkey::new_unique(),
+            permission(
+                feed,
+                permission_flags::FEED_AUTHORITY | permission_flags::ACCESS_PASS_ADMIN,
+                PermissionStatus::Activated,
+            ),
+        )]);
+        let report = build_report(&gs, &permissions);
+        assert!(report.gaps.is_empty(), "unexpected gaps: {:?}", report.gaps);
+    }
+
+    #[test]
     fn test_no_gaps_when_foundation_fully_provisioned() {
         let foundation = Pubkey::new_unique();
         let gs = globalstate_with_foundation(vec![foundation], 0);

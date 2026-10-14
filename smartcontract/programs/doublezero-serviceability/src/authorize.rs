@@ -315,6 +315,7 @@ pub const AUTHORIZE_GATED_FLAGS: &[u128] = &[
     permission_flags::ACTIVATOR,
     permission_flags::HEALTH_ORACLE,
     permission_flags::STAKE_ORACLE,
+    permission_flags::FEED_AUTHORITY,
 ];
 
 /// Enumerates the legacy `GlobalState` keys that authorize `any_of_flags` today, each

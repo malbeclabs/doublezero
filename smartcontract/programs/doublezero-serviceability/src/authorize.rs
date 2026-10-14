@@ -315,8 +315,14 @@ pub const AUTHORIZE_GATED_FLAGS: &[u128] = &[
     permission_flags::ACTIVATOR,
     permission_flags::HEALTH_ORACLE,
     permission_flags::STAKE_ORACLE,
-    permission_flags::FEED_AUTHORITY,
+    // The feed instructions pass this pair to `authorize()` as one any-of set, so it is listed
+    // as one entry: a key is covered if its Permission account grants either flag.
+    // `FOUNDATION` reaches `authorize()` only through them.
+    FEED_ADMIN_FLAGS,
 ];
+
+/// The any-of set every feed instruction passes to [`authorize`].
+pub const FEED_ADMIN_FLAGS: u128 = permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION;
 
 /// Enumerates the legacy `GlobalState` keys that authorize `any_of_flags` today, each
 /// paired with a static label naming its source. This is the enumerating inverse of

@@ -17,7 +17,7 @@ All notable changes to this project will be documented in this file.
 - Offchain
   - `doublezero-contributor-rewards` adds `calculate-monthly-rewards --year --month [--json]`, which averages a UTC month's posted DoubleZero epoch shares into contributor shares that total exactly 1,000,000,000, the input monthly contributor distributions need. It is read-only. (malbeclabs/infra#2692)
 - Serviceability
-  - A `foundation_allowlist` member can always use `SetFeatureFlags` to turn `require-permission-accounts` off, even when their own Permission account is missing, suspended or lacks `globalstate-admin`. Before, only a CLI that attached a Permission account with that flag could turn it off, and without one only a program upgrade could. This covers only clearing that one flag. Turning it on, or changing any other flag, still needs normal authorization.
+  - A `foundation_allowlist` member can always use `SetFeatureFlags` to turn `require-permission-accounts` off, even when their own Permission account is missing, suspended or lacks `globalstate-admin`. Before, turning it off needed an activated Permission account granting `globalstate-admin`, so a foundation member without one first had to create or repair it through the `permission-admin` recovery. This covers only clearing that one flag. Turning it on, or changing any other flag, still needs normal authorization.
 - Solana programs
   - `revenue-distribution` collects a month's contributor 2Z from the program the admin sets with `MonthlyContributorRewardsProgram`, the feed-subscription program, into its monthly contributor distribution. (malbeclabs/infra#2694)
 

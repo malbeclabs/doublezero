@@ -17,6 +17,7 @@ clap.workspace = true
 doublezero-config.workspace = true
 doublezero_sdk.workspace = true
 doublezero-serviceability.workspace = true
+doublezero-serviceability-instruction.workspace = true
 doublezero-telemetry.workspace = true
 metrics.workspace = true
 # Server/daemon-only: pulls in hyper-rustls → rustls(aws-lc-rs) → aws-lc-sys (~2MB C, glibc 2.38+

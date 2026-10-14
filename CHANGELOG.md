@@ -19,6 +19,7 @@ All notable changes to this project will be documented in this file.
 - Solana programs
   - `revenue-distribution` collects a month's contributor 2Z from the program the admin sets with `MonthlyContributorRewardsProgram`, the feed-subscription program, into its monthly contributor distribution. (malbeclabs/infra#2694)
   - `revenue-distribution` adds `DistributeMonthlyContributorRewards`, which pays one contributor's share of a collected, finalized month to its recipient wallets. Rounding dust stays in the month's 2Z account. (malbeclabs/infra#2695)
+  - `revenue-distribution` refuses `FinalizeMonthlyContributorDistributionRewards` until the month is collected. Collect refuses a finalized month, so an earlier finalize would leave that month's contributor 2Z in the feed program's bucket. (malbeclabs/infra#2695)
 
 ## [v0.44.0](https://github.com/malbeclabs/doublezero/compare/client/v0.43.0...client/v0.44.0) - 2026-10-02
 

@@ -3211,9 +3211,8 @@ fn try_configure_monthly_contributor_distribution_rewards(
 }
 
 /// Locks the rewards root and the collected 2Z pool that per-leaf amounts are
-/// computed from. Collect is refused once a month is finalized, so finalizing
-/// before all feed 2Z is collected strands it in the feed bucket. That is why
-/// only the rewards accountant may finalize, unlike `Distribution`.
+/// computed from. Only the rewards accountant may finalize, unlike
+/// `Distribution`, because finalize locks whichever root was posted last.
 fn try_finalize_monthly_contributor_distribution_rewards(
     accounts: &[AccountInfo],
 ) -> ProgramResult {
@@ -3252,14 +3251,14 @@ fn try_finalize_monthly_contributor_distribution_rewards(
     monthly_distribution.try_require_unfinalized_rewards_calculation()?;
 
     // Finalize cannot be undone and shuts collect out, so it must wait for
-    // all of the month's feed 2Z to be collectable.
+    // the month to end and its feed 2Z to be collected.
     monthly_distribution.try_require_month_ended()?;
+    monthly_distribution.try_require_collected()?;
 
     // A null root or zero contributors leaves no leaf to pay collected 2Z to,
     // stranding it.
-    if (monthly_distribution.rewards_merkle_root == Hash::default()
-        || monthly_distribution.total_contributors == 0)
-        && monthly_distribution.collected_2z_amount != 0
+    if monthly_distribution.rewards_merkle_root == Hash::default()
+        || monthly_distribution.total_contributors == 0
     {
         msg!("Rewards root cannot be null or empty with collected 2Z");
         return Err(ProgramError::InvalidAccountData);

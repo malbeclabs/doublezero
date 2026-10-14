@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- refuse to finalize a monthly contributor distribution before it is collected, since collect refuses a finalized month (malbeclabs/infra#2695)
 - pay one contributor's share of a collected, finalized month to its recipient wallets per proof, leaving rounding dust in the month's 2Z account (malbeclabs/infra#2695)
 - collect a calendar month's contributor 2Z, once per month, from the program set by the new `MonthlyContributorRewardsProgram` config into its monthly contributor distribution (malbeclabs/infra#2694)
 - add per-calendar-month contributor distributions: initialize, post rewards root, finalize once the month has ended (malbeclabs/infra#2693)

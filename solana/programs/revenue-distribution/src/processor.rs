@@ -170,6 +170,10 @@ fn try_process_instruction(
         RevenueDistributionInstructionData::CollectMonthlyContributorRewards => {
             try_collect_monthly_contributor_rewards(accounts)
         }
+        RevenueDistributionInstructionData::DistributeMonthlyContributorRewards {
+            unit_share,
+            proof,
+        } => try_distribute_monthly_contributor_rewards(accounts, unit_share, proof),
     }
 }
 
@@ -3440,6 +3444,184 @@ fn try_collect_monthly_contributor_rewards(accounts: &[AccountInfo]) -> ProgramR
     Ok(())
 }
 
+/// Rounding dust stays in the month's 2Z token account, outside
+/// `distributed_2z_amount`, rather than being burned.
+fn try_distribute_monthly_contributor_rewards(
+    accounts: &[AccountInfo],
+    unit_share: u32,
+    proof: MerkleProof,
+) -> ProgramResult {
+    msg!("Distribute monthly contributor rewards");
+
+    // Enforce that the merkle proof uses an indexed tree. This index will be
+    // referenced later in this instruction processor.
+    let leaf_index = try_leaf_index(&proof)?;
+
+    // We expect the following accounts for this instruction:
+    // - 0: Program config.
+    // - 1: Monthly distribution.
+    // - 2: Contributor rewards.
+    // - 3: Monthly distribution's 2Z token account.
+    // - 4: SPL Token program.
+    //
+    // Remaining accounts are recipient ATAs, whose owners are specified in
+    // the contributor rewards account.
+    let mut accounts_iter = accounts.iter().enumerate();
+
+    // Account 0 must be the program config.
+    let program_config =
+        ZeroCopyAccount::<ProgramConfig>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+
+    // Make sure the program is not paused.
+    program_config.try_require_unpaused()?;
+
+    // Account 1 must be the monthly distribution.
+    let mut monthly_distribution =
+        ZeroCopyMutAccount::<MonthlyContributorDistribution>::try_next_accounts(
+            &mut accounts_iter,
+            Some(&ID),
+        )?;
+    msg!(
+        "Month: {}-{:02}",
+        monthly_distribution.year,
+        monthly_distribution.month
+    );
+
+    // Collect fixes the pool that every leaf is paid from, and finalize fixes
+    // the root.
+    monthly_distribution.try_require_collected()?;
+    monthly_distribution.try_require_finalized_rewards_calculation()?;
+
+    if monthly_distribution.are_all_rewards_distributed() {
+        msg!("All rewards have already been distributed");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    let processed_bitmap_range = monthly_distribution.processed_rewards_bitmap_range();
+
+    try_process_remaining_data_leaf_index(
+        &mut monthly_distribution.remaining_data[processed_bitmap_range],
+        leaf_index,
+    )
+    .inspect_err(|_| {
+        msg!("Rewards already distributed");
+    })?;
+
+    // Account 2 must be the contributor rewards.
+    let contributor_rewards =
+        ZeroCopyAccount::<ContributorRewards>::try_next_accounts(&mut accounts_iter, Some(&ID))?;
+    msg!("Service key: {}", contributor_rewards.service_key);
+
+    let reward_share = RewardShare::new(
+        contributor_rewards.service_key,
+        unit_share,
+        false, // should_block
+        0,     // economic_burn_rate
+    )
+    .ok_or_else(|| {
+        msg!("Invalid unit share {}", unit_share);
+        ProgramError::InvalidInstructionData
+    })?;
+
+    let computed_merkle_root =
+        proof.root_from_pod_leaf(&reward_share, Some(RewardShare::LEAF_PREFIX));
+
+    if computed_merkle_root != monthly_distribution.rewards_merkle_root {
+        msg!("Invalid computed merkle root: {}", computed_merkle_root);
+        return Err(ProgramError::InvalidInstructionData);
+    }
+
+    // Account 3 must be the monthly distribution's 2Z token account.
+    let (_, monthly_distribution_2z_token_pda_info, _) = try_next_2z_token_pda_info(
+        &mut accounts_iter,
+        monthly_distribution.info.key,
+        "monthly distribution's",
+        Some(monthly_distribution.token_2z_pda_bump_seed),
+    )?;
+
+    // Account 4 must be the SPL Token program.
+    try_next_token_program_info(&mut accounts_iter)?;
+
+    // Safe to unwrap because `RewardShare::new` checked the unit share.
+    let share_amount = reward_share
+        .checked_unit_share()
+        .unwrap()
+        .mul_scalar(monthly_distribution.collected_2z_amount);
+
+    let year_seed = monthly_distribution.year.to_le_bytes();
+    let monthly_distribution_signer_seeds = &[
+        MonthlyContributorDistribution::SEED_PREFIX,
+        &year_seed,
+        &[monthly_distribution.month],
+        &[monthly_distribution.bump_seed],
+    ];
+
+    let mut total_transferred_share_amount = 0;
+    let mut transfer_count = 0;
+
+    for RecipientShare {
+        recipient_key,
+        share,
+    } in contributor_rewards.recipient_shares.active_iter()
+    {
+        // Account 5 + i must be the ATA owned by the recipient. The transfer
+        // CPI fails if this account is not writable.
+        let (account_index, ata_info) =
+            try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+        let ata_key = get_associated_token_address(recipient_key, &DOUBLEZERO_MINT_KEY);
+
+        // Enforce this account location.
+        if ata_info.key != &ata_key {
+            msg!(
+                "Expected ATA for recipient {} (account {})",
+                recipient_key,
+                account_index
+            );
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        let recipient_share_amount = share.mul_scalar(share_amount);
+        total_transferred_share_amount += recipient_share_amount;
+
+        let token_transfer_ix = token_instruction::transfer(
+            &spl_token_interface::ID,
+            monthly_distribution_2z_token_pda_info.key,
+            &ata_key,
+            monthly_distribution.info.key,
+            &[], // signer_pubkeys
+            recipient_share_amount,
+        )
+        .unwrap();
+
+        invoke_signed_unchecked(
+            &token_transfer_ix,
+            accounts,
+            &[monthly_distribution_signer_seeds],
+        )?;
+        msg!(
+            "Transferred {} 2Z tokens to {}",
+            recipient_share_amount,
+            recipient_key
+        );
+
+        transfer_count += 1;
+    }
+
+    // There must be at least one recipient.
+    if transfer_count == 0 {
+        msg!("Contributor recipients must be configured");
+        return Err(ProgramError::InvalidAccountData);
+    }
+
+    monthly_distribution.distributed_2z_amount = monthly_distribution
+        .distributed_2z_amount
+        .checked_add(total_transferred_share_amount)
+        .expect("MonthlyContributorDistribution.distributed_2z_amount overflowed");
+    monthly_distribution.distributed_rewards_count += 1;
+
+    Ok(())
+}
+
 //
 // Account info handling.
 //
@@ -3723,9 +3905,29 @@ impl MonthlyContributorDistribution {
     }
 
     #[inline(always)]
+    fn try_require_finalized_rewards_calculation(&self) -> ProgramResult {
+        if !self.is_rewards_calculation_finalized() {
+            msg!("Monthly contributor distribution rewards are not finalized yet");
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        Ok(())
+    }
+
+    #[inline(always)]
     fn try_require_uncollected(&self) -> ProgramResult {
         if self.is_collected() {
             msg!("Monthly contributor distribution has already been collected");
+            return Err(ProgramError::InvalidAccountData);
+        }
+
+        Ok(())
+    }
+
+    #[inline(always)]
+    fn try_require_collected(&self) -> ProgramResult {
+        if !self.is_collected() {
+            msg!("Monthly contributor distribution has not been collected yet");
             return Err(ProgramError::InvalidAccountData);
         }
 

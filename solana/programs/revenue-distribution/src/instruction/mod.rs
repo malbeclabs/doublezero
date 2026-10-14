@@ -145,6 +145,14 @@ pub enum RevenueDistributionInstructionData {
     /// Rev-distr signs the `MonthlyContributorDistribution` PDA so the program
     /// can verify the caller.
     CollectMonthlyContributorRewards,
+
+    /// Pays one leaf of a collected, finalized `MonthlyContributorDistribution`.
+    /// The leaf is `RewardShare::new(service_key, unit_share, false, 0)` in an
+    /// indexed tree with `RewardShare::LEAF_PREFIX`.
+    DistributeMonthlyContributorRewards {
+        unit_share: u32,
+        proof: MerkleProof,
+    },
 }
 
 impl RevenueDistributionInstructionData {
@@ -206,6 +214,8 @@ impl RevenueDistributionInstructionData {
         Discriminator::new_sha2(b"dz::ix::finalize_monthly_contributor_distribution_rewards");
     pub const COLLECT_MONTHLY_CONTRIBUTOR_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::collect_monthly_contributor_rewards");
+    pub const DISTRIBUTE_MONTHLY_CONTRIBUTOR_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::distribute_monthly_contributor_rewards");
 
     //
     // Versioned instruction selectors.
@@ -325,6 +335,12 @@ impl BorshDeserialize for RevenueDistributionInstructionData {
                 Ok(Self::FinalizeMonthlyContributorDistributionRewards)
             }
             Self::COLLECT_MONTHLY_CONTRIBUTOR_REWARDS => Ok(Self::CollectMonthlyContributorRewards),
+            Self::DISTRIBUTE_MONTHLY_CONTRIBUTOR_REWARDS => {
+                let unit_share = BorshDeserialize::deserialize_reader(reader)?;
+                let proof = BorshDeserialize::deserialize_reader(reader)?;
+
+                Ok(Self::DistributeMonthlyContributorRewards { unit_share, proof })
+            }
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "Invalid discriminator",
@@ -449,6 +465,11 @@ impl BorshSerialize for RevenueDistributionInstructionData {
             }
             Self::CollectMonthlyContributorRewards => {
                 Self::COLLECT_MONTHLY_CONTRIBUTOR_REWARDS.serialize(writer)
+            }
+            Self::DistributeMonthlyContributorRewards { unit_share, proof } => {
+                Self::DISTRIBUTE_MONTHLY_CONTRIBUTOR_REWARDS.serialize(writer)?;
+                unit_share.serialize(writer)?;
+                proof.serialize(writer)
             }
         }
     }

@@ -80,5 +80,8 @@ write-checksums:
 	shasum -a 256 artifacts-mainnet-beta/*.so > programs/sha256sums_mainnet_beta.txt && \
 	shasum -a 256 artifacts-development/*.so > programs/sha256sums_development.txt
 
+# The Docker build's cache mounts outlive `cargo clean` and `--no-cache`.
 .PHONY: clean-write-checksums
-clean-write-checksums: clean write-checksums
+clean-write-checksums: clean
+	docker builder prune -f --filter type=exec.cachemount --filter description~=doublezero-verified-build-
+	$(MAKE) write-checksums

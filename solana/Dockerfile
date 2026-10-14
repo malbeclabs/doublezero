@@ -22,8 +22,8 @@ COPY programs ./programs
 COPY crates ./crates
 COPY mock ./mock
 
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
+RUN --mount=type=cache,id=doublezero-verified-build-cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=doublezero-verified-build-cargo-git,target=/usr/local/cargo/git \
     cargo fetch --locked
 
 ARG NETWORK
@@ -32,10 +32,10 @@ ARG NETWORK
 # `target` is a cache mount shared across networks. It is locked so concurrent
 # builds cannot interleave, and each program is copied by name rather than
 # globbing a stale .so from another network's build.
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/build/target,sharing=locked \
-    --mount=type=cache,target=/root/.cache/solana \
+RUN --mount=type=cache,id=doublezero-verified-build-cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=doublezero-verified-build-cargo-git,target=/usr/local/cargo/git \
+    --mount=type=cache,id=doublezero-verified-build-target,target=/build/target,sharing=locked \
+    --mount=type=cache,id=doublezero-verified-build-platform-tools,target=/root/.cache/solana \
     set -e; \
     mkdir "artifacts-${NETWORK}"; \
     NETWORK=${NETWORK} make build-sbf; \

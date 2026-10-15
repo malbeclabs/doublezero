@@ -201,8 +201,8 @@ pub struct SchedulerSettings {
     /// Maximum time to wait for grace period in seconds (default: 21600 = 6 hours)
     #[serde(default = "default_grace_period_max_wait_seconds")]
     pub grace_period_max_wait_seconds: u64,
-    /// First UTC month, as "YYYY-MM", that the worker records DZ epoch end times
-    /// for. Unset, it records none.
+    /// First UTC month, as "YYYY-MM", that the worker finalizes and pays. While
+    /// it is set, the worker also records DZ epoch end times. Unset disables both.
     #[serde(default)]
     pub monthly_first_month: Option<String>,
 }

@@ -19,7 +19,7 @@ use doublezero_solana_sdk::{
     try_build_instruction,
 };
 use solana_compute_budget_interface::ComputeBudgetInstruction;
-use solana_sdk::pubkey::Pubkey;
+use solana_sdk::{instruction::Instruction, pubkey::Pubkey};
 use spl_associated_token_account_interface::instruction::create_associated_token_account_idempotent;
 use tracing::{debug, info, warn};
 
@@ -249,13 +249,66 @@ async fn try_distribute_contributor_rewards(
     leaf_index: usize,
     reward_share: &RewardShare,
 ) -> Result<bool> {
+    let wallet_key = wallet.pubkey();
+
+    let payment = try_pay_leaf(
+        wallet,
+        dz_mint_key,
+        &reward_share.contributor_key,
+        &format!("epoch {}", distribution.dz_epoch),
+        |recipient_keys| {
+            Ok(try_build_instruction(
+                &ID,
+                DistributeRewardsAccounts::new(
+                    distribution.dz_epoch,
+                    &reward_share.contributor_key,
+                    dz_mint_key,
+                    &wallet_key,
+                    recipient_keys,
+                ),
+                &RevenueDistributionInstructionData::DistributeRewards {
+                    unit_share: reward_share.unit_share,
+                    economic_burn_rate: reward_share.economic_burn_rate(),
+                    proof: shapley_output.generate_merkle_proof(leaf_index)?,
+                },
+            )?)
+        },
+    )
+    .await?;
+
+    match payment {
+        LeafPayment::Sent => Ok(true),
+        LeafPayment::Skipped(reason) => {
+            warn!("{reason}");
+            Ok(false)
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum LeafPayment {
+    Sent,
+    // Only the contributor can fix this, so the caller decides how loudly to
+    // report it.
+    Skipped(String),
+}
+
+/// Pay one leaf to its contributor's active recipients, creating any missing
+/// recipient ATA in the same transaction. `build_distribute_instruction` gets
+/// the recipient keys, whose ATAs it must list in that order.
+pub async fn try_pay_leaf(
+    wallet: &Wallet,
+    dz_mint_key: &Pubkey,
+    contributor_key: &Pubkey,
+    payment_label: &str,
+    build_distribute_instruction: impl FnOnce(&[&Pubkey]) -> Result<Instruction>,
+) -> Result<LeafPayment> {
     const DISTRIBUTE_REWARDS_CU_BASE: u32 = 30_000;
     const PER_RECIPIENT_CU: u32 = 12_500;
 
     let wallet_key = wallet.pubkey();
 
-    let (contributor_rewards_key, _) =
-        ContributorRewards::find_address(&reward_share.contributor_key);
+    let (contributor_rewards_key, _) = ContributorRewards::find_address(contributor_key);
 
     // Fetch contributor reward recipients.
     let recipient_shares = match wallet
@@ -271,23 +324,18 @@ async fn try_distribute_contributor_rewards(
                 .collect::<Vec<_>>();
 
             if recipient_shares.is_empty() {
-                warn!(
-                    "No recipients in {contributor_rewards_key} for contributor {}",
-                    reward_share.contributor_key
-                );
-
-                return Ok(false);
+                return Ok(LeafPayment::Skipped(format!(
+                    "No recipients in {contributor_rewards_key} for contributor {contributor_key}"
+                )));
             }
 
             recipient_shares
         }
         _ => {
-            warn!(
-                "Contributor rewards {contributor_rewards_key} not found for contributor {}",
-                reward_share.contributor_key
-            );
-
-            return Ok(false);
+            return Ok(LeafPayment::Skipped(format!(
+                "Contributor rewards {contributor_rewards_key} not found for contributor \
+                 {contributor_key}"
+            )));
         }
     };
 
@@ -296,21 +344,7 @@ async fn try_distribute_contributor_rewards(
         .map(|share| &share.recipient_key)
         .collect::<Vec<_>>();
 
-    let distribute_rewards_ix = try_build_instruction(
-        &ID,
-        DistributeRewardsAccounts::new(
-            distribution.dz_epoch,
-            &reward_share.contributor_key,
-            dz_mint_key,
-            &wallet_key,
-            &recipient_keys,
-        ),
-        &RevenueDistributionInstructionData::DistributeRewards {
-            unit_share: reward_share.unit_share,
-            economic_burn_rate: reward_share.economic_burn_rate(),
-            proof: shapley_output.generate_merkle_proof(leaf_index)?,
-        },
-    )?;
+    let distribute_rewards_ix = build_distribute_instruction(&recipient_keys)?;
 
     // Derive ATA addresses together with their create-ATA compute-unit
     // estimates. The address is needed for the existence check below. The CU is
@@ -379,15 +413,12 @@ async fn try_distribute_contributor_rewards(
     let tx_outcome = wallet.send_or_simulate_transaction(&transaction).await?;
 
     if let TransactionOutcome::Executed(tx_sig) = tx_outcome {
-        info!(
-            "Distribute rewards for epoch {}: {tx_sig}",
-            distribution.dz_epoch
-        );
+        info!("Distribute rewards for {payment_label}: {tx_sig}");
 
         wallet.print_verbose_output(&[tx_sig]).await?;
     }
 
-    Ok(true)
+    Ok(LeafPayment::Sent)
 }
 
 #[cfg(test)]

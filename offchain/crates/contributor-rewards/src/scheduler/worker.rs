@@ -1,8 +1,9 @@
 use std::{
+    collections::HashSet,
     fs,
     path::PathBuf,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},
@@ -42,6 +43,7 @@ use crate::{
         keypair_loader::load_keypair,
         ledger_operations::{WriteResult, get_rewards_accountant},
         monthly,
+        monthly_distribute::{self, MonthAction, MonthlyContext},
         orchestrator::Orchestrator,
     },
     cli::snapshot::{CompleteSnapshot, SnapshotMetadata},
@@ -122,6 +124,7 @@ impl ScheduleWorker {
             }),
             _ => None,
         };
+        let warned_skips = Mutex::new(HashSet::new());
 
         // Load or create worker state
         let mut state = SchedulerState::load_or_default(&self.state_file)?;
@@ -275,7 +278,7 @@ impl ScheduleWorker {
             }
 
             if let (Some(wallet), Some(first_month)) = (&monthly_wallet, monthly_first_month) {
-                self.try_process_monthly(&mut state, wallet, first_month)
+                self.try_process_monthly(&mut state, wallet, first_month, &warned_skips)
                     .await?;
             }
         }
@@ -290,8 +293,12 @@ impl ScheduleWorker {
         state: &mut SchedulerState,
         wallet: &Wallet,
         first_month: (u16, u8),
+        warned_skips: &Mutex<HashSet<(u16, u8, Pubkey)>>,
     ) -> Result<()> {
-        if self.run_monthly_steps(wallet, first_month).await {
+        if self
+            .run_monthly_steps(wallet, first_month, warned_skips)
+            .await
+        {
             state.mark_monthly_failure();
 
             // Alert every 10 consecutive failures for Grafana monitoring
@@ -313,6 +320,7 @@ impl ScheduleWorker {
         &self,
         wallet: &Wallet,
         (first_year, first_month): (u16, u8),
+        warned_skips: &Mutex<HashSet<(u16, u8, Pubkey)>>,
     ) -> bool {
         let settings = &self.orchestrator.settings;
         let dz_connection = DoubleZeroLedgerConnection::new(settings.rpc.dz_url.clone());
@@ -356,11 +364,59 @@ impl ScheduleWorker {
         })
         .await;
 
-        track_monthly_step(
+        let mut has_failed = track_monthly_step(
             "epoch_end",
             "DZ epoch ends",
             recorded.map(|count| count > 0),
-        )
+        );
+
+        let months = monthly_distribute::ended_months((first_year, first_month), Utc::now());
+        let distributions = try_with_retries("read", async || {
+            monthly_distribute::try_fetch_monthly_distributions(&wallet.connection, &months).await
+        })
+        .await;
+        let distributions = match distributions {
+            Ok(distributions) => distributions,
+            Err(e) => return track_monthly_step("read", "every month", Err(e)),
+        };
+
+        let context = MonthlyContext {
+            settings,
+            wallet,
+            dz_connection: &dz_connection,
+            schedule: &schedule,
+            finalized_epoch,
+        };
+
+        // Oldest first, and one month's failure does not stop the others.
+        for (&(year, month), distribution) in months.iter().zip(&distributions) {
+            let label = format!("{year}-{month:02}");
+
+            let (step, outcome) = match monthly_distribute::month_action(distribution.as_deref()) {
+                MonthAction::Idle(reason) => {
+                    debug!("Monthly {label}: {reason}");
+                    continue;
+                }
+                MonthAction::Finalize => (
+                    "finalize",
+                    try_with_retries("finalize", async || {
+                        context.try_finalize_month(year, month).await
+                    })
+                    .await,
+                ),
+                MonthAction::Pay => (
+                    "pay",
+                    try_with_retries("pay", async || {
+                        context.try_pay_month(year, month, warned_skips).await
+                    })
+                    .await,
+                ),
+            };
+
+            has_failed |= track_monthly_step(step, &label, outcome);
+        }
+
+        has_failed
     }
 
     /// Fetch the config and compute the distribution-eligible epoch.

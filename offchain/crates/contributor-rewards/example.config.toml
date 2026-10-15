@@ -158,9 +158,10 @@ storage_backend = "s3"
 # This setting controls how long the scheduler will wait for that grace period to expire
 grace_period_max_wait_seconds = 21600
 
-# First UTC month, as "YYYY-MM", whose DZ epoch end times the scheduler records
-# on the DZ Ledger, starting from the last epoch to end before it.
-# Unset by default, which records nothing.
+# First UTC month, as "YYYY-MM", whose contributor rewards the scheduler
+# finalizes and pays. While it is set, the scheduler also records each DZ epoch's
+# end time on the DZ Ledger, starting from the last epoch to end before this month.
+# Unset by default, which disables both.
 # monthly_first_month = "2026-11"
 
 # ========== AWS S3 Configuration (Required if storage_backend = "s3") ==========

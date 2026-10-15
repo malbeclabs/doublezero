@@ -49,6 +49,16 @@ The protocol cannot yet reliably estimate public internet latencies for large tr
 - The command refuses a month that has not closed, a month with no epochs, and a month with an epoch whose shapley output record does not match the merkle root and contributor count posted to that epoch's `Distribution`. It reads records at the current rewards accountant's addresses, so it also refuses any month with an epoch recorded under an earlier accountant key. Calculate a month before rotating that key.
 - An epoch's end comes from its `epoch_end` record on the DoubleZero Ledger, and otherwise from DoubleZero Ledger block times. The scheduler writes these records once `scheduler.monthly_first_month` is set, starting from the last epoch to end before that month, and moving that month earlier afterwards does not backfill the months it adds. Selecting a month also reads the epoch before it, so the command refuses a month when neither a record nor the RPC has an epoch it needs. Testnet and devnet RPCs keep about 18 days of blocks, so a testnet or devnet month can be calculated only once the scheduler has recorded it.
 
+### Monthly distribution
+
+With `scheduler.monthly_first_month` set, and outside a dry run, each scheduler tick acts on every month from that one through the last month to end, oldest first, by the state of its `MonthlyContributorDistribution`:
+
+- A collected month is finalized once a DoubleZero epoch has ended after it. The scheduler recalculates the month as `calculate-monthly-rewards` does, stores the leaves on the DoubleZero Ledger in a `monthly_rewards` record keyed by the month and its merkle root, then posts and finalizes that root in one transaction.
+- A finalized month has each unpaid leaf paid from that record with `DistributeMonthlyContributorRewards`, creating any missing recipient ATA. A leaf whose contributor has no `ContributorRewards` account or no recipients is skipped with a warning and retried every tick.
+- Any other month waits. The scheduler never initializes or collects a month, so a month whose feed bucket is never collected is never finalized.
+
+The scheduler's keypair must be the rewards accountant. A failed step logs an error and increments `doublezero_contributor_rewards_monthly_failure{step}`.
+
 ## Fetching snapshots from S3
 
 Replace `<num>` with DZ Epoch (50, 51, .. etc)

@@ -228,6 +228,25 @@ async fn try_fetch_epoch_end_record(
     .await
 }
 
+/// Report whether the newest completed DZ epoch ends at or after `month_end`, so
+/// that no later epoch can end inside the month.
+pub(crate) async fn try_is_month_closed(
+    dz_connection: &DoubleZeroLedgerConnection,
+    schedule: &EpochSchedule,
+    finalized_epoch: u64,
+    month_end: i64,
+) -> Result<bool> {
+    let newest_completed_epoch = finalized_epoch
+        .checked_sub(1)
+        .context("No DZ epoch has completed")?;
+    let epoch_end = try_find_epoch_end(schedule, newest_completed_epoch, &async |slot| {
+        EpochFinder::try_get_block_time(dz_connection, slot).await
+    })
+    .await?;
+
+    Ok(epoch_end.end_time >= month_end)
+}
+
 /// UTC bounds of a calendar month in seconds, start inclusive and end exclusive.
 pub(crate) fn try_month_bounds(year: u16, month: u8) -> Result<(i64, i64)> {
     let first_day = NaiveDate::from_ymd_opt(year.into(), month.into(), 1)

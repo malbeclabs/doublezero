@@ -89,6 +89,7 @@ mod tests {
                 AccountMeta::new(ext(ResourceType::AdminGroupBits), false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }

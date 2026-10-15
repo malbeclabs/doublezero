@@ -7,23 +7,9 @@
 //! **Why `build_with_permission`.** The feed `create`/`update`/`delete`
 //! processors call `authorize(.., FEED_AUTHORITY | FOUNDATION)`, so feed is a
 //! permission-gated instruction like topology/tenant and belongs on the
-//! permission-appending path. The Rust SDK feed commands now also append the
-//! Permission account after an RPC existence check
-//! (`append_payer_permission_account`). These builders stay on the deferred
-//! [`common::build_with_permission`] path: they do not append the account
-//! themselves. The SDK activates the append caller-side for feed
-//! create/update/delete, user delete/update, and multicast role updates.
-//!
-//! One pre-existing program-side gap, unrelated to these builders: `FEED_AUTHORITY`
-//! is absent from `authorize.rs::AUTHORIZE_GATED_FLAGS`. That list drives
-//! `doublezero permission audit` and the `RequirePermissionAccounts` rollout, so
-//! feed must be added there before the deferred permission append is activated
-//! (see [`common::build_with_permission`]) — otherwise feed-authority keys would
-//! not be guaranteed a Permission account at activation. Closing that gap is a
-//! serviceability-program change, out of scope for this crate; it is tracked in
-//! <https://github.com/malbeclabs/doublezero/issues/4079>. The
-//! `feed_authority_gap_is_still_open` canary test below asserts the gap currently
-//! exists, so closing it forces this note to be revisited.
+//! permission-appending path: every builder here except `finalize_feed_retirement`
+//! appends the payer's Permission PDA last. A staked feed's stake mirror rides
+//! between the system program and the Permission account.
 
 use crate::common;
 use doublezero_serviceability::{
@@ -54,19 +40,19 @@ pub fn create_feed(program_id: &Pubkey, payer: &Pubkey, args: FeedCreateArgs) ->
     let stake_mirror = (args.builder != Pubkey::default())
         .then(|| get_stake_mirror_pda(program_id, &args.stake_ref).0);
 
-    let mut ix = common::build_with_permission(
+    common::build_with_permission_after_system(
         program_id,
         DoubleZeroInstruction::CreateFeed(args),
         vec![
             AccountMeta::new(feed, false),
             AccountMeta::new(globalstate, false),
         ],
+        stake_mirror
+            .map(|stake_mirror| AccountMeta::new(stake_mirror, false))
+            .into_iter()
+            .collect(),
         payer,
-    );
-    if let Some(stake_mirror) = stake_mirror {
-        ix.accounts.push(AccountMeta::new(stake_mirror, false));
-    }
-    ix
+    )
 }
 
 /// `UpdateFeed` (variant 113). Accounts: `[feed, globalstate]`.
@@ -143,20 +129,19 @@ pub fn activate_feed(
     stake_mirror: Option<&Pubkey>,
 ) -> Instruction {
     let (globalstate, _) = get_globalstate_pda(program_id);
-    let mut ix = common::build_with_permission(
+    common::build_with_permission_after_system(
         program_id,
         DoubleZeroInstruction::ActivateFeed(FeedActivateArgs {}),
         vec![
             AccountMeta::new(*feed, false),
             AccountMeta::new(globalstate, false),
         ],
+        stake_mirror
+            .map(|stake_mirror| AccountMeta::new_readonly(*stake_mirror, false))
+            .into_iter()
+            .collect(),
         payer,
-    );
-    if let Some(stake_mirror) = stake_mirror {
-        ix.accounts
-            .push(AccountMeta::new_readonly(*stake_mirror, false));
-    }
-    ix
+    )
 }
 
 /// `ResumeFeed` (variant 121). Accounts: `[feed, globalstate]`, then the stake mirror.
@@ -176,20 +161,19 @@ pub fn resume_feed(
     stake_mirror: Option<&Pubkey>,
 ) -> Instruction {
     let (globalstate, _) = get_globalstate_pda(program_id);
-    let mut ix = common::build_with_permission(
+    common::build_with_permission_after_system(
         program_id,
         DoubleZeroInstruction::ResumeFeed(FeedResumeArgs {}),
         vec![
             AccountMeta::new(*feed, false),
             AccountMeta::new(globalstate, false),
         ],
+        stake_mirror
+            .map(|stake_mirror| AccountMeta::new_readonly(*stake_mirror, false))
+            .into_iter()
+            .collect(),
         payer,
-    );
-    if let Some(stake_mirror) = stake_mirror {
-        ix.accounts
-            .push(AccountMeta::new_readonly(*stake_mirror, false));
-    }
-    ix
+    )
 }
 
 /// `RetireFeed` (variant 122). Accounts: `[feed, globalstate]`.
@@ -259,9 +243,14 @@ mod tests {
         );
         let (mirror, _) = get_stake_mirror_pda(&pid, &stake_ref);
         assert_eq!(
-            staked.accounts.last().unwrap(),
-            &AccountMeta::new(mirror, false),
+            staked.accounts[staked.accounts.len() - 2],
+            AccountMeta::new(mirror, false),
             "the mirror is writable: creating the feed claims the stake"
+        );
+        assert_eq!(
+            staked.accounts.last().unwrap(),
+            &common::permission_meta(&pid, &payer),
+            "the Permission account stays last, after the mirror"
         );
 
         let catalog = create_feed(
@@ -307,6 +296,7 @@ mod tests {
                 AccountMeta::new(globalstate, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -322,6 +312,7 @@ mod tests {
             AccountMeta::new(globalstate, false),
             AccountMeta::new(payer, true),
             AccountMeta::new(system_program::ID, false),
+            common::permission_meta(&pid, &payer),
         ];
         // Realistic args: an all-`None` (default) update is rejected by the
         // processor as a no-op (`InvalidArgument`), so the fixture would not execute.
@@ -360,9 +351,11 @@ mod tests {
         // processor finds it by address rather than position, so its place in the list is the
         // caller-side half of that contract.
         let mirror = Pubkey::new_unique();
+        // The Permission account stays last, after the mirror.
+        let (permission, before_permission) = expected.split_last().unwrap();
         let staked_expected = [
-            expected.clone(),
-            vec![AccountMeta::new_readonly(mirror, false)],
+            before_permission.to_vec(),
+            vec![AccountMeta::new_readonly(mirror, false), permission.clone()],
         ]
         .concat();
         let staked_activate = activate_feed(&pid, &payer, &feed, Some(&mirror));
@@ -393,27 +386,16 @@ mod tests {
         // looks for it. Without it, resume refuses with `StakeMirrorMissing`.
         let mirror = Pubkey::new_unique();
         let staked = resume_feed(&pid, &payer, &feed, Some(&mirror));
-        assert_eq!(staked.accounts[..expected.len()], expected[..]);
         assert_eq!(
-            staked.accounts.last().unwrap(),
-            &AccountMeta::new_readonly(mirror, false)
+            staked.accounts[..expected.len() - 1],
+            expected[..expected.len() - 1]
         );
-    }
-
-    /// Tripwire for the module-doc note: `FEED_AUTHORITY` is currently absent from
-    /// `AUTHORIZE_GATED_FLAGS` even though the feed processors gate on it. When the
-    /// program-side gap (https://github.com/malbeclabs/doublezero/issues/4079) is
-    /// closed, this test fails — a signal that the deferred permission append is
-    /// now safe to activate for feed and that this crate's doc note must be updated.
-    #[test]
-    fn feed_authority_gap_is_still_open() {
-        use doublezero_serviceability::{
-            authorize::AUTHORIZE_GATED_FLAGS, state::permission::permission_flags,
-        };
-        assert!(
-            !AUTHORIZE_GATED_FLAGS.contains(&permission_flags::FEED_AUTHORITY),
-            "FEED_AUTHORITY is now gated: close issue #4079 tracking, then update the \
-             feed.rs module doc and remove this canary"
+        assert_eq!(
+            staked.accounts[staked.accounts.len() - 2..],
+            [
+                AccountMeta::new_readonly(mirror, false),
+                common::permission_meta(&pid, &payer),
+            ]
         );
     }
 }

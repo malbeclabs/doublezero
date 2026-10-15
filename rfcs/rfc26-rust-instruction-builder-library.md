@@ -92,18 +92,17 @@ pub(crate) fn build(
 }
 
 // Instructions whose processor routes through authorize() are assigned here.
-// Today it delegates to `build` (permission append DEFERRED); at rollout the
-// append is enabled HERE, in one place, activating every assigned builder at once.
+// The Permission append lives HERE, in one place, for every assigned builder.
 pub(crate) fn build_with_permission(
     program_id: &Pubkey,
     instruction: DoubleZeroInstruction,
     accounts: Vec<AccountMeta>,
     payer: &Pubkey,
 ) -> Instruction {
-    build(program_id, instruction, accounts, payer)
-    // At activation, replace the delegation above with an explicit assembly that,
-    // after payer/system, appends `get_permission_pda(program_id, payer)` read-only
-    // as the LAST account. See the "Permission account" activation precondition.
+    let mut ix = build(program_id, instruction, accounts, payer);
+    let (permission, _) = get_permission_pda(program_id, payer);
+    ix.accounts.push(AccountMeta::new_readonly(permission, false)); // MUST be last
+    ix
 }
 
 // Transaction-level prelude, NOT inside each builder.
@@ -112,15 +111,17 @@ pub(crate) fn build_with_permission(
 pub fn compute_budget_prelude() -> [Instruction; 2] { /* ... */ }
 ```
 
-This reproduces the payer/system tail that `client.rs::assemble_instructions` builds today, extracted into one location. It omits the Permission PDA that `assemble_instructions` appends today; that append is **deferred** (see below).
+This reproduces the payer/system tail that `client.rs::assemble_instructions` builds today, extracted into one location. The Permission PDA that `assemble_instructions` appends today moves into `build_with_permission` (see below).
 
 ### Permission account
 
 The Permission PDA is **deterministically derived from the payer** (`get_permission_pda(program_id, payer)`), so it is **never a caller-supplied argument** — no builder takes a `permission: Option<Pubkey>`, and no caller can substitute an arbitrary account. Whether an instruction expects the trailing Permission account is not something the offline builder can observe at runtime; it is the per-instruction fact of whether that instruction's `authorize()` migration is activated.
 
-The rollout tracks the program's incremental `authorize()` migration via the two-method split above. Each builder is **assigned** at implementation time: `authorize()`-gated instructions to `build_with_permission`, all others to `build`. The append itself is **deferred** — `build_with_permission` delegates to `build` today, so assignment is behaviour-preserving. At the permission rollout the append is enabled **centrally, in `build_with_permission`**, activating every already-assigned builder in one change (builders on `build` stay untouched). This is a single-blast-radius activation, not a per-builder edit.
+The rollout tracks the program's incremental `authorize()` migration via the two-method split above. Each builder is **assigned** at implementation time: `authorize()`-gated instructions to `build_with_permission`, all others to `build`. The append lives **centrally, in `build_with_permission`**, so every assigned builder carries it and builders on `build` never do. Enabling or changing it is a single-blast-radius edit, not a per-builder one.
 
-**Activation precondition.** The append is pure and offline: it cannot check whether the payer's Permission PDA exists onchain. When the account does not exist, `authorize()` fails **hard** with `InvalidAccountData` (the program-ownership check runs before the foundation-recovery/legacy fallback), so a missing Permission account is never routed to the legacy allowlist path. Today's SDK sidesteps this by appending the PDA only after an RPC existence check — which a pure builder cannot replicate. The central activation MUST therefore wait until every payer is guaranteed a Permission account (e.g. `FeatureFlag::RequirePermissionAccounts` enforced); enabling it earlier would break every payer without one.
+**Activation precondition.** The append is pure and offline: it cannot check whether the payer's Permission PDA exists onchain. The program therefore treats a trailing payer Permission PDA that is still uninitialized (system-owned, no data) exactly as if no Permission account were supplied: the legacy allowlists decide while `RequirePermissionAccounts` is off, and only the foundation recovery applies once it is on. With that, `build_with_permission` appends the PDA unconditionally and the SDK's RPC existence check goes. Older programs failed an uninitialized PDA with `InvalidAccountData`, so the program change MUST be deployed on a cluster before clients carrying the append ship against it.
+
+`SubscribeFeed`/`UnsubscribeFeed` omit the account when the payer is the access pass's own `user_payer` or a GlobalState foundation member, both of whom the processor authorizes without a Permission account; this keeps the worst-case single-feed leave within one transaction.
 
 ### Canonical builder signature
 
@@ -159,7 +160,7 @@ pub fn create_subscribe_user(
 
 - **`dz_prefix` blocks** (`create_device`, `create_subscribe_user`): the builder loops `0..count` deriving `ResourceType::DzPrefixBlock(entity, idx)` PDAs, then writes the derived count back into the Args `resource_count` field. Count and account list are produced from the same loop, so they can never disagree.
 - **Length-detected optional trailing** (`CreateUser` only — tenant): the optional account is appended conditionally **before** payer/system. Because `CreateUser` never calls `authorize()`, its builder never appends a Permission account — permanently — so the hazard of a Permission PDA corrupting `accounts.len()` detection cannot arise; a test pins the account count. (`DeleteUser` detects its tenant from onchain state and `CreateSubscribeUser` uses `split_trailing_permission`, so neither is length-fragile.)
-- **`split_trailing_permission` family** (link delete, user update, `CreateSubscribeUser`, interface update, topology assign, multicast allowlists; and `DeleteUser`): variable list, then payer/system, then — once migrated — the payer-derived Permission PDA last (the same deferred, activate-in-one-place append; safe because the processor peels it by PDA match, so the optional feed/tenant that sits before payer/system is never confused with it).
+- **`split_trailing_permission` family** (link delete, user update, `CreateSubscribeUser`, interface update, topology assign, multicast allowlists; and `DeleteUser`): variable list, then payer/system, then the payer-derived Permission PDA last (the same central append; safe because the processor peels it by PDA match, so the optional feed/tenant that sits before payer/system is never confused with it).
 - **Batched instructions** (`clear_topology`, `assign_topology_node_segments`): a single-chunk builder plus a `*_batched(...) -> Vec<Instruction>` convenience. The batch-size consts move into this crate; the 32-account cap math accounts for the trailing accounts the builder now owns.
 
 ### Coverage and excluded variants
@@ -216,7 +217,7 @@ Respecting the ~500-lines-of-new-code-per-PR norm (tests excluded):
 - **New codebase surface.** A new workspace crate (~18 modules, one per domain) and its tests. No new runtime dependency for the on-chain program; the crate depends only on `solana-program` and `doublezero-program-common`.
 - **SDK refactor (R10).** `commands/*` `execute()` methods are rewritten to delegate to builders; `assemble_instructions` shrinks to only prepending the prelude; two methods are added to the `DoubleZeroClient` trait (currently 19 methods). Command-layer `mockall` tests are re-pointed onto the built `Instruction`.
 - **Lighter external consumers.** Bots, indexers, and the fixture generator can build instructions without the RPC tree — a meaningful compile-time and dependency-surface reduction.
-- **Operational complexity.** No deployment change and no wire change to the instruction-specific accounts (tag, borsh args, caller-account order unchanged); the only moving part is the deferred Permission-account append (see Backward Compatibility). Otherwise a code-organization and API-surface change.
+- **Operational complexity.** No deployment change and no wire change to the instruction-specific accounts (tag, borsh args, caller-account order unchanged); the only moving part is the trailing Permission-account append, which depends on a program change (see Backward Compatibility). Otherwise a code-organization and API-surface change.
 - **Performance.** No on-chain or runtime impact. Instruction bytes (tag + borsh) and the instruction-specific account layout are byte-for-byte identical, verified by golden fixtures.
 - **Documentation.** Each builder carries a verbatim account-layout doc-comment copied from its processor, giving reviewers a single readable statement of the account order.
 
@@ -224,7 +225,7 @@ Respecting the ~500-lines-of-new-code-per-PR norm (tests excluded):
 
 - **Account-order drift (biggest risk).** A builder whose account order diverges from its processor produces transactions the processor rejects — and, worse, a subtly wrong order could target the wrong account. Mitigations: `common::build` centralizes the trailing convention; verbatim doc-comments; and the `solana-program-test` suite runs every buildable variant against the real program so a wrong order fails a test.
 - **Trailing-convention regression.** With the layout owned in two layers (each command's account vec and `assemble_instructions`), the two could drift. After migration there is exactly one place (`common::build`) that appends payer/system; `assemble_instructions` no longer does.
-- **Permission account.** The Permission PDA is derived from the payer inside the builder, never passed in, so a caller cannot substitute an arbitrary account to spoof the trailing slot. The append is centralized in `common::build_with_permission` (deferred; enabled in one place at rollout); builders that never route through `authorize()` call `common::build` and can never carry one. For `CreateUser` (the length-detected family) it is never appended — appending one would corrupt the `accounts.len()` detection — and a test pins the account count.
+- **Permission account.** The Permission PDA is derived from the payer inside the builder, never passed in, so a caller cannot substitute an arbitrary account to spoof the trailing slot. The append is centralized in `common::build_with_permission`; builders that never route through `authorize()` call `common::build` and can never carry one. For `CreateUser` (the length-detected family) it is never appended — appending one would corrupt the `accounts.len()` detection — and a test pins the account count.
 - **Count/account mismatch.** For `dz_prefix` blocks, the builder derives the count from the same loop that produces the accounts and writes it back into the Args, so the declared count can never disagree with the account list.
 - **Discriminant coupling.** Builders never hand-write tag bytes; they construct the `DoubleZeroInstruction` variant and call `.pack()`, getting the correct tag and borsh encoding for free.
 - **No new trust boundary.** The crate is host-side and RPC-free; it introduces no new signing authority and no on-chain code.
@@ -233,7 +234,7 @@ Respecting the ~500-lines-of-new-code-per-PR norm (tests excluded):
 
 The serviceability program is unchanged, and for each instruction the tag byte, borsh args encoding, and the order of the instruction-specific accounts are identical before and after. The golden fixtures and the `solana-program-test` suite prove that part carries no behavioral change.
 
-The one deliberate exception is the trailing Permission account. Today `assemble_instructions` appends the payer's Permission PDA whenever it resolves; the migrated builders defer that append until each instruction's `authorize()` migration is activated. So until an instruction's append is re-enabled, its migrated builder emits a shorter account list, and `authorize()` takes its no-permission path (the legacy GlobalState allowlist, unless `RequirePermissionAccounts` is enforced for it). This must be sequenced against the permission-model rollout so no caller loses authorization mid-transition (see Open Questions).
+The one deliberate exception is the trailing Permission account. Today `assemble_instructions` appends the payer's Permission PDA only when an RPC check finds it; the builders append it for every `authorize()`-gated instruction, whether or not it exists. This relies on the program treating an uninitialized payer Permission PDA as no permission, so the program change must be deployed before clients carrying the append; against an older program, a payer with no Permission account fails every gated instruction with `InvalidAccountData`. The extra account also costs one slot in account-bounded instructions (e.g. one fewer `dz_prefix` block in `CreateSubscribeUser`).
 
 The remaining API change is additive/internal to the Rust SDK: the new `DoubleZeroClient` send method(s) and the `assemble_instructions` refactor. Consumers of the `commands/*` layer see no behavioral difference beyond that transition.
 
@@ -242,5 +243,5 @@ The remaining API change is additive/internal to the Rust SDK: the new `DoubleZe
 - **Go/Python/TS parity.** Out of scope here. The golden fixtures are designed to drive parity checks for the other SDKs later; the concrete cross-language builder API is deferred.
 - **`clear_topology` / `assign_topology_node_segments` batch-size constants.** The exact home for the moved consts and whether the 32-account cap math needs adjustment once the builder owns the trailing accounts should be confirmed during R7.
 - **Naming of the trait send method.** `send_transaction` (plus a quiet variant) was proposed. Settled in R10: the trait carries `send_transaction(Instruction)` only — the quiet variant's sole caller was the deleted `activator/` crate, so it is not carried forward.
-- **Permission append: static activation vs. runtime existence.** This RFC replaces today's runtime existence check (the memoized cache / foundation-lockout fallback) with a static, per-instruction "is `authorize()` activated" decision (see Backward Compatibility). Whether any instruction still needs the runtime check once its builder append is on must be settled as the model rolls out. **R10 shipped with the builder Permission append deferred (commented) for every instruction** and the SDK's runtime resolve/cache/retry removed, so the SDK attaches no Permission account and `authorize()` takes the legacy GlobalState-allowlist path; per-instruction activation is future work sequenced against the permission-model rollout.
+- **Permission append: static activation vs. runtime existence.** Settled. R10 shipped with the builder append deferred and the SDK's runtime resolve/cache/retry removed. The program now treats an uninitialized payer Permission PDA as no permission, so no instruction needs a runtime existence check: `build_with_permission` appends the PDA unconditionally for every `authorize()`-gated builder (see Activation precondition).
 - **Fixture naming collisions.** Whether any two builders map to the same `ix_<name>` base (e.g. create vs. create-subscribe) needs a disambiguation convention when the generator is extended in RF.

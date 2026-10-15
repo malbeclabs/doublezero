@@ -1,6 +1,6 @@
 pub mod utils {
     use doublezero_serviceability::{
-        pda::{get_globalstate_pda, get_permission_pda},
+        pda::get_globalstate_pda,
         state::{accountdata::AccountData, accounttype::AccountType, globalstate::GlobalState},
     };
     use mockall::predicate;
@@ -10,7 +10,7 @@ pub mod utils {
 
     use crate::{
         config::{write_doublezero_config, ClientConfig},
-        create_new_pubkey_user, DoubleZeroClient, MockDoubleZeroClient,
+        create_new_pubkey_user, MockDoubleZeroClient,
     };
 
     pub fn create_test_client() -> MockDoubleZeroClient {
@@ -22,6 +22,18 @@ pub mod utils {
     /// verifier configured", which those paths must refuse.
     pub fn create_test_client_with_ip_verifier(
         ip_verifier_authority_pk: Pubkey,
+    ) -> MockDoubleZeroClient {
+        build_test_client(ip_verifier_authority_pk, false)
+    }
+
+    /// The same client with its payer on `globalstate.foundation_allowlist`.
+    pub fn create_test_client_with_foundation_payer() -> MockDoubleZeroClient {
+        build_test_client(Pubkey::default(), true)
+    }
+
+    fn build_test_client(
+        ip_verifier_authority_pk: Pubkey,
+        payer_in_foundation: bool,
     ) -> MockDoubleZeroClient {
         let mut client = MockDoubleZeroClient::new();
 
@@ -38,7 +50,11 @@ pub mod utils {
             account_type: AccountType::GlobalState,
             bump_seed,
             account_index: 0,
-            foundation_allowlist: vec![],
+            foundation_allowlist: if payer_in_foundation {
+                vec![payer]
+            } else {
+                vec![]
+            },
             _device_allowlist: vec![],
             _user_allowlist: vec![],
             activator_authority_pk: Pubkey::new_unique(),
@@ -56,15 +72,6 @@ pub mod utils {
             .with(predicate::eq(globalstate_pubkey))
             .returning(move |_| Ok(AccountData::GlobalState(globalstate.clone())));
         client
-    }
-
-    pub fn expect_missing_permission_account(client: &mut MockDoubleZeroClient) {
-        let (permission_pda, _) = get_permission_pda(&client.get_program_id(), &client.get_payer());
-        client
-            .expect_get_multiple_accounts()
-            .with(predicate::eq(vec![permission_pda]))
-            .times(1..)
-            .returning(|_| Ok(vec![None]));
     }
 
     pub fn create_temp_config() -> eyre::Result<TempDir> {

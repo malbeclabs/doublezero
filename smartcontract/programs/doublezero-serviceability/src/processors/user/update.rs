@@ -100,7 +100,7 @@ pub fn process_update_user(
     // Remaining tail: [old_tenant?, new_tenant?, payer, system, permission?]. The
     // optional tenant pair is present when tenant_pk is being updated.
     // split_trailing_permission peels payer/system — and the optional payer
-    // Permission PDA the SDK appends when it exists — off the tail by PDA match, so
+    // Permission PDA the SDK appends unconditionally — off the tail by PDA match, so
     // the tenant accounts are detected unambiguously via what's left (`leading`).
     let remaining: Vec<&AccountInfo> = accounts_iter.collect();
     let (payer_account, _system_program, leading, permission_account) =

@@ -32,6 +32,11 @@
       "pubkey": "11111111111111111111111111111111",
       "is_signer": false,
       "is_writable": true
+    },
+    {
+      "pubkey": "7ZmttDZeoMjxeAoyhzFAW8gsDfkUiM85fH9hxvJLJTX7",
+      "is_signer": false,
+      "is_writable": false
     }
   ]
 }

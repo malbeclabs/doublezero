@@ -56,10 +56,10 @@ pub fn process_add_multicastgroup_sub_allowlist(
 
     // Remaining tail: [user_payer?, payer, system, permission?]. The optional
     // user_payer account (connect-credit funding, backwards compatible) precedes
-    // payer/system; the optional payer Permission PDA (appended by the SDK when it
-    // exists on-chain) is last. split_trailing_permission tells them apart by PDA
-    // match, so the two optional accounts are unambiguous regardless of the total
-    // account count.
+    // payer/system; the payer's Permission PDA (appended by the SDK unconditionally; an
+    // uninitialized one counts as no Permission account) is last.
+    // split_trailing_permission tells them apart by PDA match, so the two optional
+    // accounts are unambiguous regardless of the total account count.
     let remaining: Vec<&AccountInfo> = accounts_iter.collect();
     let (payer_account, system_program, leading, permission_account) =
         split_trailing_permission(program_id, &remaining)?;

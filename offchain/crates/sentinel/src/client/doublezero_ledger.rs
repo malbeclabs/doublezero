@@ -1,11 +1,9 @@
 use std::{net::Ipv4Addr, sync::Arc, time::Duration};
 
 use async_trait::async_trait;
-use doublezero_program_tools::instruction::try_build_instruction;
 use doublezero_record::instruction as record_instruction;
 use doublezero_serviceability::{
-    instructions::DoubleZeroInstruction,
-    pda::{get_accesspass_pda, get_globalstate_pda},
+    pda::get_accesspass_pda,
     processors::{
         accesspass::set::SetAccessPassArgs,
         multicastgroup::allowlist::publisher::add::AddMulticastGroupPubAllowlistArgs,
@@ -17,6 +15,7 @@ use doublezero_serviceability::{
         tenant::{Tenant, TenantPaymentStatus},
     },
 };
+use doublezero_serviceability_instruction as serviceability_instruction;
 use mockall::automock;
 use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::{
@@ -26,11 +25,10 @@ use solana_client::{
 };
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
-    instruction::AccountMeta,
     pubkey::Pubkey,
     signature::{Keypair, Signature, Signer},
 };
-use solana_system_interface::{instruction as system_instruction, program as system_program};
+use solana_system_interface::instruction as system_instruction;
 use tracing::info;
 use url::Url;
 
@@ -168,28 +166,24 @@ impl DzRpcClient {
         client_ip: &Ipv4Addr,
         validator_id: &Pubkey,
     ) -> Result<Signature> {
-        let (globalstate_pk, _) = get_globalstate_pda(&self.serviceability_id);
-        let (pass_pk, _) = get_accesspass_pda(&self.serviceability_id, client_ip, service_key);
-
-        let args = DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
-            accesspass_type: AccessPassType::SolanaValidator(*validator_id),
-            client_ip: *client_ip,
-            last_access_epoch: u64::MAX,
-            // NOTE: Setting this to false by default
-            allow_multiple_ip: false,
-            // NOTE: Setting both to max allowed values
-            max_unicast_users: u16::MAX,
-            max_multicast_users: u16::MAX,
-        });
-        let accounts = vec![
-            AccountMeta::new(pass_pk, false),
-            AccountMeta::new_readonly(globalstate_pk, false),
-            AccountMeta::new(*service_key, false),
-            AccountMeta::new(self.payer.pubkey(), true),
-            AccountMeta::new_readonly(system_program::id(), false),
-        ];
-
-        let set_pass_ix = try_build_instruction(&self.serviceability_id, accounts, &args)?;
+        let set_pass_ix = serviceability_instruction::accesspass::set_access_pass(
+            &self.serviceability_id,
+            &self.payer.pubkey(),
+            service_key,
+            // No tenant change: default keys make the builder omit both tenant slots.
+            &Pubkey::default(),
+            &Pubkey::default(),
+            SetAccessPassArgs {
+                accesspass_type: AccessPassType::SolanaValidator(*validator_id),
+                client_ip: *client_ip,
+                last_access_epoch: u64::MAX,
+                // NOTE: Setting this to false by default
+                allow_multiple_ip: false,
+                // NOTE: Setting both to max allowed values
+                max_unicast_users: u16::MAX,
+                max_multicast_users: u16::MAX,
+            },
+        );
         let signer = &self.payer;
         let recent_blockhash = self.client.get_latest_blockhash().await?;
         let transaction = new_transaction(&[set_pass_ix], &[signer], recent_blockhash);
@@ -209,26 +203,18 @@ impl DzRpcClient {
         service_key: &Pubkey,
         client_ip: &Ipv4Addr,
     ) -> Result<Signature> {
-        let (globalstate_pk, _) = get_globalstate_pda(&self.serviceability_id);
-        let (accesspass_pk, _) =
+        let (accesspass_key, _) =
             get_accesspass_pda(&self.serviceability_id, client_ip, service_key);
-
-        let args = DoubleZeroInstruction::AddMulticastGroupPubAllowlist(
+        let ix = serviceability_instruction::multicastgroup::add_multicast_group_pub_allowlist(
+            &self.serviceability_id,
+            &self.payer.pubkey(),
+            multicast_group_pda,
+            &accesspass_key,
             AddMulticastGroupPubAllowlistArgs {
                 client_ip: *client_ip,
                 user_payer: *service_key,
             },
         );
-
-        let accounts = vec![
-            AccountMeta::new(*multicast_group_pda, false),
-            AccountMeta::new(accesspass_pk, false),
-            AccountMeta::new_readonly(globalstate_pk, false),
-            AccountMeta::new(self.payer.pubkey(), true),
-            AccountMeta::new_readonly(system_program::id(), false),
-        ];
-
-        let ix = try_build_instruction(&self.serviceability_id, accounts, &args)?;
         let signer = &self.payer;
         let recent_blockhash = self.client.get_latest_blockhash().await?;
         let transaction = new_transaction(&[ix], &[signer], recent_blockhash);
@@ -305,19 +291,15 @@ impl DzRpcClient {
         tenant_pda: &Pubkey,
         status: TenantPaymentStatus,
     ) -> Result<Signature> {
-        let (globalstate_pk, _) = get_globalstate_pda(&self.serviceability_id);
-        let args = DoubleZeroInstruction::UpdatePaymentStatus(UpdatePaymentStatusArgs {
-            payment_status: status as u8,
-            last_deduction_dz_epoch: None,
-        });
-        let accounts = vec![
-            AccountMeta::new(*tenant_pda, false),
-            AccountMeta::new_readonly(globalstate_pk, false),
-            AccountMeta::new(self.payer.pubkey(), true),
-            AccountMeta::new_readonly(system_program::id(), false),
-        ];
-
-        let ix = try_build_instruction(&self.serviceability_id, accounts, &args)?;
+        let ix = serviceability_instruction::tenant::update_payment_status(
+            &self.serviceability_id,
+            &self.payer.pubkey(),
+            tenant_pda,
+            UpdatePaymentStatusArgs {
+                payment_status: status as u8,
+                last_deduction_dz_epoch: None,
+            },
+        );
         let signer = &self.payer;
         let recent_blockhash = self.client.get_latest_blockhash().await?;
         let transaction = new_transaction(&[ix], &[signer], recent_blockhash);
@@ -381,18 +363,15 @@ impl DzRpcClient {
         let write_ix = record_instruction::write(&record_key, &payer_key, 0, &serialized);
 
         // Update epoch (UpdatePaymentStatus with last_deduction_dz_epoch)
-        let (globalstate_pk, _) = get_globalstate_pda(&self.serviceability_id);
-        let args = DoubleZeroInstruction::UpdatePaymentStatus(UpdatePaymentStatusArgs {
-            payment_status: TenantPaymentStatus::Paid as u8,
-            last_deduction_dz_epoch: Some(receipt.dz_epoch),
-        });
-        let accounts = vec![
-            AccountMeta::new(*tenant_pda, false),
-            AccountMeta::new_readonly(globalstate_pk, false),
-            AccountMeta::new(payer_key, true),
-            AccountMeta::new_readonly(system_program::id(), false),
-        ];
-        let epoch_ix = try_build_instruction(&self.serviceability_id, accounts, &args)?;
+        let epoch_ix = serviceability_instruction::tenant::update_payment_status(
+            &self.serviceability_id,
+            &payer_key,
+            tenant_pda,
+            UpdatePaymentStatusArgs {
+                payment_status: TenantPaymentStatus::Paid as u8,
+                last_deduction_dz_epoch: Some(receipt.dz_epoch),
+            },
+        );
 
         let signer = &self.payer;
         let recent_blockhash = self.client.get_latest_blockhash().await?;

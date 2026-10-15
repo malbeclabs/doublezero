@@ -25,6 +25,7 @@ doublezero-program-tools.workspace = true
 doublezero-record.workspace = true
 doublezero-revenue-distribution.workspace = true
 doublezero-serviceability.workspace = true
+doublezero-serviceability-instruction.workspace = true
 doublezero_sdk.workspace = true
 backon.workspace = true
 metrics.workspace = true

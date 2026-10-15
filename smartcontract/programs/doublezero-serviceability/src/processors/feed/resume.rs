@@ -1,12 +1,11 @@
 use crate::{
-    authorize::authorize,
+    authorize::{authorize, FEED_ADMIN_FLAGS},
     error::DoubleZeroError,
     processors::feed::{require_feed_writer, require_stake_still_covers, split_stake_mirror},
     serializer::try_acc_write,
     state::{
         feed::{Feed, FeedStatus},
         globalstate::GlobalState,
-        permission::permission_flags,
     },
 };
 use borsh::BorshSerialize;
@@ -66,7 +65,7 @@ pub fn process_resume_feed(
             &mut authorize_iter,
             payer_account.key,
             &globalstate,
-            permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION,
+            FEED_ADMIN_FLAGS,
         )?;
     } else {
         require_feed_writer(

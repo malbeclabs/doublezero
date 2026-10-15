@@ -404,6 +404,11 @@ mod tests {
     /// feed, so its worst case is `MAX_USER_FEEDS - 1` retained plus `MAX_FEED_GROUPS` departing
     /// groups. Pin that it fits a 1232-byte legacy transaction behind the compute-budget prelude
     /// `send_transaction` prepends.
+    ///
+    /// It fits only without the payer's Permission PDA (1211 bytes; 1244 with it). The processor
+    /// authorizes the pass's own `user_payer` before consulting `authorize()`, so the SDK drops
+    /// the Permission account for that payer; a third party leaving on a user's behalf at this
+    /// worst case has no single transaction that fits.
     #[test]
     fn test_worst_case_leave_fits_one_transaction() {
         use doublezero_serviceability::processors::{
@@ -427,11 +432,23 @@ mod tests {
             &retained,
             &groups,
         );
-        let mut instructions = common::compute_budget_prelude().to_vec();
-        instructions.push(ix);
-        let message = solana_sdk::message::Message::new(&instructions, Some(&payer));
-        // One byte of signature count plus one 64-byte signature plus the message.
-        let tx_size = 1 + 64 + message.serialize().len();
+        let size = |ix: &Instruction| {
+            let mut instructions = common::compute_budget_prelude().to_vec();
+            instructions.push(ix.clone());
+            let message = solana_sdk::message::Message::new(&instructions, Some(&payer));
+            // One byte of signature count plus one 64-byte signature plus the message.
+            1 + 64 + message.serialize().len()
+        };
+        assert!(
+            size(&ix) > 1232,
+            "the Permission PDA now fits; revisit the SDK drop"
+        );
+        let mut ix = ix;
+        assert_eq!(
+            ix.accounts.pop(),
+            Some(common::permission_meta(&pid, &payer))
+        );
+        let tx_size = size(&ix);
         assert!(tx_size <= 1232, "worst-case leave is {tx_size} bytes");
     }
 
@@ -452,6 +469,7 @@ mod tests {
                 AccountMeta::new(block, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
         // The builder forces the flag on even though `::default()` leaves it off.
@@ -487,6 +505,7 @@ mod tests {
                 AccountMeta::new(block, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
         match DoubleZeroInstruction::unpack(&with_ip.data).unwrap() {
@@ -504,6 +523,7 @@ mod tests {
                 AccountMeta::new(globalstate, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
         // No block emitted -> the flag MUST stay off, or the processor would
@@ -525,6 +545,7 @@ mod tests {
             AccountMeta::new(globalstate, false),
             AccountMeta::new(payer, true),
             AccountMeta::new(system_program::ID, false),
+            common::permission_meta(&pid, &payer),
         ];
         for (ix, tag) in [
             (
@@ -566,6 +587,7 @@ mod tests {
                 AccountMeta::new(owner, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
         // The builder forces the flag on even though `::default()` leaves it off.
@@ -610,6 +632,7 @@ mod tests {
                 AccountMeta::new(mpb, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -663,6 +686,7 @@ mod tests {
                 AccountMeta::new(extra2, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -684,6 +708,7 @@ mod tests {
             AccountMeta::new(user_payer, false),
             AccountMeta::new(payer, true),
             AccountMeta::new(system_program::ID, false),
+            common::permission_meta(&pid, &payer),
         ];
         let remove_expected = vec![
             AccountMeta::new(mgroup, false),
@@ -691,6 +716,7 @@ mod tests {
             AccountMeta::new(globalstate, false),
             AccountMeta::new(payer, true),
             AccountMeta::new(system_program::ID, false),
+            common::permission_meta(&pid, &payer),
         ];
 
         let add_pub = add_multicast_group_pub_allowlist(

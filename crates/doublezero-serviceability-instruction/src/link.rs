@@ -338,6 +338,7 @@ mod tests {
                 AccountMeta::new(link_ids, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -377,6 +378,7 @@ mod tests {
                 AccountMeta::new(link_ids, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
         match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
@@ -431,6 +433,7 @@ mod tests {
                 AccountMeta::new(globalstate, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
         match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
@@ -483,6 +486,7 @@ mod tests {
                 AccountMeta::new(topo, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
         // use_onchain_allocation is derived from whether tunnel resources are updated.
@@ -534,6 +538,7 @@ mod tests {
                 AccountMeta::new(link_ids, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
         // Updating tunnel resources forces use_onchain_allocation on.
@@ -584,6 +589,7 @@ mod tests {
                 AccountMeta::new(topo, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
         match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
@@ -614,6 +620,7 @@ mod tests {
                 AccountMeta::new(globalstate, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }

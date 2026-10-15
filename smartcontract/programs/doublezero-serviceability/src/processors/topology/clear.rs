@@ -48,8 +48,9 @@ pub fn process_topology_clear(
     msg!("process_topology_clear(name={})", value.name);
 
     // The SDK client appends payer and system_program after the variable-length
-    // Link list, plus an optional Permission account when one exists for the
-    // payer. split_trailing_permission peels those off the tail.
+    // Link list, plus the payer's Permission PDA (appended unconditionally; an
+    // uninitialized one counts as no Permission account). split_trailing_permission
+    // peels those off the tail.
     let all_remaining: Vec<&AccountInfo> = accounts_iter.collect();
     let (payer_account, _system_program, link_accounts, permission_account) =
         split_trailing_permission(program_id, &all_remaining)?;

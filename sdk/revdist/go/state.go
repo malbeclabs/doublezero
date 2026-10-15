@@ -23,8 +23,8 @@ type ProgramConfig struct {
 	SOL2ZSwapProgramID                   solana.PublicKey // 32 bytes
 	DistributionParameters               DistributionParameters
 	RelayParameters                      RelayParameters
-	LastInitializedDistributionTimestamp uint32  // 4 bytes
-	Reserved1                            [4]byte // 4 bytes padding
+	LastInitializedDistributionTimestamp uint32           // 4 bytes
+	Reserved1                            [4]byte          // 4 bytes padding
 	DebtWriteOffFeatureActivationEpoch   uint64           // 8 bytes
 	MonthlyContributorRewardsProgramID   solana.PublicKey // 32 bytes
 }

@@ -124,10 +124,10 @@ pub fn process_create_subscribe_user(
     // [mgroup₁..mgroupₙ, feed?, payer, system, permission?]. The extra multicast groups
     // (batch subscription, counted by args.extra_group_count) come first; the optional Feed
     // account (EdgeSeat metro gate — the feed covering the device's exchange and listing the
-    // target multicast groups) follows; the optional payer Permission PDA (appended by the SDK
-    // when it exists on-chain, authorizing a USER_ADMIN owner-override inside create_user_core)
-    // is last. split_trailing_permission identifies the Permission by PDA match rather than by
-    // position, so the variable-length regions never confuse it.
+    // target multicast groups) follows; the payer's Permission PDA (appended by the SDK
+    // unconditionally, authorizing a USER_ADMIN owner-override inside create_user_core when
+    // initialized) is last. split_trailing_permission identifies the Permission by PDA
+    // match rather than by position, so the variable-length regions never confuse it.
     let remaining: Vec<&AccountInfo> = accounts_iter.collect();
     let (payer_account, system_program, leading, permission_account) =
         split_trailing_permission(program_id, &remaining)?;

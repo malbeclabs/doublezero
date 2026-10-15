@@ -1,5 +1,5 @@
 use crate::{
-    authorize::authorize,
+    authorize::{authorize, FEED_ADMIN_FLAGS},
     error::{DoubleZeroError, Validate},
     pda::get_feed_pda,
     processors::feed::split_stake_mirror,
@@ -10,7 +10,6 @@ use crate::{
         feature_flags::{is_feature_enabled, FeatureFlag},
         feed::{Feed, FeedChain, FeedStatus},
         globalstate::GlobalState,
-        permission::permission_flags,
         stake_mirror::StakeMirror,
     },
 };
@@ -109,7 +108,7 @@ pub fn process_create_feed(
             &mut authorize_iter,
             payer_account.key,
             &globalstate,
-            permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION,
+            FEED_ADMIN_FLAGS,
         )?;
     }
 

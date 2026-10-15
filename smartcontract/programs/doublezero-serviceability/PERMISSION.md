@@ -74,16 +74,18 @@ sufficient.
 
 Authorization is resolved in `src/authorize.rs` via `authorize()`. Each instruction calls
 `authorize()` after consuming its expected accounts. An optional trailing account — the caller's
-`Permission` PDA — selects the path:
+`Permission` PDA — selects the path. A trailing PDA that is still uninitialized (system-owned with
+no data, whatever its lamports) counts as no Permission account, so clients can append it without
+checking that it exists.
 
 ### New path (Permission account provided)
 
 1. Validate the PDA matches `get_permission_pda(program_id, payer)`.
-2. Verify the account is owned by the program and non-empty.
+2. Verify the account is owned by the program and non-empty (an uninitialized PDA takes the no-account path instead).
 3. Check `permission.status == Activated`.
 4. Check `permission.permissions & any_of_flags \!= 0`.
 
-### Legacy path (no Permission account, `RequirePermissionAccounts` not set)
+### Legacy path (no or uninitialized Permission account, `RequirePermissionAccounts` not set)
 
 Falls back to `GlobalState` fields:
 
@@ -114,6 +116,15 @@ Falls back to `GlobalState` fields:
 Even when `RequirePermissionAccounts` is set (legacy mode disabled), `foundation_allowlist` members
 can still call Permission instructions without a Permission account. This prevents the foundation
 from being locked out of the permission system when migrating to strict mode.
+
+### Foundation bypass for disabling strict mode
+
+`foundation_allowlist` members can also always call `SetFeatureFlags` to clear
+`RequirePermissionAccounts`, whatever the state of their own Permission account (missing,
+uninitialized, suspended, or without `GLOBALSTATE_ADMIN`). The bypass applies only when the flag is
+currently set and the new flags are exactly the current flags with that bit cleared. Enabling strict
+mode, or changing any other flag, still requires `GLOBALSTATE_ADMIN` through `authorize()`. This
+guarantees strict mode can be rolled back without first repairing a Permission account.
 
 ### Domain instruction enforcement (access pass / multicast / user)
 
@@ -262,6 +273,7 @@ Closes the account and refunds rent to the payer.
    by passing the Permission PDA as the trailing account on each transaction).
 3. Set `FeatureFlag::RequirePermissionAccounts` via `SetFeatureFlags`.
 
-Once the flag is set, all instructions require a Permission account. The only exception is
-`PERMISSION_ADMIN`: `foundation_allowlist` members can always manage Permission accounts, even in
-strict mode, to recover from misconfiguration.
+Once the flag is set, all instructions require a Permission account. There are two exceptions,
+both for `foundation_allowlist` members, to recover from misconfiguration: they can always manage
+Permission accounts (`PERMISSION_ADMIN`), and they can always turn `RequirePermissionAccounts` back
+off through `SetFeatureFlags`.

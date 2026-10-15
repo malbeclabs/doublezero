@@ -7,9 +7,7 @@ use doublezero_serviceability::{
     },
 };
 use doublezero_serviceability_instruction::stake_mirror::write_stake_mirror;
-use solana_sdk::{
-    account::Account, instruction::AccountMeta, pubkey::Pubkey, signature::Signature,
-};
+use solana_sdk::{account::Account, pubkey::Pubkey, signature::Signature};
 use std::fmt;
 
 use crate::DoubleZeroClient;
@@ -92,7 +90,7 @@ impl WriteStakeMirrorCommand {
         let payer = client.get_payer();
         let (mirror_pubkey, _) = get_stake_mirror_pda(&program_id, &self.stake_ref);
 
-        let mut ix = write_stake_mirror(
+        let ix = write_stake_mirror(
             &program_id,
             &payer,
             StakeMirrorWriteArgs {
@@ -104,12 +102,11 @@ impl WriteStakeMirrorCommand {
             },
         );
 
-        // Not `append_payer_permission_account`, which appends the account when it exists and says
-        // nothing when it does not. That is right for an instruction a legacy `GlobalState` key can
-        // also authorize, where the account is an upgrade rather than a requirement. No legacy key
-        // satisfies `STAKE_ORACLE`, so anything short of a usable Permission account is a
-        // transaction that cannot succeed on any cluster, and saying which way it is short costs
-        // the same round trip that helper was already spending.
+        // The builder already appends the payer's Permission PDA, whether or not it exists. For an
+        // instruction a legacy `GlobalState` key can also authorize that is all it takes, but no
+        // legacy key satisfies `STAKE_ORACLE`, so anything short of a usable Permission account is
+        // a transaction that cannot succeed on any cluster. Check it first, so the caller learns
+        // which way it is short instead of paying for a transaction that fails.
         let (permission_pubkey, _) = get_permission_pda(&program_id, &payer);
         let account = client
             .get_multiple_accounts(vec![permission_pubkey])?
@@ -124,9 +121,6 @@ impl WriteStakeMirrorCommand {
                  hold it."
             )
         })?;
-
-        ix.accounts
-            .push(AccountMeta::new_readonly(permission_pubkey, false));
 
         client.send_transaction(ix).map(|sig| (sig, mirror_pubkey))
     }

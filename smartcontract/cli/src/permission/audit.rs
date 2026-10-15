@@ -39,14 +39,11 @@ struct Gap {
 }
 
 /// Whether the Rust SDK attaches the payer's Permission PDA to serviceability
-/// transactions. While this is `false`, `authorize()` never sees a Permission
-/// account through the CLI/SDK send path and falls back to the GlobalState
-/// allowlists — so a key whose ONLY grant is a Permission account is denied.
-///
-/// This is the inverse of the gap analysis above (which asks who would lose access
-/// under strict mode), and the audit is where an operator looks for it. Flip to
-/// `true` and drop the rendered paragraph when the builder-side append is re-enabled.
-const SDK_ATTACHES_PERMISSION_ACCOUNTS: bool = false;
+/// transactions. It does: every `authorize()`-gated builder appends it. While this
+/// was `false`, `authorize()` never saw a Permission account through the CLI/SDK
+/// send path, so a key whose ONLY grant was a Permission account was denied; the
+/// report keeps the field so a consumer can tell which kind of CLI produced it.
+const SDK_ATTACHES_PERMISSION_ACCOUNTS: bool = true;
 
 #[derive(Serialize, Debug)]
 struct AuditReport {
@@ -242,33 +239,6 @@ fn render_text<W: Write>(out: &mut W, report: &AuditReport) -> eyre::Result<()> 
     }
     writeln!(out)?;
 
-    if !report.sdk_attaches_permission_accounts {
-        writeln!(
-            out,
-            "Permission accounts are not yet attached by the CLI / Rust SDK"
-        )?;
-        writeln!(
-            out,
-            "-----------------------------------------------------------"
-        )?;
-        writeln!(
-            out,
-            "Serviceability transactions sent through this CLI carry no Permission account, so"
-        )?;
-        writeln!(
-            out,
-            "authorize() falls back to the GlobalState allowlists. A key whose ONLY grant is a"
-        )?;
-        writeln!(
-            out,
-            "Permission account is denied on every gated command — granting one with"
-        )?;
-        writeln!(
-            out,
-            "`permission set` is not sufficient on its own until the append is re-enabled."
-        )?;
-        writeln!(out)?;
-    }
     writeln!(
         out,
         "foundation_allowlist ({} member(s)): {}",
@@ -365,7 +335,8 @@ mod tests {
         | permission_flags::GLOBALSTATE_ADMIN
         | permission_flags::TOPOLOGY_ADMIN
         | permission_flags::RESOURCE_ADMIN
-        | permission_flags::INDEX_ADMIN;
+        | permission_flags::INDEX_ADMIN
+        | permission_flags::FEED_AUTHORITY;
 
     fn globalstate_with_foundation(members: Vec<Pubkey>, feature_flags: u128) -> GlobalState {
         GlobalState {
@@ -417,7 +388,7 @@ mod tests {
         // infra-admin, tenant-admin, multicast-admin, contributor-admin,
         // globalstate-admin, topology-admin, resource-admin, index-admin.
         // activator/health-oracle authorities are unset, so no gap for those.
-        assert_eq!(report.gaps.len(), 11);
+        assert_eq!(report.gaps.len(), 12);
     }
 
     #[test]
@@ -462,6 +433,54 @@ mod tests {
     }
 
     #[test]
+    fn test_feed_admin_is_audited() {
+        // The feed instructions accept FEED_AUTHORITY or FOUNDATION, so the feed authority
+        // and every foundation member lose feed access in strict mode unless their
+        // Permission account grants one of the two.
+        let feed = Pubkey::new_unique();
+        let foundation = Pubkey::new_unique();
+        let mut gs = globalstate_with_foundation(vec![foundation], 0);
+        gs.feed_authority_pk = feed;
+        let feed_gap_keys = |report: &AuditReport| {
+            let mut keys: Vec<String> = report
+                .gaps
+                .iter()
+                .filter(|g| g.flag == "foundation|feed-authority")
+                .map(|g| g.key.clone())
+                .collect();
+            keys.sort();
+            keys
+        };
+
+        let report = build_report(&gs, &HashMap::new());
+        let mut expected = vec![feed.to_string(), foundation.to_string()];
+        expected.sort();
+        assert_eq!(feed_gap_keys(&report), expected);
+
+        // Either flag covers the pair: no need to grant FOUNDATION for feed admin.
+        let permissions = HashMap::from([
+            (
+                Pubkey::new_unique(),
+                permission(
+                    feed,
+                    permission_flags::FEED_AUTHORITY,
+                    PermissionStatus::Activated,
+                ),
+            ),
+            (
+                Pubkey::new_unique(),
+                permission(
+                    foundation,
+                    permission_flags::FOUNDATION,
+                    PermissionStatus::Activated,
+                ),
+            ),
+        ]);
+        let report = build_report(&gs, &permissions);
+        assert!(feed_gap_keys(&report).is_empty(), "{:?}", report.gaps);
+    }
+
+    #[test]
     fn test_no_gaps_when_foundation_fully_provisioned() {
         let foundation = Pubkey::new_unique();
         let gs = globalstate_with_foundation(vec![foundation], 0);
@@ -490,7 +509,7 @@ mod tests {
 
         let report = build_report(&gs, &permissions);
         // Suspended → still a gap for all 11 non-recovery foundation-backed flags.
-        assert_eq!(report.gaps.len(), 11);
+        assert_eq!(report.gaps.len(), 12);
         assert_eq!(report.suspended, vec![foundation.to_string()]);
     }
 
@@ -535,7 +554,7 @@ mod tests {
 
         assert!(res.is_err(), "expected non-zero exit on gaps");
         let output_str = String::from_utf8(output).unwrap();
-        assert!(output_str.contains("Legacy keys missing Permission coverage: 11"));
+        assert!(output_str.contains("Legacy keys missing Permission coverage: 12"));
         assert!(output_str.contains("DO NOT remove these keys yet"));
     }
 }

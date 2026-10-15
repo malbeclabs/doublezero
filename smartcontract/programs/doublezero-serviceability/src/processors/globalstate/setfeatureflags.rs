@@ -1,5 +1,5 @@
 use crate::{
-    authorize::authorize,
+    authorize::{authorize, foundation_strict_mode_disable_recovery},
     pda::get_globalstate_pda,
     serializer::try_acc_write,
     state::{globalstate::GlobalState, permission::permission_flags},
@@ -62,14 +62,22 @@ pub fn process_set_feature_flags(
     );
 
     // Authorization: GLOBALSTATE_ADMIN (Permission account) or foundation (legacy).
+    // A foundation member may always disable RequirePermissionAccounts, whatever the
+    // state of the optional trailing Permission account (which is then left unread).
     let mut globalstate = GlobalState::try_from(globalstate_account)?;
-    authorize(
-        program_id,
-        accounts_iter,
-        payer_account.key,
+    if !foundation_strict_mode_disable_recovery(
         &globalstate,
-        permission_flags::GLOBALSTATE_ADMIN,
-    )?;
+        payer_account.key,
+        value.feature_flags,
+    ) {
+        authorize(
+            program_id,
+            accounts_iter,
+            payer_account.key,
+            &globalstate,
+            permission_flags::GLOBALSTATE_ADMIN,
+        )?;
+    }
 
     globalstate.feature_flags = value.feature_flags;
 

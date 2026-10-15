@@ -115,6 +115,15 @@ Even when `RequirePermissionAccounts` is set (legacy mode disabled), `foundation
 can still call Permission instructions without a Permission account. This prevents the foundation
 from being locked out of the permission system when migrating to strict mode.
 
+### Foundation bypass for disabling strict mode
+
+`foundation_allowlist` members can also always call `SetFeatureFlags` to clear
+`RequirePermissionAccounts`, whatever the state of their own Permission account (missing,
+uninitialized, suspended, or without `GLOBALSTATE_ADMIN`). The bypass applies only when the flag is
+currently set and the new flags are exactly the current flags with that bit cleared. Enabling strict
+mode, or changing any other flag, still requires `GLOBALSTATE_ADMIN` through `authorize()`. This
+guarantees strict mode can be rolled back without first repairing a Permission account.
+
 ### Domain instruction enforcement (access pass / multicast / user)
 
 These instructions call `authorize()` and therefore honor a Permission account bearing the listed
@@ -262,6 +271,7 @@ Closes the account and refunds rent to the payer.
    by passing the Permission PDA as the trailing account on each transaction).
 3. Set `FeatureFlag::RequirePermissionAccounts` via `SetFeatureFlags`.
 
-Once the flag is set, all instructions require a Permission account. The only exception is
-`PERMISSION_ADMIN`: `foundation_allowlist` members can always manage Permission accounts, even in
-strict mode, to recover from misconfiguration.
+Once the flag is set, all instructions require a Permission account. There are two exceptions,
+both for `foundation_allowlist` members, to recover from misconfiguration: they can always manage
+Permission accounts (`PERMISSION_ADMIN`), and they can always turn `RequirePermissionAccounts` back
+off through `SetFeatureFlags`.

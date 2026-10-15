@@ -43,7 +43,9 @@ use solana_program::{
 ///                       RequirePermissionAccounts or when the payer's own Permission account
 ///                       is missing/suspended/under-privileged — see foundation_permission_recovery)
 ///   INFRA_ADMIN       → foundation_allowlist
-///   GLOBALSTATE_ADMIN → foundation_allowlist
+///   GLOBALSTATE_ADMIN → foundation_allowlist (SetFeatureFlags additionally lets foundation
+///                       disable RequirePermissionAccounts under any Permission account
+///                       state — see foundation_strict_mode_disable_recovery)
 ///   CONTRIBUTOR_ADMIN → foundation_allowlist
 ///   TOPOLOGY_ADMIN    → foundation_allowlist
 ///   RESOURCE_ADMIN    → foundation_allowlist
@@ -136,6 +138,25 @@ fn foundation_permission_recovery(
     any_of_flags: u128,
 ) -> bool {
     any_of_flags & permission_flags::PERMISSION_ADMIN != 0
+        && globalstate.foundation_allowlist.contains(payer_key)
+}
+
+/// Strict-mode rollback recovery: a foundation member may always DISABLE
+/// `RequirePermissionAccounts` via `SetFeatureFlags`, even when their own Permission
+/// account is missing, suspended, or lacks `GLOBALSTATE_ADMIN`. This guarantees strict
+/// mode can always be turned off without a program upgrade.
+///
+/// Applies only when the flag is currently set and `new_flags` is exactly the current
+/// flags with that bit cleared. Enabling it, or changing any other flag, still goes
+/// through `authorize()`.
+pub fn foundation_strict_mode_disable_recovery(
+    globalstate: &GlobalState,
+    payer_key: &Pubkey,
+    new_flags: u128,
+) -> bool {
+    let strict = FeatureFlag::RequirePermissionAccounts.to_mask();
+    globalstate.feature_flags & strict != 0
+        && new_flags == globalstate.feature_flags & !strict
         && globalstate.foundation_allowlist.contains(payer_key)
 }
 

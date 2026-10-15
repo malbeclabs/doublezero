@@ -31,7 +31,9 @@ use solana_program::{
 /// Lamports are deliberately ignored: anyone can transfer lamports to any address,
 /// so a pre-funded but still system-owned PDA must not change the outcome.
 ///
-/// Without a usable Permission account (absent, or uninitialized as above):
+/// Without a Permission account that grants one of the flags (absent, uninitialized
+/// as above, or present but suspended/under-privileged), `authorize_without_permission`
+/// decides:
 ///   - while `FeatureFlag::RequirePermissionAccounts` is clear, the legacy
 ///     `GlobalState` allowlists/authority keys decide (mapping below);
 ///   - once it is set, only the foundation `PERMISSION_ADMIN` recovery applies (see
@@ -103,28 +105,14 @@ where
     if granted {
         return Ok(());
     }
-    // Without the recovery below, a foundation member whose own Permission account
-    // is suspended or under-privileged would be denied the very PERMISSION_ADMIN
-    // instruction needed to repair it — re-introducing the lockout the no-account
-    // fallback exists to prevent.
-    if foundation_permission_recovery(globalstate, payer_key, any_of_flags) {
-        return Ok(());
-    }
-    // While strict mode is off, the legacy allowlists/authorities remain
-    // authoritative — exactly as with no Permission account. A present-but-
-    // insufficient Permission account must not lock out a key that legacy
-    // authorization would still accept (e.g. a foundation member who also holds an
-    // unrelated, under-privileged Permission account). Once
-    // RequirePermissionAccounts is enabled, only the Permission account (or the
-    // foundation PERMISSION_ADMIN recovery above) authorizes.
-    if !is_feature_enabled(
-        globalstate.feature_flags,
-        FeatureFlag::RequirePermissionAccounts,
-    ) && check_legacy_any(payer_key, globalstate, any_of_flags)
-    {
-        return Ok(());
-    }
-    Err(DoubleZeroError::NotAllowed.into())
+    // A present Permission account that does not grant the flags (suspended or
+    // under-privileged) falls back exactly like no Permission account at all:
+    //   - strict mode off: the legacy allowlists/authorities stay authoritative, so
+    //     a key legacy authorization accepts (e.g. a foundation member who also
+    //     holds an unrelated, under-privileged Permission account) is not locked out;
+    //   - strict mode on: only the foundation PERMISSION_ADMIN recovery applies, so
+    //     a foundation member can still repair their own Permission account.
+    authorize_without_permission(payer_key, globalstate, any_of_flags)
 }
 
 /// Whether `account` has never been initialized: still owned by the system program
@@ -134,8 +122,14 @@ fn is_uninitialized(account: &AccountInfo) -> bool {
     account.owner == &solana_system_interface::program::ID && account.data_is_empty()
 }
 
-/// Authorization when the payer supplies no usable Permission account (none at all,
-/// or the payer's PDA while still uninitialized).
+/// Authorization when the payer's Permission account does not authorize the
+/// instruction: none supplied, the payer's PDA while still uninitialized, or an
+/// existing account that does not grant any of `any_of_flags`. This is the single
+/// owner of every fallback path in [`authorize`].
+///
+/// Strict mode off: legacy only. The foundation `PERMISSION_ADMIN` recovery is not
+/// checked separately because `check_legacy_any` already maps `PERMISSION_ADMIN` to
+/// `foundation_allowlist`, i.e. the recovery implies legacy acceptance.
 fn authorize_without_permission(
     payer_key: &Pubkey,
     globalstate: &GlobalState,
@@ -1795,6 +1789,57 @@ mod tests {
             permission_flags::PERMISSION_ADMIN
         )
         .is_ok());
+    }
+
+    #[test]
+    fn test_permission_account_foundation_recovery_strict_on_and_off() {
+        // A foundation member whose own Permission account is suspended or lacks
+        // PERMISSION_ADMIN keeps PERMISSION_ADMIN in both modes. With strict mode
+        // off this relies on check_legacy_any mapping PERMISSION_ADMIN to
+        // foundation_allowlist (authorize_without_permission does not re-check the
+        // recovery there); with strict mode on, on foundation_permission_recovery.
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let cases = [
+            (
+                PermissionStatus::Suspended,
+                permission_flags::PERMISSION_ADMIN,
+            ),
+            (PermissionStatus::Activated, permission_flags::QA),
+        ];
+        for strict in [false, true] {
+            for (status, flags) in cases {
+                let (pda, _, mut data) = make_permission_data(&program_id, &payer, status, flags);
+                let mut lamports = 100_000u64;
+                let account = AccountInfo::new(
+                    &pda,
+                    false,
+                    false,
+                    &mut lamports,
+                    &mut data,
+                    &program_id,
+                    false,
+                );
+                let accounts = [account];
+                let mut iter = accounts.iter();
+                let mut gs = gs_with_foundation(&payer);
+                if strict {
+                    gs.feature_flags = FeatureFlag::RequirePermissionAccounts.to_mask();
+                }
+
+                assert_eq!(
+                    authorize(
+                        &program_id,
+                        &mut iter,
+                        &payer,
+                        &gs,
+                        permission_flags::PERMISSION_ADMIN
+                    ),
+                    Ok(()),
+                    "strict={strict} status={status:?} flags={flags:#x}"
+                );
+            }
+        }
     }
 
     #[test]

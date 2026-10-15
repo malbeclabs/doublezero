@@ -74,16 +74,18 @@ sufficient.
 
 Authorization is resolved in `src/authorize.rs` via `authorize()`. Each instruction calls
 `authorize()` after consuming its expected accounts. An optional trailing account — the caller's
-`Permission` PDA — selects the path:
+`Permission` PDA — selects the path. A trailing PDA that is still uninitialized (system-owned with
+no data, whatever its lamports) counts as no Permission account, so clients can append it without
+checking that it exists.
 
 ### New path (Permission account provided)
 
 1. Validate the PDA matches `get_permission_pda(program_id, payer)`.
-2. Verify the account is owned by the program and non-empty.
+2. Verify the account is owned by the program and non-empty (an uninitialized PDA takes the no-account path instead).
 3. Check `permission.status == Activated`.
 4. Check `permission.permissions & any_of_flags \!= 0`.
 
-### Legacy path (no Permission account, `RequirePermissionAccounts` not set)
+### Legacy path (no or uninitialized Permission account, `RequirePermissionAccounts` not set)
 
 Falls back to `GlobalState` fields:
 

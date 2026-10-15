@@ -20,7 +20,10 @@ use doublezero_solana_sdk::{
 };
 use solana_compute_budget_interface::ComputeBudgetInstruction;
 use solana_sdk::{instruction::Instruction, pubkey::Pubkey};
-use spl_associated_token_account_interface::instruction::create_associated_token_account_idempotent;
+use spl_associated_token_account_interface::{
+    address::get_associated_token_address_and_bump_seed,
+    instruction::create_associated_token_account_idempotent,
+};
 use tracing::{debug, info, warn};
 
 use crate::calculator::{ledger_operations::try_fetch_shapley_output, proof::ShapleyOutputStorage};
@@ -396,8 +399,24 @@ pub async fn try_pay_leaf(
     let (memo_ix, memo_compute_units) = Wallet::build_memo_instruction_with_compute_units(b"Relay");
     instructions.push(memo_ix);
 
+    // The program derives every recipient's ATA, trying bumps down from 255, so
+    // each bump past the first costs more than `PER_RECIPIENT_CU` covers.
+    let derive_ata_compute_units = recipient_keys
+        .iter()
+        .map(|recipient_key| {
+            let (_, bump) = get_associated_token_address_and_bump_seed(
+                recipient_key,
+                dz_mint_key,
+                &spl_associated_token_account_interface::program::ID,
+                &spl_token_interface::ID,
+            );
+            Wallet::compute_units_for_bump_seed(bump)
+        })
+        .sum::<u32>();
+
     let compute_unit_limit = DISTRIBUTE_REWARDS_CU_BASE
         + recipient_keys.len() as u32 * PER_RECIPIENT_CU
+        + derive_ata_compute_units
         + create_ata_compute_units.iter().sum::<u32>()
         + memo_compute_units;
 

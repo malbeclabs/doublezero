@@ -14,6 +14,7 @@ use doublezero_revenue_distribution::{
 };
 use mock_rewards_integration::state::MockMonthlyRewardsBucket;
 use solana_program_test::{tokio, BanksClientError};
+use solana_pubkey::Pubkey;
 use solana_sdk::{
     instruction::InstructionError,
     rent::Rent,
@@ -37,15 +38,41 @@ struct FinalizeMonthlyRewardsSetup {
     rewards_accountant_signer: Keypair,
 }
 
+/// Funds the month's bucket and posts a one-contributor root, leaving collect
+/// to the caller.
 async fn setup_for_finalize_monthly_rewards() -> FinalizeMonthlyRewardsSetup {
     let mut test_setup = common::start_test().await;
     let configured = test_setup.setup_configured_program().await.unwrap();
 
+    let (_, bucket_2z_key) = bucket_keys();
+
     test_setup
+        .configure_program(
+            &configured.admin_signer,
+            [ProgramConfiguration::MonthlyContributorRewardsProgram(
+                mock_rewards_integration::ID,
+            )],
+        )
+        .await
+        .unwrap()
         .initialize_monthly_contributor_distribution(YEAR, MONTH)
         .await
-        .unwrap();
-    test_setup
+        .unwrap()
+        .configure_monthly_contributor_distribution_rewards(
+            YEAR,
+            MONTH,
+            &configured.rewards_accountant_signer,
+            1,
+            Hash::new_unique(),
+        )
+        .await
+        .unwrap()
+        .mock_initialize_monthly_rewards_bucket(YEAR, MONTH)
+        .await
+        .unwrap()
+        .transfer_2z(&bucket_2z_key, 1)
+        .await
+        .unwrap()
         .set_unix_timestamp(MONTH_END_TIMESTAMP)
         .await
         .unwrap();
@@ -55,6 +82,29 @@ async fn setup_for_finalize_monthly_rewards() -> FinalizeMonthlyRewardsSetup {
         admin_signer: configured.admin_signer,
         rewards_accountant_signer: configured.rewards_accountant_signer,
     }
+}
+
+fn bucket_keys() -> (Pubkey, Pubkey) {
+    let bucket_key = MockMonthlyRewardsBucket::find_address(YEAR, MONTH).0;
+    let bucket_2z_key =
+        find_integration_bucket_address(&mock_rewards_integration::ID, &bucket_key).0;
+
+    (bucket_key, bucket_2z_key)
+}
+
+async fn collect(test_setup: &mut common::ProgramTestWithOwner) {
+    let (bucket_key, bucket_2z_key) = bucket_keys();
+
+    test_setup
+        .collect_monthly_contributor_rewards(
+            YEAR,
+            MONTH,
+            &mock_rewards_integration::ID,
+            &bucket_key,
+            &bucket_2z_key,
+        )
+        .await
+        .unwrap();
 }
 
 async fn simulate_finalize(
@@ -85,7 +135,7 @@ async fn simulate_finalize(
 #[tokio::test]
 async fn test_finalize_monthly_contributor_distribution_rewards() {
     // Bitmap length is ceil(total_contributors / 8).
-    for (total_contributors, expected_bitmap_len) in [(0, 0), (8, 1), (9, 2)] {
+    for (total_contributors, expected_bitmap_len) in [(1, 1), (8, 1), (9, 2)] {
         let FinalizeMonthlyRewardsSetup {
             mut test_setup,
             rewards_accountant_signer,
@@ -103,6 +153,7 @@ async fn test_finalize_monthly_contributor_distribution_rewards() {
             )
             .await
             .unwrap();
+        collect(&mut test_setup).await;
 
         let (_, before, _, _, _) = test_setup
             .fetch_monthly_contributor_distribution(YEAR, MONTH)
@@ -137,28 +188,36 @@ async fn test_finalize_monthly_contributor_distribution_rewards() {
     }
 }
 
+//
+// Finalize monthly contributor distribution rewards — failures.
+//
+
 #[tokio::test]
-async fn test_finalize_monthly_contributor_distribution_rewards_null_root_without_2z() {
+async fn test_cannot_finalize_monthly_contributor_distribution_rewards_before_collect() {
     let FinalizeMonthlyRewardsSetup {
         mut test_setup,
         rewards_accountant_signer,
         ..
     } = setup_for_finalize_monthly_rewards().await;
 
+    let (tx_err, program_logs) = simulate_finalize(&mut test_setup, &rewards_accountant_signer)
+        .await
+        .unwrap();
+    assert_eq!(
+        tx_err,
+        TransactionError::InstructionError(0, InstructionError::InvalidAccountData)
+    );
+    assert_eq!(
+        program_logs.get(3).unwrap(),
+        "Program log: Monthly contributor distribution has not been collected yet"
+    );
+
+    collect(&mut test_setup).await;
     test_setup
         .finalize_monthly_contributor_distribution_rewards(YEAR, MONTH, &rewards_accountant_signer)
         .await
         .unwrap();
-
-    let (_, monthly_distribution, _, _, _) = test_setup
-        .fetch_monthly_contributor_distribution(YEAR, MONTH)
-        .await;
-    assert!(monthly_distribution.is_rewards_calculation_finalized());
 }
-
-//
-// Finalize monthly contributor distribution rewards — failures.
-//
 
 #[tokio::test]
 async fn test_cannot_finalize_monthly_contributor_distribution_rewards_unpayable_with_2z() {
@@ -166,13 +225,9 @@ async fn test_cannot_finalize_monthly_contributor_distribution_rewards_unpayable
     for (total_contributors, merkle_root) in [(1, Hash::default()), (0, Hash::new_unique())] {
         let FinalizeMonthlyRewardsSetup {
             mut test_setup,
-            admin_signer,
             rewards_accountant_signer,
+            ..
         } = setup_for_finalize_monthly_rewards().await;
-
-        let bucket_key = MockMonthlyRewardsBucket::find_address(YEAR, MONTH).0;
-        let bucket_2z_key =
-            find_integration_bucket_address(&mock_rewards_integration::ID, &bucket_key).0;
 
         test_setup
             .configure_monthly_contributor_distribution_rewards(
@@ -183,30 +238,8 @@ async fn test_cannot_finalize_monthly_contributor_distribution_rewards_unpayable
                 merkle_root,
             )
             .await
-            .unwrap()
-            .configure_program(
-                &admin_signer,
-                [ProgramConfiguration::MonthlyContributorRewardsProgram(
-                    mock_rewards_integration::ID,
-                )],
-            )
-            .await
-            .unwrap()
-            .mock_initialize_monthly_rewards_bucket(YEAR, MONTH)
-            .await
-            .unwrap()
-            .transfer_2z(&bucket_2z_key, 1)
-            .await
-            .unwrap()
-            .collect_monthly_contributor_rewards(
-                YEAR,
-                MONTH,
-                &mock_rewards_integration::ID,
-                &bucket_key,
-                &bucket_2z_key,
-            )
-            .await
             .unwrap();
+        collect(&mut test_setup).await;
 
         let (tx_err, program_logs) = simulate_finalize(&mut test_setup, &rewards_accountant_signer)
             .await
@@ -250,7 +283,9 @@ async fn test_cannot_finalize_monthly_contributor_distribution_rewards_before_mo
     test_setup
         .set_unix_timestamp(MONTH_END_TIMESTAMP)
         .await
-        .unwrap()
+        .unwrap();
+    collect(&mut test_setup).await;
+    test_setup
         .finalize_monthly_contributor_distribution_rewards(YEAR, MONTH, &rewards_accountant_signer)
         .await
         .unwrap();
@@ -313,6 +348,7 @@ async fn test_cannot_finalize_monthly_contributor_distribution_rewards_twice() {
         ..
     } = setup_for_finalize_monthly_rewards().await;
 
+    collect(&mut test_setup).await;
     test_setup
         .finalize_monthly_contributor_distribution_rewards(YEAR, MONTH, &rewards_accountant_signer)
         .await

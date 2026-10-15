@@ -43,7 +43,9 @@ use solana_program::{
 ///                       RequirePermissionAccounts or when the payer's own Permission account
 ///                       is missing/suspended/under-privileged — see foundation_permission_recovery)
 ///   INFRA_ADMIN       → foundation_allowlist
-///   GLOBALSTATE_ADMIN → foundation_allowlist
+///   GLOBALSTATE_ADMIN → foundation_allowlist (SetFeatureFlags additionally lets foundation
+///                       disable RequirePermissionAccounts under any Permission account
+///                       state — see foundation_strict_mode_disable_recovery)
 ///   CONTRIBUTOR_ADMIN → foundation_allowlist
 ///   TOPOLOGY_ADMIN    → foundation_allowlist
 ///   RESOURCE_ADMIN    → foundation_allowlist
@@ -136,6 +138,25 @@ fn foundation_permission_recovery(
     any_of_flags: u128,
 ) -> bool {
     any_of_flags & permission_flags::PERMISSION_ADMIN != 0
+        && globalstate.foundation_allowlist.contains(payer_key)
+}
+
+/// Strict-mode rollback recovery: a foundation member may always DISABLE
+/// `RequirePermissionAccounts` via `SetFeatureFlags`, even when their own Permission
+/// account is missing, suspended, or lacks `GLOBALSTATE_ADMIN`. This guarantees strict
+/// mode can always be turned off without a program upgrade.
+///
+/// Applies only when the flag is currently set and `new_flags` is exactly the current
+/// flags with that bit cleared. Enabling it, or changing any other flag, still goes
+/// through `authorize()`.
+pub fn foundation_strict_mode_disable_recovery(
+    globalstate: &GlobalState,
+    payer_key: &Pubkey,
+    new_flags: u128,
+) -> bool {
+    let strict = FeatureFlag::RequirePermissionAccounts.to_mask();
+    globalstate.feature_flags & strict != 0
+        && new_flags == globalstate.feature_flags & !strict
         && globalstate.foundation_allowlist.contains(payer_key)
 }
 
@@ -315,7 +336,14 @@ pub const AUTHORIZE_GATED_FLAGS: &[u128] = &[
     permission_flags::ACTIVATOR,
     permission_flags::HEALTH_ORACLE,
     permission_flags::STAKE_ORACLE,
+    // The feed instructions pass this pair to `authorize()` as one any-of set, so it is listed
+    // as one entry: a key is covered if its Permission account grants either flag.
+    // `FOUNDATION` reaches `authorize()` only through them.
+    FEED_ADMIN_FLAGS,
 ];
+
+/// The any-of set every feed instruction passes to [`authorize`].
+pub const FEED_ADMIN_FLAGS: u128 = permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION;
 
 /// Enumerates the legacy `GlobalState` keys that authorize `any_of_flags` today, each
 /// paired with a static label naming its source. This is the enumerating inverse of

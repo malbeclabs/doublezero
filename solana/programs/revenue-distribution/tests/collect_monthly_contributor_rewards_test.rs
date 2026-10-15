@@ -17,6 +17,7 @@ use solana_pubkey::Pubkey;
 use solana_sdk::{
     instruction::InstructionError, signature::Keypair, transaction::TransactionError,
 };
+use svm_hash::sha2::Hash;
 
 //
 // Setup.
@@ -248,8 +249,30 @@ async fn test_cannot_collect_monthly_contributor_rewards_after_finalize() {
         ..
     } = setup_for_collect_monthly_rewards().await;
 
+    // Finalize requires the collect, so the refused 2Z arrives after it.
     test_setup
+        .configure_monthly_contributor_distribution_rewards(
+            YEAR,
+            MONTH,
+            &rewards_accountant_signer,
+            1,
+            Hash::new_unique(),
+        )
+        .await
+        .unwrap()
+        .collect_monthly_contributor_rewards(
+            YEAR,
+            MONTH,
+            &mock_rewards_integration::ID,
+            &bucket_key,
+            &bucket_2z_key,
+        )
+        .await
+        .unwrap()
         .finalize_monthly_contributor_distribution_rewards(YEAR, MONTH, &rewards_accountant_signer)
+        .await
+        .unwrap()
+        .transfer_2z(&bucket_2z_key, SEEDED_BUCKET_AMOUNT)
         .await
         .unwrap();
 

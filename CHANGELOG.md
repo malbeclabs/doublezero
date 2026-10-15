@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 - CI
   - Release jobs install goreleaser-pro v2.18.2 through `.github/actions/install-goreleaser-pro`, which checks the download against a sha256 pinned in the repo and fails the job on any mismatch or failed download, then run `goreleaser` directly. This replaces goreleaser-action, which runs the binary unchecked when it cannot fetch the checksum or signature file, and stops goreleaser floating on `~> v2`.
+- CLI
+  - `doublezero permission audit` checks the feed instructions, which accept `feed-authority` or `foundation`. It reports the feed authority and every foundation member whose Permission account grants neither, since they would lose feed access once `RequirePermissionAccounts` is enabled; the audit did not check them. (#4079)
 - Config
   - The mainnet-beta internet latency collector key moves from the retired `8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH` to `3Fs61T6u4etthEkFSy2cBwEA5i2ZqxQ5AEMd36mBkWsn`. The monitor, telemetry data-api, data CLI and funder (`-env mainnet-beta`) find or fund the collector by this key.
 - E2E/QA
@@ -18,8 +20,12 @@ All notable changes to this project will be documented in this file.
 - Offchain
   - `doublezero-contributor-rewards` adds `calculate-monthly-rewards --year --month [--json]`, which averages a UTC month's posted DoubleZero epoch shares into contributor shares that total exactly 1,000,000,000, the input monthly contributor distributions need. It is read-only. (malbeclabs/infra#2692)
   - The offchain sentinel builds its `SetAccessPass`, `AddMulticastGroupPubAllowlist` and `UpdatePaymentStatus` instructions with `doublezero-serviceability-instruction` instead of hand-built account lists, so it picks up the payer's Permission PDA when the builders start appending it, ahead of enabling `RequirePermissionAccounts`. `AddMulticastGroupPubAllowlist` now passes the validator's service key as the optional `user_payer` account, so the program tops up its connect credits as it does for `SetAccessPass`.
+- Serviceability
+  - A `foundation_allowlist` member can always use `SetFeatureFlags` to turn `require-permission-accounts` off, even when their own Permission account is missing, suspended or lacks `globalstate-admin`. Before, turning it off needed an activated Permission account granting `globalstate-admin`, so a foundation member without one first had to create or repair it through the `permission-admin` recovery. This covers only clearing that one flag. Turning it on, or changing any other flag, still needs normal authorization.
 - Solana programs
   - `revenue-distribution` collects a month's contributor 2Z from the program the admin sets with `MonthlyContributorRewardsProgram`, the feed-subscription program, into its monthly contributor distribution. (malbeclabs/infra#2694)
+  - `revenue-distribution` adds `DistributeMonthlyContributorRewards`, which pays one contributor's share of a collected, finalized month to its recipient wallets. Rounding dust stays in the month's 2Z account. (malbeclabs/infra#2695)
+  - `revenue-distribution` refuses `FinalizeMonthlyContributorDistributionRewards` until the month is collected. Collect refuses a finalized month, so an earlier finalize would leave that month's contributor 2Z in the feed program's bucket. (malbeclabs/infra#2695)
 
 ## [v0.44.0](https://github.com/malbeclabs/doublezero/compare/client/v0.43.0...client/v0.44.0) - 2026-10-02
 

@@ -1,11 +1,10 @@
 use crate::{
-    authorize::authorize,
+    authorize::{authorize, FEED_ADMIN_FLAGS},
     error::DoubleZeroError,
     serializer::try_acc_close,
     state::{
         feed::{Feed, FeedStatus},
         globalstate::GlobalState,
-        permission::permission_flags,
     },
 };
 use borsh::BorshSerialize;
@@ -46,7 +45,7 @@ pub fn process_delete_feed(
         accounts_iter,
         payer_account.key,
         &globalstate,
-        permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION,
+        FEED_ADMIN_FLAGS,
     )?;
 
     // Validate the account really is a Feed before closing it (guards against closing an unrelated

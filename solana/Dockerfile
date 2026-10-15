@@ -22,12 +22,28 @@ COPY programs ./programs
 COPY crates ./crates
 COPY mock ./mock
 
-RUN cargo fetch --locked
+RUN --mount=type=cache,id=doublezero-verified-build-cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=doublezero-verified-build-cargo-git,target=/usr/local/cargo/git \
+    cargo fetch --locked
 
 ARG NETWORK
-RUN set -e; \
+# Cache the SBF platform-tools toolchain (~470MB, fetched by cargo build-sbf into
+# ~/.cache/solana) so rebuilds reuse it instead of re-downloading it every time.
+# `target` is a cache mount shared across networks. It is locked so concurrent
+# builds cannot interleave, and each program is copied by name rather than
+# globbing a stale .so from another network's build.
+RUN --mount=type=cache,id=doublezero-verified-build-cargo-registry,target=/usr/local/cargo/registry \
+    --mount=type=cache,id=doublezero-verified-build-cargo-git,target=/usr/local/cargo/git \
+    --mount=type=cache,id=doublezero-verified-build-target,target=/build/target,sharing=locked \
+    --mount=type=cache,id=doublezero-verified-build-platform-tools,target=/root/.cache/solana \
+    set -e; \
     mkdir "artifacts-${NETWORK}"; \
-    NETWORK=${NETWORK} make build-sbf
+    NETWORK=${NETWORK} make build-sbf; \
+    cp target/deploy/doublezero_builder_stake.so \
+        target/deploy/doublezero_passport.so \
+        target/deploy/doublezero_revenue_distribution.so \
+        "artifacts-${NETWORK}/"
 
 FROM scratch AS artifacts
-COPY --from=builder /build/target/deploy/*.so /
+ARG NETWORK
+COPY --from=builder /build/artifacts-${NETWORK}/*.so /

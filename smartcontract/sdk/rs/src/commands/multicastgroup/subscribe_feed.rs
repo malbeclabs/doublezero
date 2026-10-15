@@ -1,14 +1,15 @@
 use crate::{
     commands::{
         accesspass::get::resolve_user_accesspass, common::drop_payer_permission_account,
-        device::get::GetDeviceCommand, user::get::GetUserCommand,
+        device::get::GetDeviceCommand, globalstate::get::GetGlobalStateCommand,
+        user::get::GetUserCommand,
     },
     DoubleZeroClient,
 };
 use doublezero_serviceability::{
     processors::multicastgroup::subscribe_feed::MAX_USER_FEEDS,
     state::{
-        accesspass::AccessPassType,
+        accesspass::{AccessPass, AccessPassType},
         accountdata::AccountData,
         feed::Feed,
         user::{UserStatus, UserType},
@@ -21,24 +22,43 @@ use solana_sdk::{pubkey::Pubkey, signature::Signature};
 /// feed+group accounts without the payer's Permission account.
 pub(crate) const MAX_FEED_TX_ACCOUNTS: usize = 25;
 
+/// Whether the feed-subscription processors authorize this payer without reading a Permission
+/// account: the access pass's own `user_payer`, or a member of the GlobalState foundation
+/// allowlist. `authorize_payer` admits both before it consults `authorize()`, with or without
+/// `RequirePermissionAccounts`, so for them the account is dead weight. GlobalState is read only
+/// when the payer is not the pass owner.
+pub(crate) fn payer_needs_no_permission(
+    client: &dyn DoubleZeroClient,
+    accesspass: &AccessPass,
+) -> eyre::Result<bool> {
+    let payer = client.get_payer();
+    if accesspass.user_payer == payer {
+        return Ok(true);
+    }
+    let (_, globalstate) = GetGlobalStateCommand
+        .execute(client)
+        .map_err(|err| eyre::eyre!("failed to fetch globalstate: {err}"))?;
+    Ok(globalstate.foundation_allowlist.contains(&payer))
+}
+
 /// The variable feed+group accounts that fit one transaction for this payer.
 ///
-/// The feed-subscription processors authorize the access pass's own `user_payer` before they
-/// consult `authorize()`, so for that payer the Permission account the builder appends is dropped
-/// (see [`drop_payer_permission_account`]) and the full [`MAX_FEED_TX_ACCOUNTS`] fit. Anyone else
+/// For a payer the processor authorizes without a Permission account (see
+/// [`payer_needs_no_permission`]) the account the builder appends is dropped (see
+/// [`drop_payer_permission_account`]) and the full [`MAX_FEED_TX_ACCOUNTS`] fit. Anyone else
 /// needs it, which costs one slot.
-pub(crate) fn feed_tx_capacity(payer_is_pass_owner: bool) -> usize {
-    MAX_FEED_TX_ACCOUNTS - usize::from(!payer_is_pass_owner)
+pub(crate) fn feed_tx_capacity(omit_permission: bool) -> usize {
+    MAX_FEED_TX_ACCOUNTS - usize::from(!omit_permission)
 }
 
 /// Build a feed-subscription instruction for this payer: drop the Permission account when the
-/// payer is the pass's own `user_payer`, who the processor authorizes without it.
+/// processor authorizes the payer without it (see [`payer_needs_no_permission`]).
 pub(crate) fn for_payer(
     client: &dyn DoubleZeroClient,
-    payer_is_pass_owner: bool,
+    omit_permission: bool,
     mut ix: solana_sdk::instruction::Instruction,
 ) -> solana_sdk::instruction::Instruction {
-    if payer_is_pass_owner {
+    if omit_permission {
         drop_payer_permission_account(client, &mut ix);
     }
     ix
@@ -138,8 +158,8 @@ impl SubscribeFeedCommand {
             );
         }
 
-        let payer_is_pass_owner = accesspass.user_payer == client.get_payer();
-        let capacity = feed_tx_capacity(payer_is_pass_owner);
+        let omit_permission = payer_needs_no_permission(client, &accesspass)?;
+        let capacity = feed_tx_capacity(omit_permission);
 
         // Exactly the groups each transaction adds, mirroring the processor's derivation.
         let mut subscribed: Vec<Pubkey> = user.subscribers.clone();
@@ -171,7 +191,7 @@ impl SubscribeFeedCommand {
         for (index, (chunk_feed_pks, chunk_group_pks)) in chunks.iter().enumerate() {
             let result = client.send_transaction(for_payer(
                 client,
-                payer_is_pass_owner,
+                omit_permission,
                 subscribe_feed(
                     &client.get_program_id(),
                     &client.get_payer(),
@@ -210,8 +230,8 @@ impl SubscribeFeedCommand {
 #[cfg(test)]
 mod tests {
 
-    /// The fixture's payer is the pass's own `user_payer`, so the command drops the Permission
-    /// account the builder appends.
+    /// The payer needs no Permission account (it is the pass's own `user_payer`, or a foundation
+    /// member), so the command drops the one the builder appends.
     fn as_pass_owner(
         mut ix: solana_sdk::instruction::Instruction,
     ) -> solana_sdk::instruction::Instruction {
@@ -250,6 +270,18 @@ mod tests {
         feeds: Vec<(Pubkey, Feed)>,
     ) -> Fixture {
         let payer = client.get_payer();
+        setup_owned_by(client, payer, subscribers, held_feeds, feeds)
+    }
+
+    /// [`setup`] for a user and pass owned by (and paid for by) `payer`, which need not be the
+    /// client's signer.
+    fn setup_owned_by(
+        client: &mut crate::MockDoubleZeroClient,
+        payer: Pubkey,
+        subscribers: Vec<Pubkey>,
+        held_feeds: Vec<Pubkey>,
+        feeds: Vec<(Pubkey, Feed)>,
+    ) -> Fixture {
         let program_id = client.get_program_id();
         let client_ip = Ipv4Addr::new(100, 0, 0, 1);
         let user_pk = Pubkey::new_unique();
@@ -704,5 +736,54 @@ mod tests {
                 "user holds {MAX_USER_FEEDS} feeds and this join adds 1; a user may hold at most {MAX_USER_FEEDS}"
             )
         );
+    }
+
+    /// A foundation member joining feeds on another user's pass is admitted without a Permission
+    /// account, so it gets the pass owner's full capacity: 2 feeds and 23 groups (25 accounts)
+    /// still go in one transaction.
+    #[test]
+    fn test_commands_subscribe_feed_foundation_payer_omits_permission_account() {
+        let mut client = crate::tests::utils::create_test_client_with_foundation_payer();
+        let payer = client.get_payer();
+        let program_id = client.get_program_id();
+
+        let exchange = Pubkey::new_unique();
+        let groups1: Vec<Pubkey> = (0..20).map(|_| Pubkey::new_unique()).collect();
+        let groups2: Vec<Pubkey> = (0..3).map(|_| Pubkey::new_unique()).collect();
+        let (feed1_pk, feed2_pk) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let f = setup_owned_by(
+            &mut client,
+            Pubkey::new_unique(),
+            vec![],
+            vec![],
+            vec![
+                (feed1_pk, feed_with("f1", exchange, groups1.clone())),
+                (feed2_pk, feed_with("f2", exchange, groups2.clone())),
+            ],
+        );
+
+        let all_groups: Vec<Pubkey> = groups1.iter().chain(groups2.iter()).copied().collect();
+        let expected = as_pass_owner(subscribe_feed(
+            &program_id,
+            &payer,
+            &f.accesspass_pk,
+            &f.user_pk,
+            &f.device_pk,
+            &[feed1_pk, feed2_pk],
+            &all_groups,
+        ));
+        client
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .times(1)
+            .returning(|_| Ok(Signature::new_unique()));
+
+        SubscribeFeedCommand {
+            user_pk: f.user_pk,
+            feed_pks: vec![feed1_pk, feed2_pk],
+            accesspass_pk: None,
+        }
+        .execute(&client)
+        .unwrap();
     }
 }

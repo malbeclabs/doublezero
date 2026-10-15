@@ -121,7 +121,7 @@ The rollout tracks the program's incremental `authorize()` migration via the two
 
 **Activation precondition.** The append is pure and offline: it cannot check whether the payer's Permission PDA exists onchain. The program therefore treats a trailing payer Permission PDA that is still uninitialized (system-owned, no data) exactly as if no Permission account were supplied: the legacy allowlists decide while `RequirePermissionAccounts` is off, and only the foundation recovery applies once it is on. With that, `build_with_permission` appends the PDA unconditionally and the SDK's RPC existence check goes. Older programs failed an uninitialized PDA with `InvalidAccountData`, so the program change MUST be deployed on a cluster before clients carrying the append ship against it.
 
-`SubscribeFeed`/`UnsubscribeFeed` omit the account when the payer is the access pass's own `user_payer`, whom the processor authorizes without a Permission account; this keeps the worst-case single-feed leave within one transaction.
+`SubscribeFeed`/`UnsubscribeFeed` omit the account when the payer is the access pass's own `user_payer` or a GlobalState foundation member, both of whom the processor authorizes without a Permission account; this keeps the worst-case single-feed leave within one transaction.
 
 ### Canonical builder signature
 

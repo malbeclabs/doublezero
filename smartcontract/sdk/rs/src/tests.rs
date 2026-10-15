@@ -23,6 +23,18 @@ pub mod utils {
     pub fn create_test_client_with_ip_verifier(
         ip_verifier_authority_pk: Pubkey,
     ) -> MockDoubleZeroClient {
+        build_test_client(ip_verifier_authority_pk, false)
+    }
+
+    /// The same client with its payer on `globalstate.foundation_allowlist`.
+    pub fn create_test_client_with_foundation_payer() -> MockDoubleZeroClient {
+        build_test_client(Pubkey::default(), true)
+    }
+
+    fn build_test_client(
+        ip_verifier_authority_pk: Pubkey,
+        payer_in_foundation: bool,
+    ) -> MockDoubleZeroClient {
         let mut client = MockDoubleZeroClient::new();
 
         // Payer
@@ -38,7 +50,11 @@ pub mod utils {
             account_type: AccountType::GlobalState,
             bump_seed,
             account_index: 0,
-            foundation_allowlist: vec![],
+            foundation_allowlist: if payer_in_foundation {
+                vec![payer]
+            } else {
+                vec![]
+            },
             _device_allowlist: vec![],
             _user_allowlist: vec![],
             activator_authority_pk: Pubkey::new_unique(),

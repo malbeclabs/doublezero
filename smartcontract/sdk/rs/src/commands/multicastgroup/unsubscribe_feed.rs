@@ -1,7 +1,7 @@
 use crate::{
     commands::{
         accesspass::get::resolve_user_accesspass,
-        multicastgroup::subscribe_feed::{feed_tx_capacity, for_payer},
+        multicastgroup::subscribe_feed::{feed_tx_capacity, for_payer, payer_needs_no_permission},
         user::get::GetUserCommand,
     },
     DoubleZeroClient,
@@ -141,13 +141,16 @@ impl UnsubscribeFeedCommand {
             }
         }
 
-        let payer_is_pass_owner = accesspass.user_payer == client.get_payer();
+        // The pass owner and foundation members send no Permission account, so a worst-case
+        // single-feed leave (one target, four retained, twenty groups) fits one transaction even
+        // when a foundation operator cleans up on the user's behalf.
+        let omit_permission = payer_needs_no_permission(client, &accesspass)?;
         if self.feed_pks.len() + retained_pks.len() + groups.len()
-            <= feed_tx_capacity(payer_is_pass_owner)
+            <= feed_tx_capacity(omit_permission)
         {
             return client.send_transaction(for_payer(
                 client,
-                payer_is_pass_owner,
+                omit_permission,
                 unsubscribe_feed(
                     &client.get_program_id(),
                     &client.get_payer(),
@@ -200,7 +203,7 @@ impl UnsubscribeFeedCommand {
 
             let result = client.send_transaction(for_payer(
                 client,
-                payer_is_pass_owner,
+                omit_permission,
                 unsubscribe_feed(
                     &client.get_program_id(),
                     &client.get_payer(),
@@ -237,8 +240,8 @@ impl UnsubscribeFeedCommand {
 #[cfg(test)]
 mod tests {
 
-    /// The fixture's payer is the pass's own `user_payer`, so the command drops the Permission
-    /// account the builder appends.
+    /// The payer needs no Permission account (it is the pass's own `user_payer`, or a foundation
+    /// member), so the command drops the one the builder appends.
     fn as_pass_owner(
         mut ix: solana_sdk::instruction::Instruction,
     ) -> solana_sdk::instruction::Instruction {
@@ -276,6 +279,19 @@ mod tests {
         feeds: Vec<(Pubkey, Feed)>,
     ) -> Fixture {
         let payer = client.get_payer();
+        setup_owned_by(client, payer, subscribers, held_feeds, seated_feeds, feeds)
+    }
+
+    /// [`setup`] for a user and pass owned by (and paid for by) `payer`, which need not be the
+    /// client's signer.
+    fn setup_owned_by(
+        client: &mut crate::MockDoubleZeroClient,
+        payer: Pubkey,
+        subscribers: Vec<Pubkey>,
+        held_feeds: Vec<Pubkey>,
+        seated_feeds: Vec<Pubkey>,
+        feeds: Vec<(Pubkey, Feed)>,
+    ) -> Fixture {
         let program_id = client.get_program_id();
         let client_ip = Ipv4Addr::new(100, 0, 0, 1);
         let user_pk = Pubkey::new_unique();
@@ -722,6 +738,132 @@ mod tests {
         UnsubscribeFeedCommand {
             user_pk: f.user_pk,
             feed_pks: vec![live_pk],
+            accesspass_pk: None,
+        }
+        .execute(&client)
+        .unwrap();
+    }
+
+    /// The legacy wire size of `ix` behind `send_transaction`'s compute-budget prelude.
+    fn tx_size(payer: &Pubkey, ix: &solana_sdk::instruction::Instruction) -> usize {
+        let mut all = doublezero_serviceability_instruction::compute_budget_prelude().to_vec();
+        all.push(ix.clone());
+        let message = solana_sdk::message::Message::new(&all, Some(payer));
+        1 + 64 * usize::from(message.header.num_required_signatures) + message.serialize().len()
+    }
+
+    /// A max-size single-feed leave: the user holds five feeds and the departing one alone
+    /// carries twenty groups, so the instruction carries 25 feed and group accounts.
+    struct MaxLeave {
+        fixture: Fixture,
+        target_pk: Pubkey,
+        retained_pks: Vec<Pubkey>,
+        groups: Vec<Pubkey>,
+    }
+
+    fn setup_max_leave(client: &mut crate::MockDoubleZeroClient, owner: Pubkey) -> MaxLeave {
+        let groups: Vec<Pubkey> = (0..20).map(|_| Pubkey::new_unique()).collect();
+        let target_pk = Pubkey::new_unique();
+        let retained_pks: Vec<Pubkey> = (0..4).map(|_| Pubkey::new_unique()).collect();
+        let held: Vec<Pubkey> = std::iter::once(target_pk)
+            .chain(retained_pks.iter().copied())
+            .collect();
+        let mut feeds = vec![(target_pk, feed_with("target", groups.clone()))];
+        for (i, pk) in retained_pks.iter().enumerate() {
+            feeds.push((*pk, feed_with(&format!("kept{i}"), vec![])));
+        }
+        let fixture = setup_owned_by(client, owner, groups.clone(), held.clone(), held, feeds);
+        MaxLeave {
+            fixture,
+            target_pk,
+            retained_pks,
+            groups,
+        }
+    }
+
+    /// A foundation operator leaving a max-size feed on another user's behalf: the processor
+    /// admits foundation members without a Permission account, so the command drops it and the
+    /// leave fits one transaction. Keeping it would build an oversized packet.
+    #[test]
+    fn test_commands_unsubscribe_feed_foundation_max_leave_fits_one_transaction() {
+        let mut client = crate::tests::utils::create_test_client_with_foundation_payer();
+        let payer = client.get_payer();
+        let program_id = client.get_program_id();
+        let m = setup_max_leave(&mut client, Pubkey::new_unique());
+
+        let built = unsubscribe_feed(
+            &program_id,
+            &payer,
+            &m.fixture.accesspass_pk,
+            &m.fixture.user_pk,
+            &m.fixture.device_pk,
+            &[m.target_pk],
+            &m.retained_pks,
+            &m.groups,
+        );
+        assert!(
+            tx_size(&payer, &built) > 1232,
+            "with the Permission account the leave must not fit"
+        );
+        let expected = as_pass_owner(built);
+        assert!(tx_size(&payer, &expected) <= 1232);
+        client
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .times(1)
+            .returning(|_| Ok(Signature::new_unique()));
+
+        UnsubscribeFeedCommand {
+            user_pk: m.fixture.user_pk,
+            feed_pks: vec![m.target_pk],
+            accesspass_pk: None,
+        }
+        .execute(&client)
+        .unwrap();
+    }
+
+    /// A payer that is neither the pass owner nor a foundation member keeps the Permission
+    /// account the builder appends: the processor reads it to authorize ACCESS_PASS_ADMIN.
+    #[test]
+    fn test_commands_unsubscribe_feed_other_payer_keeps_permission_account() {
+        let mut client = create_test_client();
+        let payer = client.get_payer();
+        let program_id = client.get_program_id();
+
+        let g0 = Pubkey::new_unique();
+        let feed_pk = Pubkey::new_unique();
+        let f = setup_owned_by(
+            &mut client,
+            Pubkey::new_unique(),
+            vec![g0],
+            vec![feed_pk],
+            vec![feed_pk],
+            vec![(feed_pk, feed_with("only", vec![g0]))],
+        );
+
+        let expected = unsubscribe_feed(
+            &program_id,
+            &payer,
+            &f.accesspass_pk,
+            &f.user_pk,
+            &f.device_pk,
+            &[feed_pk],
+            &[],
+            &[g0],
+        );
+        assert_eq!(
+            expected.accounts.last().unwrap().pubkey,
+            doublezero_serviceability::pda::get_permission_pda(&program_id, &payer).0
+        );
+        client
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .times(1)
+            .returning(|_| Ok(Signature::new_unique()));
+
+        UnsubscribeFeedCommand {
+            user_pk: f.user_pk,
+            feed_pks: vec![feed_pk],
             accesspass_pk: None,
         }
         .execute(&client)

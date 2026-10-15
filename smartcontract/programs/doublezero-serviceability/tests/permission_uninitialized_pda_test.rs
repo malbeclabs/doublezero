@@ -3,31 +3,32 @@
 //! unconditionally and offline. These tests drive the real program through an
 //! `authorize()`-gated instruction with that uninitialized PDA as the trailing account.
 
-use borsh::to_vec;
 use doublezero_serviceability::{
     error::DoubleZeroError,
     instructions::*,
-    pda::{get_link_pda, get_permission_pda},
+    pda::get_permission_pda,
     processors::{
         allowlist::qa::add::AddQaAllowlistArgs,
+        device::{create::DeviceCreateArgs, interface::create::DeviceInterfaceCreateArgs},
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
+        link::{create::LinkCreateArgs, update::LinkUpdateArgs},
         permission::create::PermissionCreateArgs,
         topology::{clear::TopologyClearArgs, create::TopologyCreateArgs},
     },
     state::{
+        device::{DeviceDesiredStatus, DeviceType},
         feature_flags::FeatureFlag,
-        link::{Link, LinkStatus},
+        interface::{InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode},
+        link::{LinkDesiredStatus, LinkLinkType},
         permission::permission_flags,
-        topology::{TopologyConstraint, TopologyInfo},
+        topology::TopologyConstraint,
     },
 };
-use doublezero_serviceability_instruction as dzi;
+use doublezero_serviceability_instruction::{self as dzi, link::LinkUpdateAuthority};
 use solana_program_test::*;
 use solana_sdk::{
-    account::Account,
     instruction::{AccountMeta, Instruction, InstructionError},
     pubkey::Pubkey,
-    rent::Rent,
     signature::{Keypair, Signer},
     transaction::{Transaction, TransactionError},
 };
@@ -235,6 +236,7 @@ async fn test_uninitialized_permission_pda_strict_on() {
 // the payer's uninitialized PDA — and check every link is read as a link.
 
 const TOPOLOGY: &str = "topo-a";
+const LINK_COUNT: usize = 3;
 
 async fn submit(
     banks_client: &mut BanksClient,
@@ -249,57 +251,179 @@ async fn submit(
     banks_client.process_transaction(tx).await
 }
 
-/// Seeds `count` links tagged into `topology` and sets the topology's `reference_count` to
-/// match. Seeded rather than created so the test needs no devices or contributors: the
-/// processor only reads each link and edits its `link_topologies`.
-async fn seed_tagged_links(
-    context: &mut ProgramTestContext,
+async fn next_account_index(banks_client: &mut BanksClient, globalstate: Pubkey) -> u128 {
+    get_globalstate(banks_client, globalstate)
+        .await
+        .account_index
+        + 1
+}
+
+/// The network a `ClearTopology` walks, built through the program's own instructions.
+struct TopologyFixture {
+    banks_client: BanksClient,
+    payer: Keypair,
     program_id: Pubkey,
+    globalstate: Pubkey,
+    contributor: Pubkey,
     topology: Pubkey,
-    count: u128,
-) -> Vec<Pubkey> {
-    let mut links = Vec::new();
-    for index in 1000..1000 + count {
-        let (pubkey, bump_seed) = get_link_pda(&program_id, index);
-        let data = to_vec(&Link {
+    links: Vec<Pubkey>,
+}
+
+/// Creates `TOPOLOGY` and `LINK_COUNT` activated WAN links between two activated devices,
+/// all signed by the foundation payer. The links are not yet tagged; see [`tag_links`].
+async fn setup_topology() -> TopologyFixture {
+    let (mut banks_client, payer, program_id, globalstate, globalconfig) =
+        setup_program_with_globalconfig().await;
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let (location, exchange, contributor) = setup_device_prerequisites(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        globalstate,
+        globalconfig,
+        &payer,
+    )
+    .await;
+    // Link activation tags every new link with unicast-default, so it must exist.
+    create_unicast_default_topology(
+        &mut banks_client,
+        program_id,
+        globalstate,
+        globalconfig,
+        &payer,
+    )
+    .await;
+
+    let ix = dzi::topology::create_topology(
+        &program_id,
+        &payer.pubkey(),
+        TopologyCreateArgs {
+            name: TOPOLOGY.to_string(),
+            constraint: TopologyConstraint::IncludeAny,
+        },
+    );
+    let topology = ix.accounts[0].pubkey;
+    submit(&mut banks_client, &payer, ix).await.unwrap();
+
+    let mut devices = Vec::new();
+    for (code, public_ip, dz_prefixes) in [
+        ("dza", [8, 8, 8, 8], "110.1.0.0/23"),
+        ("dzb", [9, 9, 9, 9], "111.1.0.0/23"),
+    ] {
+        let index = next_account_index(&mut banks_client, globalstate).await;
+        let ix = dzi::device::create_device(
+            &program_id,
+            &payer.pubkey(),
+            &contributor,
+            &location,
+            &exchange,
             index,
-            bump_seed,
-            code: format!("link{index}"),
-            status: LinkStatus::Activated,
-            // Values `Link::validate` accepts, since the processor rewrites each link.
-            tunnel_net: "172.16.0.0/31".parse().unwrap(),
-            bandwidth: 10_000_000_000,
-            delay_ns: 1_000_000,
-            jitter_ns: 100_000,
-            link_topologies: vec![topology],
-            ..Link::default()
-        })
-        .unwrap();
-        context.set_account(
-            &pubkey,
-            &Account {
-                lamports: Rent::default().minimum_balance(data.len()),
-                data,
-                owner: program_id,
-                executable: false,
-                rent_epoch: 0,
-            }
-            .into(),
+            DeviceCreateArgs {
+                code: code.to_string(),
+                device_type: DeviceType::Hybrid,
+                public_ip: public_ip.into(),
+                dz_prefixes: dz_prefixes.parse().unwrap(),
+                metrics_publisher_pk: Pubkey::default(),
+                mgmt_vrf: "mgmt".to_string(),
+                desired_status: Some(DeviceDesiredStatus::Activated),
+                resource_count: 0, // derived by the builder
+            },
         );
-        links.push(pubkey);
+        devices.push(ix.accounts[0].pubkey);
+        submit(&mut banks_client, &payer, ix).await.unwrap();
+    }
+    let (side_a, side_z) = (devices[0], devices[1]);
+
+    let mut links = Vec::new();
+    for i in 0..LINK_COUNT {
+        let iface = format!("Ethernet{i}");
+        for device in [side_a, side_z] {
+            let ix = dzi::device::create_device_interface(
+                &program_id,
+                &payer.pubkey(),
+                &device,
+                &contributor,
+                &[],
+                DeviceInterfaceCreateArgs {
+                    name: iface.clone(),
+                    interface_dia: InterfaceDIA::None,
+                    loopback_type: LoopbackType::None,
+                    interface_cyoa: InterfaceCYOA::None,
+                    bandwidth: 100_000_000_000,
+                    ip_net: None,
+                    cir: 0,
+                    mtu: 9000,
+                    routing_mode: RoutingMode::Static,
+                    vlan_id: 0,
+                    user_tunnel_endpoint: false,
+                    use_onchain_allocation: true,
+                    topology_count: 0,
+                },
+            );
+            submit(&mut banks_client, &payer, ix).await.unwrap();
+        }
+
+        let index = next_account_index(&mut banks_client, globalstate).await;
+        let ix = dzi::link::create_link(
+            &program_id,
+            &payer.pubkey(),
+            &contributor,
+            &side_a,
+            &side_z,
+            index,
+            LinkCreateArgs {
+                code: format!("dza-dzb-{i}"),
+                link_type: LinkLinkType::WAN,
+                bandwidth: 20_000_000_000,
+                mtu: 9000,
+                delay_ns: 1_000_000,
+                jitter_ns: 100_000,
+                side_a_iface_name: iface.clone(),
+                side_z_iface_name: Some(iface),
+                desired_status: Some(LinkDesiredStatus::Activated),
+                use_onchain_allocation: true,
+            },
+        );
+        links.push(ix.accounts[0].pubkey);
+        submit(&mut banks_client, &payer, ix).await.unwrap();
     }
 
-    let mut account = context
-        .banks_client
-        .get_account(topology)
-        .await
-        .unwrap()
-        .expect("topology");
-    let mut info = TopologyInfo::try_from(&account.data[..]).unwrap();
-    info.reference_count = count as u32;
-    account.data = to_vec(&info).unwrap();
-    context.set_account(&topology, &account.into());
-    links
+    TopologyFixture {
+        banks_client,
+        payer,
+        program_id,
+        globalstate,
+        contributor,
+        topology,
+        links,
+    }
+}
+
+/// Tags every link with `TOPOLOGY` (and only it) via `UpdateLink`, which also raises the
+/// topology's `reference_count` once per link.
+async fn tag_links(fx: &mut TopologyFixture) {
+    for link in fx.links.clone() {
+        let mut union = link_topologies(&mut fx.banks_client, link).await;
+        if !union.contains(&fx.topology) {
+            union.push(fx.topology);
+        }
+        let ix = dzi::link::update_link(
+            &fx.program_id,
+            &fx.payer.pubkey(),
+            &link,
+            LinkUpdateAuthority::Contributor {
+                contributor: &fx.contributor,
+            },
+            &Pubkey::default(),
+            &Pubkey::default(),
+            &union,
+            LinkUpdateArgs {
+                link_topologies: Some(vec![fx.topology]),
+                ..Default::default()
+            },
+        );
+        submit(&mut fx.banks_client, &fx.payer, ix).await.unwrap();
+    }
 }
 
 async fn link_topologies(banks_client: &mut BanksClient, link: Pubkey) -> Vec<Pubkey> {
@@ -318,24 +442,6 @@ async fn topology_reference_count(banks_client: &mut BanksClient, topology: Pubk
         .get_topology()
         .unwrap()
         .reference_count
-}
-
-/// Creates `TOPOLOGY` and returns (context, payer, program_id, globalstate, topology).
-async fn setup_topology() -> (ProgramTestContext, Keypair, Pubkey, Pubkey, Pubkey) {
-    let (mut context, program_id, globalstate_pubkey, _) =
-        setup_program_with_globalconfig_context().await;
-    let payer = context.payer.insecure_clone();
-    let ix = dzi::topology::create_topology(
-        &program_id,
-        &payer.pubkey(),
-        TopologyCreateArgs {
-            name: TOPOLOGY.to_string(),
-            constraint: TopologyConstraint::IncludeAny,
-        },
-    );
-    let topology = ix.accounts[0].pubkey;
-    submit(&mut context.banks_client, &payer, ix).await.unwrap();
-    (context, payer, program_id, globalstate_pubkey, topology)
 }
 
 fn clear_ix(program_id: &Pubkey, payer: &Pubkey, links: &[Pubkey]) -> Instruction {
@@ -358,7 +464,8 @@ fn clear_ix(program_id: &Pubkey, payer: &Pubkey, links: &[Pubkey]) -> Instructio
 
 #[tokio::test]
 async fn test_uninitialized_permission_pda_behind_link_list_strict_off() {
-    let (mut context, payer, program_id, _, topology) = setup_topology().await;
+    let mut fx = setup_topology().await;
+    let (program_id, payer, topology) = (fx.program_id, fx.payer.insecure_clone(), fx.topology);
     let (permission_pda, _) = get_permission_pda(&program_id, &payer.pubkey());
 
     // Never-created PDA, then pre-funded by a third party (still system-owned, no data):
@@ -366,14 +473,8 @@ async fn test_uninitialized_permission_pda_behind_link_list_strict_off() {
     // link in the list is cleared.
     for prefund in [false, true] {
         if prefund {
-            transfer(
-                &mut context.banks_client,
-                &payer,
-                &permission_pda,
-                1_000_000,
-            )
-            .await;
-            let account = context
+            transfer(&mut fx.banks_client, &payer, &permission_pda, 1_000_000).await;
+            let account = fx
                 .banks_client
                 .get_account(permission_pda)
                 .await
@@ -382,25 +483,29 @@ async fn test_uninitialized_permission_pda_behind_link_list_strict_off() {
             assert_eq!(account.owner, solana_system_interface::program::ID);
             assert!(account.data.is_empty());
         } else {
-            assert!(account_is_closed(&mut context.banks_client, permission_pda).await);
+            assert!(account_is_closed(&mut fx.banks_client, permission_pda).await);
         }
 
-        let links = seed_tagged_links(&mut context, program_id, topology, 3).await;
+        tag_links(&mut fx).await;
+        for link in fx.links.clone() {
+            assert_eq!(
+                link_topologies(&mut fx.banks_client, link).await,
+                vec![topology]
+            );
+        }
         assert_eq!(
-            topology_reference_count(&mut context.banks_client, topology).await,
-            3
+            topology_reference_count(&mut fx.banks_client, topology).await,
+            LINK_COUNT as u32
         );
 
-        let ix = clear_ix(&program_id, &payer.pubkey(), &links);
-        submit(&mut context.banks_client, &payer, ix).await.unwrap();
+        let ix = clear_ix(&program_id, &payer.pubkey(), &fx.links);
+        submit(&mut fx.banks_client, &payer, ix).await.unwrap();
 
-        for link in links {
-            assert!(link_topologies(&mut context.banks_client, link)
-                .await
-                .is_empty());
+        for link in fx.links.clone() {
+            assert!(link_topologies(&mut fx.banks_client, link).await.is_empty());
         }
         assert_eq!(
-            topology_reference_count(&mut context.banks_client, topology).await,
+            topology_reference_count(&mut fx.banks_client, topology).await,
             0
         );
     }
@@ -408,21 +513,20 @@ async fn test_uninitialized_permission_pda_behind_link_list_strict_off() {
 
 #[tokio::test]
 async fn test_uninitialized_permission_pda_behind_link_list_strict_on() {
-    let (mut context, payer, program_id, globalstate_pubkey, topology) = setup_topology().await;
-    let links = seed_tagged_links(&mut context, program_id, topology, 3).await;
+    let mut fx = setup_topology().await;
+    tag_links(&mut fx).await;
+    let (program_id, payer, topology) = (fx.program_id, fx.payer.insecure_clone(), fx.topology);
+    assert_eq!(
+        topology_reference_count(&mut fx.banks_client, topology).await,
+        LINK_COUNT as u32
+    );
 
-    enable_strict_mode(
-        &mut context.banks_client,
-        program_id,
-        globalstate_pubkey,
-        &payer,
-    )
-    .await;
+    enable_strict_mode(&mut fx.banks_client, program_id, fx.globalstate, &payer).await;
 
     // A non-foundation signer with an uninitialized PDA, unfunded and then pre-funded.
     let outsider = Keypair::new();
     transfer(
-        &mut context.banks_client,
+        &mut fx.banks_client,
         &payer,
         &outsider.pubkey(),
         1_000_000_000,
@@ -431,30 +535,28 @@ async fn test_uninitialized_permission_pda_behind_link_list_strict_on() {
     let (outsider_pda, _) = get_permission_pda(&program_id, &outsider.pubkey());
     for prefund in [false, true] {
         if prefund {
-            transfer(&mut context.banks_client, &payer, &outsider_pda, 1_000_000).await;
+            transfer(&mut fx.banks_client, &payer, &outsider_pda, 1_000_000).await;
         }
-        let ix = clear_ix(&program_id, &outsider.pubkey(), &links);
-        let err = submit(&mut context.banks_client, &outsider, ix)
+        let ix = clear_ix(&program_id, &outsider.pubkey(), &fx.links);
+        let err = submit(&mut fx.banks_client, &outsider, ix)
             .await
             .unwrap_err();
         assert_custom_error(&err, DoubleZeroError::NotAllowed);
     }
 
     // Strict mode also withdraws the foundation payer's legacy authority for this flag.
-    let ix = clear_ix(&program_id, &payer.pubkey(), &links);
-    let err = submit(&mut context.banks_client, &payer, ix)
-        .await
-        .unwrap_err();
+    let ix = clear_ix(&program_id, &payer.pubkey(), &fx.links);
+    let err = submit(&mut fx.banks_client, &payer, ix).await.unwrap_err();
     assert_custom_error(&err, DoubleZeroError::NotAllowed);
 
-    for link in links {
+    for link in fx.links.clone() {
         assert_eq!(
-            link_topologies(&mut context.banks_client, link).await,
+            link_topologies(&mut fx.banks_client, link).await,
             vec![topology]
         );
     }
     assert_eq!(
-        topology_reference_count(&mut context.banks_client, topology).await,
-        3
+        topology_reference_count(&mut fx.banks_client, topology).await,
+        LINK_COUNT as u32
     );
 }

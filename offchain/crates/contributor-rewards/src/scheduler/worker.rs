@@ -39,7 +39,10 @@ use tracing::{debug, error, info, warn};
 use crate::{
     calculator::{
         DistributionOutcome, DistributionSummary, WriteConfig, distribute,
-        keypair_loader::load_keypair, ledger_operations::WriteResult, orchestrator::Orchestrator,
+        keypair_loader::load_keypair,
+        ledger_operations::{WriteResult, get_rewards_accountant},
+        monthly,
+        orchestrator::Orchestrator,
     },
     cli::snapshot::{CompleteSnapshot, SnapshotMetadata},
     ingestor::{epoch::EpochFinder, fetcher::Fetcher},
@@ -97,6 +100,28 @@ impl ScheduleWorker {
                 self.keypair_path.as_ref().map(|p| p.display())
             );
         }
+
+        let monthly_first_month = self
+            .orchestrator
+            .settings
+            .scheduler
+            .try_monthly_first_month()?;
+        info!("  Monthly first month: {monthly_first_month:?}");
+
+        // Every monthly step writes, so a dry run skips them all.
+        let monthly_wallet = match monthly_first_month {
+            Some(_) if !self.dry_run => Some(Wallet {
+                connection: SolanaConnection::new(
+                    self.orchestrator.settings.rpc.solana_write_url.clone(),
+                ),
+                signer: load_keypair(&self.keypair_path)?,
+                compute_unit_price_ix: None,
+                verbose: false,
+                fee_payer: None,
+                dry_run: false,
+            }),
+            _ => None,
+        };
 
         // Load or create worker state
         let mut state = SchedulerState::load_or_default(&self.state_file)?;
@@ -248,9 +273,94 @@ impl ScheduleWorker {
                     }
                 }
             }
+
+            if let (Some(wallet), Some(first_month)) = (&monthly_wallet, monthly_first_month) {
+                self.try_process_monthly(&mut state, wallet, first_month)
+                    .await?;
+            }
         }
 
         Ok(())
+    }
+
+    /// Run the monthly steps for the months from `first_month` on. A tick in
+    /// which any of them fails counts toward `consecutive_monthly_failures`.
+    async fn try_process_monthly(
+        &self,
+        state: &mut SchedulerState,
+        wallet: &Wallet,
+        first_month: (u16, u8),
+    ) -> Result<()> {
+        if self.run_monthly_steps(wallet, first_month).await {
+            state.mark_monthly_failure();
+
+            // Alert every 10 consecutive failures for Grafana monitoring
+            if state.consecutive_monthly_failures.is_multiple_of(10) {
+                error!(
+                    "Monthly steps have failed in {} consecutive ticks",
+                    state.consecutive_monthly_failures
+                );
+            }
+        } else {
+            state.mark_monthly_success();
+        }
+
+        state.save(&self.state_file)
+    }
+
+    /// Run each monthly step and return whether any failed.
+    async fn run_monthly_steps(
+        &self,
+        wallet: &Wallet,
+        (first_year, first_month): (u16, u8),
+    ) -> bool {
+        let settings = &self.orchestrator.settings;
+        let dz_connection = DoubleZeroLedgerConnection::new(settings.rpc.dz_url.clone());
+        let prefix = settings.get_contributor_rewards_prefix();
+
+        let context = try_with_retries("context", async || {
+            // Records are read at the accountant's addresses, so writing them
+            // under any other key would leave them unread.
+            let accountant_key = get_rewards_accountant(&wallet.connection, None).await?;
+            ensure!(
+                wallet.pubkey() == accountant_key,
+                "Keypair {} is not the rewards accountant {accountant_key}",
+                wallet.pubkey()
+            );
+
+            let finalized_epoch = dz_connection
+                .get_epoch_info_with_commitment(CommitmentConfig::finalized())
+                .await?
+                .epoch;
+            let schedule = dz_connection.get_epoch_schedule().await?;
+            let (first_month_start, _) = monthly::try_month_bounds(first_year, first_month)?;
+
+            Ok((finalized_epoch, schedule, first_month_start))
+        })
+        .await;
+        let (finalized_epoch, schedule, first_month_start) = match context {
+            Ok(context) => context,
+            Err(e) => return track_monthly_step("context", "every month", Err(e)),
+        };
+
+        let recorded = try_with_retries("epoch_end", async || {
+            monthly::try_record_epoch_ends(
+                &dz_connection,
+                &wallet.signer,
+                &prefix,
+                &schedule,
+                finalized_epoch,
+                first_month_start,
+            )
+            .await
+        })
+        .await;
+
+        track_monthly_step(
+            "epoch_end",
+            "DZ epoch ends",
+            recorded.map(|count| count > 0),
+        )
     }
 
     /// Fetch the config and compute the distribution-eligible epoch.
@@ -873,5 +983,33 @@ impl ScheduleWorker {
         );
 
         Ok((snapshot_location, local_path, temp_file_guard))
+    }
+}
+
+// A failed monthly step pages, so retrying keeps one RPC blip from paging.
+async fn try_with_retries<T>(step: &str, attempt: impl AsyncFn() -> Result<T>) -> Result<T> {
+    (|| attempt())
+        .retry(ExponentialBuilder::default().with_jitter())
+        .notify(|err, dur| info!("Retrying the monthly {step} step in {dur:?}: {err:#}"))
+        .await
+}
+
+/// Log and count a monthly step's outcome, where `Ok(true)` means the step
+/// acted, and return whether it failed.
+fn track_monthly_step(step: &'static str, subject: &str, outcome: Result<bool>) -> bool {
+    match outcome {
+        Ok(has_acted) => {
+            if has_acted {
+                metrics::counter!("doublezero_contributor_rewards_monthly_success", "step" => step)
+                    .increment(1);
+            }
+            false
+        }
+        Err(e) => {
+            error!("Monthly {step} step failed for {subject}: {e:#}");
+            metrics::counter!("doublezero_contributor_rewards_monthly_failure", "step" => step)
+                .increment(1);
+            true
+        }
     }
 }

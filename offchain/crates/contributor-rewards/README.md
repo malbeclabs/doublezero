@@ -47,7 +47,7 @@ The protocol cannot yet reliably estimate public internet latencies for large tr
 - An epoch belongs to the month in which the block time of its last block falls.
 - Each contributor's share is its average over all of the month's epochs, counting zero for an epoch it is absent from. Averages are floored, and the leftover units go one each to the largest remainders, ties to the lower pubkey.
 - The command refuses a month that has not closed, a month with no epochs, and a month with an epoch whose shapley output record does not match the merkle root and contributor count posted to that epoch's `Distribution`. It reads records at the current rewards accountant's addresses, so it also refuses any month with an epoch recorded under an earlier accountant key. Calculate a month before rotating that key.
-- Block times come from the DoubleZero Ledger RPC, and selecting a month reads blocks from before it starts. The command refuses a month when the RPC no longer serves those blocks. Testnet and devnet RPCs keep about 18 days of blocks, so every testnet and devnet month is refused for now.
+- An epoch's end comes from its `epoch_end` record on the DoubleZero Ledger, and otherwise from DoubleZero Ledger block times. The scheduler writes these records once `scheduler.monthly_first_month` is set, starting from the last epoch to end before that month, and moving that month earlier afterwards does not backfill the months it adds. Selecting a month also reads the epoch before it, so the command refuses a month when neither a record nor the RPC has an epoch it needs. Testnet and devnet RPCs keep about 18 days of blocks, so a testnet or devnet month can be calculated only once the scheduler has recorded it.
 
 ## Fetching snapshots from S3
 

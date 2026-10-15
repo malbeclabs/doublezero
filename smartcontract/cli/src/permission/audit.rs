@@ -239,33 +239,6 @@ fn render_text<W: Write>(out: &mut W, report: &AuditReport) -> eyre::Result<()> 
     }
     writeln!(out)?;
 
-    if !report.sdk_attaches_permission_accounts {
-        writeln!(
-            out,
-            "Permission accounts are not yet attached by the CLI / Rust SDK"
-        )?;
-        writeln!(
-            out,
-            "-----------------------------------------------------------"
-        )?;
-        writeln!(
-            out,
-            "Serviceability transactions sent through this CLI carry no Permission account, so"
-        )?;
-        writeln!(
-            out,
-            "authorize() falls back to the GlobalState allowlists. A key whose ONLY grant is a"
-        )?;
-        writeln!(
-            out,
-            "Permission account is denied on every gated command — granting one with"
-        )?;
-        writeln!(
-            out,
-            "`permission set` is not sufficient on its own until the append is re-enabled."
-        )?;
-        writeln!(out)?;
-    }
     writeln!(
         out,
         "foundation_allowlist ({} member(s)): {}",

@@ -9,7 +9,7 @@
 
 use serde::{Deserialize, Serialize};
 use solana_sdk::pubkey::Pubkey;
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 use doublezero_config::Environment;
 
@@ -81,6 +81,11 @@ pub struct CliContext {
     /// `CARGO_PKG_VERSION`. Module verbs read this instead of receiving the
     /// version as a parameter, keeping them decoupled from build-time env vars.
     pub client_version: String,
+
+    /// Human-readable labels for addresses, keyed by base58 pubkey, from the
+    /// `address_labels` map in `config.yml`. Table output shows a labeled
+    /// address as `label (ABCD..WXYZ)`; JSON output keeps the raw pubkey.
+    pub address_labels: HashMap<String, String>,
 }
 
 /// Builder for `CliContext`. The binary populates a builder from parsed
@@ -99,6 +104,7 @@ pub struct CliContextBuilder {
     daemon_socket_path: Option<PathBuf>,
     output_format: OutputFormat,
     client_version: Option<String>,
+    address_labels: HashMap<String, String>,
 }
 
 impl CliContextBuilder {
@@ -161,6 +167,11 @@ impl CliContextBuilder {
         self
     }
 
+    pub fn with_address_labels(mut self, labels: HashMap<String, String>) -> Self {
+        self.address_labels = labels;
+        self
+    }
+
     /// Resolve all fields and produce a `CliContext`.
     ///
     /// If `env` is set and a given override is `None`, the corresponding
@@ -204,6 +215,7 @@ impl CliContextBuilder {
             daemon_socket_path: self.daemon_socket_path,
             output_format: self.output_format,
             client_version: self.client_version.unwrap_or_default(),
+            address_labels: self.address_labels,
         })
     }
 
@@ -239,6 +251,7 @@ impl CliContextBuilder {
             daemon_socket_path: self.daemon_socket_path,
             output_format: self.output_format,
             client_version: self.client_version.unwrap_or_default(),
+            address_labels: self.address_labels,
         })
     }
 }

@@ -70,7 +70,12 @@ impl GetLocationCliCommand {
             owner: location.owner.to_string(),
         };
 
-        render_record(out, &display, OutputFormat::from_flags(self.json, false))
+        render_record(
+            out,
+            &display,
+            OutputFormat::from_flags(self.json, false),
+            &ctx.address_labels,
+        )
     }
 }
 

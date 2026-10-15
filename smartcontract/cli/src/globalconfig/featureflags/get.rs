@@ -23,7 +23,7 @@ struct FeatureFlagsDisplay {
 impl GetFeatureFlagsCliCommand {
     pub async fn execute<C: CliCommand, W: Write>(
         self,
-        _ctx: &CliContext,
+        ctx: &CliContext,
         client: &C,
         out: &mut W,
     ) -> eyre::Result<()> {
@@ -41,7 +41,12 @@ impl GetFeatureFlagsCliCommand {
             raw: gstate.feature_flags,
         };
 
-        render_record(out, &display, OutputFormat::from_flags(self.json, false))
+        render_record(
+            out,
+            &display,
+            OutputFormat::from_flags(self.json, false),
+            &ctx.address_labels,
+        )
     }
 }
 

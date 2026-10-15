@@ -457,7 +457,6 @@ mod tests {
         // never authorized them in the first place — nothing to warn about.
         assert!(inert_grant_warning(permission_flags::SENTINEL).is_none());
         assert!(inert_grant_warning(permission_flags::QA).is_none());
-        assert!(inert_grant_warning(permission_flags::FEED_AUTHORITY).is_none());
         assert!(inert_grant_warning(0).is_none());
         // A mixed bitmask still warns on the gated bit.
         assert!(

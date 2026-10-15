@@ -365,7 +365,8 @@ mod tests {
         | permission_flags::GLOBALSTATE_ADMIN
         | permission_flags::TOPOLOGY_ADMIN
         | permission_flags::RESOURCE_ADMIN
-        | permission_flags::INDEX_ADMIN;
+        | permission_flags::INDEX_ADMIN
+        | permission_flags::FEED_AUTHORITY;
 
     fn globalstate_with_foundation(members: Vec<Pubkey>, feature_flags: u128) -> GlobalState {
         GlobalState {
@@ -417,7 +418,7 @@ mod tests {
         // infra-admin, tenant-admin, multicast-admin, contributor-admin,
         // globalstate-admin, topology-admin, resource-admin, index-admin.
         // activator/health-oracle authorities are unset, so no gap for those.
-        assert_eq!(report.gaps.len(), 11);
+        assert_eq!(report.gaps.len(), 12);
     }
 
     #[test]
@@ -462,6 +463,54 @@ mod tests {
     }
 
     #[test]
+    fn test_feed_admin_is_audited() {
+        // The feed instructions accept FEED_AUTHORITY or FOUNDATION, so the feed authority
+        // and every foundation member lose feed access in strict mode unless their
+        // Permission account grants one of the two.
+        let feed = Pubkey::new_unique();
+        let foundation = Pubkey::new_unique();
+        let mut gs = globalstate_with_foundation(vec![foundation], 0);
+        gs.feed_authority_pk = feed;
+        let feed_gap_keys = |report: &AuditReport| {
+            let mut keys: Vec<String> = report
+                .gaps
+                .iter()
+                .filter(|g| g.flag == "foundation|feed-authority")
+                .map(|g| g.key.clone())
+                .collect();
+            keys.sort();
+            keys
+        };
+
+        let report = build_report(&gs, &HashMap::new());
+        let mut expected = vec![feed.to_string(), foundation.to_string()];
+        expected.sort();
+        assert_eq!(feed_gap_keys(&report), expected);
+
+        // Either flag covers the pair: no need to grant FOUNDATION for feed admin.
+        let permissions = HashMap::from([
+            (
+                Pubkey::new_unique(),
+                permission(
+                    feed,
+                    permission_flags::FEED_AUTHORITY,
+                    PermissionStatus::Activated,
+                ),
+            ),
+            (
+                Pubkey::new_unique(),
+                permission(
+                    foundation,
+                    permission_flags::FOUNDATION,
+                    PermissionStatus::Activated,
+                ),
+            ),
+        ]);
+        let report = build_report(&gs, &permissions);
+        assert!(feed_gap_keys(&report).is_empty(), "{:?}", report.gaps);
+    }
+
+    #[test]
     fn test_no_gaps_when_foundation_fully_provisioned() {
         let foundation = Pubkey::new_unique();
         let gs = globalstate_with_foundation(vec![foundation], 0);
@@ -490,7 +539,7 @@ mod tests {
 
         let report = build_report(&gs, &permissions);
         // Suspended → still a gap for all 11 non-recovery foundation-backed flags.
-        assert_eq!(report.gaps.len(), 11);
+        assert_eq!(report.gaps.len(), 12);
         assert_eq!(report.suspended, vec![foundation.to_string()]);
     }
 
@@ -535,7 +584,7 @@ mod tests {
 
         assert!(res.is_err(), "expected non-zero exit on gaps");
         let output_str = String::from_utf8(output).unwrap();
-        assert!(output_str.contains("Legacy keys missing Permission coverage: 11"));
+        assert!(output_str.contains("Legacy keys missing Permission coverage: 12"));
         assert!(output_str.contains("DO NOT remove these keys yet"));
     }
 }

@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file.
 
 - CI
   - Release jobs install goreleaser-pro v2.18.2 through `.github/actions/install-goreleaser-pro`, which checks the download against a sha256 pinned in the repo and fails the job on any mismatch or failed download, then run `goreleaser` directly. This replaces goreleaser-action, which runs the binary unchecked when it cannot fetch the checksum or signature file, and stops goreleaser floating on `~> v2`.
+- CLI
+  - `doublezero permission audit` checks the feed instructions, which accept `feed-authority` or `foundation`. It reports the feed authority and every foundation member whose Permission account grants neither, since they would lose feed access once `RequirePermissionAccounts` is enabled; the audit did not check them. (#4079)
 - Config
   - The mainnet-beta internet latency collector key moves from the retired `8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH` to `3Fs61T6u4etthEkFSy2cBwEA5i2ZqxQ5AEMd36mBkWsn`. The monitor, telemetry data-api, data CLI and funder (`-env mainnet-beta`) find or fund the collector by this key.
 - E2E/QA

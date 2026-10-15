@@ -8,14 +8,13 @@ pub mod retire;
 pub mod update;
 
 use crate::{
-    authorize::authorize,
+    authorize::{authorize, FEED_ADMIN_FLAGS},
     error::{DoubleZeroError, Validate},
     pda::get_stake_mirror_pda,
     state::{
         accesspass::AccessPass,
         feed::{Feed, FeedStatus},
         globalstate::GlobalState,
-        permission::permission_flags,
         stake_mirror::StakeMirror,
     },
 };
@@ -165,7 +164,7 @@ where
         accounts_iter,
         payer,
         globalstate,
-        permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION,
+        FEED_ADMIN_FLAGS,
     )
 }
 

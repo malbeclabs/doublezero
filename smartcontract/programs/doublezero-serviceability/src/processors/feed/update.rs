@@ -1,12 +1,11 @@
 use crate::{
-    authorize::authorize,
+    authorize::{authorize, FEED_ADMIN_FLAGS},
     error::DoubleZeroError,
     processors::feed::create::{validate_feed_groups, validate_feed_name},
     serializer::try_acc_write,
     state::{
         feed::{Feed, FeedChain},
         globalstate::GlobalState,
-        permission::permission_flags,
     },
 };
 use borsh::BorshSerialize;
@@ -59,7 +58,7 @@ pub fn process_update_feed(
         accounts_iter,
         payer_account.key,
         &globalstate,
-        permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION,
+        FEED_ADMIN_FLAGS,
     )?;
 
     if let Some(ref name) = value.name {

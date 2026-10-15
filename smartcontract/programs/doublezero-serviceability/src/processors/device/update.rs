@@ -137,10 +137,11 @@ pub fn process_update_device(
     //    (globalconfig)?, resource_0..resource_{n-1}, payer, system, (permission)?]
     //
     // Peel [payer, system, permission] off the tail FIRST. The SDK appends the payer's
-    // Permission PDA whenever one exists on-chain; peeling it here means its presence
-    // can never be mistaken for a leading account. (The previous `accounts.len() > 5`
-    // heuristic counted the whole slice — including that trailing Permission account —
-    // and would misparse the minimal no-location update.)
+    // Permission PDA unconditionally (an uninitialized one counts as no Permission
+    // account); peeling it here means it can never be mistaken for a leading account.
+    // (The previous `accounts.len() > 5` heuristic counted the whole slice — including
+    // that trailing Permission account — and would misparse the minimal no-location
+    // update.)
     let remaining: Vec<&AccountInfo> = accounts.iter().collect();
     let (payer_account, _system_program, leading, permission_account) =
         split_trailing_permission(program_id, &remaining)?;

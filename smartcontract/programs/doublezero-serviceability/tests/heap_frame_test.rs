@@ -30,7 +30,7 @@ use solana_sdk::{
     instruction::{Instruction, InstructionError},
     pubkey::Pubkey,
     signature::{Keypair, Signer},
-    transaction::TransactionError,
+    transaction::{Transaction, TransactionError},
 };
 
 mod test_helpers;
@@ -243,12 +243,23 @@ async fn test_large_instruction_without_heap_frame_fails() {
         &contributor,
         long_name(INTERFACE_COUNT),
     );
-    let err = submit(&mut banks_client, &payer, ix, false)
+    let mut tx = Transaction::new_with_payer(&[ix], Some(&payer.pubkey()));
+    tx.sign(&[&payer], wait_for_new_blockhash(&mut banks_client).await);
+    let outcome = banks_client
+        .process_transaction_with_metadata(tx)
         .await
-        .unwrap_err();
+        .expect("banks client failure");
     assert_eq!(
-        err.unwrap(),
+        outcome.result.unwrap_err(),
         TransactionError::InstructionError(0, InstructionError::ProgramFailedToComplete)
+    );
+    // ProgramFailedToComplete covers any abort, so pin the cause: the first touch past the
+    // mapped 32 KiB faults in the heap region.
+    let logs = outcome.metadata.expect("metadata").log_messages;
+    assert!(
+        logs.iter()
+            .any(|l| l.contains("Access violation in heap section")),
+        "{logs:#?}"
     );
 
     let stored = get_device(&mut banks_client, device).await.unwrap();

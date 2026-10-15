@@ -23,21 +23,24 @@ use doublezero_serviceability::{
             subscribe_feed::{SubscribeFeedArgs, MAX_USER_FEEDS},
             unsubscribe_feed::UnsubscribeFeedArgs,
         },
+        permission::create::PermissionCreateArgs,
         user::{create::UserCreateArgs, create_subscribe::UserCreateSubscribeArgs},
     },
     resource::ResourceType,
     state::{
         accesspass::{AccessPass, AccessPassType, FeedSeat},
         device::DeviceType,
+        permission::permission_flags,
         user::{User, UserCYOA, UserType},
     },
 };
+use doublezero_serviceability_instruction as dzi;
 use solana_program_test::*;
 use solana_sdk::{
-    instruction::{AccountMeta, InstructionError},
+    instruction::{AccountMeta, Instruction, InstructionError},
     pubkey::Pubkey,
-    signature::Signer,
-    transaction::TransactionError,
+    signature::{Keypair, Signer},
+    transaction::{Transaction, TransactionError},
 };
 use std::net::Ipv4Addr;
 
@@ -1139,4 +1142,92 @@ async fn test_duplicate_create_subscribe_user_rejected() {
 
     assert_eq!(seat_users(&read_pass(&mut f).await, &feed), 1);
     assert_eq!(read_user(&mut f).await.subscribers, vec![g[0]]);
+}
+
+fn wire_size(tx: &Transaction) -> usize {
+    // Signature count, one 64-byte signature per required signer, then the message.
+    1 + 64 * usize::from(tx.message.header.num_required_signatures) + tx.message.serialize().len()
+}
+
+// A USER_ADMIN delegate (neither the pass owner nor a foundation member) must send its Permission
+// account, so the worst-case single-feed leave (four retained feeds, twenty departing groups) is
+// past the packet limit behind the compute-budget prelude. The SDK sends it without the prelude:
+// it fits, runs under the default compute limit and heap, and lands in one transaction.
+#[tokio::test]
+async fn test_user_admin_leaves_a_max_feed_without_prelude() {
+    let mut f = setup([100, 0, 0, 47]).await;
+    let (exchange, g) = (f.exchange_pubkey, f.groups.clone());
+    // Four kept feeds carry only g[0], so the departing feed's groups are all uncovered.
+    let mut kept = Vec::new();
+    for i in 0..MAX_USER_FEEDS - 1 {
+        kept.push(create_feed(&mut f, &format!("kept{i}"), exchange, vec![g[0]]).await);
+    }
+    let mut big_groups = g[1..5].to_vec();
+    let extra = create_groups(&mut f, MAX_FEED_GROUPS - big_groups.len()).await;
+    big_groups.extend(extra);
+    let big = create_feed(&mut f, "big", exchange, big_groups.clone()).await;
+    let seats = kept
+        .iter()
+        .chain(std::iter::once(&big))
+        .map(|k| seat(*k, 1))
+        .collect();
+    set_pass_feeds(&mut f, seats).await;
+    create_user_on(&mut f, kept[0], g[0]).await;
+    for feed in &kept[1..] {
+        join(&mut f, &[*feed], &[]).await.unwrap();
+    }
+    join(&mut f, &[big], &big_groups).await.unwrap();
+    assert_eq!(read_user(&mut f).await.feed_pks.len(), MAX_USER_FEEDS);
+
+    let delegate = Keypair::new();
+    transfer(
+        &mut f.banks_client,
+        &f.payer,
+        &delegate.pubkey(),
+        10_000_000_000,
+    )
+    .await;
+    let mut grant: Vec<Instruction> = dzi::compute_budget_prelude().to_vec();
+    grant.push(dzi::permission::create_permission(
+        &f.program_id,
+        &f.payer.pubkey(),
+        PermissionCreateArgs {
+            user_payer: delegate.pubkey(),
+            permissions: permission_flags::USER_ADMIN,
+        },
+    ));
+    let mut tx = Transaction::new_with_payer(&grant, Some(&f.payer.pubkey()));
+    tx.sign(
+        &[&f.payer],
+        wait_for_new_blockhash(&mut f.banks_client).await,
+    );
+    f.banks_client.process_transaction(tx).await.unwrap();
+
+    let leave = dzi::multicastgroup::unsubscribe_feed(
+        &f.program_id,
+        &delegate.pubkey(),
+        &f.accesspass_pubkey,
+        &f.user_pubkey,
+        &f.device_pubkey,
+        &[big],
+        &kept,
+        &big_groups,
+    );
+    let mut with_prelude = dzi::compute_budget_prelude().to_vec();
+    with_prelude.push(leave.clone());
+    let with_prelude = Transaction::new_with_payer(&with_prelude, Some(&delegate.pubkey()));
+    assert!(wire_size(&with_prelude) > 1232);
+
+    let mut tx = Transaction::new_with_payer(&[leave], Some(&delegate.pubkey()));
+    assert!(wire_size(&tx) <= 1232, "{} bytes", wire_size(&tx));
+    tx.sign(
+        &[&delegate],
+        wait_for_new_blockhash(&mut f.banks_client).await,
+    );
+    f.banks_client.process_transaction(tx).await.unwrap();
+
+    let user = read_user(&mut f).await;
+    assert_eq!(user.feed_pks, kept);
+    assert_eq!(user.subscribers, vec![g[0]]);
+    assert_eq!(seat_users(&read_pass(&mut f).await, &big), 0);
 }

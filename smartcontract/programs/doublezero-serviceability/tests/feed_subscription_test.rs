@@ -1224,7 +1224,17 @@ async fn test_user_admin_leaves_a_max_feed_without_prelude() {
         &[&delegate],
         wait_for_new_blockhash(&mut f.banks_client).await,
     );
-    f.banks_client.process_transaction(tx).await.unwrap();
+    let outcome = f
+        .banks_client
+        .process_transaction_with_metadata(tx)
+        .await
+        .expect("banks client failure");
+    outcome.result.expect("leave must succeed");
+    // Without the prelude the leave runs under the default 200k CU limit. The test
+    // runtime raises the limit to 1.4M, so check the consumption directly (meaningful
+    // under SBF; the native processor reports no CU).
+    let consumed = outcome.metadata.expect("metadata").compute_units_consumed;
+    assert!(consumed <= 200_000, "{consumed} CU");
 
     let user = read_user(&mut f).await;
     assert_eq!(user.feed_pks, kept);

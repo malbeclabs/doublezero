@@ -15,7 +15,10 @@ use doublezero_serviceability::{
             set::SetAccessPassArgs,
             set_feeds::{FeedSeatConfig, SetAccessPassFeedsArgs},
         },
-        device::{create::DeviceCreateArgs, update::DeviceUpdateArgs},
+        device::{
+            create::DeviceCreateArgs, interface::create::DeviceInterfaceCreateArgs,
+            update::DeviceUpdateArgs,
+        },
         feed::create::{FeedCreateArgs, MAX_FEED_GROUPS},
         multicastgroup::{
             create::MulticastGroupCreateArgs,
@@ -30,6 +33,7 @@ use doublezero_serviceability::{
     state::{
         accesspass::{AccessPass, AccessPassType, FeedSeat},
         device::DeviceType,
+        interface::{InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode},
         permission::permission_flags,
         user::{User, UserCYOA, UserType},
     },
@@ -57,6 +61,7 @@ struct Fixture {
     program_id: Pubkey,
     globalstate_pubkey: Pubkey,
     exchange_pubkey: Pubkey,
+    contributor_pubkey: Pubkey,
     device_pubkey: Pubkey,
     accesspass_pubkey: Pubkey,
     /// Five activated multicast groups, split across feeds by the tests.
@@ -206,6 +211,7 @@ async fn setup(client_ip: [u8; 4]) -> Fixture {
         program_id,
         globalstate_pubkey,
         exchange_pubkey,
+        contributor_pubkey,
         device_pubkey,
         accesspass_pubkey,
         groups,
@@ -215,6 +221,53 @@ async fn setup(client_ip: [u8; 4]) -> Fixture {
         multicast_publisher_block,
         tunnel_ids,
         dz_prefix_block,
+    }
+}
+
+/// Adds `count` physical interfaces to the fixture device, so instructions that load the
+/// Device pay for deserializing a realistically sized interface list. Sent with the
+/// compute-budget prelude, as the SDK sends CreateDeviceInterface.
+async fn add_interfaces(f: &mut Fixture, count: usize) {
+    let (device_tunnel_block, _, _) =
+        get_resource_extension_pda(&f.program_id, ResourceType::DeviceTunnelBlock);
+    let (segment_routing_ids, _, _) =
+        get_resource_extension_pda(&f.program_id, ResourceType::SegmentRoutingIds);
+    for i in 0..count {
+        let create = DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
+            name: format!("Ethernet{}/{}.{}", i / 8 + 1, i % 8 + 1, 1000 + i),
+            interface_dia: InterfaceDIA::None,
+            loopback_type: LoopbackType::None,
+            interface_cyoa: InterfaceCYOA::None,
+            bandwidth: 10_000_000_000,
+            ip_net: None,
+            cir: 0,
+            mtu: 9000,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 1000 + i as u16,
+            user_tunnel_endpoint: false,
+            use_onchain_allocation: true,
+            topology_count: 0,
+        });
+        let mut ixs = dzi::compute_budget_prelude().to_vec();
+        ixs.push(Instruction::new_with_borsh(
+            f.program_id,
+            &create,
+            vec![
+                AccountMeta::new(f.device_pubkey, false),
+                AccountMeta::new(f.contributor_pubkey, false),
+                AccountMeta::new(f.globalstate_pubkey, false),
+                AccountMeta::new(device_tunnel_block, false),
+                AccountMeta::new(segment_routing_ids, false),
+                AccountMeta::new(f.payer.pubkey(), true),
+                AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            ],
+        ));
+        let mut tx = Transaction::new_with_payer(&ixs, Some(&f.payer.pubkey()));
+        tx.sign(
+            &[&f.payer],
+            f.banks_client.get_latest_blockhash().await.unwrap(),
+        );
+        f.banks_client.process_transaction(tx).await.unwrap();
     }
 }
 
@@ -1156,6 +1209,15 @@ fn wire_size(tx: &Transaction) -> usize {
 #[tokio::test]
 async fn test_user_admin_leaves_a_max_feed_without_prelude() {
     let mut f = setup([100, 0, 0, 47]).await;
+    // The leave loads the full Device on the default 32 KiB heap. 24 subinterfaces is the
+    // largest Device CreateDeviceInterface can grow (the 25th create runs out of heap itself),
+    // and above the 14 interfaces the busiest mainnet device carried at epoch 129.
+    const INTERFACES: usize = 24;
+    add_interfaces(&mut f, INTERFACES).await;
+    let device = get_device(&mut f.banks_client, f.device_pubkey)
+        .await
+        .unwrap();
+    assert_eq!(device.interfaces.len(), INTERFACES);
     let (exchange, g) = (f.exchange_pubkey, f.groups.clone());
     // Four kept feeds carry only g[0], so the departing feed's groups are all uncovered.
     let mut kept = Vec::new();

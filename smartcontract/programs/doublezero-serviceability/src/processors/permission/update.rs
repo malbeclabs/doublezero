@@ -87,9 +87,9 @@ pub fn process_update_permission(
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
 
-    // The SDK appends the caller's own Permission PDA as the trailing account when one
-    // exists on-chain. Capture it for both the PERMISSION_ADMIN check and the stricter
-    // FOUNDATION-grant check below.
+    // The SDK appends the caller's own Permission PDA as the trailing account
+    // unconditionally (an uninitialized one counts as no Permission account). Capture it
+    // for both the PERMISSION_ADMIN check and the stricter FOUNDATION-grant check below.
     let caller_permission = accounts_iter.next();
 
     authorize(

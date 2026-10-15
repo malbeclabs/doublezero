@@ -1930,7 +1930,7 @@ mod tests {
     fn test_permission_account_insufficient_falls_back_to_legacy_when_flag_off() {
         // While RequirePermissionAccounts is off, a present-but-insufficient
         // Permission account must not lock out a legacy-authorized key. The SDK
-        // auto-appends the payer's Permission PDA whenever one exists on-chain, so
+        // appends the payer's Permission PDA to every authorized instruction, so
         // a foundation member who also holds an unrelated, under-privileged
         // Permission account must still be authorized for legacy-mapped flags.
         let program_id = Pubkey::new_unique();

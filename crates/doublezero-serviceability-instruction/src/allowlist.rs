@@ -81,6 +81,7 @@ mod tests {
             AccountMeta::new(globalstate, false),
             AccountMeta::new(payer, true),
             AccountMeta::new(system_program::ID, false),
+            common::permission_meta(&pid, &payer),
         ];
         for (ix, tag) in [
             (

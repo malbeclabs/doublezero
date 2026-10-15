@@ -3,7 +3,7 @@
 //! All route through `authorize()` (PERMISSION_ADMIN) -> [`common::build_with_permission`].
 //! The globalstate account is always read-only here. Note the `permission` account
 //! at index 0 is the *target* permission being managed, distinct from the payer's
-//! own Permission PDA that `authorize()` reads (once activated).
+//! own Permission PDA that `authorize()` reads (appended last by the builder).
 
 use crate::common;
 use doublezero_serviceability::{
@@ -141,6 +141,7 @@ mod tests {
                 AccountMeta::new_readonly(globalstate, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -156,6 +157,7 @@ mod tests {
             AccountMeta::new_readonly(globalstate, false),
             AccountMeta::new(payer, true),
             AccountMeta::new(system_program::ID, false),
+            common::permission_meta(&pid, &payer),
         ];
         for (ix, tag) in [
             (

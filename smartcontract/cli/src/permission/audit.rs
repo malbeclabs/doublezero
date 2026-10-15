@@ -39,14 +39,11 @@ struct Gap {
 }
 
 /// Whether the Rust SDK attaches the payer's Permission PDA to serviceability
-/// transactions. While this is `false`, `authorize()` never sees a Permission
-/// account through the CLI/SDK send path and falls back to the GlobalState
-/// allowlists — so a key whose ONLY grant is a Permission account is denied.
-///
-/// This is the inverse of the gap analysis above (which asks who would lose access
-/// under strict mode), and the audit is where an operator looks for it. Flip to
-/// `true` and drop the rendered paragraph when the builder-side append is re-enabled.
-const SDK_ATTACHES_PERMISSION_ACCOUNTS: bool = false;
+/// transactions. It does: every `authorize()`-gated builder appends it. While this
+/// was `false`, `authorize()` never saw a Permission account through the CLI/SDK
+/// send path, so a key whose ONLY grant was a Permission account was denied; the
+/// report keeps the field so a consumer can tell which kind of CLI produced it.
+const SDK_ATTACHES_PERMISSION_ACCOUNTS: bool = true;
 
 #[derive(Serialize, Debug)]
 struct AuditReport {
@@ -242,33 +239,6 @@ fn render_text<W: Write>(out: &mut W, report: &AuditReport) -> eyre::Result<()> 
     }
     writeln!(out)?;
 
-    if !report.sdk_attaches_permission_accounts {
-        writeln!(
-            out,
-            "Permission accounts are not yet attached by the CLI / Rust SDK"
-        )?;
-        writeln!(
-            out,
-            "-----------------------------------------------------------"
-        )?;
-        writeln!(
-            out,
-            "Serviceability transactions sent through this CLI carry no Permission account, so"
-        )?;
-        writeln!(
-            out,
-            "authorize() falls back to the GlobalState allowlists. A key whose ONLY grant is a"
-        )?;
-        writeln!(
-            out,
-            "Permission account is denied on every gated command — granting one with"
-        )?;
-        writeln!(
-            out,
-            "`permission set` is not sufficient on its own until the append is re-enabled."
-        )?;
-        writeln!(out)?;
-    }
     writeln!(
         out,
         "foundation_allowlist ({} member(s)): {}",

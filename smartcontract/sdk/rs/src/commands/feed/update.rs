@@ -1,9 +1,9 @@
 use std::collections::HashSet;
 
-use crate::{commands::common::append_payer_permission_account, DoubleZeroClient};
+use crate::DoubleZeroClient;
 use doublezero_serviceability::{processors::feed::update::FeedUpdateArgs, state::feed::FeedChain};
 use doublezero_serviceability_instruction::feed::update_feed;
-use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signature};
+use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 pub const MAX_FEEDS_PER_TRANSACTION: usize = 8;
 
@@ -43,21 +43,9 @@ impl UpdateFeedCommand {
             feed_chain: self.feed_chain,
         };
 
-        let mut first = update_feed(&program_id, &payer, &pubkeys[0], args.clone());
-        let account_count = first.accounts.len();
-        append_payer_permission_account(client, &mut first)?;
-        let permission_meta: Option<AccountMeta> = (first.accounts.len() > account_count)
-            .then(|| first.accounts.last().cloned())
-            .flatten();
-
         let mut instructions = Vec::with_capacity(pubkeys.len());
-        instructions.push(first);
-        for pubkey in &pubkeys[1..] {
-            let mut ix = update_feed(&program_id, &payer, pubkey, args.clone());
-            if let Some(ref meta) = permission_meta {
-                ix.accounts.push(meta.clone());
-            }
-            instructions.push(ix);
+        for pubkey in &pubkeys {
+            instructions.push(update_feed(&program_id, &payer, pubkey, args.clone()));
         }
         client.send_instructions(instructions)
     }
@@ -66,20 +54,14 @@ impl UpdateFeedCommand {
 #[cfg(test)]
 mod tests {
     use super::{UpdateFeedCommand, MAX_FEEDS_PER_TRANSACTION};
-    use crate::{
-        tests::utils::{create_test_client, expect_missing_permission_account},
-        DoubleZeroClient,
-    };
+    use crate::{tests::utils::create_test_client, DoubleZeroClient};
     use doublezero_serviceability::{
-        pda::{get_feed_pda, get_permission_pda},
-        processors::feed::update::FeedUpdateArgs,
-        state::feed::FeedChain,
+        pda::get_feed_pda, processors::feed::update::FeedUpdateArgs, state::feed::FeedChain,
     };
     use doublezero_serviceability_instruction::{compute_budget_prelude, feed::update_feed};
     use mockall::predicate;
     use solana_sdk::{
-        account::Account, instruction::AccountMeta, message::Message, pubkey::Pubkey,
-        signature::Signature,
+        instruction::AccountMeta, message::Message, pubkey::Pubkey, signature::Signature,
     };
 
     fn chain_args() -> FeedUpdateArgs {
@@ -113,51 +95,6 @@ mod tests {
             .with(predicate::eq(vec![expected]))
             .returning(|_| Ok(Signature::new_unique()));
 
-        expect_missing_permission_account(&mut client);
-
-        let res = UpdateFeedCommand {
-            pubkeys: vec![pda_pubkey],
-            name: Some("Test Feed".to_string()),
-            groups: None,
-            feed_chain: None,
-        }
-        .execute(&client);
-        assert!(res.is_ok());
-    }
-
-    #[test]
-    fn test_commands_feed_update_command_with_permission_pda() {
-        let mut client = create_test_client();
-
-        let program_id = client.get_program_id();
-        let payer = client.get_payer();
-        let (pda_pubkey, _) = get_feed_pda(&program_id, "test_feed", &Pubkey::new_unique());
-
-        let mut expected = update_feed(
-            &program_id,
-            &payer,
-            &pda_pubkey,
-            FeedUpdateArgs {
-                name: Some("Test Feed".to_string()),
-                groups: None,
-                feed_chain: None,
-            },
-        );
-        let (permission_pda_pubkey, _) = get_permission_pda(&program_id, &payer);
-        expected
-            .accounts
-            .push(AccountMeta::new_readonly(permission_pda_pubkey, false));
-
-        client
-            .expect_send_instructions()
-            .with(predicate::eq(vec![expected]))
-            .returning(|_| Ok(Signature::new_unique()));
-
-        client
-            .expect_get_multiple_accounts()
-            .with(predicate::eq(vec![permission_pda_pubkey]))
-            .returning(move |_| Ok(vec![Some(Account::new(0, 0, &program_id))]));
-
         let res = UpdateFeedCommand {
             pubkeys: vec![pda_pubkey],
             name: Some("Test Feed".to_string()),
@@ -182,7 +119,6 @@ mod tests {
             update_feed(&program_id, &payer, &feed_a, args.clone()),
             update_feed(&program_id, &payer, &feed_b, args),
         ];
-        expect_missing_permission_account(&mut client);
         client
             .expect_send_instructions()
             .with(predicate::eq(expected))
@@ -207,7 +143,6 @@ mod tests {
         let feed_pk = Pubkey::new_unique();
         let signature = Signature::new_unique();
 
-        expect_missing_permission_account(&mut client);
         client
             .expect_send_instructions()
             .with(predicate::eq(vec![update_feed(

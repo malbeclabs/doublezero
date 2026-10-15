@@ -165,6 +165,7 @@ mod tests {
                 AccountMeta::new(vrf_ids, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -186,6 +187,7 @@ mod tests {
                 AccountMeta::new(vrf_ids, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -201,6 +203,7 @@ mod tests {
             AccountMeta::new_readonly(globalstate, false),
             AccountMeta::new(payer, true),
             AccountMeta::new(system_program::ID, false),
+            common::permission_meta(&pid, &payer),
         ];
         for (ix, tag) in [
             (

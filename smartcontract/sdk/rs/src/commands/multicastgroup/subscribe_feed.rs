@@ -1,6 +1,7 @@
 use crate::{
     commands::{
-        accesspass::get::resolve_user_accesspass, device::get::GetDeviceCommand,
+        accesspass::get::resolve_user_accesspass, common::drop_payer_permission_account,
+        device::get::GetDeviceCommand, globalstate::get::GetGlobalStateCommand,
         user::get::GetUserCommand,
     },
     DoubleZeroClient,
@@ -8,7 +9,7 @@ use crate::{
 use doublezero_serviceability::{
     processors::multicastgroup::subscribe_feed::MAX_USER_FEEDS,
     state::{
-        accesspass::AccessPassType,
+        accesspass::{AccessPass, AccessPassType},
         accountdata::AccountData,
         feed::Feed,
         user::{UserStatus, UserType},
@@ -18,8 +19,50 @@ use doublezero_serviceability_instruction::multicastgroup::subscribe_feed;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 /// A legacy transaction behind `send_transaction`'s compute-budget prelude fits 25 variable
-/// feed+group accounts.
+/// feed+group accounts without the payer's Permission account.
 pub(crate) const MAX_FEED_TX_ACCOUNTS: usize = 25;
+
+/// Whether the feed-subscription processors authorize this payer without reading a Permission
+/// account: the access pass's own `user_payer`, or a member of the GlobalState foundation
+/// allowlist. `authorize_payer` admits both before it consults `authorize()`, with or without
+/// `RequirePermissionAccounts`, so for them the account is dead weight. GlobalState is read only
+/// when the payer is not the pass owner.
+pub(crate) fn payer_needs_no_permission(
+    client: &dyn DoubleZeroClient,
+    accesspass: &AccessPass,
+) -> eyre::Result<bool> {
+    let payer = client.get_payer();
+    if accesspass.user_payer == payer {
+        return Ok(true);
+    }
+    let (_, globalstate) = GetGlobalStateCommand
+        .execute(client)
+        .map_err(|err| eyre::eyre!("failed to fetch globalstate: {err}"))?;
+    Ok(globalstate.foundation_allowlist.contains(&payer))
+}
+
+/// The variable feed+group accounts that fit one transaction for this payer.
+///
+/// For a payer the processor authorizes without a Permission account (see
+/// [`payer_needs_no_permission`]) the account the builder appends is dropped (see
+/// [`drop_payer_permission_account`]) and the full [`MAX_FEED_TX_ACCOUNTS`] fit. Anyone else
+/// needs it, which costs one slot.
+pub(crate) fn feed_tx_capacity(omit_permission: bool) -> usize {
+    MAX_FEED_TX_ACCOUNTS - usize::from(!omit_permission)
+}
+
+/// Build a feed-subscription instruction for this payer: drop the Permission account when the
+/// processor authorizes the payer without it (see [`payer_needs_no_permission`]).
+pub(crate) fn for_payer(
+    client: &dyn DoubleZeroClient,
+    omit_permission: bool,
+    mut ix: solana_sdk::instruction::Instruction,
+) -> solana_sdk::instruction::Instruction {
+    if omit_permission {
+        drop_payer_permission_account(client, &mut ix);
+    }
+    ix
+}
 
 /// Join whole feeds on an EdgeSeat access pass.
 ///
@@ -115,6 +158,9 @@ impl SubscribeFeedCommand {
             );
         }
 
+        let omit_permission = payer_needs_no_permission(client, &accesspass)?;
+        let capacity = feed_tx_capacity(omit_permission);
+
         // Exactly the groups each transaction adds, mirroring the processor's derivation.
         let mut subscribed: Vec<Pubkey> = user.subscribers.clone();
         let mut chunks: Vec<(Vec<Pubkey>, Vec<Pubkey>)> = Vec::new();
@@ -128,8 +174,7 @@ impl SubscribeFeedCommand {
                 .copied()
                 .collect();
             if !chunk_feeds.is_empty()
-                && chunk_feeds.len() + 1 + chunk_groups.len() + new_groups.len()
-                    > MAX_FEED_TX_ACCOUNTS
+                && chunk_feeds.len() + 1 + chunk_groups.len() + new_groups.len() > capacity
             {
                 subscribed.extend(chunk_groups.iter().copied());
                 chunks.push((
@@ -144,14 +189,18 @@ impl SubscribeFeedCommand {
 
         let mut signature = Signature::default();
         for (index, (chunk_feed_pks, chunk_group_pks)) in chunks.iter().enumerate() {
-            let result = client.send_transaction(subscribe_feed(
-                &client.get_program_id(),
-                &client.get_payer(),
-                &accesspass_pubkey,
-                &self.user_pk,
-                &user.device_pk,
-                chunk_feed_pks,
-                chunk_group_pks,
+            let result = client.send_transaction(for_payer(
+                client,
+                omit_permission,
+                subscribe_feed(
+                    &client.get_program_id(),
+                    &client.get_payer(),
+                    &accesspass_pubkey,
+                    &self.user_pk,
+                    &user.device_pk,
+                    chunk_feed_pks,
+                    chunk_group_pks,
+                ),
             ));
             // A failure mid-sequence leaves earlier chunks applied; name them so the operator
             // knows where the join stands. The join is retry-safe, so rerunning finishes it.
@@ -180,6 +229,15 @@ impl SubscribeFeedCommand {
 
 #[cfg(test)]
 mod tests {
+
+    /// The payer needs no Permission account (it is the pass's own `user_payer`, or a foundation
+    /// member), so the command drops the one the builder appends.
+    fn as_pass_owner(
+        mut ix: solana_sdk::instruction::Instruction,
+    ) -> solana_sdk::instruction::Instruction {
+        ix.accounts.pop();
+        ix
+    }
     use super::*;
     use crate::tests::utils::create_test_client;
     use doublezero_serviceability::{
@@ -212,6 +270,18 @@ mod tests {
         feeds: Vec<(Pubkey, Feed)>,
     ) -> Fixture {
         let payer = client.get_payer();
+        setup_owned_by(client, payer, subscribers, held_feeds, feeds)
+    }
+
+    /// [`setup`] for a user and pass owned by (and paid for by) `payer`, which need not be the
+    /// client's signer.
+    fn setup_owned_by(
+        client: &mut crate::MockDoubleZeroClient,
+        payer: Pubkey,
+        subscribers: Vec<Pubkey>,
+        held_feeds: Vec<Pubkey>,
+        feeds: Vec<(Pubkey, Feed)>,
+    ) -> Fixture {
         let program_id = client.get_program_id();
         let client_ip = Ipv4Addr::new(100, 0, 0, 1);
         let user_pk = Pubkey::new_unique();
@@ -298,6 +368,35 @@ mod tests {
         }
     }
 
+    /// The pass's own `user_payer` sends no Permission account and keeps the full capacity; any
+    /// other payer keeps the one the builder appends and loses a slot to it.
+    #[test]
+    fn test_feed_tx_permission_and_capacity_by_payer() {
+        let client = create_test_client();
+        let payer = client.get_payer();
+        let program_id = client.get_program_id();
+
+        assert_eq!(feed_tx_capacity(true), MAX_FEED_TX_ACCOUNTS);
+        assert_eq!(feed_tx_capacity(false), MAX_FEED_TX_ACCOUNTS - 1);
+
+        let ix = subscribe_feed(
+            &program_id,
+            &payer,
+            &Pubkey::new_unique(),
+            &Pubkey::new_unique(),
+            &Pubkey::new_unique(),
+            &[Pubkey::new_unique()],
+            &[Pubkey::new_unique()],
+        );
+        let (permission_pda, _) =
+            doublezero_serviceability::pda::get_permission_pda(&program_id, &payer);
+        assert_eq!(ix.accounts.last().unwrap().pubkey, permission_pda);
+
+        assert_eq!(for_payer(&client, false, ix.clone()), ix);
+        let owner = for_payer(&client, true, ix.clone());
+        assert_eq!(owner.accounts[..], ix.accounts[..ix.accounts.len() - 1]);
+    }
+
     fn feed_with(code: &str, exchange: Pubkey, groups: Vec<Pubkey>) -> Feed {
         Feed {
             account_type: AccountType::Feed,
@@ -328,7 +427,7 @@ mod tests {
             vec![(feed_pk, feed_with("shreds", exchange, vec![g0, g1]))],
         );
 
-        let expected = subscribe_feed(
+        let expected = as_pass_owner(subscribe_feed(
             &program_id,
             &payer,
             &f.accesspass_pk,
@@ -336,7 +435,7 @@ mod tests {
             &f.device_pk,
             &[feed_pk],
             &[g1],
-        );
+        ));
         client
             .expect_send_transaction()
             .with(predicate::eq(expected))
@@ -374,7 +473,7 @@ mod tests {
             ],
         );
 
-        let expected = subscribe_feed(
+        let expected = as_pass_owner(subscribe_feed(
             &program_id,
             &payer,
             &f.accesspass_pk,
@@ -382,7 +481,7 @@ mod tests {
             &f.device_pk,
             &[feed1_pk, feed2_pk],
             &[g0, g1, g2],
-        );
+        ));
         client
             .expect_send_transaction()
             .with(predicate::eq(expected))
@@ -419,7 +518,7 @@ mod tests {
             vec![(feed_pk, feed_with("held", exchange, vec![g0, g1]))],
         );
 
-        let expected = subscribe_feed(
+        let expected = as_pass_owner(subscribe_feed(
             &program_id,
             &payer,
             &f.accesspass_pk,
@@ -427,7 +526,7 @@ mod tests {
             &f.device_pk,
             &[feed_pk],
             &[g1],
-        );
+        ));
         client
             .expect_send_transaction()
             .with(predicate::eq(expected))
@@ -464,7 +563,7 @@ mod tests {
             ],
         );
 
-        let expected1 = subscribe_feed(
+        let expected1 = as_pass_owner(subscribe_feed(
             &program_id,
             &payer,
             &f.accesspass_pk,
@@ -472,8 +571,8 @@ mod tests {
             &f.device_pk,
             &[feed1_pk],
             &groups1,
-        );
-        let expected2 = subscribe_feed(
+        ));
+        let expected2 = as_pass_owner(subscribe_feed(
             &program_id,
             &payer,
             &f.accesspass_pk,
@@ -481,7 +580,7 @@ mod tests {
             &f.device_pk,
             &[feed2_pk],
             &groups2,
-        );
+        ));
         client
             .expect_send_transaction()
             .with(predicate::eq(expected1))
@@ -522,7 +621,7 @@ mod tests {
             ],
         );
 
-        let expected1 = subscribe_feed(
+        let expected1 = as_pass_owner(subscribe_feed(
             &program_id,
             &payer,
             &f.accesspass_pk,
@@ -530,13 +629,13 @@ mod tests {
             &f.device_pk,
             &[feed1_pk],
             &groups1,
-        );
+        ));
         client
             .expect_send_transaction()
             .with(predicate::eq(expected1))
             .times(1)
             .returning(|_| Ok(Signature::new_unique()));
-        let expected2 = subscribe_feed(
+        let expected2 = as_pass_owner(subscribe_feed(
             &program_id,
             &payer,
             &f.accesspass_pk,
@@ -544,7 +643,7 @@ mod tests {
             &f.device_pk,
             &[feed2_pk],
             &groups2,
-        );
+        ));
         client
             .expect_send_transaction()
             .with(predicate::eq(expected2))
@@ -637,5 +736,54 @@ mod tests {
                 "user holds {MAX_USER_FEEDS} feeds and this join adds 1; a user may hold at most {MAX_USER_FEEDS}"
             )
         );
+    }
+
+    /// A foundation member joining feeds on another user's pass is admitted without a Permission
+    /// account, so it gets the pass owner's full capacity: 2 feeds and 23 groups (25 accounts)
+    /// still go in one transaction.
+    #[test]
+    fn test_commands_subscribe_feed_foundation_payer_omits_permission_account() {
+        let mut client = crate::tests::utils::create_test_client_with_foundation_payer();
+        let payer = client.get_payer();
+        let program_id = client.get_program_id();
+
+        let exchange = Pubkey::new_unique();
+        let groups1: Vec<Pubkey> = (0..20).map(|_| Pubkey::new_unique()).collect();
+        let groups2: Vec<Pubkey> = (0..3).map(|_| Pubkey::new_unique()).collect();
+        let (feed1_pk, feed2_pk) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let f = setup_owned_by(
+            &mut client,
+            Pubkey::new_unique(),
+            vec![],
+            vec![],
+            vec![
+                (feed1_pk, feed_with("f1", exchange, groups1.clone())),
+                (feed2_pk, feed_with("f2", exchange, groups2.clone())),
+            ],
+        );
+
+        let all_groups: Vec<Pubkey> = groups1.iter().chain(groups2.iter()).copied().collect();
+        let expected = as_pass_owner(subscribe_feed(
+            &program_id,
+            &payer,
+            &f.accesspass_pk,
+            &f.user_pk,
+            &f.device_pk,
+            &[feed1_pk, feed2_pk],
+            &all_groups,
+        ));
+        client
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .times(1)
+            .returning(|_| Ok(Signature::new_unique()));
+
+        SubscribeFeedCommand {
+            user_pk: f.user_pk,
+            feed_pks: vec![feed1_pk, feed2_pk],
+            accesspass_pk: None,
+        }
+        .execute(&client)
+        .unwrap();
     }
 }

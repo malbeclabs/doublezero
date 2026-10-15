@@ -107,6 +107,7 @@ mod tests {
             AccountMeta::new(globalstate, false),
             AccountMeta::new(payer, true),
             AccountMeta::new(system_program::ID, false),
+            common::permission_meta(&pid, &payer),
         ];
         for (ix, tag) in [
             (set_authority(&pid, &payer, SetAuthorityArgs::default()), 2),
@@ -143,6 +144,7 @@ mod tests {
                 AccountMeta::new(globalstate, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }

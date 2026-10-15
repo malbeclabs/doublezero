@@ -224,6 +224,7 @@ mod tests {
                 AccountMeta::new(user_payer, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -259,6 +260,7 @@ mod tests {
                 AccountMeta::new(new_tenant, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -285,6 +287,7 @@ mod tests {
                 AccountMeta::new(globalstate, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
 
@@ -306,6 +309,7 @@ mod tests {
                 AccountMeta::new_readonly(globalstate, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -361,6 +365,7 @@ mod tests {
                 AccountMeta::new_readonly(feed, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -391,6 +396,7 @@ mod tests {
                 AccountMeta::new_readonly(globalstate, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }

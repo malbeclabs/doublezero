@@ -154,9 +154,7 @@ pub enum DeviceDeleteResources<'a> {
 ///
 /// `process_delete_device` routes through `authorize()` (NETWORK_ADMIN, for the
 /// non-contributor override), so this builder is assigned to
-/// `common::build_with_permission` and will carry a trailing Permission PDA once
-/// the permission model is activated (deferred today, like every other assigned
-/// builder).
+/// `common::build_with_permission` and carries the payer's trailing Permission PDA.
 pub fn delete_device(
     program_id: &Pubkey,
     payer: &Pubkey,
@@ -539,6 +537,7 @@ mod tests {
                 AccountMeta::new(dz_prefix0, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -578,8 +577,8 @@ mod tests {
             DoubleZeroInstruction::CreateDevice(a) => assert_eq!(a, expected),
             other => panic!("unexpected variant: {other:?}"),
         }
-        // account list: 7 fixed + 2 dz_prefix + payer + system = 11
-        assert_eq!(ix.accounts.len(), 11);
+        // account list: 7 fixed + 2 dz_prefix + payer + system + permission = 12
+        assert_eq!(ix.accounts.len(), 12);
     }
 
     #[test]
@@ -607,6 +606,7 @@ mod tests {
                 AccountMeta::new(globalstate, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -664,6 +664,7 @@ mod tests {
                 AccountMeta::new(device_owner, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -705,6 +706,7 @@ mod tests {
                 AccountMeta::new(dz0, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -739,6 +741,7 @@ mod tests {
                 AccountMeta::new(globalstate, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
         match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
@@ -762,6 +765,7 @@ mod tests {
                 AccountMeta::new(globalstate, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -795,6 +799,7 @@ mod tests {
                 AccountMeta::new(sri, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
         match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
@@ -843,6 +848,7 @@ mod tests {
                 AccountMeta::new_readonly(tb, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
         match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
@@ -881,6 +887,7 @@ mod tests {
                 AccountMeta::new(sri, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
         match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
@@ -917,6 +924,7 @@ mod tests {
                 AccountMeta::new(globalstate, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -943,6 +951,7 @@ mod tests {
                 AccountMeta::new(sri, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
     }
@@ -977,6 +986,7 @@ mod tests {
                 AccountMeta::new_readonly(tb, false),
                 AccountMeta::new(payer, true),
                 AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
             ]
         );
         match DoubleZeroInstruction::unpack(&ix.data).unwrap() {

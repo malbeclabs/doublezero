@@ -24,10 +24,6 @@ use crate::{
 /// re-exported by the SDK crates this one depends on).
 const PACKET_DATA_SIZE: usize = 1232;
 
-/// Wire-size room reserved for the read-only Permission PDA `build_with_permission`
-/// appends at the permission rollout: one more account key plus its index byte.
-const PERMISSION_ACCOUNT_RESERVED: usize = 33;
-
 #[derive(Debug, PartialEq, Clone)]
 pub struct CreateSubscribeUserCommand {
     pub user_type: UserType,
@@ -174,8 +170,8 @@ impl CreateSubscribeUserCommand {
         // per device dz_prefix, and an optional feed, so no fixed group cap can bound
         // it (16 groups fit a role update but overflow a create on a five-prefix
         // device with a feed). Measure the wire size of the exact transaction
-        // send_transaction builds, reserving room for the Permission PDA the builder
-        // appends at the permission rollout.
+        // send_transaction builds; the builder has already appended the payer's
+        // Permission PDA, so it is counted.
         let [cu_limit, heap_frame] = compute_budget_prelude();
         let mut all_instructions = vec![cu_limit, heap_frame];
         all_instructions.extend(instructions.iter().cloned());
@@ -183,9 +179,9 @@ impl CreateSubscribeUserCommand {
         let tx_size = 1
             + 64 * usize::from(message.header.num_required_signatures)
             + message.serialize().len();
-        if tx_size + PERMISSION_ACCOUNT_RESERVED > PACKET_DATA_SIZE {
+        if tx_size > PACKET_DATA_SIZE {
             // Every extra group past the fit costs its 32-byte key plus an index byte.
-            let over = tx_size + PERMISSION_ACCOUNT_RESERVED - PACKET_DATA_SIZE;
+            let over = tx_size - PACKET_DATA_SIZE;
             eyre::bail!(
                 "subscribing {} multicast groups at create builds a {tx_size}-byte transaction, \
                  over the {PACKET_DATA_SIZE}-byte limit ({dz_prefix_count} dz_prefix account(s){} \
@@ -220,7 +216,7 @@ mod tests {
     };
     use doublezero_ip_proof::IpOwnershipProof;
     use doublezero_serviceability::{
-        pda::get_accesspass_pda,
+        pda::{get_accesspass_pda, get_permission_pda},
         processors::user::create_subscribe::UserCreateSubscribeArgs,
         state::{
             accesspass::{AccessPass, AccessPassStatus, AccessPassType},
@@ -232,10 +228,11 @@ mod tests {
         },
     };
     use doublezero_serviceability_instruction::{
-        ip_proof::with_ed25519_verification, user::create_subscribe_user,
+        compute_budget_prelude, ip_proof::with_ed25519_verification, user::create_subscribe_user,
     };
     use mockall::predicate;
     use solana_sdk::{
+        message::Message,
         pubkey::Pubkey,
         signature::{Keypair, Signature},
         signer::Signer,
@@ -482,6 +479,59 @@ mod tests {
             .expect_send_transaction()
             .times(1)
             .returning(|_| Ok(Signature::new_unique()));
+
+        let res = CreateSubscribeUserCommand {
+            user_type: UserType::Multicast,
+            device_pk,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip,
+            mgroup_pks,
+            publisher: false,
+            subscriber: true,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            owner: None,
+            feed_pk: Some(Pubkey::new_unique()),
+            ip_proof: None,
+        }
+        .execute(&client);
+        assert!(res.is_ok(), "{res:?}");
+    }
+
+    /// The size check counts the Permission PDA the builder appends exactly once: a
+    /// 14-group batch on a five-prefix device with a feed measures 1223 bytes, Permission
+    /// account included, and is sent rather than rejected for headroom it does not need.
+    #[test]
+    fn test_commands_user_create_subscribe_accepts_a_batch_near_the_size_limit() {
+        let mut client = create_test_client();
+        let device_pk = Pubkey::new_unique();
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+        let mgroup_pks: Vec<Pubkey> = (0..14).map(|_| Pubkey::new_unique()).collect();
+        let payer = client.get_payer();
+        let (permission_pk, _) = get_permission_pda(&client.get_program_id(), &payer);
+        expect_create_lookups(
+            &mut client,
+            payer,
+            &mgroup_pks,
+            device_pk,
+            client_ip,
+            FIVE_PREFIXES,
+        );
+        client
+            .expect_send_transaction()
+            .times(1)
+            .returning(move |ix| {
+                assert_eq!(ix.accounts.last().unwrap().pubkey, permission_pk);
+                let [cu_limit, heap_frame] = compute_budget_prelude();
+                let message = Message::new(&[cu_limit, heap_frame, ix], Some(&payer));
+                let tx_size = 1
+                    + 64 * usize::from(message.header.num_required_signatures)
+                    + message.serialize().len();
+                assert!(
+                    (1200..=1232).contains(&tx_size),
+                    "expected a near-limit transaction, got {tx_size} bytes"
+                );
+                Ok(Signature::new_unique())
+            });
 
         let res = CreateSubscribeUserCommand {
             user_type: UserType::Multicast,

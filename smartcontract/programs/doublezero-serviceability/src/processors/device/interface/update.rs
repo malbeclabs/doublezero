@@ -114,7 +114,7 @@ pub fn process_update_device_interface(
     // node_segment_idx without onchain allocation enabled still work.
     // Remaining tail: [segment_routing_ids?, topology_0..N?, payer, system, permission?].
     // split_trailing_permission peels payer/system — and the optional payer Permission
-    // PDA the SDK appends when it exists — off the tail by PDA match, so it never
+    // PDA the SDK appends unconditionally — off the tail by PDA match, so it never
     // inflates the optional-account detection. What's left (`mid`) is the optional
     // SegmentRoutingIds account followed by the optional topology union.
     let rest: Vec<&AccountInfo> = accounts_iter.collect();

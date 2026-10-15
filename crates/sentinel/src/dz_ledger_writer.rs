@@ -142,8 +142,8 @@ mod tests {
     }
 
     /// The instruction-specific accounts plus the signing payer, in processor order. The
-    /// builders append further trailing accounts (the system program, and the payer's
-    /// Permission PDA once that rollout activates), so only this prefix is pinned here.
+    /// builders append further trailing accounts (the system program and the payer's
+    /// Permission PDA), so only this prefix is pinned here.
     fn assert_leading_accounts(ix: &Instruction, expected: &[AccountMeta]) {
         assert_eq!(&ix.accounts[..expected.len()], expected);
     }

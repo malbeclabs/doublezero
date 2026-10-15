@@ -76,7 +76,7 @@ pub fn process_delete_link(
 
     // Remaining accounts: [topology_union.., payer, system, permission?].
     // split_trailing_permission peels payer/system — and the optional payer
-    // Permission PDA the SDK appends when it exists — off the tail, leaving the
+    // Permission PDA the SDK appends unconditionally — off the tail, leaving the
     // caller's topology union as `topology_accounts`.
     let rest: Vec<&AccountInfo> = accounts_iter.collect();
     let (payer_account, system_program, topology_accounts, permission_account) =

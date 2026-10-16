@@ -18,6 +18,16 @@ use solana_sdk::{instruction::Instruction, pubkey::Pubkey};
 
 use super::dz_ledger_reader::DzUser;
 
+/// Puts the compute-budget prelude (protocol-max compute-unit limit and heap frame) in front of
+/// `instructions`, as every serviceability transaction should carry it. The program allocates
+/// from the heap frame the transaction requests; without one, an instruction that loads a device
+/// with many interfaces runs out of the default 32 KiB.
+pub fn with_compute_budget_prelude(instructions: &[Instruction]) -> Vec<Instruction> {
+    let mut ixs = svc_ix::compute_budget_prelude().to_vec();
+    ixs.extend_from_slice(instructions);
+    ixs
+}
+
 /// The three instructions needed to create a multicast publisher onchain.
 pub struct CreateMulticastPublisherInstructions {
     pub set_access_pass: Instruction,

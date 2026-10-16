@@ -209,12 +209,14 @@ impl<'a, 'b> TryNextAccounts<'a, 'b, crate::types::DoubleZeroEpoch>
     }
 }
 
+/// Accounts rev-distr passes to the feed-subscription program's `WithdrawMonthlyContributorRewards`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WithdrawMonthlyContributorRewardsAccounts {
     pub integration_rewards_bucket_key: Pubkey,
     pub integration_2z_token_account_key: Pubkey,
     pub destination_token_account_key: Pubkey,
     pub monthly_distribution_key: Pubkey,
+    pub integration_program_config_key: Pubkey,
 }
 
 impl From<WithdrawMonthlyContributorRewardsAccounts> for Vec<AccountMeta> {
@@ -224,6 +226,7 @@ impl From<WithdrawMonthlyContributorRewardsAccounts> for Vec<AccountMeta> {
             integration_2z_token_account_key,
             destination_token_account_key,
             monthly_distribution_key,
+            integration_program_config_key,
         } = accounts;
 
         vec![
@@ -231,6 +234,7 @@ impl From<WithdrawMonthlyContributorRewardsAccounts> for Vec<AccountMeta> {
             AccountMeta::new(integration_2z_token_account_key, false),
             AccountMeta::new(destination_token_account_key, false),
             AccountMeta::new_readonly(monthly_distribution_key, true),
+            AccountMeta::new_readonly(integration_program_config_key, false),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
         ]
     }
@@ -402,12 +406,14 @@ mod tests {
             integration_2z_token_account_key: Pubkey::new_unique(),
             destination_token_account_key: Pubkey::new_unique(),
             monthly_distribution_key: Pubkey::new_unique(),
+            integration_program_config_key: Pubkey::new_unique(),
         };
         let keys = [
             accounts.integration_rewards_bucket_key,
             accounts.integration_2z_token_account_key,
             accounts.destination_token_account_key,
             accounts.monthly_distribution_key,
+            accounts.integration_program_config_key,
             spl_token_interface::ID,
         ];
 
@@ -426,6 +432,7 @@ mod tests {
                 (true, false),
                 (true, false),
                 (false, true),
+                (false, false),
                 (false, false),
             ]
         );

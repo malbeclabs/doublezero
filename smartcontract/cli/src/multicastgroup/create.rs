@@ -22,6 +22,10 @@ pub struct CreateMulticastGroupCliCommand {
     /// Owner Pubkey or 'me' for current payer
     #[arg(long, value_parser = validate_pubkey)]
     pub owner: String,
+    /// Create the group on this BuilderStake instead of on the multicast admin permission. The
+    /// stake must be yours, and --owner must be me
+    #[arg(long)]
+    pub stake_ref: Option<Pubkey>,
     /// Wait for the multicast group to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -49,6 +53,7 @@ impl CreateMulticastGroupCliCommand {
             code: self.code.clone(),
             max_bandwidth: self.max_bandwidth,
             owner: owner_pk,
+            stake_ref: self.stake_ref.unwrap_or_default(),
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -77,7 +82,7 @@ mod tests {
         commands::multicastgroup::create::CreateMulticastGroupCommand, get_device_pda,
     };
     use mockall::predicate;
-    use solana_sdk::signature::Signature;
+    use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
     #[test]
     fn test_cli_multicastgroup_create() {
@@ -101,6 +106,7 @@ mod tests {
                 code: "test".to_string(),
                 max_bandwidth: 10_000_000_000,
                 owner: pda_pubkey,
+                stake_ref: Pubkey::default(),
             }))
             .times(1)
             .returning(move |_| Ok((signature, pda_pubkey)));
@@ -113,6 +119,7 @@ mod tests {
                 code: "test".to_string(),
                 max_bandwidth: 10_000_000_000,
                 owner: pda_pubkey.to_string(),
+                stake_ref: None,
                 wait: false,
             }
             .execute(&ctx, &client, &mut output),
@@ -122,5 +129,41 @@ mod tests {
         assert_eq!(
             output_str,"Signature: 3QnHBSdd4doEF6FgpLCejqEw42UQjfvNhQJwoYDSpoBszpCCqVft4cGoneDCnZ6Ez3ujzavzUu85u6F79WtLhcsv\n"
         );
+    }
+
+    #[test]
+    fn test_cli_multicastgroup_create_on_a_stake() {
+        let mut client = create_test_client();
+        let payer = client.get_payer();
+        let stake_ref = Pubkey::new_unique();
+        let group = Pubkey::new_unique();
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_create_multicastgroup()
+            .with(predicate::eq(CreateMulticastGroupCommand {
+                code: "staked".to_string(),
+                max_bandwidth: 1_000_000_000,
+                owner: payer,
+                stake_ref,
+            }))
+            .times(1)
+            .returning(move |_| Ok((Signature::new_unique(), group)));
+
+        let mut output = Vec::new();
+        let res = block_on(
+            CreateMulticastGroupCliCommand {
+                code: "staked".to_string(),
+                max_bandwidth: 1_000_000_000,
+                owner: "me".to_string(),
+                stake_ref: Some(stake_ref),
+                wait: false,
+            }
+            .execute(&cli_context_default_for_tests(), &client, &mut output),
+        );
+        assert!(res.is_ok(), "{res:?}");
     }
 }

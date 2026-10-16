@@ -5,7 +5,10 @@
 use crate::common;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::{get_globalstate_pda, get_multicastgroup_pda, get_resource_extension_pda},
+    pda::{
+        get_globalstate_pda, get_multicastgroup_pda, get_resource_extension_pda,
+        get_stake_mirror_pda,
+    },
     processors::multicastgroup::{
         allowlist::{
             publisher::{
@@ -34,9 +37,12 @@ use solana_program::{
 };
 
 /// `CreateMulticastGroup` (variant 46).
-/// Accounts: `[mgroup, globalstate, multicast_group_block]`.
+/// Accounts: `[mgroup, globalstate, multicast_group_block]`, plus the stake mirror when
+/// `args.stake_ref` is set.
 ///
-/// `account_index` is the new group's index (`globalstate.account_index + 1`).
+/// `account_index` is the new group's index (`globalstate.account_index + 1`). A non-zero
+/// `stake_ref` asks the payer's own stake to admit the create in place of `MULTICAST_ADMIN`, and
+/// the processor then requires `args.owner` to be the payer.
 pub fn create_multicast_group(
     program_id: &Pubkey,
     payer: &Pubkey,
@@ -52,7 +58,11 @@ pub fn create_multicast_group(
     // a caller-supplied value here can only ever fail. This builder always emits
     // the `multicast_group_block` account, so it forces the flag (as the SDK does).
     args.use_onchain_allocation = true;
-    common::build_with_permission(
+    // Derived from the args, as `create_feed` does, so a caller cannot pass the wrong mirror.
+    // Writable: the processor counts the group against the stake.
+    let stake_mirror = (args.stake_ref != Pubkey::default())
+        .then(|| AccountMeta::new(get_stake_mirror_pda(program_id, &args.stake_ref).0, false));
+    common::build_with_permission_after_system(
         program_id,
         DoubleZeroInstruction::CreateMulticastGroup(args),
         vec![
@@ -60,6 +70,7 @@ pub fn create_multicast_group(
             AccountMeta::new(globalstate, false),
             AccountMeta::new(multicast_group_block, false),
         ],
+        stake_mirror.into_iter().collect(),
         payer,
     )
 }
@@ -477,6 +488,34 @@ mod tests {
             DoubleZeroInstruction::CreateMulticastGroup(a) => assert!(a.use_onchain_allocation),
             other => panic!("unexpected: {other:?}"),
         }
+    }
+
+    #[test]
+    fn test_create_multicast_group_appends_the_stake_mirror_when_staked() {
+        let pid = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let stake_ref = Pubkey::new_unique();
+        let ix = create_multicast_group(
+            &pid,
+            &payer,
+            1,
+            MulticastGroupCreateArgs {
+                owner: payer,
+                stake_ref,
+                ..Default::default()
+            },
+        );
+        let (mirror, _) = get_stake_mirror_pda(&pid, &stake_ref);
+        assert_eq!(
+            ix.accounts[ix.accounts.len() - 2],
+            AccountMeta::new(mirror, false),
+            "the mirror is writable: the create counts against the stake"
+        );
+        assert_eq!(
+            ix.accounts.last().unwrap(),
+            &common::permission_meta(&pid, &payer),
+            "the Permission account stays last, after the mirror"
+        );
     }
 
     #[test]

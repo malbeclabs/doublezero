@@ -20,6 +20,7 @@ use doublezero_serviceability::{
     resource::ResourceType,
     state::{feature_flags::FeatureFlag, permission::permission_flags, stake_mirror::StakeTier},
 };
+use doublezero_serviceability_instruction as dzi;
 use solana_program_test::*;
 use solana_sdk::{
     instruction::AccountMeta,
@@ -354,4 +355,37 @@ async fn test_a_stake_admits_nothing_once_the_flag_is_cleared() {
         .await;
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
     assert_eq!(c.groups_created(mirror).await, 0);
+}
+
+/// The SDK's builder emits an account list the stake path accepts: the mirror after the system
+/// program, and the payer's Permission PDA last, never created.
+#[tokio::test]
+async fn test_the_instruction_builder_reaches_the_stake_path() {
+    let mut c = cluster().await;
+    let builder = test_payer();
+    let stake_ref = Pubkey::new_unique();
+    let mirror = c.mirror(stake_ref, builder.pubkey(), 1).await;
+
+    let index = get_globalstate(&mut c.banks_client, c.globalstate)
+        .await
+        .account_index
+        + 1;
+    let ix = dzi::multicastgroup::create_multicast_group(
+        &c.program_id,
+        &builder.pubkey(),
+        index,
+        staked_args("via-sdk", builder.pubkey(), stake_ref),
+    );
+    let group = ix.accounts[0].pubkey;
+    process_instructions(&mut c.banks_client, &[ix], &builder)
+        .await
+        .expect("the builder's account list should reach the stake path");
+
+    let written = get_account_data(&mut c.banks_client, group)
+        .await
+        .expect("the group should exist")
+        .get_multicastgroup()
+        .unwrap();
+    assert_eq!(written.owner, builder.pubkey());
+    assert_eq!(c.groups_created(mirror).await, 1);
 }

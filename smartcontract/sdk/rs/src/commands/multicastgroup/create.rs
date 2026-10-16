@@ -12,6 +12,9 @@ pub struct CreateMulticastGroupCommand {
     pub code: String,
     pub max_bandwidth: u64,
     pub owner: Pubkey,
+    /// The payer's `BuilderStake` PDA, to create the group on its bond instead of on
+    /// `MULTICAST_ADMIN`. Zero takes the admin path. When set, `owner` must be the payer.
+    pub stake_ref: Pubkey,
 }
 
 impl CreateMulticastGroupCommand {
@@ -37,7 +40,7 @@ impl CreateMulticastGroupCommand {
                     max_bandwidth: self.max_bandwidth,
                     owner: self.owner,
                     use_onchain_allocation: true,
-                    stake_ref: Pubkey::default(),
+                    stake_ref: self.stake_ref,
                 },
             ))
             .map(|sig| (sig, pda_pubkey))
@@ -87,6 +90,7 @@ mod tests {
             code: "test_group".to_string(),
             max_bandwidth: 1000,
             owner,
+            stake_ref: Pubkey::default(),
         };
 
         let create_invalid_command = CreateMulticastGroupCommand {

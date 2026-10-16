@@ -11,6 +11,7 @@ All notable changes to this project will be documented in this file.
 - CI
   - Release jobs install goreleaser-pro v2.18.2 through `.github/actions/install-goreleaser-pro`, which checks the download against a sha256 pinned in the repo and fails the job on any mismatch or failed download, then run `goreleaser` directly. This replaces goreleaser-action, which runs the binary unchecked when it cannot fetch the checksum or signature file, and stops goreleaser floating on `~> v2`.
 - CLI
+  - New `doublezero-solana feeds publisher-rewards configure`, which sets the wallet and mint the feed subscription program pays a publisher in, creating the publisher's account when it is missing. The validator identity signs it, or signs offchain on the validator host with `solana sign-offchain-message` over the message `feeds publisher-rewards prepare-offchain-message` prints. (malbeclabs/infra#3109)
   - `doublezero permission audit` checks the feed instructions, which accept `feed-authority` or `foundation`. It reports the feed authority and every foundation member whose Permission account grants neither, since they would lose feed access once `RequirePermissionAccounts` is enabled; the audit did not check them. (#4079)
   - `permission audit` no longer reports that the CLI does not attach Permission accounts, and `permission set` no longer warns that a grant is inert through the CLI.
 - Config

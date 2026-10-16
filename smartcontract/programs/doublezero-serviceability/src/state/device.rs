@@ -12,6 +12,19 @@ use doublezero_program_common::{types::NetworkV4List, validate_account_code};
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use std::{fmt, net::Ipv4Addr, str::FromStr};
 
+/// Largest a Device account may grow to, in bytes.
+///
+/// Other programs deserialize Device accounts on the stock 32 KiB heap: the telemetry program's
+/// `InitializeDeviceLatencySamples` loads both devices of a link, and the geolocation program's
+/// `AddParentDevice` loads one. Their heap use depends on the shape of the device as much as its
+/// size: each interface costs a fixed amount of heap, and the interface vector doubles its
+/// allocation once it passes 46 entries. Measured under SBF, the telemetry instruction ran out of
+/// heap with both devices at 47 interfaces with the shortest names (`Vlan<n>`), about 4,760 bytes
+/// each; long names and flex-algo segments only fail at larger sizes. This cap is about 20% below
+/// that smallest failing size, so even the shortest names stop around 37 interfaces. Interface
+/// names can be hundreds of characters long, so the cap is on bytes rather than interface count.
+pub const MAX_DEVICE_ACCOUNT_SIZE: usize = 3_840;
+
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, Copy, Clone, PartialEq, Default)]
 #[borsh(use_discriminant = true)]
@@ -731,6 +744,26 @@ impl Validate for Device {
             interface.validate()?;
         }
 
+        Ok(())
+    }
+
+    /// Refuses a write that grows the account past [`MAX_DEVICE_ACCOUNT_SIZE`]. A write that keeps
+    /// or shrinks the size is allowed even above the cap, so a device that is already larger can
+    /// still be updated and trimmed back.
+    fn validate_account_size(
+        &self,
+        current_len: usize,
+        new_len: usize,
+    ) -> Result<(), DoubleZeroError> {
+        if new_len > MAX_DEVICE_ACCOUNT_SIZE && new_len > current_len {
+            msg!(
+                "Device account would be {} bytes (now {}); it must stay within {} bytes",
+                new_len,
+                current_len,
+                MAX_DEVICE_ACCOUNT_SIZE
+            );
+            return Err(DoubleZeroError::DeviceAccountTooLarge);
+        }
         Ok(())
     }
 }
@@ -1919,5 +1952,44 @@ mod test_device_interfaces_vec {
         let legacy_v2 = decoded.deprecated_interfaces[0].to_v2();
         assert_eq!(legacy_v2.name, decoded.interfaces[0].name);
         assert_eq!(legacy_v2.loopback_type, LoopbackType::Vpnv4);
+    }
+}
+
+#[cfg(test)]
+mod account_size_tests {
+    use super::*;
+
+    const MAX: usize = MAX_DEVICE_ACCOUNT_SIZE;
+
+    #[test]
+    fn test_growth_within_cap_is_allowed() {
+        let device = Device::default();
+        assert_eq!(device.validate_account_size(0, MAX), Ok(()));
+        assert_eq!(device.validate_account_size(100, MAX), Ok(()));
+    }
+
+    #[test]
+    fn test_growth_past_cap_is_refused() {
+        let device = Device::default();
+        assert_eq!(
+            device.validate_account_size(0, MAX + 1),
+            Err(DoubleZeroError::DeviceAccountTooLarge)
+        );
+        assert_eq!(
+            device.validate_account_size(MAX, MAX + 1),
+            Err(DoubleZeroError::DeviceAccountTooLarge)
+        );
+        assert_eq!(
+            device.validate_account_size(MAX + 10, MAX + 11),
+            Err(DoubleZeroError::DeviceAccountTooLarge)
+        );
+    }
+
+    /// A device already past the cap can still be rewritten at its size or trimmed.
+    #[test]
+    fn test_neutral_or_shrinking_write_above_cap_is_allowed() {
+        let device = Device::default();
+        assert_eq!(device.validate_account_size(MAX + 10, MAX + 10), Ok(()));
+        assert_eq!(device.validate_account_size(MAX + 10, MAX + 5), Ok(()));
     }
 }

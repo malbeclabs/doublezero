@@ -137,7 +137,7 @@ func TestSetDeviceHealthBatch(t *testing.T) {
 		require.Len(t, rpc.sentTransactions, 1)
 
 		tx := rpc.sentTransactions[0]
-		assert.Len(t, tx.Message.Instructions, 1)
+		assert.Len(t, tx.Message.Instructions, preludeLen+1)
 	})
 
 	t.Run("sends transaction with multiple device updates", func(t *testing.T) {
@@ -157,7 +157,7 @@ func TestSetDeviceHealthBatch(t *testing.T) {
 		require.Len(t, rpc.sentTransactions, 1)
 
 		tx := rpc.sentTransactions[0]
-		assert.Len(t, tx.Message.Instructions, 3)
+		assert.Len(t, tx.Message.Instructions, preludeLen+3)
 	})
 
 	t.Run("returns error when RPC fails", func(t *testing.T) {
@@ -211,7 +211,7 @@ func TestSetLinkHealthBatch(t *testing.T) {
 		require.Len(t, rpc.sentTransactions, 1)
 
 		tx := rpc.sentTransactions[0]
-		assert.Len(t, tx.Message.Instructions, 1)
+		assert.Len(t, tx.Message.Instructions, preludeLen+1)
 	})
 
 	t.Run("sends transaction with multiple link updates", func(t *testing.T) {
@@ -231,7 +231,7 @@ func TestSetLinkHealthBatch(t *testing.T) {
 		require.Len(t, rpc.sentTransactions, 1)
 
 		tx := rpc.sentTransactions[0]
-		assert.Len(t, tx.Message.Instructions, 3)
+		assert.Len(t, tx.Message.Instructions, preludeLen+3)
 	})
 }
 
@@ -419,6 +419,16 @@ func makeInstructionError(instructionIndex int) *jsonrpc.RPCError {
 	}
 }
 
+// preludeLen is the number of compute-budget instructions the executor puts in front of every
+// transaction.
+var preludeLen = len(computeBudgetPrelude())
+
+// makeUpdateError reports a failure of the i-th instruction the caller passed in, which the
+// transaction numbers after the prelude.
+func makeUpdateError(i int) *jsonrpc.RPCError {
+	return makeInstructionError(preludeLen + i)
+}
+
 func TestSetDeviceHealthBatch_RetryOnFailure(t *testing.T) {
 	t.Parallel()
 
@@ -431,7 +441,7 @@ func TestSetDeviceHealthBatch_RetryOnFailure(t *testing.T) {
 				callCount++
 				if callCount == 1 {
 					// First call fails on instruction index 1
-					return solana.Signature{}, makeInstructionError(1)
+					return solana.Signature{}, makeUpdateError(1)
 				}
 				// Second call succeeds
 				return solana.MustSignatureFromBase58("5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW"), nil
@@ -456,9 +466,9 @@ func TestSetDeviceHealthBatch_RetryOnFailure(t *testing.T) {
 		require.Len(t, rpc.sentTransactions, 2)
 
 		// First transaction should have 3 instructions
-		assert.Len(t, rpc.sentTransactions[0].Message.Instructions, 3)
+		assert.Len(t, rpc.sentTransactions[0].Message.Instructions, preludeLen+3)
 		// Second transaction should have 2 instructions (device2 removed)
-		assert.Len(t, rpc.sentTransactions[1].Message.Instructions, 2)
+		assert.Len(t, rpc.sentTransactions[1].Message.Instructions, preludeLen+2)
 	})
 
 	t.Run("retries multiple times until success", func(t *testing.T) {
@@ -468,9 +478,9 @@ func TestSetDeviceHealthBatch_RetryOnFailure(t *testing.T) {
 				callCount++
 				switch callCount {
 				case 1:
-					return solana.Signature{}, makeInstructionError(2) // Fail on index 2
+					return solana.Signature{}, makeUpdateError(2) // Fail on index 2
 				case 2:
-					return solana.Signature{}, makeInstructionError(0) // Fail on index 0
+					return solana.Signature{}, makeUpdateError(0) // Fail on index 0
 				default:
 					return solana.MustSignatureFromBase58("5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW"), nil
 				}
@@ -491,9 +501,9 @@ func TestSetDeviceHealthBatch_RetryOnFailure(t *testing.T) {
 		assert.Equal(t, 3, callCount, "should have retried twice")
 		require.Len(t, rpc.sentTransactions, 3)
 
-		assert.Len(t, rpc.sentTransactions[0].Message.Instructions, 3)
-		assert.Len(t, rpc.sentTransactions[1].Message.Instructions, 2)
-		assert.Len(t, rpc.sentTransactions[2].Message.Instructions, 1)
+		assert.Len(t, rpc.sentTransactions[0].Message.Instructions, preludeLen+3)
+		assert.Len(t, rpc.sentTransactions[1].Message.Instructions, preludeLen+2)
+		assert.Len(t, rpc.sentTransactions[2].Message.Instructions, preludeLen+1)
 	})
 
 	t.Run("returns ErrAllUpdatesFailed when all updates fail", func(t *testing.T) {
@@ -501,7 +511,7 @@ func TestSetDeviceHealthBatch_RetryOnFailure(t *testing.T) {
 		rpc := &mockRPCClient{
 			sendTransactionFunc: func(ctx context.Context, transaction *solana.Transaction, opts solanarpc.TransactionOpts) (solana.Signature, error) {
 				callCount++
-				return solana.Signature{}, makeInstructionError(0) // Always fail on first instruction
+				return solana.Signature{}, makeUpdateError(0) // Always fail on first instruction
 			},
 		}
 		executor, _ := newTestExecutor(t, rpc)
@@ -552,7 +562,7 @@ func TestSetLinkHealthBatch_RetryOnFailure(t *testing.T) {
 			sendTransactionFunc: func(ctx context.Context, transaction *solana.Transaction, opts solanarpc.TransactionOpts) (solana.Signature, error) {
 				callCount++
 				if callCount == 1 {
-					return solana.Signature{}, makeInstructionError(0)
+					return solana.Signature{}, makeUpdateError(0)
 				}
 				return solana.MustSignatureFromBase58("5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW"), nil
 			},
@@ -571,14 +581,14 @@ func TestSetLinkHealthBatch_RetryOnFailure(t *testing.T) {
 		assert.Equal(t, 2, callCount)
 		require.Len(t, rpc.sentTransactions, 2)
 
-		assert.Len(t, rpc.sentTransactions[0].Message.Instructions, 2)
-		assert.Len(t, rpc.sentTransactions[1].Message.Instructions, 1)
+		assert.Len(t, rpc.sentTransactions[0].Message.Instructions, preludeLen+2)
+		assert.Len(t, rpc.sentTransactions[1].Message.Instructions, preludeLen+1)
 	})
 
 	t.Run("returns ErrAllUpdatesFailed when all updates fail", func(t *testing.T) {
 		rpc := &mockRPCClient{
 			sendTransactionFunc: func(ctx context.Context, transaction *solana.Transaction, opts solanarpc.TransactionOpts) (solana.Signature, error) {
-				return solana.Signature{}, makeInstructionError(0)
+				return solana.Signature{}, makeUpdateError(0)
 			},
 		}
 		executor, _ := newTestExecutor(t, rpc)
@@ -781,5 +791,191 @@ func TestWaitForTransactionFinalizedSurfacesProgramError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "transaction finalized with error") {
 		t.Errorf("error %q should mention the finalized-with-error path", err.Error())
+	}
+}
+
+// assertComputeBudgetPrelude checks that tx opens with the compute-unit limit and the heap-frame
+// request, the same two instructions as the Rust compute_budget_prelude.
+func assertComputeBudgetPrelude(t *testing.T, tx *solana.Transaction) {
+	t.Helper()
+	want := []struct {
+		discriminator byte
+		value         uint32
+	}{
+		{2, MaxComputeUnitLimit}, // SetComputeUnitLimit
+		{1, MaxHeapFrameBytes},   // RequestHeapFrame
+	}
+	require.GreaterOrEqual(t, len(tx.Message.Instructions), len(want))
+	for i, w := range want {
+		ix := tx.Message.Instructions[i]
+		assert.Equal(t, solana.ComputeBudget, tx.Message.AccountKeys[ix.ProgramIDIndex], "instruction %d program", i)
+		assert.Empty(t, ix.Accounts, "instruction %d accounts", i)
+		assert.Equal(t, binary.LittleEndian.AppendUint32([]byte{w.discriminator}, w.value), []byte(ix.Data), "instruction %d data", i)
+	}
+}
+
+func TestExecutorSendsComputeBudgetPrelude(t *testing.T) {
+	t.Parallel()
+
+	globalStatePubkey := solana.NewWallet().PublicKey()
+
+	t.Run("device health batch", func(t *testing.T) {
+		rpc := &mockRPCClient{}
+		executor, _ := newTestExecutor(t, rpc)
+		_, err := executor.SetDeviceHealthBatch(context.Background(), []DeviceHealthUpdate{
+			{DevicePubkey: solana.NewWallet().PublicKey(), Health: DeviceHealthReadyForUsers},
+		}, globalStatePubkey)
+		require.NoError(t, err)
+		require.Len(t, rpc.sentTransactions, 1)
+		assertComputeBudgetPrelude(t, rpc.sentTransactions[0])
+	})
+
+	t.Run("link health batch", func(t *testing.T) {
+		rpc := &mockRPCClient{}
+		executor, _ := newTestExecutor(t, rpc)
+		_, err := executor.SetLinkHealthBatch(context.Background(), []LinkHealthUpdate{
+			{LinkPubkey: solana.NewWallet().PublicKey(), Health: LinkHealthReadyForService},
+		}, globalStatePubkey)
+		require.NoError(t, err)
+		require.Len(t, rpc.sentTransactions, 1)
+		assertComputeBudgetPrelude(t, rpc.sentTransactions[0])
+	})
+
+	t.Run("user bgp status", func(t *testing.T) {
+		rpc := &mockRPCClient{}
+		executor, _ := newTestExecutor(t, rpc)
+		_, err := executor.SetUserBGPStatus(context.Background(), UserBGPStatusUpdate{
+			UserPubkey:   solana.NewWallet().PublicKey(),
+			DevicePubkey: solana.NewWallet().PublicKey(),
+			Status:       BGPStatusUp,
+		})
+		require.NoError(t, err)
+		require.Len(t, rpc.sentTransactions, 1)
+		assertComputeBudgetPrelude(t, rpc.sentTransactions[0])
+	})
+
+	t.Run("retry keeps the prelude", func(t *testing.T) {
+		calls := 0
+		rpc := &mockRPCClient{
+			sendTransactionFunc: func(ctx context.Context, transaction *solana.Transaction, opts solanarpc.TransactionOpts) (solana.Signature, error) {
+				calls++
+				if calls == 1 {
+					return solana.Signature{}, makeUpdateError(0)
+				}
+				return solana.MustSignatureFromBase58("5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW"), nil
+			},
+		}
+		executor, _ := newTestExecutor(t, rpc)
+		_, err := executor.SetDeviceHealthBatch(context.Background(), []DeviceHealthUpdate{
+			{DevicePubkey: solana.NewWallet().PublicKey(), Health: DeviceHealthReadyForUsers},
+			{DevicePubkey: solana.NewWallet().PublicKey(), Health: DeviceHealthReadyForUsers},
+		}, globalStatePubkey)
+		require.NoError(t, err)
+		require.Len(t, rpc.sentTransactions, 2)
+		for _, tx := range rpc.sentTransactions {
+			assertComputeBudgetPrelude(t, tx)
+		}
+	})
+}
+
+// The transaction reports a failing instruction by its index among all of them, prelude
+// included. The batch retry must drop the update that failed, not the one the raw index would
+// point at.
+func TestBatchRetryDropsTheFailingUpdate(t *testing.T) {
+	t.Parallel()
+
+	globalStatePubkey := solana.NewWallet().PublicKey()
+	devices := []solana.PublicKey{
+		solana.NewWallet().PublicKey(),
+		solana.NewWallet().PublicKey(),
+		solana.NewWallet().PublicKey(),
+	}
+	calls := 0
+	rpc := &mockRPCClient{
+		sendTransactionFunc: func(ctx context.Context, transaction *solana.Transaction, opts solanarpc.TransactionOpts) (solana.Signature, error) {
+			calls++
+			if calls == 1 {
+				return solana.Signature{}, makeUpdateError(1)
+			}
+			return solana.MustSignatureFromBase58("5VERv8NMvzbJMEkV8xnrLkEaWRtSz9CosKDYjCJjBRnbJLgp8uirBgmQpjKhoR4tjF3ZpRzrFmBV6UjKdiSZkQUW"), nil
+		},
+	}
+	executor, _ := newTestExecutor(t, rpc)
+	updates := make([]DeviceHealthUpdate, len(devices))
+	for i, d := range devices {
+		updates[i] = DeviceHealthUpdate{DevicePubkey: d, Health: DeviceHealthReadyForUsers}
+	}
+
+	_, err := executor.SetDeviceHealthBatch(context.Background(), updates, globalStatePubkey)
+	require.NoError(t, err)
+	require.Len(t, rpc.sentTransactions, 2)
+
+	retry := rpc.sentTransactions[1]
+	var updated []solana.PublicKey
+	for _, ix := range retry.Message.Instructions[preludeLen:] {
+		updated = append(updated, retry.Message.AccountKeys[ix.Accounts[0]])
+	}
+	assert.Equal(t, []solana.PublicKey{devices[0], devices[2]}, updated)
+}
+
+func TestBatchFailureInPreludeIsNotRetried(t *testing.T) {
+	t.Parallel()
+
+	calls := 0
+	rpc := &mockRPCClient{
+		sendTransactionFunc: func(ctx context.Context, transaction *solana.Transaction, opts solanarpc.TransactionOpts) (solana.Signature, error) {
+			calls++
+			return solana.Signature{}, makeInstructionError(1) // the heap-frame request
+		},
+	}
+	executor, _ := newTestExecutor(t, rpc)
+
+	_, err := executor.SetDeviceHealthBatch(context.Background(), []DeviceHealthUpdate{
+		{DevicePubkey: solana.NewWallet().PublicKey(), Health: DeviceHealthReadyForUsers},
+	}, solana.NewWallet().PublicKey())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid failing instruction index -1")
+	assert.Equal(t, 1, calls)
+}
+
+// The device-health oracle sends health updates in batches of 8. With the prelude and a
+// Permission account appended to every instruction, a full batch must still fit in one packet.
+func TestHealthBatchWithPreludeFitsInAPacket(t *testing.T) {
+	t.Parallel()
+
+	const batchSize = 8
+	const packetDataSize = 1232
+
+	signer := solana.NewWallet().PrivateKey
+	programID := solana.NewWallet().PublicKey()
+	permissionPDA, _, err := GetPermissionPDA(programID, signer.PublicKey())
+	require.NoError(t, err)
+	rpc := &mockRPCClient{
+		getAccountInfoFunc: func(ctx context.Context, account solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
+			if account.Equals(permissionPDA) {
+				return &solanarpc.GetAccountInfoResult{Value: &solanarpc.Account{}}, nil
+			}
+			return &solanarpc.GetAccountInfoResult{Value: nil}, nil
+		},
+	}
+	executor := NewExecutor(slog.Default(), rpc, &signer, programID)
+	globalStatePubkey := solana.NewWallet().PublicKey()
+
+	devices := make([]DeviceHealthUpdate, batchSize)
+	links := make([]LinkHealthUpdate, batchSize)
+	for i := range batchSize {
+		devices[i] = DeviceHealthUpdate{DevicePubkey: solana.NewWallet().PublicKey(), Health: DeviceHealthReadyForUsers}
+		links[i] = LinkHealthUpdate{LinkPubkey: solana.NewWallet().PublicKey(), Health: LinkHealthReadyForService}
+	}
+	_, err = executor.SetDeviceHealthBatch(context.Background(), devices, globalStatePubkey)
+	require.NoError(t, err)
+	_, err = executor.SetLinkHealthBatch(context.Background(), links, globalStatePubkey)
+	require.NoError(t, err)
+
+	require.Len(t, rpc.sentTransactions, 2)
+	for _, tx := range rpc.sentTransactions {
+		raw, err := tx.MarshalBinary()
+		require.NoError(t, err)
+		assert.LessOrEqual(t, len(raw), packetDataSize)
 	}
 }

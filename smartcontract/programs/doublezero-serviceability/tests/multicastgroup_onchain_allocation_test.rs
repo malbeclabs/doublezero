@@ -46,6 +46,7 @@ async fn test_create_multicastgroup_atomic_with_onchain_allocation() {
             max_bandwidth: 1000,
             owner,
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
@@ -98,6 +99,7 @@ async fn test_delete_multicastgroup_atomic_with_deallocation() {
             max_bandwidth: 1000,
             owner,
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
@@ -169,6 +171,7 @@ async fn test_update_multicastgroup_with_onchain_reallocation() {
             max_bandwidth: 1000,
             owner,
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),

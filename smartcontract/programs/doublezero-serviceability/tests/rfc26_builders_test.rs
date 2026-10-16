@@ -591,6 +591,7 @@ async fn test_builder_create_subscribe_user() {
             max_bandwidth: 1000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
@@ -760,6 +761,7 @@ async fn test_builder_user_creation_with_ip_proof() {
             max_bandwidth: 1000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),

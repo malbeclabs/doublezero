@@ -103,6 +103,7 @@ async fn setup_feed_fixture(client_ip: [u8; 4]) -> FeedFixture {
         source_slot: 1,
         relayer: Pubkey::new_unique(),
         feed_key: Pubkey::default(),
+        groups_created: 0,
     })
     .unwrap();
     program_test.add_account(
@@ -253,6 +254,7 @@ async fn setup_feed_fixture(client_ip: [u8; 4]) -> FeedFixture {
             max_bandwidth: 1000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
@@ -658,6 +660,7 @@ async fn create_second_group(f: &mut FeedFixture) -> Pubkey {
             max_bandwidth: 1000,
             owner: f.payer.pubkey(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(mgroup2_pubkey, false),

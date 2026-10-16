@@ -1105,6 +1105,7 @@ mod tests {
                 code: "test".to_string(),
                 owner: Pubkey::new_unique(),
                 use_onchain_allocation: false,
+                stake_ref: Pubkey::default(),
             }),
             "CreateMulticastGroup",
         );

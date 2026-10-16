@@ -287,8 +287,8 @@ impl ScheduleWorker {
         Ok(())
     }
 
-    /// Run the monthly steps for the previous month. A tick in which any of them
-    /// fails counts toward `consecutive_monthly_failures`.
+    /// Run the monthly steps for the previous month, counting a failed tick
+    /// toward `consecutive_monthly_failures`.
     async fn try_process_monthly(
         &self,
         state: &mut SchedulerState,
@@ -312,7 +312,8 @@ impl ScheduleWorker {
         state.save(&self.state_file)
     }
 
-    /// Run each monthly step and return whether any failed.
+    /// Run each monthly step and return whether the tick failed: a step failed,
+    /// or an older month is collected but not finalized.
     async fn run_monthly_steps(
         &self,
         wallet: &Wallet,
@@ -386,9 +387,12 @@ impl ScheduleWorker {
             );
             match monthly_distribute::month_action(Some(older_distribution)) {
                 MonthAction::Idle(_) => {}
+                // Counted as a failure, so it keeps alerting until finalized by hand.
                 MonthAction::Finalize => {
-                    warn!("Monthly {label} is collected but not finalized. Finalize it by hand")
+                    warn!("Monthly {label} is collected but not finalized. Finalize it by hand");
+                    has_failed = true;
                 }
+                // A leaf can wait on its contributor's recipients, so this only warns.
                 MonthAction::Pay => warn!("Monthly {label} has unpaid leaves. Pay them by hand"),
             }
         }

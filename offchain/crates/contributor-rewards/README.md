@@ -47,7 +47,7 @@ The protocol cannot yet reliably estimate public internet latencies for large tr
 - An epoch belongs to the month in which the block time of its last block falls.
 - Each contributor's share is its average over all of the month's epochs, counting zero for an epoch it is absent from. Averages are floored, and the leftover units go one each to the largest remainders, ties to the lower pubkey.
 - The command refuses a month that has not closed, a month with no epochs, and a month with an epoch whose shapley output record does not match the merkle root and contributor count posted to that epoch's `Distribution`. It reads records at the current rewards accountant's addresses, so it also refuses any month with an epoch recorded under an earlier accountant key. Calculate a month before rotating that key.
-- An epoch's end comes from its `epoch_end` record on the DoubleZero Ledger, and otherwise from DoubleZero Ledger block times. The scheduler writes these records while `scheduler.enable_monthly_distribution` is set, and its first run records back to the last epoch to end before the previous month, or as far back as the RPC holds blocks. Selecting a month also reads the epoch before it, so the command refuses a month when neither a record nor the RPC has an epoch it needs. Testnet and devnet RPCs keep about 18 days of blocks, so a testnet or devnet month can be calculated only once the scheduler has recorded it.
+- An epoch's end comes from its `epoch_end` record on the DoubleZero Ledger, and otherwise from DoubleZero Ledger block times. The scheduler writes these records while `scheduler.enable_monthly_distribution` is set, and its first run records back to the last epoch to end before the previous month, or as far back as the RPC holds blocks. Selecting a month also reads the epoch before it, so the command refuses a month when neither a record nor the RPC has an epoch it needs. Testnet and devnet RPCs keep about 18 days of blocks, so a testnet or devnet month can be calculated only once the scheduler has recorded it. There, the first month the scheduler can finalize is the one it is enabled in, and only if it is enabled within about that month's first two weeks.
 
 ### Monthly distribution
 
@@ -57,9 +57,9 @@ With `scheduler.enable_monthly_distribution` set, and outside a dry run, each sc
 - A finalized month has each unpaid leaf paid from that record with `DistributeMonthlyContributorRewards`, creating any missing recipient ATA. A leaf whose contributor has no `ContributorRewards` account or no recipients is skipped with a warning and retried every tick.
 - Any other month waits. The scheduler never initializes or collects a month, so a month whose feed bucket is never collected is never finalized.
 
-An older month is left for a manual run, since paying it late needs someone to find out why it was missed. Each tick logs a warning for every older month that is collected but not finalized, or that has unpaid leaves.
+An older month is left for a manual run, since paying it late needs someone to find out why it was missed. Each tick logs a warning for every older month that is collected but not finalized, or that has unpaid leaves. An older month that is collected but not finalized also counts the tick as failed.
 
-The scheduler's keypair must be the rewards accountant. A failed step logs an error and increments `doublezero_contributor_rewards_monthly_failure{step}`.
+The scheduler's keypair must be the rewards accountant. A failed step logs an error and increments `doublezero_contributor_rewards_monthly_failure{step}`, and every tenth consecutive failed tick logs another error.
 
 ## Fetching snapshots from S3
 

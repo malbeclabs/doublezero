@@ -109,7 +109,7 @@ pub async fn try_fetch_monthly_distributions(
         .context("Failed to fetch the monthly contributor distributions")?
         .into_iter()
         .map(|(distribution_key, account)| {
-            ZeroCopyAccountOwnedData::<MonthlyContributorDistribution>::from_account(&account)
+            ZeroCopyAccountOwnedData::from_account(&account)
                 .map(|distribution| *distribution.mucked_data)
                 .with_context(|| {
                     format!("Failed to decode monthly contributor distribution {distribution_key}")

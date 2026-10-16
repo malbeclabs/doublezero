@@ -594,7 +594,7 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
             let label = format!("{year}-{month:02}");
 
             let distribution = context.try_fetch_monthly_distribution(year, month).await?;
-            match monthly_distribute::month_action(Some(&distribution)) {
+            match monthly_distribute::month_action(&distribution) {
                 MonthAction::Idle(reason) => {
                     info!("Nothing to do for {label}: {reason}");
                     return Ok(());

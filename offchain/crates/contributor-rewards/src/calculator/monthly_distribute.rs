@@ -66,20 +66,19 @@ pub enum MonthAction {
 }
 
 /// What a month needs next, given its `MonthlyContributorDistribution`.
-pub fn month_action(distribution: Option<&MonthlyContributorDistribution>) -> MonthAction {
-    match distribution {
-        Some(distribution) if distribution.is_rewards_calculation_finalized() => {
-            if distribution.are_all_rewards_distributed() {
-                MonthAction::Idle("every leaf is paid")
-            } else {
-                MonthAction::Distribute
-            }
+pub fn month_action(distribution: &MonthlyContributorDistribution) -> MonthAction {
+    if distribution.is_rewards_calculation_finalized() {
+        if distribution.are_all_rewards_distributed() {
+            MonthAction::Idle("every leaf is paid")
+        } else {
+            MonthAction::Distribute
         }
+    } else if distribution.is_collected() {
+        MonthAction::Finalize
+    } else {
         // A month whose bucket expects no feed is never collected, so it is
         // never finalized.
-        Some(distribution) if distribution.is_collected() => MonthAction::Finalize,
-        Some(_) => MonthAction::Idle("its feed 2Z is not collected"),
-        None => MonthAction::Idle("it has no monthly contributor distribution"),
+        MonthAction::Idle("its feed 2Z is not collected")
     }
 }
 
@@ -146,7 +145,7 @@ pub fn plan_months(
         .filter_map(|distribution| {
             let month = (distribution.year, distribution.month);
             let months_ago = month_number(previous_month).checked_sub(month_number(month))?;
-            let step = match month_action(Some(distribution)) {
+            let step = match month_action(distribution) {
                 MonthAction::Idle(_) => return None,
                 MonthAction::Finalize if months_ago == 0 => MonthStep::Finalize,
                 MonthAction::Finalize => MonthStep::FinalizeByHand,
@@ -593,27 +592,19 @@ mod tests {
 
     #[test]
     fn test_month_action_follows_the_distribution() {
-        assert!(matches!(month_action(None), MonthAction::Idle(_)));
-
         let mut distribution = MonthlyContributorDistribution::default();
-        assert!(matches!(
-            month_action(Some(&distribution)),
-            MonthAction::Idle(_)
-        ));
+        assert!(matches!(month_action(&distribution), MonthAction::Idle(_)));
 
         distribution.set_is_collected(true);
-        assert_eq!(month_action(Some(&distribution)), MonthAction::Finalize);
+        assert_eq!(month_action(&distribution), MonthAction::Finalize);
 
         distribution.set_is_rewards_calculation_finalized(true);
         distribution.total_contributors = 3;
         distribution.distributed_rewards_count = 2;
-        assert_eq!(month_action(Some(&distribution)), MonthAction::Distribute);
+        assert_eq!(month_action(&distribution), MonthAction::Distribute);
 
         distribution.distributed_rewards_count = 3;
-        assert!(matches!(
-            month_action(Some(&distribution)),
-            MonthAction::Idle(_)
-        ));
+        assert!(matches!(month_action(&distribution), MonthAction::Idle(_)));
     }
 
     #[test]

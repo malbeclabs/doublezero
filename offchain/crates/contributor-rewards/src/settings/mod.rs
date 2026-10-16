@@ -200,8 +200,9 @@ pub struct SchedulerSettings {
     /// Maximum time to wait for grace period in seconds (default: 21600 = 6 hours)
     #[serde(default = "default_grace_period_max_wait_seconds")]
     pub grace_period_max_wait_seconds: u64,
-    /// Finalize and pay the previous UTC month's contributor rewards, recording
-    /// DZ epoch end times to calculate it. Disabled by default.
+    /// Finalize the previous UTC month's contributor rewards and distribute the
+    /// last three months', recording DZ epoch end times to calculate a month.
+    /// Disabled by default.
     #[serde(default)]
     pub enable_monthly_distribution: bool,
 }

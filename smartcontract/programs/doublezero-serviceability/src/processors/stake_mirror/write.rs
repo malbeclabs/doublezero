@@ -153,7 +153,10 @@ pub fn process_write_stake_mirror(
         relayer: *payer_account.key,
         // Carried forward, never taken from the caller. `CreateFeed` sets it to claim the stake,
         // and zeroing it here would let a second feed spend the same bond.
-        feed_key: existing.map(|e| e.feed_key).unwrap_or_default(),
+        feed_key: existing.as_ref().map(|e| e.feed_key).unwrap_or_default(),
+        // Carried forward for the same reason. Zeroing it would hand the stake a fresh set of
+        // multicast addresses on every relayer write.
+        groups_created: existing.map(|e| e.groups_created).unwrap_or_default(),
     };
 
     if stake_mirror_account.data_is_empty() {

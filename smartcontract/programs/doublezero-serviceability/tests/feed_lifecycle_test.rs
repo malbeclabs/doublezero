@@ -115,6 +115,7 @@ async fn staked_feed_owned_by(
         source_slot: 1,
         relayer: Pubkey::new_unique(),
         feed_key: Pubkey::default(),
+        groups_created: 0,
     })
     .unwrap();
 
@@ -378,6 +379,7 @@ fn halted_feed(
         relayer: Pubkey::new_unique(),
         // The feed already holds the claim; this is not a creation.
         feed_key,
+        groups_created: 0,
     };
 
     (
@@ -506,6 +508,7 @@ async fn test_a_feed_cannot_resume_beyond_its_stake() {
         source_slot: 2,
         relayer: Pubkey::new_unique(),
         feed_key,
+        groups_created: 0,
     })
     .unwrap();
 
@@ -1236,6 +1239,7 @@ async fn test_a_feed_cannot_activate_beyond_its_stake() {
         source_slot: 2,
         relayer: Pubkey::new_unique(),
         feed_key,
+        groups_created: 0,
     })
     .unwrap();
 
@@ -1359,6 +1363,7 @@ async fn test_a_builder_in_the_foundation_allowlist_still_cannot_activate() {
         source_slot: 1,
         relayer: Pubkey::new_unique(),
         feed_key,
+        groups_created: 0,
     };
     program_test.add_account(
         mirror_key,
@@ -1424,6 +1429,7 @@ async fn test_a_seeded_feed_matches_what_create_feed_writes() {
         source_slot: 1,
         relayer: Pubkey::new_unique(),
         feed_key: Pubkey::default(),
+        groups_created: 0,
     })
     .unwrap();
 

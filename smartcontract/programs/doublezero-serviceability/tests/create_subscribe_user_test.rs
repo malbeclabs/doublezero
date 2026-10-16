@@ -246,6 +246,7 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
             max_bandwidth: 1000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
@@ -1056,6 +1057,7 @@ async fn test_create_subscribe_user_foundation_owner_override() {
             max_bandwidth: 1000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
@@ -1365,6 +1367,7 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
             max_bandwidth: 1000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
@@ -1660,6 +1663,7 @@ async fn test_create_subscribe_user_user_admin_owner_override() {
             max_bandwidth: 1000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
@@ -1948,6 +1952,7 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
             max_bandwidth: 1000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
@@ -2604,6 +2609,7 @@ async fn create_second_group(
             max_bandwidth: 1000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(mgroup2_pubkey, false),

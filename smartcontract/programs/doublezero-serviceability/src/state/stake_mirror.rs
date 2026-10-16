@@ -124,13 +124,18 @@ pub struct StakeMirror {
     /// and refuses a stake that already carries one, which is what makes RFC-28's one feed per
     /// stake true. A relayer updating the mirror must carry this value forward, not zero it.
     pub feed_key: Pubkey, // 32
+    /// How many multicast groups this stake has created. `CreateMulticastGroup` refuses a stake
+    /// at `MAX_GROUPS_PER_STAKE`, because each group takes an address from a pool every feed
+    /// shares. It never goes down: deleting a group does not give the stake another one. A relayer
+    /// updating the mirror must carry it forward, or every write resets the limit.
+    pub groups_created: u8, // 1
 }
 
 impl fmt::Display for StakeMirror {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "account_type: {}, owner: {}, bump_seed: {}, stake_ref: {}, builder: {}, tier: {}, committed_rate_bits_per_sec: {}, source_slot: {}, relayer: {}, feed_key: {}",
+            "account_type: {}, owner: {}, bump_seed: {}, stake_ref: {}, builder: {}, tier: {}, committed_rate_bits_per_sec: {}, source_slot: {}, relayer: {}, feed_key: {}, groups_created: {}",
             self.account_type,
             self.owner,
             self.bump_seed,
@@ -140,7 +145,8 @@ impl fmt::Display for StakeMirror {
             self.committed_rate_bits_per_sec,
             self.source_slot,
             self.relayer,
-            self.feed_key
+            self.feed_key,
+            self.groups_created
         )
     }
 }
@@ -161,6 +167,7 @@ impl TryFrom<&[u8]> for StakeMirror {
             source_slot: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             relayer: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             feed_key: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            groups_created: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::StakeMirror {
@@ -225,6 +232,7 @@ mod tests {
             source_slot: 123_456,
             relayer: Pubkey::new_unique(),
             feed_key: Pubkey::default(),
+            groups_created: 0,
         }
     }
 

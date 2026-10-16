@@ -37,6 +37,7 @@ impl CreateMulticastGroupCommand {
                     max_bandwidth: self.max_bandwidth,
                     owner: self.owner,
                     use_onchain_allocation: true,
+                    stake_ref: Pubkey::default(),
                 },
             ))
             .map(|sig| (sig, pda_pubkey))
@@ -74,6 +75,7 @@ mod tests {
                 max_bandwidth: 1000,
                 owner,
                 use_onchain_allocation: true,
+                stake_ref: Pubkey::default(),
             },
         );
         client

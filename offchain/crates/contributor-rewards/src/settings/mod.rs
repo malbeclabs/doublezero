@@ -7,7 +7,6 @@ use std::{fmt, net::SocketAddr, path::Path};
 use anyhow::{Context, Result};
 use aws::{AwsSettings, StorageBackend};
 use borsh::{BorshDeserialize, BorshSerialize};
-use chrono::{Datelike, NaiveDate};
 use config::{Config as ConfigBuilder, Environment, File};
 use network::Network;
 use serde::{Deserialize, Serialize};
@@ -201,33 +200,14 @@ pub struct SchedulerSettings {
     /// Maximum time to wait for grace period in seconds (default: 21600 = 6 hours)
     #[serde(default = "default_grace_period_max_wait_seconds")]
     pub grace_period_max_wait_seconds: u64,
-    /// First UTC month, as "YYYY-MM", that the worker finalizes and pays. While
-    /// it is set, the worker also records DZ epoch end times. Unset disables both.
+    /// Finalize and pay the previous UTC month's contributor rewards, recording
+    /// DZ epoch end times to calculate it. Disabled by default.
     #[serde(default)]
-    pub monthly_first_month: Option<String>,
+    pub enable_monthly_distribution: bool,
 }
 
 fn default_grace_period_max_wait_seconds() -> u64 {
     21600
-}
-
-impl SchedulerSettings {
-    /// The year and month `monthly_first_month` names, if it is set.
-    pub fn try_monthly_first_month(&self) -> Result<Option<(u16, u8)>> {
-        let Some(first_month) = &self.monthly_first_month else {
-            return Ok(None);
-        };
-
-        let first_day = NaiveDate::parse_from_str(&format!("{first_month}-01"), "%Y-%m-%d")
-            .with_context(|| {
-                format!("Scheduler monthly_first_month {first_month:?} is not a YYYY-MM month")
-            })?;
-        let year = u16::try_from(first_day.year()).with_context(|| {
-            format!("Scheduler monthly_first_month {first_month:?} is out of range")
-        })?;
-
-        Ok(Some((year, first_day.month() as u8)))
-    }
 }
 
 /// Metrics configuration for Prometheus
@@ -555,7 +535,7 @@ public_latency_multiplier = 1.0
     }
 
     #[test]
-    fn test_monthly_first_month_is_unset_by_default() {
+    fn test_monthly_distribution_is_disabled_by_default() {
         let _guard = ENV_LOCK.lock().unwrap();
         clear_demand_env();
         let _cleanup = DemandEnvCleanup;
@@ -563,36 +543,6 @@ public_latency_multiplier = 1.0
 
         let settings = Settings::from_path(&path).unwrap();
 
-        assert_eq!(settings.scheduler.try_monthly_first_month().unwrap(), None);
-    }
-
-    #[test]
-    fn test_monthly_first_month_parses_a_year_and_month() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        clear_demand_env();
-        let _cleanup = DemandEnvCleanup;
-        let path = write_config(&base_config(r#"monthly_first_month = "2026-11""#));
-
-        let settings = Settings::from_path(&path).unwrap();
-
-        assert_eq!(
-            settings.scheduler.try_monthly_first_month().unwrap(),
-            Some((2026, 11))
-        );
-    }
-
-    #[test]
-    fn test_monthly_first_month_refuses_anything_but_a_month() {
-        let _guard = ENV_LOCK.lock().unwrap();
-        clear_demand_env();
-        let _cleanup = DemandEnvCleanup;
-
-        for first_month in ["2026-13", "2026/11", "2026-11-01", "-2026-11", "70000-01"] {
-            let path = write_config(&base_config(&format!(
-                r#"monthly_first_month = "{first_month}""#
-            )));
-
-            assert!(Settings::from_path(&path).is_err(), "{first_month}");
-        }
+        assert!(!settings.scheduler.enable_monthly_distribution);
     }
 }

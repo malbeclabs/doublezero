@@ -1,9 +1,10 @@
 //! Finalizes each month's contributor rewards root and pays its leaves.
 
-use std::{collections::HashSet, iter::successors, sync::Mutex};
+use std::{collections::HashSet, sync::Mutex};
 
 use anyhow::{Context, Result, ensure};
 use chrono::{DateTime, Datelike, Utc};
+use doublezero_program_tools::PrecomputedDiscriminator;
 use doublezero_revenue_distribution::{
     instruction::{
         RevenueDistributionInstructionData,
@@ -25,6 +26,11 @@ use doublezero_solana_sdk::{
     environment_2z_token_mint_key,
     revenue_distribution::{ID, try_is_processed_leaf},
     try_build_instruction,
+};
+use solana_account_decoder::UiAccountEncoding;
+use solana_client::{
+    rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
+    rpc_filter::{Memcmp, RpcFilterType},
 };
 use solana_sdk::{epoch_schedule::EpochSchedule, pubkey::Pubkey};
 use svm_hash::{
@@ -71,32 +77,68 @@ pub fn month_action(distribution: Option<&MonthlyContributorDistribution>) -> Mo
     }
 }
 
-/// Every month from `first_month` through the last one to end before `now`,
-/// oldest first.
-pub fn ended_months(first_month: (u16, u8), now: DateTime<Utc>) -> Vec<(u16, u8)> {
-    successors(Some(first_month), |&(year, month)| match month {
-        12 => year.checked_add(1).map(|year| (year, 1)),
-        _ => Some((year, month + 1)),
-    })
-    .take_while(|&(year, month)| (i32::from(year), u32::from(month)) < (now.year(), now.month()))
-    .collect()
+pub fn try_previous_month(now: DateTime<Utc>) -> Result<(u16, u8)> {
+    let (year, month) = match now.month() {
+        1 => (now.year() - 1, 12),
+        month => (now.year(), month - 1),
+    };
+    let year = u16::try_from(year).with_context(|| format!("Year {year} is out of range"))?;
+
+    Ok((year, month as u8))
 }
 
-/// Read each month's `MonthlyContributorDistribution`, `None` where it does not
-/// exist.
+/// Read every month's `MonthlyContributorDistribution`.
 pub async fn try_fetch_monthly_distributions(
     connection: &SolanaConnection,
-    months: &[(u16, u8)],
-) -> Result<Vec<Option<ZeroCopyAccountOwnedData<MonthlyContributorDistribution>>>> {
-    let distribution_keys = months
-        .iter()
-        .map(|&(year, month)| MonthlyContributorDistribution::find_address(year, month).0)
-        .collect::<Vec<_>>();
+) -> Result<Vec<MonthlyContributorDistribution>> {
+    let config = RpcProgramAccountsConfig {
+        filters: Some(vec![RpcFilterType::Memcmp(Memcmp::new_raw_bytes(
+            0,
+            MonthlyContributorDistribution::discriminator_slice().to_vec(),
+        ))]),
+        account_config: RpcAccountInfoConfig {
+            encoding: Some(UiAccountEncoding::Base64),
+            ..Default::default()
+        },
+        ..Default::default()
+    };
 
     connection
-        .try_fetch_multiple_zero_copy_data(&distribution_keys)
+        .get_program_accounts_with_config(&ID, config)
         .await
-        .context("Failed to fetch the monthly contributor distributions")
+        .context("Failed to fetch the monthly contributor distributions")?
+        .into_iter()
+        .map(|(distribution_key, account)| {
+            ZeroCopyAccountOwnedData::<MonthlyContributorDistribution>::from_account(&account)
+                .map(|distribution| *distribution.mucked_data)
+                .with_context(|| {
+                    format!("Failed to decode monthly contributor distribution {distribution_key}")
+                })
+        })
+        .collect()
+}
+
+/// Split the months into `previous_month` and the older months, oldest first,
+/// dropping any later month.
+pub fn split_previous_month(
+    distributions: Vec<MonthlyContributorDistribution>,
+    previous_month: (u16, u8),
+) -> (
+    Option<MonthlyContributorDistribution>,
+    Vec<MonthlyContributorDistribution>,
+) {
+    let (mut previous, mut older) = (None, Vec::new());
+    for distribution in distributions {
+        let month = (distribution.year, distribution.month);
+        if month == previous_month {
+            previous = Some(distribution);
+        } else if month < previous_month {
+            older.push(distribution);
+        }
+    }
+    older.sort_by_key(|distribution| (distribution.year, distribution.month));
+
+    (previous, older)
 }
 
 pub struct MonthlyContext<'a> {
@@ -506,18 +548,44 @@ mod tests {
     }
 
     #[test]
-    fn test_ended_months_run_through_the_month_before_now() {
-        let now = Utc.with_ymd_and_hms(2027, 2, 15, 0, 0, 0).unwrap();
-        assert_eq!(
-            ended_months((2026, 11), now),
-            [(2026, 11), (2026, 12), (2027, 1)]
-        );
-        assert!(ended_months((2027, 2), now).is_empty());
-        assert!(ended_months((2027, 3), now).is_empty());
+    fn test_previous_month_changes_at_midnight_on_the_first() {
+        let september_30 = Utc.with_ymd_and_hms(2026, 9, 30, 23, 59, 59).unwrap();
+        let october_1 = Utc.with_ymd_and_hms(2026, 10, 1, 0, 0, 0).unwrap();
+        assert_eq!(try_previous_month(september_30).unwrap(), (2026, 8));
+        assert_eq!(try_previous_month(october_1).unwrap(), (2026, 9));
 
-        // The first second of January ends December.
-        let now = Utc.with_ymd_and_hms(2027, 1, 1, 0, 0, 0).unwrap();
-        assert_eq!(ended_months((2026, 12), now), [(2026, 12)]);
+        let january_1 = Utc.with_ymd_and_hms(2027, 1, 1, 0, 0, 0).unwrap();
+        assert_eq!(try_previous_month(january_1).unwrap(), (2026, 12));
+    }
+
+    #[test]
+    fn test_in_november_october_is_acted_on_and_older_months_are_left() {
+        let distribution = |year, month| {
+            let mut distribution = MonthlyContributorDistribution::default();
+            distribution.year = year;
+            distribution.month = month;
+            distribution
+        };
+
+        assert_eq!(
+            split_previous_month(
+                vec![
+                    distribution(2026, 9),
+                    distribution(2026, 11),
+                    distribution(2026, 10),
+                    distribution(2025, 12),
+                ],
+                (2026, 10),
+            ),
+            (
+                Some(distribution(2026, 10)),
+                vec![distribution(2025, 12), distribution(2026, 9)],
+            )
+        );
+        assert_eq!(
+            split_previous_month(vec![distribution(2026, 9)], (2026, 10)),
+            (None, vec![distribution(2026, 9)])
+        );
     }
 
     #[test]

@@ -149,13 +149,13 @@ pub async fn try_record_epoch_ends(
     prefix: &[u8],
     schedule: &EpochSchedule,
     finalized_epoch: u64,
-    first_month_start: i64,
+    month_start: i64,
 ) -> Result<usize> {
     let accountant_key = accountant_signer.pubkey();
 
     let epoch_ends = try_find_unrecorded_epoch_ends(
         finalized_epoch,
-        first_month_start,
+        month_start,
         async |epoch| {
             let epoch_end =
                 try_fetch_epoch_end_record(dz_connection, &accountant_key, prefix, epoch).await?;
@@ -360,11 +360,11 @@ fn is_valid_epoch_end(schedule: &EpochSchedule, epoch: u64, epoch_end: &EpochEnd
 /// record, returned oldest first.
 ///
 /// The walk stops at the newest recorded epoch. On a first run it stops instead
-/// at the first epoch ending before `first_month_start`, which selecting the
-/// first month needs, or at the RPC's history floor.
+/// at the first epoch ending before `month_start`, which selecting the month
+/// needs, or at the RPC's history floor.
 async fn try_find_unrecorded_epoch_ends(
     finalized_epoch: u64,
-    first_month_start: i64,
+    month_start: i64,
     is_recorded: impl AsyncFn(u64) -> Result<bool>,
     find_epoch_end: impl AsyncFn(u64) -> Result<EpochEnd>,
 ) -> Result<Vec<EpochEnd>> {
@@ -392,7 +392,7 @@ async fn try_find_unrecorded_epoch_ends(
         };
         epoch_ends.push(epoch_end);
 
-        if epoch_end.end_time < first_month_start {
+        if epoch_end.end_time < month_start {
             break;
         }
     }
@@ -578,13 +578,13 @@ mod tests {
     // block times below `history_floor_slot` are cleaned up.
     async fn try_find_epoch_ends_to_record(
         finalized_epoch: u64,
-        first_month_start: i64,
+        month_start: i64,
         recorded_epochs: &[u64],
         history_floor_slot: u64,
     ) -> Result<Vec<u64>> {
         let epoch_ends = try_find_unrecorded_epoch_ends(
             finalized_epoch,
-            first_month_start,
+            month_start,
             async |epoch| Ok(recorded_epochs.contains(&epoch)),
             async |epoch| {
                 try_find_epoch_end(&schedule(), epoch, &async |slot| {
@@ -835,15 +835,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_record_stops_at_the_epoch_before_the_first_month() {
-        // Epoch 3 ends at 127, the last end before the first month starts at 128.
+    async fn test_record_stops_at_the_epoch_before_the_month() {
+        // Epoch 3 ends at 127, the last end before the month starts at 128.
         assert_eq!(
             try_find_epoch_ends_to_record(10, 128, &[], 0)
                 .await
                 .unwrap(),
             [3, 4, 5, 6, 7, 8]
         );
-        // A first month that has not started records only the newest epoch.
+        // A month that starts after every epoch records only the newest epoch.
         assert_eq!(
             try_find_epoch_ends_to_record(10, 1_000, &[], 0)
                 .await

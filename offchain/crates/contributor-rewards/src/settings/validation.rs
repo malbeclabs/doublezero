@@ -171,8 +171,6 @@ pub fn validate_config(settings: &Settings) -> Result<()> {
         );
     }
 
-    settings.scheduler.try_monthly_first_month()?;
-
     if let Some(metrics) = &settings.metrics
         && !validate_socket_addr(&metrics.addr)
     {
@@ -264,7 +262,7 @@ mod tests {
                 enable_dry_run: false,
                 storage_backend: StorageBackend::LocalFile,
                 grace_period_max_wait_seconds: 21600,
-                monthly_first_month: None,
+                enable_monthly_distribution: false,
             },
             metrics: Some(MetricsSettings {
                 addr: SocketAddr::from_str("127.0.0.1:9090").unwrap(),

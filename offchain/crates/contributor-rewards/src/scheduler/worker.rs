@@ -103,16 +103,16 @@ impl ScheduleWorker {
             );
         }
 
-        let monthly_first_month = self
+        let enable_monthly_distribution = self
             .orchestrator
             .settings
             .scheduler
-            .try_monthly_first_month()?;
-        info!("  Monthly first month: {monthly_first_month:?}");
+            .enable_monthly_distribution;
+        info!("  Monthly distribution: {enable_monthly_distribution}");
 
         // Every monthly step writes, so a dry run skips them all.
-        let monthly_wallet = match monthly_first_month {
-            Some(_) if !self.dry_run => Some(Wallet {
+        let monthly_wallet = if enable_monthly_distribution && !self.dry_run {
+            Some(Wallet {
                 connection: SolanaConnection::new(
                     self.orchestrator.settings.rpc.solana_write_url.clone(),
                 ),
@@ -121,8 +121,9 @@ impl ScheduleWorker {
                 verbose: false,
                 fee_payer: None,
                 dry_run: false,
-            }),
-            _ => None,
+            })
+        } else {
+            None
         };
         let warned_skips = Mutex::new(HashSet::new());
 
@@ -277,8 +278,8 @@ impl ScheduleWorker {
                 }
             }
 
-            if let (Some(wallet), Some(first_month)) = (&monthly_wallet, monthly_first_month) {
-                self.try_process_monthly(&mut state, wallet, first_month, &warned_skips)
+            if let Some(wallet) = &monthly_wallet {
+                self.try_process_monthly(&mut state, wallet, &warned_skips)
                     .await?;
             }
         }
@@ -286,19 +287,15 @@ impl ScheduleWorker {
         Ok(())
     }
 
-    /// Run the monthly steps for the months from `first_month` on. A tick in
-    /// which any of them fails counts toward `consecutive_monthly_failures`.
+    /// Run the monthly steps for the previous month. A tick in which any of them
+    /// fails counts toward `consecutive_monthly_failures`.
     async fn try_process_monthly(
         &self,
         state: &mut SchedulerState,
         wallet: &Wallet,
-        first_month: (u16, u8),
         warned_skips: &Mutex<HashSet<(u16, u8, Pubkey)>>,
     ) -> Result<()> {
-        if self
-            .run_monthly_steps(wallet, first_month, warned_skips)
-            .await
-        {
+        if self.run_monthly_steps(wallet, warned_skips).await {
             state.mark_monthly_failure();
 
             // Alert every 10 consecutive failures for Grafana monitoring
@@ -319,7 +316,6 @@ impl ScheduleWorker {
     async fn run_monthly_steps(
         &self,
         wallet: &Wallet,
-        (first_year, first_month): (u16, u8),
         warned_skips: &Mutex<HashSet<(u16, u8, Pubkey)>>,
     ) -> bool {
         let settings = &self.orchestrator.settings;
@@ -341,12 +337,13 @@ impl ScheduleWorker {
                 .await?
                 .epoch;
             let schedule = dz_connection.get_epoch_schedule().await?;
-            let (first_month_start, _) = monthly::try_month_bounds(first_year, first_month)?;
+            let (year, month) = monthly_distribute::try_previous_month(Utc::now())?;
+            let (month_start, _) = monthly::try_month_bounds(year, month)?;
 
-            Ok((finalized_epoch, schedule, first_month_start))
+            Ok((finalized_epoch, schedule, (year, month), month_start))
         })
         .await;
-        let (finalized_epoch, schedule, first_month_start) = match context {
+        let (finalized_epoch, schedule, (year, month), month_start) = match context {
             Ok(context) => context,
             Err(e) => return track_monthly_step("context", "every month", Err(e)),
         };
@@ -358,7 +355,7 @@ impl ScheduleWorker {
                 &prefix,
                 &schedule,
                 finalized_epoch,
-                first_month_start,
+                month_start,
             )
             .await
         })
@@ -370,15 +367,31 @@ impl ScheduleWorker {
             recorded.map(|count| count > 0),
         );
 
-        let months = monthly_distribute::ended_months((first_year, first_month), Utc::now());
         let distributions = try_with_retries("read", async || {
-            monthly_distribute::try_fetch_monthly_distributions(&wallet.connection, &months).await
+            monthly_distribute::try_fetch_monthly_distributions(&wallet.connection).await
         })
         .await;
         let distributions = match distributions {
             Ok(distributions) => distributions,
             Err(e) => return track_monthly_step("read", "every month", Err(e)),
         };
+        let (distribution, older_distributions) =
+            monthly_distribute::split_previous_month(distributions, (year, month));
+
+        // A month missed while it was the previous one needs someone to find out why.
+        for older_distribution in &older_distributions {
+            let label = format!(
+                "{}-{:02}",
+                older_distribution.year, older_distribution.month
+            );
+            match monthly_distribute::month_action(Some(older_distribution)) {
+                MonthAction::Idle(_) => {}
+                MonthAction::Finalize => {
+                    warn!("Monthly {label} is collected but not finalized. Finalize it by hand")
+                }
+                MonthAction::Pay => warn!("Monthly {label} has unpaid leaves. Pay them by hand"),
+            }
+        }
 
         let context = MonthlyContext {
             settings,
@@ -387,34 +400,30 @@ impl ScheduleWorker {
             schedule: &schedule,
             finalized_epoch,
         };
+        let label = format!("{year}-{month:02}");
 
-        // Oldest first, and one month's failure does not stop the others.
-        for (&(year, month), distribution) in months.iter().zip(&distributions) {
-            let label = format!("{year}-{month:02}");
+        let (step, outcome) = match monthly_distribute::month_action(distribution.as_ref()) {
+            MonthAction::Idle(reason) => {
+                debug!("Monthly {label}: {reason}");
+                return has_failed;
+            }
+            MonthAction::Finalize => (
+                "finalize",
+                try_with_retries("finalize", async || {
+                    context.try_finalize_month(year, month).await
+                })
+                .await,
+            ),
+            MonthAction::Pay => (
+                "pay",
+                try_with_retries("pay", async || {
+                    context.try_pay_month(year, month, warned_skips).await
+                })
+                .await,
+            ),
+        };
 
-            let (step, outcome) = match monthly_distribute::month_action(distribution.as_deref()) {
-                MonthAction::Idle(reason) => {
-                    debug!("Monthly {label}: {reason}");
-                    continue;
-                }
-                MonthAction::Finalize => (
-                    "finalize",
-                    try_with_retries("finalize", async || {
-                        context.try_finalize_month(year, month).await
-                    })
-                    .await,
-                ),
-                MonthAction::Pay => (
-                    "pay",
-                    try_with_retries("pay", async || {
-                        context.try_pay_month(year, month, warned_skips).await
-                    })
-                    .await,
-                ),
-            };
-
-            has_failed |= track_monthly_step(step, &label, outcome);
-        }
+        has_failed |= track_monthly_step(step, &label, outcome);
 
         has_failed
     }

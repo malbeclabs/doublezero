@@ -4,6 +4,8 @@ use solana_sdk::pubkey::Pubkey;
 
 pub const PROGRAM_CONFIG_SEED_PREFIX: &[u8] = b"program_config";
 pub const VALIDATOR_CLIENT_REWARDS_SEED_PREFIX: &[u8] = b"validator_client_rewards";
+pub const FEED_PUBLISHER_REWARDS_SEED_PREFIX: &[u8] = b"feed_publisher_rewards";
+pub const FEED_PUBLISHERS_REWARD_TOKEN_SEED_PREFIX: &[u8] = b"feed_publishers_reward_token";
 
 /// The most a manager may set a client's share to, in basis points.
 pub const MAX_VALIDATOR_CLIENT_REWARDS_PROPORTION_BPS: u16 = 3_500;
@@ -18,6 +20,20 @@ pub fn find_validator_client_rewards_address(client_id: u16) -> (Pubkey, u8) {
             VALIDATOR_CLIENT_REWARDS_SEED_PREFIX,
             &client_id.to_le_bytes(),
         ],
+        &crate::feed_subscription::ID,
+    )
+}
+
+pub fn find_feed_publisher_rewards_address(node_id: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[FEED_PUBLISHER_REWARDS_SEED_PREFIX, node_id.as_ref()],
+        &crate::feed_subscription::ID,
+    )
+}
+
+pub fn find_feed_publishers_reward_token_address(mint_key: &Pubkey) -> (Pubkey, u8) {
+    Pubkey::find_program_address(
+        &[FEED_PUBLISHERS_REWARD_TOKEN_SEED_PREFIX, mint_key.as_ref()],
         &crate::feed_subscription::ID,
     )
 }
@@ -43,6 +59,30 @@ impl ProgramConfig {
 
 impl PrecomputedDiscriminator for ProgramConfig {
     const DISCRIMINATOR: Discriminator<8> = Discriminator::new_sha2(b"dz::account::program_config");
+}
+
+// ---------------------------------------------------------------------------
+// FeedPublishersRewardToken: only the mint and the flags, which is all the CLI reads.
+// ---------------------------------------------------------------------------
+
+const FEED_PUBLISHERS_REWARD_TOKEN_FLAG_IS_ENABLED_BIT: u64 = 1 << 0;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Pod, Zeroable)]
+#[repr(C)]
+pub struct FeedPublishersRewardToken {
+    pub mint_key: Pubkey,
+    flags: u64,
+}
+
+impl FeedPublishersRewardToken {
+    pub fn is_enabled(&self) -> bool {
+        self.flags & FEED_PUBLISHERS_REWARD_TOKEN_FLAG_IS_ENABLED_BIT != 0
+    }
+}
+
+impl PrecomputedDiscriminator for FeedPublishersRewardToken {
+    const DISCRIMINATOR: Discriminator<8> =
+        Discriminator::new_sha2(b"dz::account::feed_publishers_reward_token");
 }
 
 // ---------------------------------------------------------------------------
@@ -90,6 +130,10 @@ mod tests {
             ValidatorClientRewards::discriminator_slice(),
             &[13, 180, 185, 41, 202, 245, 32, 184]
         );
+        assert_eq!(
+            FeedPublishersRewardToken::discriminator_slice(),
+            &[104, 234, 187, 195, 22, 11, 249, 89]
+        );
     }
 
     #[test]
@@ -110,6 +154,30 @@ mod tests {
         let (config, _) =
             checked_from_bytes_with_discriminator::<ProgramConfig>(&paused_data).unwrap();
         assert!(config.is_paused());
+    }
+
+    #[test]
+    fn test_feed_publishers_reward_token_reads_the_enabled_bit() {
+        // The program's layout starts with the mint, then the flags with the enabled bit at 0.
+        let account_data = |flags: u64| {
+            let mut data = FeedPublishersRewardToken::discriminator_slice().to_vec();
+            data.extend_from_slice(&[4; 32]);
+            data.extend_from_slice(&flags.to_le_bytes());
+            data
+        };
+
+        let disabled_data = account_data(0b0010);
+        let (reward_token, _) =
+            checked_from_bytes_with_discriminator::<FeedPublishersRewardToken>(&disabled_data)
+                .unwrap();
+        assert_eq!(reward_token.mint_key, Pubkey::new_from_array([4; 32]));
+        assert!(!reward_token.is_enabled());
+
+        let enabled_data = account_data(0b0011);
+        let (reward_token, _) =
+            checked_from_bytes_with_discriminator::<FeedPublishersRewardToken>(&enabled_data)
+                .unwrap();
+        assert!(reward_token.is_enabled());
     }
 
     #[test]

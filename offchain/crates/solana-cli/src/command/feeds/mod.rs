@@ -1,3 +1,4 @@
+pub mod publisher_rewards;
 pub mod validator_client_rewards;
 
 use std::io::Write;
@@ -20,6 +21,8 @@ impl FeedsCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum FeedsSubcommand {
+    /// Publisher rewards: set where a publisher is paid.
+    PublisherRewards(publisher_rewards::PublisherRewardsCommand),
     /// Validator client rewards: manage a client's share.
     ValidatorClientRewards(validator_client_rewards::ValidatorClientRewardsCommand),
 }
@@ -27,6 +30,7 @@ pub enum FeedsSubcommand {
 impl FeedsSubcommand {
     pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
         match self {
+            Self::PublisherRewards(command) => command.execute(ctx, out).await,
             Self::ValidatorClientRewards(command) => command.execute(ctx, out).await,
         }
     }

@@ -1,9 +1,12 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Mutex};
 
 use anyhow::{Result, ensure};
 use chrono::DateTime;
 use clap::Subcommand;
-use doublezero_solana_client_tools::rpc::{DoubleZeroLedgerConnection, SolanaConnection};
+use doublezero_solana_client_tools::{
+    payer::Wallet,
+    rpc::{DoubleZeroLedgerConnection, SolanaConnection},
+};
 use doublezero_solana_sdk::revenue_distribution::{
     fetch::{SolConversionState, try_fetch_config, try_fetch_distribution},
     types::UnitShare32,
@@ -17,10 +20,12 @@ use tracing::{info, warn};
 
 use crate::{
     calculator::{
+        keypair_loader::load_keypair,
         ledger_operations::{
             RewardEntry, WriteResult, format_unit_share_proportion, try_fetch_contributor_labels,
         },
         monthly,
+        monthly_distribute::{self, MonthAction, MonthlyContext},
         orchestrator::Orchestrator,
     },
     cli::snapshot::CompleteSnapshot,
@@ -118,6 +123,32 @@ pub enum RewardsCommands {
         /// Output as JSON instead of tables
         #[arg(long)]
         json: bool,
+    },
+    #[command(
+        about = "Finalize and distribute one month's contributor rewards by hand",
+        after_help = r#"Examples:
+    # Simulate finalizing and distributing September 2026
+    distribute-monthly-rewards --year 2026 --month 9 -k keypair.json --dry-run
+
+    # Finalize and distribute September 2026
+    distribute-monthly-rewards --year 2026 --month 9 -k keypair.json"#
+    )]
+    DistributeMonthlyRewards {
+        /// UTC calendar year
+        #[arg(long, value_name = "YEAR")]
+        year: u16,
+
+        /// UTC calendar month, 1 through 12
+        #[arg(long, value_name = "MONTH", value_parser = clap::value_parser!(u8).range(1..=12))]
+        month: u8,
+
+        /// Simulate transactions and write nothing
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Path to the rewards accountant's keypair file
+        #[arg(short = 'k', long, value_name = "FILE")]
+        keypair: Option<PathBuf>,
     },
     #[command(
         about = "Read and display telemetry aggregate statistics from the ledger",
@@ -540,6 +571,50 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
                 println!("{table}\n");
             }
             println!("Total units: {total_units}");
+
+            Ok(())
+        }
+        RewardsCommands::DistributeMonthlyRewards {
+            year,
+            month,
+            dry_run,
+            keypair,
+        } => {
+            let settings = &orchestrator.settings;
+            let wallet = Wallet {
+                connection: SolanaConnection::new(settings.rpc.solana_write_url.clone()),
+                signer: load_keypair(&keypair)?,
+                compute_unit_price_ix: None,
+                verbose: false,
+                fee_payer: None,
+                dry_run,
+            };
+            let dz_connection = DoubleZeroLedgerConnection::new(settings.rpc.dz_url.clone());
+            let context = MonthlyContext::try_new(settings, &wallet, &dz_connection).await?;
+            let label = format!("{year}-{month:02}");
+
+            let distribution = context.try_fetch_monthly_distribution(year, month).await?;
+            match monthly_distribute::month_action(Some(&distribution)) {
+                MonthAction::Idle(reason) => {
+                    info!("Nothing to do for {label}: {reason}");
+                    return Ok(());
+                }
+                MonthAction::Finalize => {
+                    ensure!(
+                        context.try_finalize_month(year, month).await?,
+                        "{label} has not closed, since no DZ epoch has ended after it"
+                    );
+                    if dry_run {
+                        info!("Dry run: {label} is distributed once it is finalized");
+                        return Ok(());
+                    }
+                }
+                MonthAction::Distribute => {}
+            }
+
+            context
+                .try_distribute_month(year, month, &Mutex::default())
+                .await?;
 
             Ok(())
         }

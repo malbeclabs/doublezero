@@ -1,4 +1,4 @@
-//! Finalizes each month's contributor rewards root and pays its leaves.
+//! Finalizes each month's contributor rewards root and distributes its leaves.
 
 use std::{collections::HashSet, sync::Mutex};
 
@@ -32,6 +32,7 @@ use solana_client::{
     rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig},
     rpc_filter::{Memcmp, RpcFilterType},
 };
+use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{epoch_schedule::EpochSchedule, pubkey::Pubkey};
 use svm_hash::{
     merkle::{MerkleProof, merkle_root_from_indexed_pod_leaves},
@@ -42,6 +43,7 @@ use tracing::{debug, info, warn};
 use crate::{
     calculator::{
         distribute::{LeafPayment, try_pay_leaf},
+        ledger_operations::get_rewards_accountant,
         monthly::{self, MonthlyRewards},
         recorder::try_write_record_confirmed,
     },
@@ -52,21 +54,25 @@ use crate::{
 // new record rather than a resize of the old one.
 const MONTHLY_REWARDS_RECORD_SEED: &[u8] = b"monthly_rewards";
 
+// A contributor can set up its recipients late, so the worker distributes the
+// last three months, the window in which the feed program keeps unclaimed rewards.
+const DISTRIBUTED_MONTHS: u32 = 3;
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum MonthAction {
     Idle(&'static str),
     Finalize,
-    Pay,
+    Distribute,
 }
 
-/// What the worker does with a month, given its `MonthlyContributorDistribution`.
+/// What a month needs next, given its `MonthlyContributorDistribution`.
 pub fn month_action(distribution: Option<&MonthlyContributorDistribution>) -> MonthAction {
     match distribution {
         Some(distribution) if distribution.is_rewards_calculation_finalized() => {
             if distribution.are_all_rewards_distributed() {
                 MonthAction::Idle("every leaf is paid")
             } else {
-                MonthAction::Pay
+                MonthAction::Distribute
             }
         }
         // A month whose bucket expects no feed is never collected, so it is
@@ -118,38 +124,84 @@ pub async fn try_fetch_monthly_distributions(
         .collect()
 }
 
-/// Split the months into `previous_month` and the older months, oldest first,
-/// dropping any later month.
-pub fn split_previous_month(
-    distributions: Vec<MonthlyContributorDistribution>,
-    previous_month: (u16, u8),
-) -> (
-    Option<MonthlyContributorDistribution>,
-    Vec<MonthlyContributorDistribution>,
-) {
-    let (mut previous, mut older) = (None, Vec::new());
-    for distribution in distributions {
-        let month = (distribution.year, distribution.month);
-        if month == previous_month {
-            previous = Some(distribution);
-        } else if month < previous_month {
-            older.push(distribution);
-        }
-    }
-    older.sort_by_key(|distribution| (distribution.year, distribution.month));
+#[derive(Debug, PartialEq, Eq)]
+pub enum MonthStep {
+    Finalize,
+    Distribute,
+    FinalizeByHand,
+    DistributeByHand,
+}
 
-    (previous, older)
+/// The step the worker takes with each month that needs one, oldest first. It
+/// finalizes only `previous_month` and distributes the last `DISTRIBUTED_MONTHS`
+/// through it. Any other month with work left is for a manual run.
+pub fn plan_months(
+    distributions: &[MonthlyContributorDistribution],
+    previous_month: (u16, u8),
+) -> Vec<((u16, u8), MonthStep)> {
+    let month_number = |(year, month): (u16, u8)| u32::from(year) * 12 + u32::from(month);
+
+    let mut steps = distributions
+        .iter()
+        .filter_map(|distribution| {
+            let month = (distribution.year, distribution.month);
+            let months_ago = month_number(previous_month).checked_sub(month_number(month))?;
+            let step = match month_action(Some(distribution)) {
+                MonthAction::Idle(_) => return None,
+                MonthAction::Finalize if months_ago == 0 => MonthStep::Finalize,
+                MonthAction::Finalize => MonthStep::FinalizeByHand,
+                MonthAction::Distribute if months_ago < DISTRIBUTED_MONTHS => MonthStep::Distribute,
+                MonthAction::Distribute => MonthStep::DistributeByHand,
+            };
+
+            Some((month, step))
+        })
+        .collect::<Vec<_>>();
+    steps.sort_by_key(|&(month, _)| month);
+
+    steps
 }
 
 pub struct MonthlyContext<'a> {
     pub settings: &'a Settings,
     pub wallet: &'a Wallet,
     pub dz_connection: &'a DoubleZeroLedgerConnection,
-    pub schedule: &'a EpochSchedule,
+    pub schedule: EpochSchedule,
     pub finalized_epoch: u64,
 }
 
-impl MonthlyContext<'_> {
+impl<'a> MonthlyContext<'a> {
+    /// Check that `wallet` signs as the rewards accountant, then read the DZ
+    /// epoch state the monthly steps need.
+    pub async fn try_new(
+        settings: &'a Settings,
+        wallet: &'a Wallet,
+        dz_connection: &'a DoubleZeroLedgerConnection,
+    ) -> Result<Self> {
+        // Records are read at the accountant's addresses, so writing them under
+        // any other key would leave them unread.
+        let accountant_key = get_rewards_accountant(&wallet.connection, None).await?;
+        ensure!(
+            wallet.pubkey() == accountant_key,
+            "Keypair {} is not the rewards accountant {accountant_key}",
+            wallet.pubkey()
+        );
+
+        let finalized_epoch = dz_connection
+            .get_epoch_info_with_commitment(CommitmentConfig::finalized())
+            .await?
+            .epoch;
+        let schedule = dz_connection.get_epoch_schedule().await?;
+
+        Ok(Self {
+            settings,
+            wallet,
+            dz_connection,
+            schedule,
+            finalized_epoch,
+        })
+    }
+
     /// Finalize a collected month once DZ epochs have closed it: recompute its
     /// shares, store them on the DZ Ledger under their root, then post and
     /// finalize that root in one transaction. Returns `false` while the month
@@ -158,7 +210,7 @@ impl MonthlyContext<'_> {
         let (_, month_end) = monthly::try_month_bounds(year, month)?;
         if !monthly::try_is_month_closed(
             self.dz_connection,
-            self.schedule,
+            &self.schedule,
             self.finalized_epoch,
             month_end,
         )
@@ -186,7 +238,8 @@ impl MonthlyContext<'_> {
                 try_verify_month_record(&record, year, month, &merkle_root, total_contributors)
                     .is_ok()
             });
-        if !is_stored {
+        // A dry run only simulates the transaction below, so it stores nothing.
+        if !is_stored && !self.wallet.dry_run {
             try_write_record_confirmed(
                 self.dz_connection,
                 &self.wallet.signer,
@@ -249,12 +302,12 @@ impl MonthlyContext<'_> {
         Ok(true)
     }
 
-    /// Pay every unpaid leaf of a finalized month from the record its root names,
-    /// and return whether any leaf was paid.
+    /// Distribute every unpaid leaf of a finalized month from the record its
+    /// root names, and return whether any leaf was paid.
     ///
     /// A leaf only its contributor can unblock is skipped, and warned about once
     /// per process through `warned_skips`.
-    pub async fn try_pay_month(
+    pub async fn try_distribute_month(
         &self,
         year: u16,
         month: u8,
@@ -335,14 +388,14 @@ impl MonthlyContext<'_> {
                 warn!("Skipping {label} leaf {leaf_index}: {reason}");
             }
         }
-        if payments.paid_count > 0 && payments.skipped_leaves.is_empty() {
+        if payments.paid_count > 0 && payments.skipped_leaves.is_empty() && !self.wallet.dry_run {
             info!("Every leaf of {label} is paid");
         }
 
         Ok(payments.paid_count > 0)
     }
 
-    async fn try_fetch_monthly_distribution(
+    pub async fn try_fetch_monthly_distribution(
         &self,
         year: u16,
         month: u8,
@@ -507,6 +560,22 @@ mod tests {
         merkle_root_from_indexed_pod_leaves(rewards, Some(RewardShare::LEAF_PREFIX)).unwrap()
     }
 
+    fn collected_month(year: u16, month: u8) -> MonthlyContributorDistribution {
+        let mut distribution = MonthlyContributorDistribution::default();
+        distribution.year = year;
+        distribution.month = month;
+        distribution.set_is_collected(true);
+        distribution
+    }
+
+    fn finalized_month(year: u16, month: u8, unpaid_leaves: u32) -> MonthlyContributorDistribution {
+        let mut distribution = collected_month(year, month);
+        distribution.set_is_rewards_calculation_finalized(true);
+        distribution.total_contributors = 3;
+        distribution.distributed_rewards_count = 3 - unpaid_leaves;
+        distribution
+    }
+
     // The bitmap starts one byte into the remaining data, as it would behind
     // earlier data.
     fn finalized_distribution(
@@ -538,7 +607,7 @@ mod tests {
         distribution.set_is_rewards_calculation_finalized(true);
         distribution.total_contributors = 3;
         distribution.distributed_rewards_count = 2;
-        assert_eq!(month_action(Some(&distribution)), MonthAction::Pay);
+        assert_eq!(month_action(Some(&distribution)), MonthAction::Distribute);
 
         distribution.distributed_rewards_count = 3;
         assert!(matches!(
@@ -559,32 +628,47 @@ mod tests {
     }
 
     #[test]
-    fn test_in_november_october_is_acted_on_and_older_months_are_left() {
-        let distribution = |year, month| {
-            let mut distribution = MonthlyContributorDistribution::default();
-            distribution.year = year;
-            distribution.month = month;
-            distribution
-        };
+    fn test_only_the_previous_month_is_finalized_and_the_last_three_are_distributed() {
+        let mut uncollected = collected_month(2026, 4);
+        uncollected.set_is_collected(false);
+        let distributions = [
+            collected_month(2026, 11),
+            collected_month(2026, 10),
+            collected_month(2026, 9),
+            finalized_month(2026, 8, 1),
+            finalized_month(2026, 7, 1),
+            collected_month(2026, 6),
+            finalized_month(2026, 5, 0),
+            uncollected,
+        ];
 
         assert_eq!(
-            split_previous_month(
-                vec![
-                    distribution(2026, 9),
-                    distribution(2026, 11),
-                    distribution(2026, 10),
-                    distribution(2025, 12),
-                ],
-                (2026, 10),
-            ),
-            (
-                Some(distribution(2026, 10)),
-                vec![distribution(2025, 12), distribution(2026, 9)],
-            )
+            plan_months(&distributions, (2026, 10)),
+            [
+                ((2026, 6), MonthStep::FinalizeByHand),
+                ((2026, 7), MonthStep::DistributeByHand),
+                ((2026, 8), MonthStep::Distribute),
+                ((2026, 9), MonthStep::FinalizeByHand),
+                ((2026, 10), MonthStep::Finalize),
+            ]
         );
+    }
+
+    #[test]
+    fn test_the_distributed_months_cross_the_new_year() {
+        let distributions = [
+            finalized_month(2027, 1, 1),
+            finalized_month(2026, 11, 1),
+            finalized_month(2026, 10, 1),
+        ];
+
         assert_eq!(
-            split_previous_month(vec![distribution(2026, 9)], (2026, 10)),
-            (None, vec![distribution(2026, 9)])
+            plan_months(&distributions, (2027, 1)),
+            [
+                ((2026, 10), MonthStep::DistributeByHand),
+                ((2026, 11), MonthStep::Distribute),
+                ((2027, 1), MonthStep::Distribute),
+            ]
         );
     }
 

@@ -51,13 +51,13 @@ The protocol cannot yet reliably estimate public internet latencies for large tr
 
 ### Monthly distribution
 
-With `scheduler.enable_monthly_distribution` set, and outside a dry run, each scheduler tick acts on the previous UTC month by the state of its `MonthlyContributorDistribution`:
+With `scheduler.enable_monthly_distribution` set, and outside a dry run, each scheduler tick acts on recent UTC months by the state of each one's `MonthlyContributorDistribution`:
 
-- A collected month is finalized once a DoubleZero epoch has ended after it. The scheduler recalculates the month as `calculate-monthly-rewards` does, stores the leaves on the DoubleZero Ledger in a `monthly_rewards` record keyed by the month and its merkle root, then posts and finalizes that root in one transaction.
-- A finalized month has each unpaid leaf paid from that record with `DistributeMonthlyContributorRewards`, creating any missing recipient ATA. A leaf whose contributor has no `ContributorRewards` account or no recipients is skipped with a warning and retried every tick.
+- The previous month is finalized once it is collected and a DoubleZero epoch has ended after it. The scheduler recalculates the month as `calculate-monthly-rewards` does, stores the leaves on the DoubleZero Ledger in a `monthly_rewards` record keyed by the month and its merkle root, then posts and finalizes that root in one transaction.
+- A finalized month among the last three, the previous month and the two before it, has each unpaid leaf distributed from that record with `DistributeMonthlyContributorRewards`, creating any missing recipient ATA. A leaf whose contributor has no `ContributorRewards` account or no recipients is skipped with a warning and retried every tick, so a contributor that sets up its recipients late is still paid.
 - Any other month waits. The scheduler never initializes or collects a month, so a month whose feed bucket is never collected is never finalized.
 
-An older month is left for a manual run, since paying it late needs someone to find out why it was missed. Each tick logs a warning for every older month that is collected but not finalized, or that has unpaid leaves. An older month that is collected but not finalized also counts the tick as failed.
+A month the scheduler no longer acts on is left for a manual run, since acting on it late needs someone to find out why it was missed. Each tick logs a warning for every month before the previous one that is collected but not finalized, which also counts the tick as failed, and for every month before the last three that has unpaid leaves. `distribute-monthly-rewards --year <YEAR> --month <MONTH> -k <KEYPAIR>` runs one month by hand with the steps the scheduler uses: it finalizes the month if it is collected and closed, then distributes its unpaid leaves. The keypair must be the rewards accountant's, and `--dry-run` simulates every transaction and writes nothing.
 
 The scheduler's keypair must be the rewards accountant. A failed step logs an error and increments `doublezero_contributor_rewards_monthly_failure{step}`, and every tenth consecutive failed tick logs another error.
 

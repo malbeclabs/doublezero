@@ -41,9 +41,9 @@ use crate::{
     calculator::{
         DistributionOutcome, DistributionSummary, WriteConfig, distribute,
         keypair_loader::load_keypair,
-        ledger_operations::{WriteResult, get_rewards_accountant},
+        ledger_operations::WriteResult,
         monthly,
-        monthly_distribute::{self, MonthAction, MonthlyContext},
+        monthly_distribute::{self, MonthStep, MonthlyContext},
         orchestrator::Orchestrator,
     },
     cli::snapshot::{CompleteSnapshot, SnapshotMetadata},
@@ -287,8 +287,8 @@ impl ScheduleWorker {
         Ok(())
     }
 
-    /// Run the monthly steps for the previous month, counting a failed tick
-    /// toward `consecutive_monthly_failures`.
+    /// Run the monthly steps, counting a failed tick toward
+    /// `consecutive_monthly_failures`.
     async fn try_process_monthly(
         &self,
         state: &mut SchedulerState,
@@ -324,27 +324,14 @@ impl ScheduleWorker {
         let prefix = settings.get_contributor_rewards_prefix();
 
         let context = try_with_retries("context", async || {
-            // Records are read at the accountant's addresses, so writing them
-            // under any other key would leave them unread.
-            let accountant_key = get_rewards_accountant(&wallet.connection, None).await?;
-            ensure!(
-                wallet.pubkey() == accountant_key,
-                "Keypair {} is not the rewards accountant {accountant_key}",
-                wallet.pubkey()
-            );
+            let context = MonthlyContext::try_new(settings, wallet, &dz_connection).await?;
+            let previous_month = monthly_distribute::try_previous_month(Utc::now())?;
+            let (month_start, _) = monthly::try_month_bounds(previous_month.0, previous_month.1)?;
 
-            let finalized_epoch = dz_connection
-                .get_epoch_info_with_commitment(CommitmentConfig::finalized())
-                .await?
-                .epoch;
-            let schedule = dz_connection.get_epoch_schedule().await?;
-            let (year, month) = monthly_distribute::try_previous_month(Utc::now())?;
-            let (month_start, _) = monthly::try_month_bounds(year, month)?;
-
-            Ok((finalized_epoch, schedule, (year, month), month_start))
+            Ok((context, previous_month, month_start))
         })
         .await;
-        let (finalized_epoch, schedule, (year, month), month_start) = match context {
+        let (context, previous_month, month_start) = match context {
             Ok(context) => context,
             Err(e) => return track_monthly_step("context", "every month", Err(e)),
         };
@@ -354,8 +341,8 @@ impl ScheduleWorker {
                 &dz_connection,
                 &wallet.signer,
                 &prefix,
-                &schedule,
-                finalized_epoch,
+                &context.schedule,
+                context.finalized_epoch,
                 month_start,
             )
             .await
@@ -376,58 +363,51 @@ impl ScheduleWorker {
             Ok(distributions) => distributions,
             Err(e) => return track_monthly_step("read", "every month", Err(e)),
         };
-        let (distribution, older_distributions) =
-            monthly_distribute::split_previous_month(distributions, (year, month));
 
-        // A month missed while it was the previous one needs someone to find out why.
-        for older_distribution in &older_distributions {
-            let label = format!(
-                "{}-{:02}",
-                older_distribution.year, older_distribution.month
-            );
-            match monthly_distribute::month_action(Some(older_distribution)) {
-                MonthAction::Idle(_) => {}
+        // Oldest first, and one month's failure does not stop the others.
+        for ((year, month), month_step) in
+            monthly_distribute::plan_months(&distributions, previous_month)
+        {
+            let label = format!("{year}-{month:02}");
+
+            let (step, outcome) = match month_step {
                 // Counted as a failure, so it keeps alerting until finalized by hand.
-                MonthAction::Finalize => {
-                    warn!("Monthly {label} is collected but not finalized. Finalize it by hand");
+                MonthStep::FinalizeByHand => {
+                    warn!(
+                        "Monthly {label} is collected but not finalized. Finalize it with \
+                         distribute-monthly-rewards --year {year} --month {month}"
+                    );
                     has_failed = true;
+                    continue;
                 }
                 // A leaf can wait on its contributor's recipients, so this only warns.
-                MonthAction::Pay => warn!("Monthly {label} has unpaid leaves. Pay them by hand"),
-            }
+                MonthStep::DistributeByHand => {
+                    warn!(
+                        "Monthly {label} has unpaid leaves. Distribute them with \
+                         distribute-monthly-rewards --year {year} --month {month}"
+                    );
+                    continue;
+                }
+                MonthStep::Finalize => (
+                    "finalize",
+                    try_with_retries("finalize", async || {
+                        context.try_finalize_month(year, month).await
+                    })
+                    .await,
+                ),
+                MonthStep::Distribute => (
+                    "distribute",
+                    try_with_retries("distribute", async || {
+                        context
+                            .try_distribute_month(year, month, warned_skips)
+                            .await
+                    })
+                    .await,
+                ),
+            };
+
+            has_failed |= track_monthly_step(step, &label, outcome);
         }
-
-        let context = MonthlyContext {
-            settings,
-            wallet,
-            dz_connection: &dz_connection,
-            schedule: &schedule,
-            finalized_epoch,
-        };
-        let label = format!("{year}-{month:02}");
-
-        let (step, outcome) = match monthly_distribute::month_action(distribution.as_ref()) {
-            MonthAction::Idle(reason) => {
-                debug!("Monthly {label}: {reason}");
-                return has_failed;
-            }
-            MonthAction::Finalize => (
-                "finalize",
-                try_with_retries("finalize", async || {
-                    context.try_finalize_month(year, month).await
-                })
-                .await,
-            ),
-            MonthAction::Pay => (
-                "pay",
-                try_with_retries("pay", async || {
-                    context.try_pay_month(year, month, warned_skips).await
-                })
-                .await,
-            ),
-        };
-
-        has_failed |= track_monthly_step(step, &label, outcome);
 
         has_failed
     }

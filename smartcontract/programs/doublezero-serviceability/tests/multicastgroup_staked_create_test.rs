@@ -412,22 +412,18 @@ async fn test_the_instruction_builder_reaches_the_stake_path() {
         .await
         .account_index
         + 1;
+    let args = staked_args("via-sdk", builder.pubkey(), stake_ref);
     let ix = dzi::multicastgroup::create_multicast_group(
         &c.program_id,
         &builder.pubkey(),
         index,
-        staked_args("via-sdk", builder.pubkey(), stake_ref),
+        args.clone(),
     );
     let group = ix.accounts[0].pubkey;
+    let mirror_before = c.stake_mirror(mirror).await;
     process_instructions(&mut c.banks_client, &[ix], &builder)
         .await
         .expect("the builder's account list should reach the stake path");
 
-    let written = get_account_data(&mut c.banks_client, group)
-        .await
-        .expect("the group should exist")
-        .get_multicastgroup()
-        .unwrap();
-    assert_eq!(written.owner, builder.pubkey());
-    assert_eq!(c.groups_created(mirror).await, 1);
+    c.assert_created(group, &args, mirror, mirror_before).await;
 }

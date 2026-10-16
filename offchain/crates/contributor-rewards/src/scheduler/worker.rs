@@ -1,8 +1,9 @@
 use std::{
+    collections::HashSet,
     fs,
     path::PathBuf,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},
@@ -39,7 +40,11 @@ use tracing::{debug, error, info, warn};
 use crate::{
     calculator::{
         DistributionOutcome, DistributionSummary, WriteConfig, distribute,
-        keypair_loader::load_keypair, ledger_operations::WriteResult, orchestrator::Orchestrator,
+        keypair_loader::load_keypair,
+        ledger_operations::WriteResult,
+        monthly,
+        monthly_distribute::{self, MonthStep, MonthlyContext},
+        orchestrator::Orchestrator,
     },
     cli::snapshot::{CompleteSnapshot, SnapshotMetadata},
     ingestor::{epoch::EpochFinder, fetcher::Fetcher},
@@ -97,6 +102,30 @@ impl ScheduleWorker {
                 self.keypair_path.as_ref().map(|p| p.display())
             );
         }
+
+        let enable_monthly_distribution = self
+            .orchestrator
+            .settings
+            .scheduler
+            .enable_monthly_distribution;
+        info!("  Monthly distribution: {enable_monthly_distribution}");
+
+        // Every monthly step writes, so a dry run skips them all.
+        let monthly_wallet = if enable_monthly_distribution && !self.dry_run {
+            Some(Wallet {
+                connection: SolanaConnection::new(
+                    self.orchestrator.settings.rpc.solana_write_url.clone(),
+                ),
+                signer: load_keypair(&self.keypair_path)?,
+                compute_unit_price_ix: None,
+                verbose: false,
+                fee_payer: None,
+                dry_run: false,
+            })
+        } else {
+            None
+        };
+        let warned_skips = Mutex::new(HashSet::new());
 
         // Load or create worker state
         let mut state = SchedulerState::load_or_default(&self.state_file)?;
@@ -248,9 +277,139 @@ impl ScheduleWorker {
                     }
                 }
             }
+
+            if let Some(wallet) = &monthly_wallet {
+                self.try_process_monthly(&mut state, wallet, &warned_skips)
+                    .await?;
+            }
         }
 
         Ok(())
+    }
+
+    /// Run the monthly steps, counting a failed tick toward
+    /// `consecutive_monthly_failures`.
+    async fn try_process_monthly(
+        &self,
+        state: &mut SchedulerState,
+        wallet: &Wallet,
+        warned_skips: &Mutex<HashSet<(u16, u8, Pubkey)>>,
+    ) -> Result<()> {
+        if self.run_monthly_steps(wallet, warned_skips).await {
+            state.mark_monthly_failure();
+
+            // Alert every 10 consecutive failures for Grafana monitoring
+            if state.consecutive_monthly_failures.is_multiple_of(10) {
+                error!(
+                    "Monthly steps have failed in {} consecutive ticks",
+                    state.consecutive_monthly_failures
+                );
+            }
+        } else {
+            state.mark_monthly_success();
+        }
+
+        state.save(&self.state_file)
+    }
+
+    /// Run each monthly step and return whether the tick failed: a step failed,
+    /// or an older month is collected but not finalized.
+    async fn run_monthly_steps(
+        &self,
+        wallet: &Wallet,
+        warned_skips: &Mutex<HashSet<(u16, u8, Pubkey)>>,
+    ) -> bool {
+        let settings = &self.orchestrator.settings;
+        let dz_connection = DoubleZeroLedgerConnection::new(settings.rpc.dz_url.clone());
+        let prefix = settings.get_contributor_rewards_prefix();
+
+        let context = try_with_retries("context", async || {
+            let context = MonthlyContext::try_new(settings, wallet, &dz_connection).await?;
+            let previous_month = monthly_distribute::try_previous_month(Utc::now())?;
+            let (month_start, _) = monthly::try_month_bounds(previous_month.0, previous_month.1)?;
+
+            Ok((context, previous_month, month_start))
+        })
+        .await;
+        let (context, previous_month, month_start) = match context {
+            Ok(context) => context,
+            Err(e) => return track_monthly_step("context", "every month", Err(e)),
+        };
+
+        let recorded = try_with_retries("epoch_end", async || {
+            monthly::try_record_epoch_ends(
+                &dz_connection,
+                &wallet.signer,
+                &prefix,
+                &context.schedule,
+                context.finalized_epoch,
+                month_start,
+            )
+            .await
+        })
+        .await;
+
+        let mut has_failed = track_monthly_step(
+            "epoch_end",
+            "DZ epoch ends",
+            recorded.map(|count| count > 0),
+        );
+
+        let distributions = try_with_retries("read", async || {
+            monthly_distribute::try_fetch_monthly_distributions(&wallet.connection).await
+        })
+        .await;
+        let distributions = match distributions {
+            Ok(distributions) => distributions,
+            Err(e) => return track_monthly_step("read", "every month", Err(e)),
+        };
+
+        // Oldest first, and one month's failure does not stop the others.
+        for ((year, month), month_step) in
+            monthly_distribute::plan_months(&distributions, previous_month)
+        {
+            let label = format!("{year}-{month:02}");
+
+            let (step, outcome) = match month_step {
+                // Counted as a failure, so it keeps alerting until finalized by hand.
+                MonthStep::FinalizeByHand => {
+                    warn!(
+                        "Monthly {label} is collected but not finalized. Finalize it with \
+                         distribute-monthly-rewards --year {year} --month {month}"
+                    );
+                    has_failed = true;
+                    continue;
+                }
+                // A leaf can wait on its contributor's recipients, so this only warns.
+                MonthStep::DistributeByHand => {
+                    warn!(
+                        "Monthly {label} has unpaid leaves. Distribute them with \
+                         distribute-monthly-rewards --year {year} --month {month}"
+                    );
+                    continue;
+                }
+                MonthStep::Finalize => (
+                    "finalize",
+                    try_with_retries("finalize", async || {
+                        context.try_finalize_month(year, month).await
+                    })
+                    .await,
+                ),
+                MonthStep::Distribute => (
+                    "distribute",
+                    try_with_retries("distribute", async || {
+                        context
+                            .try_distribute_month(year, month, warned_skips)
+                            .await
+                    })
+                    .await,
+                ),
+            };
+
+            has_failed |= track_monthly_step(step, &label, outcome);
+        }
+
+        has_failed
     }
 
     /// Fetch the config and compute the distribution-eligible epoch.
@@ -873,5 +1032,33 @@ impl ScheduleWorker {
         );
 
         Ok((snapshot_location, local_path, temp_file_guard))
+    }
+}
+
+// A failed monthly step pages, so retrying keeps one RPC blip from paging.
+async fn try_with_retries<T>(step: &str, attempt: impl AsyncFn() -> Result<T>) -> Result<T> {
+    (|| attempt())
+        .retry(ExponentialBuilder::default().with_jitter())
+        .notify(|err, dur| info!("Retrying the monthly {step} step in {dur:?}: {err:#}"))
+        .await
+}
+
+/// Log and count a monthly step's outcome, where `Ok(true)` means the step
+/// acted, and return whether it failed.
+fn track_monthly_step(step: &'static str, subject: &str, outcome: Result<bool>) -> bool {
+    match outcome {
+        Ok(has_acted) => {
+            if has_acted {
+                metrics::counter!("doublezero_contributor_rewards_monthly_success", "step" => step)
+                    .increment(1);
+            }
+            false
+        }
+        Err(e) => {
+            error!("Monthly {step} step failed for {subject}: {e:#}");
+            metrics::counter!("doublezero_contributor_rewards_monthly_failure", "step" => step)
+                .increment(1);
+            true
+        }
     }
 }

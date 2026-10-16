@@ -200,6 +200,11 @@ pub struct SchedulerSettings {
     /// Maximum time to wait for grace period in seconds (default: 21600 = 6 hours)
     #[serde(default = "default_grace_period_max_wait_seconds")]
     pub grace_period_max_wait_seconds: u64,
+    /// Finalize the previous UTC month's contributor rewards and distribute the
+    /// last three months', recording DZ epoch end times to calculate a month.
+    /// Disabled by default.
+    #[serde(default)]
+    pub enable_monthly_distribution: bool,
 }
 
 fn default_grace_period_max_wait_seconds() -> u64 {
@@ -528,5 +533,17 @@ public_latency_multiplier = 1.0
         let settings = Settings::from_path(&path).unwrap();
 
         assert_eq!(settings.input.public_latency_multiplier, 1.25);
+    }
+
+    #[test]
+    fn test_monthly_distribution_is_disabled_by_default() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_demand_env();
+        let _cleanup = DemandEnvCleanup;
+        let path = write_config(&base_config(""));
+
+        let settings = Settings::from_path(&path).unwrap();
+
+        assert!(!settings.scheduler.enable_monthly_distribution);
     }
 }

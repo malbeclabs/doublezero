@@ -262,6 +262,7 @@ mod tests {
                 enable_dry_run: false,
                 storage_backend: StorageBackend::LocalFile,
                 grace_period_max_wait_seconds: 21600,
+                enable_monthly_distribution: false,
             },
             metrics: Some(MetricsSettings {
                 addr: SocketAddr::from_str("127.0.0.1:9090").unwrap(),

@@ -47,7 +47,19 @@ The protocol cannot yet reliably estimate public internet latencies for large tr
 - An epoch belongs to the month in which the block time of its last block falls.
 - Each contributor's share is its average over all of the month's epochs, counting zero for an epoch it is absent from. Averages are floored, and the leftover units go one each to the largest remainders, ties to the lower pubkey.
 - The command refuses a month that has not closed, a month with no epochs, and a month with an epoch whose shapley output record does not match the merkle root and contributor count posted to that epoch's `Distribution`. It reads records at the current rewards accountant's addresses, so it also refuses any month with an epoch recorded under an earlier accountant key. Calculate a month before rotating that key.
-- Block times come from the DoubleZero Ledger RPC, and selecting a month reads blocks from before it starts. The command refuses a month when the RPC no longer serves those blocks. Testnet and devnet RPCs keep about 18 days of blocks, so every testnet and devnet month is refused for now.
+- An epoch's end comes from its `epoch_end` record on the DoubleZero Ledger, and otherwise from DoubleZero Ledger block times. The scheduler writes these records while `scheduler.enable_monthly_distribution` is set, and its first run records back to the last epoch to end before the previous month, or as far back as the RPC holds blocks. Selecting a month also reads the epoch before it, so the command refuses a month when neither a record nor the RPC has an epoch it needs. Testnet and devnet RPCs keep about 18 days of blocks, so a testnet or devnet month can be calculated only once the scheduler has recorded it. There, the first month the scheduler can finalize is the one it is enabled in, and only if it is enabled within about that month's first two weeks.
+
+### Monthly distribution
+
+With `scheduler.enable_monthly_distribution` set, and outside a dry run, each scheduler tick acts on recent UTC months by the state of each one's `MonthlyContributorDistribution`:
+
+- The previous month is finalized once it is collected and a DoubleZero epoch has ended after it. The scheduler recalculates the month as `calculate-monthly-rewards` does, stores the leaves on the DoubleZero Ledger in a `monthly_rewards` record keyed by the month and its merkle root, then posts and finalizes that root in one transaction.
+- A finalized month among the last three, the previous month and the two before it, has each unpaid leaf distributed from that record with `DistributeMonthlyContributorRewards`, creating any missing recipient ATA. A leaf whose contributor has no `ContributorRewards` account or no recipients is skipped with a warning and retried every tick, so a contributor that sets up its recipients late is still paid.
+- Any other month waits. The scheduler never initializes or collects a month, so a month whose feed bucket is never collected is never finalized.
+
+A month the scheduler no longer acts on is left for a manual run, since acting on it late needs someone to find out why it was missed. Each tick logs a warning for every month before the previous one that is collected but not finalized, which also counts the tick as failed, and for every month before the last three that has unpaid leaves. `distribute-monthly-rewards --year <YEAR> --month <MONTH> -k <KEYPAIR>` runs one month by hand with the steps the scheduler uses: it finalizes the month if it is collected and closed, then distributes its unpaid leaves. The keypair must be the rewards accountant's. `--dry-run` writes nothing: it simulates finalizing an unfinalized month, or each leaf's distribution for a finalized one.
+
+The scheduler's keypair must be the rewards accountant. A failed step logs an error and increments `doublezero_contributor_rewards_monthly_failure{step}`, and every tenth consecutive failed tick logs another error.
 
 ## Fetching snapshots from S3
 

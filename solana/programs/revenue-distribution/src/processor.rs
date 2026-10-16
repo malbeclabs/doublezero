@@ -3321,7 +3321,8 @@ fn try_collect_monthly_contributor_rewards(accounts: &[AccountInfo]) -> ProgramR
     // - 3: Integration's 2Z token account.
     // - 4: Monthly distribution's 2Z token account.
     // - 5: Monthly contributor rewards program.
-    // - 6: SPL Token program.
+    // - 6: Integration's program config.
+    // - 7: SPL Token program.
     let mut accounts_iter = accounts.iter().enumerate();
 
     // Account 0 must be the program config.
@@ -3383,6 +3384,12 @@ fn try_collect_monthly_contributor_rewards(accounts: &[AccountInfo]) -> ProgramR
         return Err(ProgramError::IncorrectProgramId);
     }
 
+    // Account 6 must be the integration's program config. It is opaque to
+    // rev-distr and forwarded to the CPI, where the integration checks that it
+    // is its own and refuses the withdraw while it is paused.
+    let (_, integration_program_config_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+
     let balance_before = try_token_account_amount(destination_token_account_info)?;
 
     let withdraw_ix = try_build_instruction(
@@ -3392,6 +3399,7 @@ fn try_collect_monthly_contributor_rewards(accounts: &[AccountInfo]) -> ProgramR
             integration_2z_token_account_key: *integration_2z_token_account_info.key,
             destination_token_account_key: *destination_token_account_info.key,
             monthly_distribution_key: *monthly_distribution.info.key,
+            integration_program_config_key: *integration_program_config_info.key,
         },
         &IntegrationInstructionData::WithdrawMonthlyContributorRewards,
     )

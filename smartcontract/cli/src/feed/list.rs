@@ -80,7 +80,7 @@ fn pubkey_or_empty(pubkey: Pubkey) -> String {
 impl ListFeedCliCommand {
     pub async fn execute<C: CliCommand, W: Write>(
         self,
-        _ctx: &CliContext,
+        ctx: &CliContext,
         client: &C,
         out: &mut W,
     ) -> eyre::Result<()> {
@@ -132,6 +132,7 @@ impl ListFeedCliCommand {
             out,
             displays,
             OutputFormat::from_flags(self.json, self.json_compact),
+            &ctx.address_labels,
         )
     }
 }

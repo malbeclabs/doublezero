@@ -1,6 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_cli_core::CliContext;
+use doublezero_cli_core::{label_addresses, CliContext};
 use doublezero_sdk::commands::globalconfig::get::GetGlobalConfigCommand;
 use serde::Serialize;
 use std::io::Write;
@@ -27,7 +27,7 @@ pub struct ConfigDisplay {
 impl GetGlobalConfigCliCommand {
     pub async fn execute<C: CliCommand, W: Write>(
         self,
-        _ctx: &CliContext,
+        ctx: &CliContext,
         client: &C,
         out: &mut W,
     ) -> eyre::Result<()> {
@@ -51,6 +51,7 @@ impl GetGlobalConfigCliCommand {
             let fields = config_display.fields();
             let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
             for (header, value) in headers.iter().zip(fields.iter()) {
+                let value = label_addresses(value, &ctx.address_labels);
                 writeln!(out, " {header:<max_len$} | {value}")?;
             }
         }

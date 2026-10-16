@@ -44,7 +44,7 @@ pub struct PermissionDisplay {
 impl ListPermissionCliCommand {
     pub async fn execute<C: CliCommand, W: Write>(
         self,
-        _ctx: &CliContext,
+        ctx: &CliContext,
         client: &C,
         out: &mut W,
     ) -> eyre::Result<()> {
@@ -67,6 +67,7 @@ impl ListPermissionCliCommand {
             out,
             displays,
             OutputFormat::from_flags(self.json, self.json_compact),
+            &ctx.address_labels,
         )
     }
 }

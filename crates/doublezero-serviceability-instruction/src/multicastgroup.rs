@@ -407,8 +407,8 @@ mod tests {
     ///
     /// It fits only without the payer's Permission PDA (1211 bytes; 1244 with it). The processor
     /// authorizes the pass's own `user_payer` before consulting `authorize()`, so the SDK drops
-    /// the Permission account for that payer; a third party leaving on a user's behalf at this
-    /// worst case has no single transaction that fits.
+    /// the Permission account for that payer. A third party that must keep it (e.g. a
+    /// `USER_ADMIN` delegate) sends this leave without the prelude instead (1196 bytes).
     #[test]
     fn test_worst_case_leave_fits_one_transaction() {
         use doublezero_serviceability::processors::{

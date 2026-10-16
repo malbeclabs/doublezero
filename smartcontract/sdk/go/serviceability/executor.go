@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	computebudget "github.com/gagliardetto/solana-go/programs/compute-budget"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/gagliardetto/solana-go/rpc/jsonrpc"
 )
@@ -56,6 +57,23 @@ func deleteUserInstructionFor(kind AccessPassKind) (byte, error) {
 		return instructionDeleteEdgeSeatUser, nil
 	default:
 		return 0, fmt.Errorf("unknown access pass kind %d", kind)
+	}
+}
+
+// The compute-budget prelude the executor puts in front of every serviceability transaction,
+// mirroring compute_budget_prelude in crates/doublezero-serviceability-instruction: the
+// protocol-max compute-unit limit and heap frame. The program allocates from the heap frame the
+// transaction requests, so without it an instruction that loads a large account (a device with
+// many interfaces) runs out of the default 32 KiB.
+const (
+	MaxComputeUnitLimit uint32 = 1_400_000
+	MaxHeapFrameBytes   uint32 = 256 * 1024
+)
+
+func computeBudgetPrelude() []solana.Instruction {
+	return []solana.Instruction{
+		computebudget.NewSetComputeUnitLimitInstruction(MaxComputeUnitLimit).Build(),
+		computebudget.NewRequestHeapFrameInstruction(MaxHeapFrameBytes).Build(),
 	}
 }
 
@@ -137,7 +155,7 @@ func (e *Executor) SetDeviceHealthBatch(ctx context.Context, updates []DeviceHea
 		}
 		lastSig = sig
 
-		failingIdx, parseErr := parseFailingInstructionIndex(err)
+		failingIdx, parseErr := parseFailingUpdateIndex(err)
 		if parseErr != nil {
 			return sig, err
 		}
@@ -180,7 +198,7 @@ func (e *Executor) SetLinkHealthBatch(ctx context.Context, updates []LinkHealthU
 		}
 		lastSig = sig
 
-		failingIdx, parseErr := parseFailingInstructionIndex(err)
+		failingIdx, parseErr := parseFailingUpdateIndex(err)
 		if parseErr != nil {
 			return sig, err
 		}
@@ -598,7 +616,7 @@ func (e *Executor) executeTransaction(ctx context.Context, instructions []solana
 	}
 
 	tx, err := solana.NewTransaction(
-		instructions,
+		append(computeBudgetPrelude(), instructions...),
 		blockhashResult.Value.Blockhash,
 		solana.TransactionPayer(e.signer.PublicKey()),
 	)
@@ -760,6 +778,18 @@ func (e *Executor) waitForTransactionFinalized(ctx context.Context, sig solana.S
 		return nil, errors.New("transaction not found or missing metadata after finalization")
 	}
 	return tx, nil
+}
+
+// parseFailingUpdateIndex returns the position, within the instructions passed to
+// executeTransaction, of the instruction that failed. The transaction reports the index among all
+// its instructions, which counts the compute-budget prelude in front; a failure inside the prelude
+// comes out negative.
+func parseFailingUpdateIndex(err error) (int, error) {
+	idx, parseErr := parseFailingInstructionIndex(err)
+	if parseErr != nil {
+		return idx, parseErr
+	}
+	return idx - len(computeBudgetPrelude()), nil
 }
 
 // parseFailingInstructionIndex extracts the failing instruction index from a Solana RPC error.

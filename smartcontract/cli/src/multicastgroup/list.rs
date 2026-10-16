@@ -1,6 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_cli_core::CliContext;
+use doublezero_cli_core::{labeled_table, CliContext};
 use doublezero_program_common::serializer;
 use doublezero_sdk::{
     commands::multicastgroup::list::ListMulticastGroupCommand, MulticastGroup, MulticastGroupStatus,
@@ -8,7 +8,7 @@ use doublezero_sdk::{
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr};
-use tabled::{settings::Style, Table, Tabled};
+use tabled::{settings::Style, Tabled};
 
 #[derive(Args, Debug)]
 pub struct ListMulticastGroupCliCommand {
@@ -39,7 +39,7 @@ pub struct MulticastGroupDisplay {
 impl ListMulticastGroupCliCommand {
     pub async fn execute<C: CliCommand, W: Write>(
         self,
-        _ctx: &CliContext,
+        ctx: &CliContext,
         client: &C,
         out: &mut W,
     ) -> eyre::Result<()> {
@@ -68,7 +68,7 @@ impl ListMulticastGroupCliCommand {
         } else if self.json_compact {
             serde_json::to_string(&mg_displays)?
         } else {
-            Table::new(mg_displays)
+            labeled_table(mg_displays, &ctx.address_labels)
                 .with(Style::psql().remove_horizontals())
                 .to_string()
         };

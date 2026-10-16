@@ -1,6 +1,6 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_code};
 use clap::Args;
-use doublezero_cli_core::CliContext;
+use doublezero_cli_core::{label_addresses, CliContext};
 use doublezero_program_common::{serializer, types::parse_utils::bandwidth_to_string};
 use doublezero_sdk::{
     commands::{
@@ -115,7 +115,7 @@ struct DeviceDisplay {
 impl GetDeviceCliCommand {
     pub async fn execute<C: CliCommand, W: Write>(
         self,
-        _ctx: &CliContext,
+        ctx: &CliContext,
         client: &C,
         out: &mut W,
     ) -> eyre::Result<()> {
@@ -184,6 +184,7 @@ impl GetDeviceCliCommand {
             let fields = display.fields();
             let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
             for (header, value) in headers.iter().zip(fields.iter()) {
+                let value = label_addresses(value, &ctx.address_labels);
                 writeln!(out, " {header:<max_len$} | {value}")?;
             }
             if !display.interfaces.is_empty() {

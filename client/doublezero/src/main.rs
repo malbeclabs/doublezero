@@ -380,6 +380,9 @@ async fn main() -> eyre::Result<()> {
             }
         }
         ctx_builder = ctx_builder.with_keypair_path(persisted.keypair_path.clone());
+        // Address labels name pubkeys, not environments, so they apply under
+        // `--env` too.
+        ctx_builder = ctx_builder.with_address_labels(persisted.address_labels.clone());
     }
 
     // CLI-flag overrides win, layered on top of the `--env` base resolved into

@@ -50,10 +50,14 @@ struct Cluster {
 
 /// A cluster with `allow-staked-feeds` set and a relayer allowed to write mirrors.
 async fn cluster() -> Cluster {
-    let program_id = Pubkey::new_unique();
+    cluster_with_accounts(Pubkey::new_unique(), &[]).await
+}
+
+/// `cluster`, with `accounts` planted at genesis.
+async fn cluster_with_accounts(program_id: Pubkey, accounts: &[(Pubkey, Vec<u8>)]) -> Cluster {
     let relayer = Keypair::new();
     let (mut banks_client, foundation, recent_blockhash) =
-        init_test_with_accounts(program_id, &[]).await;
+        init_test_with_accounts(program_id, accounts).await;
     init_globalstate_and_config(&mut banks_client, program_id, &foundation, recent_blockhash).await;
     let (globalstate, _) = get_globalstate_pda(&program_id);
     transfer(
@@ -108,6 +112,23 @@ async fn cluster() -> Cluster {
 impl Cluster {
     /// Mirror a stake for `builder`, as the relayer would after seeing the bond at `source_slot`.
     async fn mirror(&mut self, stake_ref: Pubkey, builder: Pubkey, source_slot: u64) -> Pubkey {
+        self.mirror_at_rate(
+            stake_ref,
+            builder,
+            source_slot,
+            TIER.max_rate_bits_per_sec(),
+        )
+        .await
+    }
+
+    /// `mirror`, for a bond whose committed rate is `committed_rate` within `TIER`.
+    async fn mirror_at_rate(
+        &mut self,
+        stake_ref: Pubkey,
+        builder: Pubkey,
+        source_slot: u64,
+        committed_rate: u64,
+    ) -> Pubkey {
         let (mirror, _) = get_stake_mirror_pda(&self.program_id, &stake_ref);
         let recent_blockhash = wait_for_new_blockhash(&mut self.banks_client).await;
         execute_transaction_with_extra_accounts(
@@ -118,7 +139,7 @@ impl Cluster {
                 stake_ref,
                 builder,
                 tier: TIER,
-                committed_rate_bits_per_sec: TIER.max_rate_bits_per_sec(),
+                committed_rate_bits_per_sec: committed_rate,
                 source_slot,
             }),
             vec![
@@ -348,6 +369,71 @@ async fn test_a_staked_group_cannot_exceed_its_tier() {
     args.max_bandwidth = TIER.max_rate_bits_per_sec() + 1;
     let (_, result) = c.create_group(&builder, args, mirror).await;
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::StakeDoesNotCoverRate));
+}
+
+/// A group may declare up to the bond's committed rate, which can sit below its tier's ceiling.
+#[tokio::test]
+async fn test_a_staked_group_cannot_exceed_the_committed_rate() {
+    let mut c = cluster().await;
+    let builder = test_payer();
+    let stake_ref = Pubkey::new_unique();
+    // Half the tier, so a check against the tier alone would admit the first create below.
+    let committed_rate = TIER.max_rate_bits_per_sec() / 2;
+    let mirror = c
+        .mirror_at_rate(stake_ref, builder.pubkey(), 1, committed_rate)
+        .await;
+
+    let mut args = staked_args("over-commit", builder.pubkey(), stake_ref);
+    args.max_bandwidth = committed_rate + 1;
+    let (_, result) = c.create_group(&builder, args, mirror).await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::StakeDoesNotCoverRate));
+
+    let mut args = staked_args("at-commit", builder.pubkey(), stake_ref);
+    args.max_bandwidth = committed_rate;
+    let mirror_before = c.stake_mirror(mirror).await;
+    let (group, result) = c.create_group(&builder, args.clone(), mirror).await;
+    result.expect("a group at the committed rate should be admitted");
+    c.assert_created(group, &args, mirror, mirror_before).await;
+}
+
+/// A mirror written before `groups_created` existed is one byte short. The first staked create
+/// reads its count as zero and grows the account to hold it. Live testnet mirrors take this path.
+#[tokio::test]
+async fn test_a_mirror_from_before_the_count_takes_its_first_group() {
+    let program_id = Pubkey::new_unique();
+    let builder = test_payer();
+    let stake_ref = Pubkey::new_unique();
+    let (mirror, bump_seed) = get_stake_mirror_pda(&program_id, &stake_ref);
+    let old = StakeMirror {
+        account_type: AccountType::StakeMirror,
+        owner: Pubkey::new_unique(),
+        bump_seed,
+        stake_ref,
+        builder: builder.pubkey(),
+        tier: TIER,
+        committed_rate_bits_per_sec: TIER.max_rate_bits_per_sec(),
+        source_slot: 1,
+        relayer: Pubkey::new_unique(),
+        feed_key: Pubkey::default(),
+        groups_created: 0,
+    };
+    let mut data = borsh::to_vec(&old).unwrap();
+    // `groups_created` is the last field and one byte wide. Dropping it gives the old layout.
+    data.pop();
+    let old_len = data.len();
+
+    let mut c = cluster_with_accounts(program_id, &[(mirror, data)]).await;
+    let args = staked_args("old-layout", builder.pubkey(), stake_ref);
+    let (group, result) = c.create_group(&builder, args.clone(), mirror).await;
+    result.expect("an old-layout mirror should admit the create");
+    c.assert_created(group, &args, mirror, old).await;
+
+    let account = c.banks_client.get_account(mirror).await.unwrap().unwrap();
+    assert_eq!(
+        account.data.len(),
+        old_len + 1,
+        "the mirror grew to hold the count"
+    );
 }
 
 /// Naming a stake nobody posted, with the empty account its seeds derive, admits nothing.

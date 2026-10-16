@@ -18,7 +18,13 @@ use doublezero_serviceability::{
         stake_mirror::write::StakeMirrorWriteArgs,
     },
     resource::ResourceType,
-    state::{feature_flags::FeatureFlag, permission::permission_flags, stake_mirror::StakeTier},
+    state::{
+        accounttype::AccountType,
+        feature_flags::FeatureFlag,
+        multicastgroup::{MulticastGroup, MulticastGroupStatus},
+        permission::permission_flags,
+        stake_mirror::{StakeMirror, StakeTier},
+    },
 };
 use solana_program_test::*;
 use solana_sdk::{
@@ -158,13 +164,63 @@ impl Cluster {
         (group, result)
     }
 
-    async fn groups_created(&mut self, mirror: Pubkey) -> u8 {
+    async fn stake_mirror(&mut self, mirror: Pubkey) -> StakeMirror {
         get_account_data(&mut self.banks_client, mirror)
             .await
             .expect("the mirror should exist")
             .get_stake_mirror()
             .unwrap()
-            .groups_created
+    }
+
+    async fn groups_created(&mut self, mirror: Pubkey) -> u8 {
+        self.stake_mirror(mirror).await.groups_created
+    }
+
+    /// Assert that a staked create wrote exactly the group `args` describe, and changed nothing on
+    /// the mirror but its count.
+    async fn assert_created(
+        &mut self,
+        group: Pubkey,
+        args: &MulticastGroupCreateArgs,
+        mirror: Pubkey,
+        mirror_before: StakeMirror,
+    ) {
+        let written = get_account_data(&mut self.banks_client, group)
+            .await
+            .expect("the group should exist")
+            .get_multicastgroup()
+            .unwrap();
+        let index = get_globalstate(&mut self.banks_client, self.globalstate)
+            .await
+            .account_index;
+        let (expected_key, bump_seed) = get_multicastgroup_pda(&self.program_id, index);
+        assert_eq!(group, expected_key);
+        assert_eq!(
+            written,
+            MulticastGroup {
+                account_type: AccountType::MulticastGroup,
+                owner: args.owner,
+                index,
+                bump_seed,
+                tenant_pk: Pubkey::default(),
+                code: args.code.clone(),
+                // Allocated from the block, so only the allocator's own tests pin its value.
+                multicast_ip: written.multicast_ip,
+                max_bandwidth: args.max_bandwidth,
+                status: MulticastGroupStatus::Activated,
+                publisher_count: 0,
+                subscriber_count: 0,
+            }
+        );
+
+        assert_eq!(
+            self.stake_mirror(mirror).await,
+            StakeMirror {
+                groups_created: mirror_before.groups_created + 1,
+                ..mirror_before
+            },
+            "the create must change the mirror's count and nothing else"
+        );
     }
 }
 
@@ -188,25 +244,11 @@ async fn test_a_builder_creates_its_own_groups_up_to_the_limit() {
     let mirror = c.mirror(stake_ref, builder.pubkey(), 1).await;
 
     for i in 0..MAX_GROUPS_PER_STAKE {
-        let (group, result) = c
-            .create_group(
-                &builder,
-                staked_args(&format!("g{i}"), builder.pubkey(), stake_ref),
-                mirror,
-            )
-            .await;
+        let args = staked_args(&format!("g{i}"), builder.pubkey(), stake_ref);
+        let mirror_before = c.stake_mirror(mirror).await;
+        let (group, result) = c.create_group(&builder, args.clone(), mirror).await;
         result.expect("a covering stake should admit the create");
-
-        let written = get_account_data(&mut c.banks_client, group)
-            .await
-            .expect("the group should exist")
-            .get_multicastgroup()
-            .unwrap();
-        assert_eq!(
-            written.owner,
-            builder.pubkey(),
-            "the builder owns its group"
-        );
+        c.assert_created(group, &args, mirror, mirror_before).await;
         assert_eq!(c.groups_created(mirror).await, i + 1);
 
         // The relayer rewrites the mirror after the first group. If the write zeroed the count,

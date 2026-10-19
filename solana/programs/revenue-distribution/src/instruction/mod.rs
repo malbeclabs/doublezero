@@ -144,6 +144,8 @@ pub enum RevenueDistributionInstructionData {
     /// month's `MonthlyContributorDistribution`, which it then marks collected.
     /// Rev-distr signs the `MonthlyContributorDistribution` PDA so the program
     /// can verify the caller.
+    /// Rev-distr also forwards the program's config account unread, so the
+    /// program can refuse the withdraw while it is paused.
     CollectMonthlyContributorRewards,
 
     /// Pays one leaf of a collected, finalized `MonthlyContributorDistribution`.

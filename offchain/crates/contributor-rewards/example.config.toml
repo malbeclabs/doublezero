@@ -158,6 +158,11 @@ storage_backend = "s3"
 # This setting controls how long the scheduler will wait for that grace period to expire
 grace_period_max_wait_seconds = 21600
 
+# Finalize the previous UTC month's contributor rewards and distribute the last
+# three months', recording each DZ epoch's end time on the DZ Ledger to calculate
+# a month. Disabled by default.
+# enable_monthly_distribution = true
+
 # ========== AWS S3 Configuration (Required if storage_backend = "s3") ==========
 # All fields can be overridden via environment variables:
 #   DZ__AWS__REGION

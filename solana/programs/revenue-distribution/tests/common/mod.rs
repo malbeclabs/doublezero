@@ -1069,6 +1069,7 @@ impl ProgramTestWithOwner {
                 integration_program_id,
                 integration_rewards_bucket_key,
                 integration_2z_token_account_key,
+                &mock_rewards_integration::find_program_config_address().0,
             ),
             &RevenueDistributionInstructionData::CollectMonthlyContributorRewards,
         )

@@ -1,6 +1,6 @@
 use crate::{doublezerocommand::CliCommand, user::list::narrow_groups};
 use clap::Args;
-use doublezero_cli_core::CliContext;
+use doublezero_cli_core::{labeled_table, CliContext};
 use doublezero_program_common::serializer;
 use doublezero_sdk::{
     commands::{
@@ -13,7 +13,7 @@ use doublezero_serviceability::state::accesspass::{AccessPass, AccessPassStatus,
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::{collections::HashMap, io::Write, net::Ipv4Addr};
-use tabled::{settings::Style, Table, Tabled};
+use tabled::{settings::Style, Tabled};
 
 #[derive(Args, Debug, Default)]
 pub struct ListAccessPassCliCommand {
@@ -221,7 +221,7 @@ impl AccessPassDisplayNarrow {
 impl ListAccessPassCliCommand {
     pub async fn execute<C: CliCommand, W: Write>(
         self,
-        _ctx: &CliContext,
+        ctx: &CliContext,
         client: &C,
         out: &mut W,
     ) -> eyre::Result<()> {
@@ -436,11 +436,11 @@ impl ListAccessPassCliCommand {
                 .iter()
                 .map(|d| AccessPassDisplayNarrow::from_display(d, &mgroups))
                 .collect();
-            Table::new(narrow)
+            labeled_table(narrow, &ctx.address_labels)
                 .with(Style::psql().remove_horizontals())
                 .to_string()
         } else {
-            Table::new(access_pass_displays)
+            labeled_table(access_pass_displays, &ctx.address_labels)
                 .with(Style::psql().remove_horizontals())
                 .to_string()
         };
@@ -454,7 +454,9 @@ impl ListAccessPassCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::{accesspass::list::ListAccessPassCliCommand, tests::utils::create_test_client};
-    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+    use doublezero_cli_core::testing::{
+        block_on, cli_context_default_for_tests, cli_context_for_tests,
+    };
     use doublezero_sdk::{AccountType, Feed, MulticastGroup, MulticastGroupStatus};
     use doublezero_serviceability::state::accesspass::{
         AccessPass, AccessPassStatus, AccessPassType, FeedSeat,
@@ -850,6 +852,41 @@ mod tests {
         });
 
         (client, access1_pubkey, access2_pubkey, access3_pubkey)
+    }
+
+    #[test]
+    fn test_address_labels_in_table_not_json() {
+        let (client, access1_pubkey, _, _) = setup_multicast_client();
+
+        let ctx = cli_context_for_tests()
+            .with_address_labels(HashMap::from([(
+                access1_pubkey.to_string(),
+                "Jared".to_string(),
+            )]))
+            .build()
+            .unwrap();
+        let list = |json_compact| {
+            let mut output = Vec::new();
+            block_on(
+                ListAccessPassCliCommand {
+                    client_ip: Some(Ipv4Addr::new(1, 2, 3, 4)),
+                    json_compact,
+                    ..Default::default()
+                }
+                .execute(&ctx, &client, &mut output),
+            )
+            .unwrap();
+            String::from_utf8(output).unwrap()
+        };
+
+        let table = list(false);
+        assert_eq!(cell(&table, "owner"), "Jared (1111..zzPB)");
+        assert_eq!(cell(&table, "user_payer"), "Jared (1111..zzPB)");
+        assert!(!table.contains(&access1_pubkey.to_string()));
+
+        let json: serde_json::Value = serde_json::from_str(&list(true)).unwrap();
+        assert_eq!(json[0]["owner"], access1_pubkey.to_string());
+        assert_eq!(json[0]["user_payer"], access1_pubkey.to_string());
     }
 
     #[test]

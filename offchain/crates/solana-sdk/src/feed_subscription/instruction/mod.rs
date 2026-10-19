@@ -20,6 +20,9 @@ pub struct ValidatorOffchainAuthorization {
 pub enum FeedSubscriptionInstructionData {
     /// Manager only (pause-gated). Sets a validator client's share, in basis points, up to 3,500.
     ConfigureValidatorClientRewardsProportion(u16),
+    /// Manager only (pause-gated). Moves a team's 2Z claim holding for one month to a token account
+    /// the manager picks, and closes the holding to the oracle.
+    ClaimFeedValidatorClientRewards,
     /// Validator identity or its offchain signature (pause-gated). Creates the publisher's
     /// `FeedPublisherRewards` when missing and sets its rewards owner and mint.
     ConfigureFeedPublisherRewards {
@@ -32,6 +35,8 @@ pub enum FeedSubscriptionInstructionData {
 impl FeedSubscriptionInstructionData {
     pub const CONFIGURE_VALIDATOR_CLIENT_REWARDS_PROPORTION: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::configure_validator_client_rewards_proportion");
+    pub const CLAIM_FEED_VALIDATOR_CLIENT_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::claim_feed_validator_client_rewards");
     pub const CONFIGURE_FEED_PUBLISHER_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::configure_feed_publisher_rewards");
 }
@@ -42,6 +47,9 @@ impl BorshSerialize for FeedSubscriptionInstructionData {
             Self::ConfigureValidatorClientRewardsProportion(proportion_bps) => {
                 Self::CONFIGURE_VALIDATOR_CLIENT_REWARDS_PROPORTION.serialize(writer)?;
                 proportion_bps.serialize(writer)
+            }
+            Self::ClaimFeedValidatorClientRewards => {
+                Self::CLAIM_FEED_VALIDATOR_CLIENT_REWARDS.serialize(writer)
             }
             Self::ConfigureFeedPublisherRewards {
                 rewards_token_owner_key,
@@ -64,6 +72,7 @@ impl BorshDeserialize for FeedSubscriptionInstructionData {
                     proportion_bps,
                 ))
             }
+            Self::CLAIM_FEED_VALIDATOR_CLIENT_REWARDS => Ok(Self::ClaimFeedValidatorClientRewards),
             Self::CONFIGURE_FEED_PUBLISHER_REWARDS => {
                 let rewards_token_owner_key = Pubkey::deserialize_reader(reader)?;
                 let offchain_authorization =
@@ -92,6 +101,19 @@ mod tests {
 
         // The discriminator is the one in the onchain IDL, then the share as a little-endian u16.
         assert_eq!(bytes, vec![230, 201, 59, 64, 173, 186, 113, 43, 0xAC, 0x0D]);
+        assert_eq!(
+            FeedSubscriptionInstructionData::try_from_slice(&bytes).unwrap(),
+            ix
+        );
+    }
+
+    #[test]
+    fn test_claim_feed_validator_client_rewards_frozen_bytes() {
+        let ix = FeedSubscriptionInstructionData::ClaimFeedValidatorClientRewards;
+        let bytes = borsh::to_vec(&ix).unwrap();
+
+        // The discriminator in the onchain IDL, and no arguments.
+        assert_eq!(bytes, vec![149, 214, 202, 33, 104, 18, 90, 151]);
         assert_eq!(
             FeedSubscriptionInstructionData::try_from_slice(&bytes).unwrap(),
             ix

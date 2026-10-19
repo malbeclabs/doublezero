@@ -23,7 +23,7 @@ impl FeedsCommand {
 pub enum FeedsSubcommand {
     /// Publisher rewards: set where a publisher is paid.
     PublisherRewards(publisher_rewards::PublisherRewardsCommand),
-    /// Validator client rewards: manage a client's share.
+    /// Validator client rewards: manage a client's share and claim its 2Z.
     ValidatorClientRewards(validator_client_rewards::ValidatorClientRewardsCommand),
 }
 

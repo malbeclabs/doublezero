@@ -1,6 +1,6 @@
 use crate::{doublezerocommand::CliCommand, validators::validate_pubkey_or_code};
 use clap::Args;
-use doublezero_cli_core::CliContext;
+use doublezero_cli_core::{label_addresses, labeled_table, CliContext};
 use doublezero_program_common::{serializer, types::parse_utils::bandwidth_to_string};
 use doublezero_sdk::commands::{
     accesspass::list::ListAccessPassCommand, device::list::ListDeviceCommand,
@@ -10,7 +10,7 @@ use doublezero_sdk::commands::{
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr};
-use tabled::{settings::Style, Table, Tabled};
+use tabled::{settings::Style, Tabled};
 
 #[derive(Args, Debug)]
 pub struct GetMulticastGroupCliCommand {
@@ -74,7 +74,7 @@ struct MulticastGroupOutput {
 impl GetMulticastGroupCliCommand {
     pub async fn execute<C: CliCommand, W: Write>(
         self,
-        _ctx: &CliContext,
+        ctx: &CliContext,
         client: &C,
         out: &mut W,
     ) -> eyre::Result<()> {
@@ -198,15 +198,16 @@ impl GetMulticastGroupCliCommand {
             let fields = info.fields();
             let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
             for (header, value) in headers.iter().zip(fields.iter()) {
+                let value = label_addresses(value, &ctx.address_labels);
                 writeln!(out, " {header:<max_len$} | {value}")?;
             }
 
-            let allowlist_table = Table::new(allowlist)
+            let allowlist_table = labeled_table(allowlist, &ctx.address_labels)
                 .with(Style::psql().remove_horizontals())
                 .to_string();
             writeln!(out, "\r\nallowlist:\r\n{allowlist_table}")?;
 
-            let users_table = Table::new(user_displays)
+            let users_table = labeled_table(user_displays, &ctx.address_labels)
                 .with(Style::psql().remove_horizontals())
                 .to_string();
             writeln!(out, "\r\nusers:\r\n{users_table}")?;

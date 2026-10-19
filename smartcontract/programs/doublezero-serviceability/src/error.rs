@@ -273,6 +273,11 @@ pub enum DoubleZeroError {
     FeedNotActivatable, // variant 130
     #[error("This instruction is for a different access pass type")]
     InvalidAccessPassType, // variant 131
+    #[error(
+        "Device account must stay within {max} bytes, the most the telemetry and geolocation programs can load",
+        max = crate::state::device::MAX_DEVICE_ACCOUNT_SIZE
+    )]
+    DeviceAccountTooLarge, // variant 132
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -410,6 +415,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::RetiringFeedCannotBeDeleted => ProgramError::Custom(129),
             DoubleZeroError::FeedNotActivatable => ProgramError::Custom(130),
             DoubleZeroError::InvalidAccessPassType => ProgramError::Custom(131),
+            DoubleZeroError::DeviceAccountTooLarge => ProgramError::Custom(132),
         }
     }
 }
@@ -548,6 +554,7 @@ impl From<u32> for DoubleZeroError {
             129 => DoubleZeroError::RetiringFeedCannotBeDeleted,
             130 => DoubleZeroError::FeedNotActivatable,
             131 => DoubleZeroError::InvalidAccessPassType,
+            132 => DoubleZeroError::DeviceAccountTooLarge,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -564,6 +571,17 @@ impl From<ProgramError> for DoubleZeroError {
 
 pub trait Validate {
     fn validate(&self) -> Result<(), DoubleZeroError>;
+
+    /// Checks that the account may be written at `new_len` bytes when it currently holds
+    /// `current_len` (0 when it is being created). `try_acc_create` and `try_acc_write` call it
+    /// before resizing. Accounts are uncapped unless the type overrides this.
+    fn validate_account_size(
+        &self,
+        _current_len: usize,
+        _new_len: usize,
+    ) -> Result<(), DoubleZeroError> {
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -593,7 +611,7 @@ mod tests {
         }
 
         // EnumIter generates Custom(0) by default, so we explicitly test values
-        // outside the known variant range (currently 0-131) to ensure the conversion
+        // outside the known variant range (currently 0-132) to ensure the conversion
         // logic handles arbitrary custom codes correctly.
         for code in [1000u32, 100_000, u32::MAX] {
             let err = DoubleZeroError::Custom(code);

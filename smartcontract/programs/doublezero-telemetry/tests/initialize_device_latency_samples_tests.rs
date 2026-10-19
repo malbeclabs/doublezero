@@ -15,7 +15,7 @@ use doublezero_telemetry::{
     error::TelemetryError, instructions::TelemetryInstruction,
     pda::derive_device_latency_samples_pda,
     processors::telemetry::initialize_device_latency_samples::InitializeDeviceLatencySamplesArgs,
-    state::device_latency_samples::DEVICE_LATENCY_SAMPLES_HEADER_SIZE,
+    serviceability_program_id, state::device_latency_samples::DEVICE_LATENCY_SAMPLES_HEADER_SIZE,
 };
 use solana_program_test::*;
 use solana_sdk::{
@@ -1623,4 +1623,115 @@ async fn test_initialize_device_latency_samples_fail_agent_not_owner_of_origin_d
         .await;
 
     assert_telemetry_error(result, TelemetryError::UnauthorizedAgent);
+}
+
+/// The largest Device serviceability lets an account grow to, built from interfaces named by
+/// `name`. Short names are the worst case for the heap: they pack the most interfaces into the
+/// bytes.
+fn max_size_device(metrics_publisher_pk: Pubkey, name: impl Fn(usize) -> String) -> Vec<u8> {
+    use doublezero_serviceability::state::{
+        device::MAX_DEVICE_ACCOUNT_SIZE,
+        interface::{Interface, InterfaceStatus, InterfaceType},
+    };
+
+    let mut device = Device {
+        account_type: AccountType::Device,
+        code: "max-size".to_string(),
+        status: DeviceStatus::Activated,
+        metrics_publisher_pk,
+        location_pk: Pubkey::new_unique(),
+        exchange_pk: Pubkey::new_unique(),
+        contributor_pk: Pubkey::new_unique(),
+        dz_prefixes: "110.1.0.0/23".parse().unwrap(),
+        mgmt_vrf: "mgmt".to_string(),
+        public_ip: [8, 8, 8, 8].into(),
+        ..Default::default()
+    };
+    let mut data = borsh::to_vec(&device).unwrap();
+    for i in 0.. {
+        let mut iface = Interface {
+            status: InterfaceStatus::Activated,
+            name: name(i),
+            interface_type: InterfaceType::Physical,
+            ..Default::default()
+        };
+        iface.size = iface.compute_on_disk_size().unwrap();
+        device.interfaces.push(iface);
+        let next = borsh::to_vec(&device).unwrap();
+        if next.len() > MAX_DEVICE_ACCOUNT_SIZE {
+            break;
+        }
+        data = next;
+    }
+    data
+}
+
+/// Both devices of the link at serviceability's Device size cap still load on this program's
+/// 32 KiB heap. Meaningful under `cargo test-sbf`; the native build has no heap limit.
+async fn initialize_with_max_size_devices(name: impl Fn(usize) -> String + Copy) {
+    let agent = Keypair::new();
+    let origin_device_pk = Pubkey::new_unique();
+    let target_device_pk = Pubkey::new_unique();
+    let link_pk = Pubkey::new_unique();
+    let owned = |data: Vec<u8>| Account {
+        lamports: 1_000_000_000,
+        data,
+        owner: serviceability_program_id(),
+        executable: false,
+        rent_epoch: 0,
+    };
+    let link = Link {
+        account_type: AccountType::Link,
+        side_a_pk: origin_device_pk,
+        side_z_pk: target_device_pk,
+        status: LinkStatus::Activated,
+        code: "link".to_string(),
+        ..Default::default()
+    };
+
+    let mut ledger = LedgerHelper::new_with_preloaded_accounts(vec![
+        (
+            origin_device_pk,
+            owned(max_size_device(agent.pubkey(), name)),
+        ),
+        (
+            target_device_pk,
+            owned(max_size_device(Pubkey::new_unique(), name)),
+        ),
+        (link_pk, owned(borsh::to_vec(&link).unwrap())),
+        (
+            agent.pubkey(),
+            Account {
+                lamports: 1_000_000_000,
+                ..Default::default()
+            },
+        ),
+    ])
+    .await
+    .unwrap();
+
+    let pda = ledger
+        .telemetry
+        .initialize_device_latency_samples(
+            &agent,
+            origin_device_pk,
+            target_device_pk,
+            link_pk,
+            1,
+            5_000_000,
+        )
+        .await
+        .unwrap();
+    let account = ledger.get_account(pda).await.unwrap().unwrap();
+    assert_eq!(account.data.len(), DEVICE_LATENCY_SAMPLES_HEADER_SIZE);
+}
+
+#[tokio::test]
+async fn test_initialize_device_latency_samples_max_size_devices_short_names() {
+    initialize_with_max_size_devices(|i| format!("Vlan{i}")).await;
+}
+
+#[tokio::test]
+async fn test_initialize_device_latency_samples_max_size_devices_long_names() {
+    initialize_with_max_size_devices(|i| format!("Ethernet{i}/{}1", "0".repeat(490))).await;
 }

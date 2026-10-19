@@ -5,6 +5,7 @@ package e2e_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/gagliardetto/solana-go"
 	solanarpc "github.com/gagliardetto/solana-go/rpc"
+	"github.com/gagliardetto/solana-go/rpc/jsonrpc"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	"github.com/malbeclabs/doublezero/e2e/internal/poll"
@@ -41,6 +43,9 @@ const requirePermissionAccountsBit = 1 << 1
 //   - the CLI / Rust SDK (the manager key, a foundation allowlist member);
 //   - the Go SDK executor (as the device health oracle uses it);
 //   - the sentinel, which builds its instructions with the instruction crate.
+//
+// Strict mode is toggled by a key outside the foundation allowlist whose only grant is
+// globalstate-admin, so the toggle goes through authorize() and not the foundation recovery path.
 //
 // It also covers the two recovery paths the rollout depends on: a foundation allowlist member
 // with no Permission account can still manage Permission accounts and turn strict mode off.
@@ -179,6 +184,8 @@ func TestE2E_PermissionAccounts_StrictMode(t *testing.T) {
 	noPDAPath, noPDAPubkey := cliKey(t, "no-pda")                // no Permission account
 	infraOnlyPath, infraOnlyPubkey := cliKey(t, "infra-only")    // a Permission account with infra-admin only
 	breakGlassPath, breakGlassPubkey := cliKey(t, "break-glass") // foundation allowlist member, no Permission account
+	// Toggles strict mode. Not a foundation allowlist member, so it cannot use the recovery path.
+	globalAdminPath, globalAdminPubkey := cliKey(t, "globalstate-admin")
 
 	// Phase 1 of the rollout plan: with strict mode still off, give every legacy key a Permission
 	// account covering what the audit says it would lose.
@@ -206,6 +213,7 @@ func TestE2E_PermissionAccounts_StrictMode(t *testing.T) {
 			run(t, "", cmd)
 		}
 		run(t, "", "doublezero permission set --user-payer "+infraOnlyPubkey+" --add infra-admin")
+		run(t, "", "doublezero permission set --user-payer "+globalAdminPubkey+" --add globalstate-admin")
 
 		report = audit(t)
 		require.Empty(t, report.Gaps, "every legacy key must be covered before strict mode is enabled")
@@ -213,11 +221,12 @@ func TestE2E_PermissionAccounts_StrictMode(t *testing.T) {
 		t.FailNow()
 	}
 
-	// Phase 3: enable strict mode. The plan checks the rollback path first.
+	// Phase 3: enable strict mode. The plan checks the rollback path first. A foundation member
+	// could disable strict mode without a Permission account, so a non-member signs every toggle.
 	if !t.Run("enable_and_roll_back_through_permission_account", func(t *testing.T) {
-		setStrictMode(t, "", true)
-		setStrictMode(t, "", false)
-		setStrictMode(t, "", true)
+		setStrictMode(t, globalAdminPath, true)
+		setStrictMode(t, globalAdminPath, false)
+		setStrictMode(t, globalAdminPath, true)
 		require.True(t, audit(t).StrictModeEnabled)
 	}) {
 		t.FailNow()
@@ -271,11 +280,14 @@ func TestE2E_PermissionAccounts_StrictMode(t *testing.T) {
 		require.NotEmpty(t, group.Account)
 		multicastGroupPK = group.Account
 
-		// access-pass-admin and user-admin: a full user lifecycle.
+		// access-pass-admin and user-admin: a full user lifecycle. Create and delete by the owner
+		// skip the user-admin check; update always requires it.
 		const ip = "45.33.100.12"
+		userPK := "$(doublezero user list | grep '" + ip + " ' | awk '{print $1}')"
 		run(t, "", "doublezero access-pass set --accesspass-type prepaid --client-ip "+ip+" --user-payer me")
 		run(t, "", "doublezero user create --device dev01 --client-ip "+ip)
-		run(t, "", "doublezero user delete --accesspass-type prepaid --pubkey $(doublezero user list | grep '"+ip+" ' | awk '{print $1}')")
+		run(t, "", "doublezero user update --pubkey "+userPK+" --validator-pubkey "+noPDAPubkey)
+		run(t, "", "doublezero user delete --accesspass-type prepaid --pubkey "+userPK)
 		require.NoError(t, poll.Until(ctx, func() (bool, error) {
 			out, err := exec("", "doublezero user list")
 			return err == nil && !strings.Contains(out, ip+" "), nil
@@ -295,7 +307,8 @@ func TestE2E_PermissionAccounts_StrictMode(t *testing.T) {
 	// so legacy authorization would accept it; suspending its Permission account shows that only
 	// the Permission account counts.
 	t.Run("go_executor_health_oracle", func(t *testing.T) {
-		executor := serviceability.NewExecutor(log, dn.Ledger.GetRPCClient(), &healthOracleKey, programID)
+		rpcClient := &sendErrRecorder{Client: dn.Ledger.GetRPCClient()}
+		executor := serviceability.NewExecutor(log, rpcClient, &healthOracleKey, programID)
 		globalState, _, err := serviceability.GetGlobalStatePDA(programID)
 		require.NoError(t, err)
 		devicePK, err := dn.GetDevicePubkeyOnchain(ctx, "dev02")
@@ -325,7 +338,6 @@ func TestE2E_PermissionAccounts_StrictMode(t *testing.T) {
 		// change to finalize before signing, or the simulation still sees the old status.
 		permissionPDA, _, err := serviceability.GetPermissionPDA(programID, healthOracleKey.PublicKey())
 		require.NoError(t, err)
-		rpcClient := dn.Ledger.GetRPCClient()
 		waitFinalized := func(want serviceability.PermissionStatus) {
 			require.Eventually(t, func() bool {
 				info, err := rpcClient.GetAccountInfoWithOpts(ctx, permissionPDA, &solanarpc.GetAccountInfoOpts{
@@ -346,8 +358,10 @@ func TestE2E_PermissionAccounts_StrictMode(t *testing.T) {
 
 		run(t, "", "doublezero permission suspend --user-payer "+healthOraclePubkey)
 		waitFinalized(serviceability.PermissionStatusSuspended)
-		require.Error(t, setHealth(serviceability.DeviceHealthReadyForUsers),
+		rpcClient.lastErr = nil
+		require.ErrorIs(t, setHealth(serviceability.DeviceHealthReadyForUsers), serviceability.ErrAllUpdatesFailed,
 			"a suspended Permission account must not authorize, even for health_oracle_pk")
+		requireNotAllowed(t, rpcClient.lastErr)
 		requireHealth(serviceability.DeviceHealthReadyForLinks)
 
 		run(t, "", "doublezero permission resume --user-payer "+healthOraclePubkey)
@@ -440,4 +454,41 @@ func grantableFlags(flags []string) []string {
 		panic(fmt.Sprintf("no grantable flag in %v", flags))
 	}
 	return out
+}
+
+// sendErrRecorder keeps the last error from sending a transaction. The executor logs a batch
+// failure but returns only ErrAllUpdatesFailed, which says nothing about the reason.
+type sendErrRecorder struct {
+	*solanarpc.Client
+	lastErr error
+}
+
+func (r *sendErrRecorder) SendTransactionWithOpts(ctx context.Context, tx *solana.Transaction, opts solanarpc.TransactionOpts) (solana.Signature, error) {
+	sig, err := r.Client.SendTransactionWithOpts(ctx, tx, opts)
+	if err != nil {
+		r.lastErr = err
+	}
+	return sig, err
+}
+
+// requireNotAllowed checks that a preflight rejection is NotAllowed (custom error 8) from the
+// only instruction in the transaction.
+func requireNotAllowed(t *testing.T, err error) {
+	t.Helper()
+	var rpcErr *jsonrpc.RPCError
+	require.True(t, errors.As(err, &rpcErr), "expected a preflight rejection, got %v", err)
+	data, _ := json.Marshal(rpcErr.Data)
+	var sim struct {
+		Err struct {
+			InstructionError []json.RawMessage `json:"InstructionError"`
+		} `json:"err"`
+		Logs []string `json:"logs"`
+	}
+	require.NoError(t, json.Unmarshal(data, &sim), "unexpected RPC error data: %s", data)
+	require.Len(t, sim.Err.InstructionError, 2, "not an instruction error: %s", data)
+	require.JSONEq(t, `0`, string(sim.Err.InstructionError[0]))
+	require.JSONEq(t, `{"Custom": 8}`, string(sim.Err.InstructionError[1]))
+	require.True(t, slices.ContainsFunc(sim.Logs, func(l string) bool {
+		return strings.HasSuffix(l, "failed: custom program error: 0x8")
+	}), "missing NotAllowed failure log: %v", sim.Logs)
 }

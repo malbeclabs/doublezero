@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - CI
+  - A new `osv-scanner` workflow fails a pull request, a push to `main` or a daily run when a locked dependency (Rust, Go, Python, npm or Elixir) has a scored advisory that `osv-scanner.toml` does not list. Go advisories fail only when call analysis shows our code reaches them. Each accepted advisory in `osv-scanner.toml` carries a reason and an expiry date.
   - Release jobs install goreleaser-pro v2.18.2 through `.github/actions/install-goreleaser-pro`, which checks the download against a sha256 pinned in the repo and fails the job on any mismatch or failed download, then run `goreleaser` directly. This replaces goreleaser-action, which runs the binary unchecked when it cannot fetch the checksum or signature file, and stops goreleaser floating on `~> v2`.
 - CLI
   - New `doublezero-solana feeds publisher-rewards configure`, which sets the wallet and mint the feed subscription program pays a publisher in, creating the publisher's account when it is missing. The validator identity signs it, or signs offchain on the validator host with `solana sign-offchain-message` over the message `feeds publisher-rewards prepare-offchain-message` prints. (malbeclabs/infra#3109)

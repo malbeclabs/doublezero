@@ -1,0 +1,68 @@
+name: osv-scanner
+
+# Fails while any locked dependency has a scored advisory that osv-scanner.toml
+# does not list. The daily run catches a new advisory against code nobody changed.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  osv-scanner:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      # Go call analysis builds the module, so it needs the module's Go version.
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Install osv-scanner
+        env:
+          OSV_SCANNER_VERSION: v2.6.0
+          OSV_SCANNER_SHA256: ca69b3d3cd08f889a49dc0a383122f71cc528b83803671df5fd874d97485b108
+        run: |
+          curl -sSfL -o "$RUNNER_TEMP/osv-scanner" \
+            "https://github.com/google/osv-scanner/releases/download/${OSV_SCANNER_VERSION}/osv-scanner_linux_amd64"
+          echo "${OSV_SCANNER_SHA256}  $RUNNER_TEMP/osv-scanner" | sha256sum -c -
+          chmod +x "$RUNNER_TEMP/osv-scanner"
+
+      - name: Scan
+        shell: bash
+        env:
+          # Call analysis must see the e2e and qa harness, which only builds with these tags.
+          GOFLAGS: -tags=e2e,qa
+        run: |
+          rc=0
+          "$RUNNER_TEMP/osv-scanner" scan source -r --call-analysis=go \
+            --config osv-scanner.toml --format json --output osv.json . || rc=$?
+          # 0 is clean and 1 is findings; anything else is a scanner error.
+          if [ "$rc" -gt 1 ]; then exit "$rc"; fi
+
+          # A finding fails the job when it has a severity score and is not a Go
+          # advisory that call analysis showed our code never calls. Unscored
+          # advisories, mostly unmaintained-crate notices, are listed only.
+          jq -r '
+            .results[] | .source.path as $file | .packages[] |
+            "\(.package.name)@\(.package.version)" as $package | .groups[]? |
+            ((.max_severity // "") != "") as $scored |
+            ((.experimental_analysis // {}) | to_entries | map(.value.called)) as $called |
+            (if ($scored and (($called | length) == 0 or ($called | any))) then "FAIL" else "info" end) as $level |
+            "\($level)\t\(.max_severity // "-")\t\($file)\t\($package)\t\(.ids | join(","))"
+          ' osv.json | sort > findings.tsv
+          cat findings.tsv
+          if grep -q '^FAIL' findings.tsv; then
+            echo "::error::Fix or upgrade each FAIL above, or list it in osv-scanner.toml with a reason and an ignoreUntil date."
+            exit 1
+          fi

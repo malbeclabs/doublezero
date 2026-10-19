@@ -1,7 +1,10 @@
 use crate::{
     authorize::{authorize, FEED_ADMIN_FLAGS},
     error::DoubleZeroError,
-    processors::feed::{require_feed_writer, require_stake_still_covers, split_stake_mirror},
+    processors::{
+        feed::{require_feed_writer, require_stake_still_covers},
+        stake_mirror::split_stake_mirror,
+    },
     serializer::try_acc_write,
     state::{
         feed::{Feed, FeedStatus},
@@ -50,8 +53,11 @@ pub fn process_resume_feed(
 
     // The stake mirror rides after the fixed accounts, found by its address rather than its
     // position, so a catalog feed's caller is not forced to send one.
-    let (mirror_account, authorize_candidates) =
-        split_stake_mirror(program_id, &feed.builder, &feed.stake_ref, accounts_iter);
+    let (mirror_account, authorize_candidates) = split_stake_mirror(
+        program_id,
+        (feed.builder != Pubkey::default()).then_some(&feed.stake_ref),
+        accounts_iter,
+    );
     let mut authorize_iter = authorize_candidates.into_iter();
 
     // An operator's halt is not the builder's to lift. Letting the builder resume it would undo

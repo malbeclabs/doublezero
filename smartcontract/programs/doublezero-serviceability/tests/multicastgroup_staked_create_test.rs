@@ -160,6 +160,17 @@ impl Cluster {
         args: MulticastGroupCreateArgs,
         mirror: Pubkey,
     ) -> (Pubkey, Result<(), TransactionError>) {
+        self.create_group_with_tail(payer, args, &[AccountMeta::new(mirror, false)])
+            .await
+    }
+
+    /// `create_group`, with `tail` after the fixed accounts in place of the mirror.
+    async fn create_group_with_tail(
+        &mut self,
+        payer: &Keypair,
+        args: MulticastGroupCreateArgs,
+        tail: &[AccountMeta],
+    ) -> (Pubkey, Result<(), TransactionError>) {
         let index = get_globalstate(&mut self.banks_client, self.globalstate)
             .await
             .account_index
@@ -179,7 +190,7 @@ impl Cluster {
                 ),
             ],
             payer,
-            &[AccountMeta::new(mirror, false)],
+            tail,
         )
         .await;
         (group, result)
@@ -482,4 +493,15 @@ async fn test_a_stake_admits_nothing_once_the_flag_is_cleared() {
         .await;
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
     assert_eq!(c.groups_created(mirror).await, 0);
+
+    // Without the mirror the answer is the same. A cluster with the flag clear must not tell the
+    // caller to attach a mirror that cannot help it.
+    let (_, result) = c
+        .create_group_with_tail(
+            &builder,
+            staked_args("flag-clear-no-mirror", builder.pubkey(), stake_ref),
+            &[],
+        )
+        .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
 }

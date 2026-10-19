@@ -4,6 +4,15 @@ use std::io;
 
 use borsh::{BorshDeserialize, BorshSerialize};
 use doublezero_program_tools::{DISCRIMINATOR_LEN, Discriminator};
+use solana_sdk::pubkey::Pubkey;
+
+/// An authorization the validator identity signs with `solana sign-offchain-message`: the ed25519
+/// signature and the last slot at which the program accepts it.
+#[derive(Debug, Clone, PartialEq, Eq, BorshSerialize, BorshDeserialize)]
+pub struct ValidatorOffchainAuthorization {
+    pub deadline_slot: u64,
+    pub signature: [u8; 64],
+}
 
 /// The feed subscription instructions this SDK builds. The onchain program has more. Add a
 /// variant here, with its discriminator, when a command needs one.
@@ -14,6 +23,13 @@ pub enum FeedSubscriptionInstructionData {
     /// Manager only (pause-gated). Moves a team's 2Z claim holding for one month to a token account
     /// the manager picks, and closes the holding to the oracle.
     ClaimFeedValidatorClientRewards,
+    /// Validator identity or its offchain signature (pause-gated). Creates the publisher's
+    /// `FeedPublisherRewards` when missing and sets its rewards owner and mint.
+    ConfigureFeedPublisherRewards {
+        rewards_token_owner_key: Pubkey,
+        /// `None` when the validator identity signs the transaction.
+        offchain_authorization: Option<ValidatorOffchainAuthorization>,
+    },
 }
 
 impl FeedSubscriptionInstructionData {
@@ -21,6 +37,8 @@ impl FeedSubscriptionInstructionData {
         Discriminator::new_sha2(b"dz::ix::configure_validator_client_rewards_proportion");
     pub const CLAIM_FEED_VALIDATOR_CLIENT_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::claim_feed_validator_client_rewards");
+    pub const CONFIGURE_FEED_PUBLISHER_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::configure_feed_publisher_rewards");
 }
 
 impl BorshSerialize for FeedSubscriptionInstructionData {
@@ -32,6 +50,14 @@ impl BorshSerialize for FeedSubscriptionInstructionData {
             }
             Self::ClaimFeedValidatorClientRewards => {
                 Self::CLAIM_FEED_VALIDATOR_CLIENT_REWARDS.serialize(writer)
+            }
+            Self::ConfigureFeedPublisherRewards {
+                rewards_token_owner_key,
+                offchain_authorization,
+            } => {
+                Self::CONFIGURE_FEED_PUBLISHER_REWARDS.serialize(writer)?;
+                rewards_token_owner_key.serialize(writer)?;
+                offchain_authorization.serialize(writer)
             }
         }
     }
@@ -47,6 +73,15 @@ impl BorshDeserialize for FeedSubscriptionInstructionData {
                 ))
             }
             Self::CLAIM_FEED_VALIDATOR_CLIENT_REWARDS => Ok(Self::ClaimFeedValidatorClientRewards),
+            Self::CONFIGURE_FEED_PUBLISHER_REWARDS => {
+                let rewards_token_owner_key = Pubkey::deserialize_reader(reader)?;
+                let offchain_authorization =
+                    Option::<ValidatorOffchainAuthorization>::deserialize_reader(reader)?;
+                Ok(Self::ConfigureFeedPublisherRewards {
+                    rewards_token_owner_key,
+                    offchain_authorization,
+                })
+            }
             _ => Err(io::Error::new(
                 io::ErrorKind::InvalidData,
                 "Invalid discriminator",
@@ -83,6 +118,43 @@ mod tests {
             FeedSubscriptionInstructionData::try_from_slice(&bytes).unwrap(),
             ix
         );
+    }
+
+    #[test]
+    fn test_configure_feed_publisher_rewards_frozen_bytes() {
+        // The discriminator in the onchain IDL, then the owner.
+        let mut direct_bytes = vec![79, 127, 26, 89, 7, 225, 23, 101];
+        direct_bytes.extend_from_slice(&[3; 32]);
+        let mut offchain_bytes = direct_bytes.clone();
+        // No authorization.
+        direct_bytes.push(0);
+        // Some authorization, then its deadline slot as a little-endian u64 and its signature.
+        offchain_bytes.push(1);
+        offchain_bytes.extend_from_slice(&[0xEF, 0xBE, 0xAD, 0xDE, 0, 0, 0, 0]);
+        offchain_bytes.extend_from_slice(&[7; 64]);
+
+        // The program serializes these two instructions to the same bytes.
+        for (offchain_authorization, expected_bytes) in [
+            (None, direct_bytes),
+            (
+                Some(ValidatorOffchainAuthorization {
+                    deadline_slot: 0xdead_beef,
+                    signature: [7; 64],
+                }),
+                offchain_bytes,
+            ),
+        ] {
+            let ix = FeedSubscriptionInstructionData::ConfigureFeedPublisherRewards {
+                rewards_token_owner_key: Pubkey::new_from_array([3; 32]),
+                offchain_authorization,
+            };
+            let bytes = borsh::to_vec(&ix).unwrap();
+            assert_eq!(bytes, expected_bytes);
+            assert_eq!(
+                FeedSubscriptionInstructionData::try_from_slice(&bytes).unwrap(),
+                ix
+            );
+        }
     }
 
     #[test]

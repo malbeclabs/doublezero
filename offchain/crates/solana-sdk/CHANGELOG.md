@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `feed_subscription`: add the `ConfigureFeedPublisherRewards` instruction with its `ValidatorOffchainAuthorization` and account list, the `ConfigureFeedPublisherRewardsAuthMessage` a validator identity signs offchain, the `FeedPublishersRewardToken` enabled flag, and the `FeedPublisherRewards` and `FeedPublishersRewardToken` PDA helpers (malbeclabs/infra#3109)
 - `feed_subscription`: add the `ClaimFeedValidatorClientRewards` instruction with its account list, the `FeedDistribution` feed key and month, the `ProgramConfig` oracle key, and the `find_claim_holding_address` and `find_feed_distribution_journal_address` PDA helpers (malbeclabs/infra#3206)
 - add the `feed_subscription` module, a copy of the feed subscription program's `ProgramConfig` flags, `ValidatorClientRewards` account, PDA helpers and `ConfigureValidatorClientRewardsProportion` instruction with its account list, for offchain consumers (malbeclabs/infra#2805)
 - add `parse_metro_history_price_at_epoch` and `parse_device_history_premium_at_epoch` for reading a `MetroHistory`/`DeviceHistory` ring entry at a specific epoch, mirroring the onchain `RingBuffer::find` (backwards walk from `current_index` bounded by `total_count`, so `epoch == 0` cannot match a zero-initialized slot), plus `seat_usdc_price_dollars` mirroring `DeviceSubscription::usdc_price_dollars`. `parse_metro_history` / `parse_device_history` keep returning the newest entry (#405)

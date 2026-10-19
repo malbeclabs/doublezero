@@ -131,7 +131,7 @@ fn try_deadline_slot(
             .unwrap_or(u64::MAX);
         current_slot.saturating_add(slots)
     });
-    let accepted_deadline_slots = current_slot.saturating_add(1)
+    let accepted_deadline_slots = current_slot
         ..=current_slot
             .saturating_add(ConfigureFeedPublisherRewardsAuthMessage::MAX_DEADLINE_SLOTS_AHEAD);
     ensure!(
@@ -162,29 +162,28 @@ mod tests {
 
     #[test]
     fn test_deadline_slot_refuses_what_the_program_refuses() {
+        assert_eq!(try_deadline_slot(1_000, Some(1_000), None).unwrap(), 1_000);
         assert_eq!(
             try_deadline_slot(1_000, Some(1_000 + 216_000), None).unwrap(),
             217_000
         );
 
         for (deadline_slot, valid_for, refused_deadline_slot) in [
+            (Some(999), None, 999),
             (Some(217_001), None, 217_001),
-            (Some(1_000), None, 1_000),
             // A day of nominal slots is 246,857, past the program's 216,000.
             (
                 None,
                 Some(Duration::from_secs(24 * 60 * 60)),
                 1_000 + 246_857,
             ),
-            // Less than a slot.
-            (None, Some(Duration::from_millis(1)), 1_000),
         ] {
             assert_eq!(
                 try_deadline_slot(1_000, deadline_slot, valid_for)
                     .unwrap_err()
                     .to_string(),
                 format!(
-                    "deadline slot {refused_deadline_slot} is outside 1001..=217000, the range \
+                    "deadline slot {refused_deadline_slot} is outside 1000..=217000, the range \
                      the feed program accepts at the current slot 1000"
                 )
             );

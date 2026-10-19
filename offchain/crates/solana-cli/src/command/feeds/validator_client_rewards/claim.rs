@@ -384,13 +384,25 @@ impl ClaimCommand {
                 // earlier executed batch.
                 let mut executed_holdings = 0;
                 for (batch_index, batch) in emitted.iter().enumerate() {
-                    if emitted_count > 1 {
+                    // Written before the send, so a dry run or a failed send
+                    // still shows what the transaction claims.
+                    writeln!(
+                        out,
+                        "\nTransaction {}/{emitted_count}: {} holding(s), months {}",
+                        batch_index + 1,
+                        batch.len(),
+                        month_list(batch),
+                    )?;
+                    // The program moves each holding's whole balance, which a
+                    // payout landing after this read would raise.
+                    for holding in batch.iter() {
                         writeln!(
                             out,
-                            "\nTransaction {}/{emitted_count}: {} holding(s), months {}",
-                            batch_index + 1,
-                            batch.len(),
-                            month_list(batch),
+                            "  {} feed {}: {} from {} (pre-claim)",
+                            holding.year_month(),
+                            holding.feed_key,
+                            holding.pre_balance,
+                            holding.holding_key,
                         )?;
                     }
 
@@ -402,18 +414,6 @@ impl ClaimCommand {
                     if let TransactionOutcome::Executed(tx_sig) = tx_outcome {
                         executed_holdings += batch.len();
                         writeln!(out, "Claimed: {tx_sig}")?;
-                        // The program moves each holding's whole balance, which
-                        // a payout landing after this read would raise.
-                        for holding in batch.iter() {
-                            writeln!(
-                                out,
-                                "  {} feed {}: {} from {} (pre-claim)",
-                                holding.year_month(),
-                                holding.feed_key,
-                                holding.pre_balance,
-                                holding.holding_key,
-                            )?;
-                        }
                         wallet.write_verbose_output(out, &[tx_sig]).await?;
                     }
                 }

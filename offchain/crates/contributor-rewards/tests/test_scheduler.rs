@@ -205,6 +205,7 @@ mod tests {
             [
                 "consecutive_distribution_failures",
                 "consecutive_failures",
+                "consecutive_monthly_failures",
                 "last_check_time",
                 "last_distributed_epoch",
                 "last_processed_epoch",

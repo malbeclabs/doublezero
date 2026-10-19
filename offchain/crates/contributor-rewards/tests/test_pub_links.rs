@@ -68,6 +68,7 @@ fn test_settings() -> settings::Settings {
             enable_dry_run: false,
             storage_backend: settings::aws::StorageBackend::LocalFile,
             grace_period_max_wait_seconds: 21600,
+            enable_monthly_distribution: false,
         },
         metrics: Some(settings::MetricsSettings {
             addr: "127.0.0.1:9090".parse().unwrap(),

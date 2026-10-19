@@ -20,7 +20,7 @@ impl FeedsCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum FeedsSubcommand {
-    /// Validator client rewards: manage a client's share.
+    /// Validator client rewards: manage a client's share and claim its 2Z.
     ValidatorClientRewards(validator_client_rewards::ValidatorClientRewardsCommand),
 }
 

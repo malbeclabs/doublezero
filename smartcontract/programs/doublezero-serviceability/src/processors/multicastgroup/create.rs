@@ -3,7 +3,8 @@ use crate::{
     error::{DoubleZeroError, Validate},
     pda::{get_multicastgroup_pda, get_resource_extension_pda},
     processors::{
-        feed::split_stake_mirror, resource::allocate_ip, validation::validate_program_account,
+        resource::allocate_ip, stake_mirror::split_stake_mirror,
+        validation::validate_program_account,
     },
     resource::ResourceType,
     seeds::{SEED_MULTICAST_GROUP, SEED_PREFIX},
@@ -79,18 +80,6 @@ pub fn process_create_multicastgroup(
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
 
-    // The tail holds the stake's StakeMirror, the payer's Permission account, or neither.
-    // `split_stake_mirror` looks for a mirror only when it is given a builder, and on this path
-    // the builder is the payer or nobody.
-    let staked = value.stake_ref != Pubkey::default();
-    let builder = if staked {
-        *payer_account.key
-    } else {
-        Pubkey::default()
-    };
-    let (mirror_account, authorize_candidates) =
-        split_stake_mirror(program_id, &builder, &value.stake_ref, accounts_iter);
-
     #[cfg(test)]
     msg!("process_create_multicastgroup({:?})", value);
 
@@ -129,20 +118,26 @@ pub fn process_create_multicastgroup(
     // or foundation/sentinel (legacy). A caller naming a stake gets the stake path's answer and
     // never falls through to the admin one, so an admin creating a group for a builder sends no
     // stake and works exactly as it did.
-    let claimed_mirror = if staked {
+    //
+    // The tail holds the stake's StakeMirror on the stake path, and the payer's Permission account
+    // or nothing on the admin path.
+    let claimed_mirror = if value.stake_ref != Pubkey::default() {
+        // Before the mirror is looked for, so a cluster without staked feeds answers NotAllowed
+        // whatever the caller attached.
+        if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::AllowStakedFeeds) {
+            msg!("Staked feeds are not enabled on this cluster");
+            return Err(DoubleZeroError::NotAllowed.into());
+        }
+        let (mirror_account, _) =
+            split_stake_mirror(program_id, Some(&value.stake_ref), accounts_iter);
         let mirror_account = mirror_account.ok_or(DoubleZeroError::StakeMirrorMissing)?;
-        let mirror = verify_stake_admits_group(
-            program_id,
-            mirror_account,
-            payer_account.key,
-            value,
-            globalstate.feature_flags,
-        )?;
+        let mirror =
+            verify_stake_admits_group(program_id, mirror_account, payer_account.key, value)?;
         Some((mirror_account, mirror))
     } else {
         authorize(
             program_id,
-            &mut authorize_candidates.into_iter(),
+            accounts_iter,
             payer_account.key,
             &globalstate,
             permission_flags::MULTICAST_ADMIN,
@@ -197,7 +192,12 @@ pub fn process_create_multicastgroup(
 
     // Count the group against the stake that admitted it.
     if let Some((mirror_account, mut mirror)) = claimed_mirror {
-        mirror.groups_created += 1;
+        // `verify_stake_admits_group` keeps the count under the limit. Checked here as well, so
+        // the counter cannot wrap if the limit or the stored count ever changes.
+        mirror.groups_created = mirror
+            .groups_created
+            .checked_add(1)
+            .ok_or(DoubleZeroError::StakeGroupLimitReached)?;
         try_acc_write(&mirror, mirror_account, payer_account, accounts)?;
     }
 
@@ -219,12 +219,7 @@ fn verify_stake_admits_group(
     mirror_account: &AccountInfo,
     payer: &Pubkey,
     value: &MulticastGroupCreateArgs,
-    feature_flags: u128,
 ) -> Result<StakeMirror, DoubleZeroError> {
-    if !is_feature_enabled(feature_flags, FeatureFlag::AllowStakedFeeds) {
-        msg!("Staked feeds are not enabled on this cluster");
-        return Err(DoubleZeroError::NotAllowed);
-    }
     if !mirror_account.is_writable {
         msg!("Stake mirror must be writable so the group can be counted against it");
         return Err(DoubleZeroError::InvalidArgument);

@@ -383,28 +383,24 @@ async fn test_a_staked_group_cannot_exceed_its_tier() {
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::StakeDoesNotCoverRate));
 }
 
-/// A group may declare up to the bond's committed rate, which can sit below its tier's ceiling.
+/// A group may declare up to the bond's tier, as a feed may, even when the builder committed to a
+/// lower rate inside that tier. The bond is priced by tier, so the tier is what it covers.
 #[tokio::test]
-async fn test_a_staked_group_cannot_exceed_the_committed_rate() {
+async fn test_a_staked_group_may_use_its_whole_tier() {
     let mut c = cluster().await;
     let builder = test_payer();
     let stake_ref = Pubkey::new_unique();
-    // Half the tier, so a check against the tier alone would admit the first create below.
+    // Half the tier, so a check against the committed rate would refuse the create below.
     let committed_rate = TIER.max_rate_bits_per_sec() / 2;
     let mirror = c
         .mirror_at_rate(stake_ref, builder.pubkey(), 1, committed_rate)
         .await;
 
-    let mut args = staked_args("over-commit", builder.pubkey(), stake_ref);
-    args.max_bandwidth = committed_rate + 1;
-    let (_, result) = c.create_group(&builder, args, mirror).await;
-    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::StakeDoesNotCoverRate));
-
-    let mut args = staked_args("at-commit", builder.pubkey(), stake_ref);
-    args.max_bandwidth = committed_rate;
+    let args = staked_args("whole-tier", builder.pubkey(), stake_ref);
+    assert_eq!(args.max_bandwidth, TIER.max_rate_bits_per_sec());
     let mirror_before = c.stake_mirror(mirror).await;
     let (group, result) = c.create_group(&builder, args.clone(), mirror).await;
-    result.expect("a group at the committed rate should be admitted");
+    result.expect("a group within the tier should be admitted, whatever the committed rate");
     c.assert_created(group, &args, mirror, mirror_before).await;
 }
 

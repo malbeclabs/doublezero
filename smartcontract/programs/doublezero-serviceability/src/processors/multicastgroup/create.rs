@@ -251,19 +251,16 @@ fn verify_stake_admits_group(
         msg!("A group created on a stake must be owned by the builder that created it");
         return Err(DoubleZeroError::InvalidArgument);
     }
-    // A group may declare up to the rate the builder committed to when it posted the bond. The tier
-    // check stays as well, because nothing stops a relayer writing a committed rate above its tier,
-    // and a mirror with tier `None` covers nothing.
+    // The same tier check `CreateFeed` makes, so a feed and the groups it lists follow one rule.
+    // `builder-stake` prices a bond by the tier its committed rate falls in, so the tier is what the
+    // builder paid for, and the mirror's `committed_rate_bits_per_sec` is only the record of what
+    // it declared. A mirror with tier `None` covers nothing.
     //
-    // Both apply to each group on its own, not to the stake: four groups can each declare the full
-    // committed rate. Nothing enforces or bills a group's `max_bandwidth`, and the rate a bond is
-    // sized against is the feed's committed rate, which `CreateFeed` checks once.
-    if value.max_bandwidth > mirror.committed_rate_bits_per_sec
-        || !mirror.tier.covers(value.max_bandwidth)
-    {
+    // The check applies to each group on its own, not to the stake: four groups can each declare
+    // the full tier. Nothing enforces or bills a group's `max_bandwidth`.
+    if !mirror.tier.covers(value.max_bandwidth) {
         msg!(
-            "Stake commits to {} bits/sec at tier {} (up to {}), group asks for {}",
-            mirror.committed_rate_bits_per_sec,
+            "Tier {} covers up to {} bits/sec, group asks for {}",
             mirror.tier,
             mirror.tier.max_rate_bits_per_sec(),
             value.max_bandwidth

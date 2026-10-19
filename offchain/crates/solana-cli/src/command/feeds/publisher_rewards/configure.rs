@@ -16,7 +16,11 @@ use doublezero_solana_sdk::{
     try_build_instruction,
 };
 use solana_compute_budget_interface::ComputeBudgetInstruction;
-use solana_sdk::{pubkey::Pubkey, signature::Signature};
+use solana_sdk::{
+    instruction::Instruction,
+    pubkey::Pubkey,
+    signature::{Signature, Signer},
+};
 
 use super::rewards_mint_arg::RewardsMintArg;
 
@@ -103,34 +107,13 @@ impl ConfigureCommand {
             if is_node_signer { "direct" } else { "offchain" }
         )?;
 
-        // The signer funds the account when the program creates it, which also keeps the signer
-        // required on the offchain path when `--fee-payer` pays the fee.
-        let configure_ix = try_build_instruction(
-            &ID,
-            ConfigureFeedPublisherRewardsAccounts::new(
-                &self.node_id,
-                &rewards_token_mint_key,
-                &wallet_key,
-                is_node_signer,
-            ),
-            &FeedSubscriptionInstructionData::ConfigureFeedPublisherRewards {
-                rewards_token_owner_key: self.rewards_token_owner_key,
-                offchain_authorization,
-            },
+        let instructions = try_configure_instructions(
+            &wallet,
+            &self.node_id,
+            &rewards_token_mint_key,
+            &self.rewards_token_owner_key,
+            offchain_authorization,
         )?;
-
-        let feed_publisher_rewards_bump = find_feed_publisher_rewards_address(&self.node_id).1;
-        let mut compute_unit_limit = CONFIGURE_COMPUTE_UNITS
-            + Wallet::compute_units_for_bump_seed(feed_publisher_rewards_bump);
-        if !is_node_signer {
-            compute_unit_limit += VERIFY_SIGNATURE_COMPUTE_UNITS;
-        }
-        let mut instructions = vec![
-            configure_ix,
-            ComputeBudgetInstruction::set_compute_unit_limit(compute_unit_limit),
-        ];
-        instructions.extend(wallet.compute_unit_price_ix.clone());
-
         let transaction = wallet.new_transaction(&instructions).await?;
         let tx_outcome = wallet.send_or_simulate_transaction(&transaction).await?;
 
@@ -141,6 +124,49 @@ impl ConfigureCommand {
 
         Ok(())
     }
+}
+
+/// The configure instruction and its compute budget.
+fn try_configure_instructions(
+    wallet: &Wallet,
+    node_id: &Pubkey,
+    rewards_token_mint_key: &Pubkey,
+    rewards_token_owner_key: &Pubkey,
+    offchain_authorization: Option<ValidatorOffchainAuthorization>,
+) -> Result<Vec<Instruction>> {
+    let is_node_signer = offchain_authorization.is_none();
+    // On the direct path a `--fee-payer` funds a new account, so an identity with no SOL can
+    // configure. On the offchain path the signer does, or it would sign nothing.
+    let payer_key = match &wallet.fee_payer {
+        Some(fee_payer) if is_node_signer => fee_payer.pubkey(),
+        _ => wallet.pubkey(),
+    };
+    let configure_ix = try_build_instruction(
+        &ID,
+        ConfigureFeedPublisherRewardsAccounts::new(
+            node_id,
+            rewards_token_mint_key,
+            &payer_key,
+            is_node_signer,
+        ),
+        &FeedSubscriptionInstructionData::ConfigureFeedPublisherRewards {
+            rewards_token_owner_key: *rewards_token_owner_key,
+            offchain_authorization,
+        },
+    )?;
+
+    let feed_publisher_rewards_bump = find_feed_publisher_rewards_address(node_id).1;
+    let mut compute_unit_limit =
+        CONFIGURE_COMPUTE_UNITS + Wallet::compute_units_for_bump_seed(feed_publisher_rewards_bump);
+    if !is_node_signer {
+        compute_unit_limit += VERIFY_SIGNATURE_COMPUTE_UNITS;
+    }
+    let mut instructions = vec![
+        configure_ix,
+        ComputeBudgetInstruction::set_compute_unit_limit(compute_unit_limit),
+    ];
+    instructions.extend(wallet.compute_unit_price_ix.clone());
+    Ok(instructions)
 }
 
 /// The authorization the instruction carries. Without one the validator identity signs the
@@ -172,7 +198,8 @@ fn try_offchain_authorization(
 #[cfg(test)]
 mod tests {
     use clap::{Parser, error::ErrorKind};
-    use solana_sdk::signature::{Keypair, Signer};
+    use doublezero_solana_client_tools::rpc::SolanaConnection;
+    use solana_sdk::{instruction::AccountMeta, signature::Keypair};
 
     use super::*;
 
@@ -231,5 +258,61 @@ mod tests {
                 signature: signature.into(),
             })
         );
+    }
+
+    #[test]
+    fn test_configure_transaction_builds_with_and_without_a_fee_payer() {
+        for (is_node_signer, has_fee_payer, fee_payer_funds) in [
+            (true, false, false),
+            (true, true, true),
+            (false, false, false),
+            (false, true, false),
+        ] {
+            let signer = Keypair::new();
+            let fee_payer = has_fee_payer.then(Keypair::new);
+            let funding_key = match (&fee_payer, fee_payer_funds) {
+                (Some(fee_payer), true) => fee_payer.pubkey(),
+                _ => signer.pubkey(),
+            };
+            // On the direct path the signer is the validator identity.
+            let node_id = if is_node_signer {
+                signer.pubkey()
+            } else {
+                Pubkey::new_unique()
+            };
+            let offchain_authorization =
+                (!is_node_signer).then_some(ValidatorOffchainAuthorization {
+                    deadline_slot: 1,
+                    signature: [7; 64],
+                });
+            let wallet = Wallet {
+                connection: SolanaConnection::new("http://localhost:8899".to_owned()),
+                signer,
+                compute_unit_price_ix: None,
+                verbose: false,
+                fee_payer,
+                dry_run: false,
+            };
+
+            let instructions = try_configure_instructions(
+                &wallet,
+                &node_id,
+                &Pubkey::new_unique(),
+                &Pubkey::new_unique(),
+                offchain_authorization,
+            )
+            .unwrap();
+
+            // Building fails when one of the wallet's keys signs nothing in the transaction.
+            wallet
+                .try_transaction_size(&instructions)
+                .unwrap_or_else(|error| {
+                    panic!("direct {is_node_signer}, fee payer {has_fee_payer}: {error:#}")
+                });
+            assert_eq!(
+                instructions[0].accounts[4],
+                AccountMeta::new(funding_key, true)
+            );
+        }
     }
 }

@@ -314,20 +314,19 @@ impl ClaimCommand {
         }
         holdings.sort_unstable_by_key(|holding| (holding.year, holding.month, holding.feed_key));
 
+        ensure!(
+            !holdings.is_empty(),
+            "client_id {} has {claim_holding_count} open claim holding(s), but none were found \
+             searching {network_env:?} for the 2Z mint {doublezero_mint_key}. An endpoint with \
+             an unrecognized genesis hash is read as Localnet",
+            self.client_id
+        );
         if holdings.len() < claim_holding_count {
             tracing::warn!(
                 "found {} holding(s) in the 2Z mint {doublezero_mint_key}, but \
                  claim_holding_count is {claim_holding_count}",
                 holdings.len()
             );
-        }
-        if holdings.is_empty() {
-            writeln!(
-                out,
-                "No claim holdings found for client_id {}.",
-                self.client_id
-            )?;
-            return Ok(());
         }
 
         // Grow each transaction one holding at a time while a trial still fits.

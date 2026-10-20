@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- Offchain
+  - `doublezero-contributor-rewards distribute-monthly-rewards` takes the Solana and DoubleZero Ledger RPCs as required `--solana-url` and `--dz-url` flags and reads no config file. An invocation that passed `-c <config>` must pass both flags instead. (malbeclabs/infra#3211)
+
 ### Changes
 
 - CI

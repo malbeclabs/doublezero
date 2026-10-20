@@ -128,10 +128,10 @@ pub enum RewardsCommands {
         about = "Finalize and distribute one month's contributor rewards by hand",
         after_help = r#"Examples:
     # Simulate finalizing and distributing September 2026
-    distribute-monthly-rewards --year 2026 --month 9 -k keypair.json --dry-run
+    distribute-monthly-rewards --year 2026 --month 9 --solana-url <SOLANA_URL> --dz-url <DZ_URL> -k keypair.json --dry-run
 
     # Finalize and distribute September 2026
-    distribute-monthly-rewards --year 2026 --month 9 -k keypair.json"#
+    distribute-monthly-rewards --year 2026 --month 9 --solana-url <SOLANA_URL> --dz-url <DZ_URL> -k keypair.json"#
     )]
     DistributeMonthlyRewards {
         /// UTC calendar year
@@ -149,6 +149,14 @@ pub enum RewardsCommands {
         /// Path to the rewards accountant's keypair file
         #[arg(short = 'k', long, value_name = "FILE")]
         keypair: Option<PathBuf>,
+
+        /// Solana RPC URL. The command reads no config file
+        #[arg(long, value_name = "URL")]
+        solana_url: String,
+
+        /// DoubleZero Ledger RPC URL
+        #[arg(long, value_name = "URL")]
+        dz_url: String,
     },
     #[command(
         about = "Read and display telemetry aggregate statistics from the ledger",
@@ -494,8 +502,12 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
             Ok(())
         }
         RewardsCommands::CalculateMonthlyRewards { year, month, json } => {
-            let monthly_rewards =
-                monthly::try_calculate_monthly_rewards(&orchestrator.settings, year, month).await?;
+            let monthly_rewards = monthly::try_calculate_monthly_rewards(
+                &monthly::MonthlySettings::from(&orchestrator.settings),
+                year,
+                month,
+            )
+            .await?;
             let total_units = monthly_rewards
                 .rewards
                 .iter()
@@ -579,45 +591,9 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
             month,
             dry_run,
             keypair,
-        } => {
-            let settings = &orchestrator.settings;
-            let wallet = Wallet {
-                connection: SolanaConnection::new(settings.rpc.solana_write_url.clone()),
-                signer: load_keypair(&keypair)?,
-                compute_unit_price_ix: None,
-                verbose: false,
-                fee_payer: None,
-                dry_run,
-            };
-            let dz_connection = DoubleZeroLedgerConnection::new(settings.rpc.dz_url.clone());
-            let context = MonthlyContext::try_new(settings, &wallet, &dz_connection).await?;
-            let label = format!("{year}-{month:02}");
-
-            let distribution = context.try_fetch_monthly_distribution(year, month).await?;
-            match monthly_distribute::month_action(&distribution) {
-                MonthAction::Idle(reason) => {
-                    info!("Nothing to do for {label}: {reason}");
-                    return Ok(());
-                }
-                MonthAction::Finalize => {
-                    ensure!(
-                        context.try_finalize_month(year, month).await?,
-                        "{label} has not closed, since no DZ epoch has ended after it"
-                    );
-                    if dry_run {
-                        info!("Dry run: {label} is distributed once it is finalized");
-                        return Ok(());
-                    }
-                }
-                MonthAction::Distribute => {}
-            }
-
-            context
-                .try_distribute_month(year, month, &Mutex::default())
-                .await?;
-
-            Ok(())
-        }
+            solana_url,
+            dz_url,
+        } => distribute_monthly_rewards(year, month, dry_run, keypair, solana_url, dz_url).await,
         RewardsCommands::ReadTelemAgg {
             epoch,
             rewards_accountant,
@@ -878,5 +854,113 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
 
             Ok(())
         }
+    }
+}
+
+/// Finalize and distribute one month by hand. It reads nothing from the
+/// settings, so the binary runs it without a config file.
+pub async fn distribute_monthly_rewards(
+    year: u16,
+    month: u8,
+    dry_run: bool,
+    keypair: Option<PathBuf>,
+    solana_url: String,
+    dz_url: String,
+) -> Result<()> {
+    let settings = monthly::MonthlySettings {
+        dz_url,
+        solana_url,
+        // Every SDK derives contributor rewards records under this prefix.
+        contributor_rewards_prefix: b"dz_contributor_rewards".to_vec(),
+    };
+    let wallet = Wallet {
+        connection: SolanaConnection::new(settings.solana_url.clone()),
+        signer: load_keypair(&keypair)?,
+        compute_unit_price_ix: None,
+        verbose: false,
+        fee_payer: None,
+        dry_run,
+    };
+    let dz_connection = DoubleZeroLedgerConnection::new(settings.dz_url.clone());
+    let context = MonthlyContext::try_new(&settings, &wallet, &dz_connection).await?;
+    let label = format!("{year}-{month:02}");
+
+    let distribution = context.try_fetch_monthly_distribution(year, month).await?;
+    match monthly_distribute::month_action(&distribution) {
+        MonthAction::Idle(reason) => {
+            info!("Nothing to do for {label}: {reason}");
+            return Ok(());
+        }
+        MonthAction::Finalize => {
+            ensure!(
+                context.try_finalize_month(year, month).await?,
+                "{label} has not closed, since no DZ epoch has ended after it"
+            );
+            if dry_run {
+                info!("Dry run: {label} is distributed once it is finalized");
+                return Ok(());
+            }
+        }
+        MonthAction::Distribute => {}
+    }
+
+    context
+        .try_distribute_month(year, month, &Mutex::default())
+        .await?;
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::{Parser, error::ErrorKind};
+
+    use super::*;
+
+    #[derive(Parser)]
+    struct Cli {
+        #[command(subcommand)]
+        command: RewardsCommands,
+    }
+
+    #[test]
+    fn test_distribute_monthly_rewards_takes_both_rpcs_as_flags() {
+        let cli = Cli::try_parse_from([
+            "contributor-rewards",
+            "distribute-monthly-rewards",
+            "--year",
+            "2026",
+            "--month",
+            "8",
+            "--solana-url",
+            "https://solana.example",
+            "--dz-url",
+            "https://ledger.example",
+            "-k",
+            "accountant.json",
+        ])
+        .unwrap();
+        let RewardsCommands::DistributeMonthlyRewards {
+            solana_url, dz_url, ..
+        } = cli.command
+        else {
+            panic!("parsed another command");
+        };
+        assert_eq!(solana_url, "https://solana.example");
+        assert_eq!(dz_url, "https://ledger.example");
+
+        // Neither RPC falls back to the settings.
+        let missing_rpcs = Cli::try_parse_from([
+            "contributor-rewards",
+            "distribute-monthly-rewards",
+            "--year",
+            "2026",
+            "--month",
+            "8",
+        ]);
+        assert_eq!(
+            missing_rpcs.err().unwrap().kind(),
+            ErrorKind::MissingRequiredArgument
+        );
     }
 }

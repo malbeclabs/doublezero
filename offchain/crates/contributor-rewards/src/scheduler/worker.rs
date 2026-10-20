@@ -320,11 +320,13 @@ impl ScheduleWorker {
         warned_skips: &Mutex<HashSet<(u16, u8, Pubkey)>>,
     ) -> bool {
         let settings = &self.orchestrator.settings;
+        let monthly_settings = monthly::MonthlySettings::from(settings);
         let dz_connection = DoubleZeroLedgerConnection::new(settings.rpc.dz_url.clone());
         let prefix = settings.get_contributor_rewards_prefix();
 
         let context = try_with_retries("context", async || {
-            let context = MonthlyContext::try_new(settings, wallet, &dz_connection).await?;
+            let context =
+                MonthlyContext::try_new(&monthly_settings, wallet, &dz_connection).await?;
             let previous_month = monthly_distribute::try_previous_month(Utc::now())?;
             let (month_start, _) = monthly::try_month_bounds(previous_month.0, previous_month.1)?;
 

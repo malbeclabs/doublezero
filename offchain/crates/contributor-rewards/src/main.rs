@@ -6,7 +6,11 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use doublezero_contributor_rewards::{
     calculator::orchestrator::Orchestrator,
-    cli::{export::ExportCommands, inspect::InspectCommands, rewards::RewardsCommands},
+    cli::{
+        export::ExportCommands,
+        inspect::InspectCommands,
+        rewards::{self, RewardsCommands},
+    },
     settings::Settings,
 };
 use metrics_exporter_prometheus::PrometheusBuilder;
@@ -112,6 +116,23 @@ pub enum Commands {
 
 impl Cli {
     pub async fn run(self) -> Result<()> {
+        // It takes both RPCs as flags, so it runs without a config file.
+        if let Commands::Rewards(RewardsCommands::DistributeMonthlyRewards {
+            year,
+            month,
+            dry_run,
+            keypair,
+            solana_url,
+            dz_url,
+        }) = self.command
+        {
+            init_logging("info")?;
+            return rewards::distribute_monthly_rewards(
+                year, month, dry_run, keypair, solana_url, dz_url,
+            )
+            .await;
+        }
+
         let settings = if let Some(config_path) = &self.config {
             Settings::from_path(config_path)?
         } else {

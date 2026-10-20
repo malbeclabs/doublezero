@@ -11,12 +11,13 @@ use doublezero_serviceability::{
     error::DoubleZeroError,
     instructions::DoubleZeroInstruction,
     pda::{
-        get_accesspass_pda, get_globalstate_pda, get_multicastgroup_pda, get_permission_pda,
-        get_resource_extension_pda, get_stake_mirror_pda,
+        get_accesspass_pda, get_globalstate_pda, get_index_pda, get_multicastgroup_pda,
+        get_permission_pda, get_resource_extension_pda, get_stake_mirror_pda,
     },
     processors::{
         accesspass::set::SetAccessPassArgs,
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
+        index::create::IndexCreateArgs,
         multicastgroup::{
             allowlist::{
                 publisher::add::AddMulticastGroupPubAllowlistArgs,
@@ -28,6 +29,7 @@ use doublezero_serviceability::{
         stake_mirror::write::StakeMirrorWriteArgs,
     },
     resource::ResourceType,
+    seeds::SEED_MULTICAST_GROUP,
     state::{
         accesspass::AccessPassType,
         accounttype::AccountType,
@@ -39,7 +41,7 @@ use doublezero_serviceability::{
 };
 use solana_program_test::*;
 use solana_sdk::{
-    instruction::AccountMeta,
+    instruction::{AccountMeta, InstructionError},
     pubkey::Pubkey,
     signature::{Keypair, Signer},
     transaction::TransactionError,
@@ -141,6 +143,19 @@ impl Cluster {
         source_slot: u64,
         committed_rate: u64,
     ) -> Pubkey {
+        self.mirror_at_tier(stake_ref, builder, source_slot, TIER, committed_rate)
+            .await
+    }
+
+    /// `mirror`, at any tier, including `None` for a stake the relayer saw withdrawn.
+    async fn mirror_at_tier(
+        &mut self,
+        stake_ref: Pubkey,
+        builder: Pubkey,
+        source_slot: u64,
+        tier: StakeTier,
+        committed_rate: u64,
+    ) -> Pubkey {
         let (mirror, _) = get_stake_mirror_pda(&self.program_id, &stake_ref);
         let recent_blockhash = wait_for_new_blockhash(&mut self.banks_client).await;
         execute_transaction_with_extra_accounts(
@@ -150,7 +165,7 @@ impl Cluster {
             DoubleZeroInstruction::WriteStakeMirror(StakeMirrorWriteArgs {
                 stake_ref,
                 builder,
-                tier: TIER,
+                tier,
                 committed_rate_bits_per_sec: committed_rate,
                 source_slot,
             }),
@@ -172,8 +187,20 @@ impl Cluster {
         args: MulticastGroupCreateArgs,
         mirror: Pubkey,
     ) -> (Pubkey, Result<(), TransactionError>) {
-        self.create_group_with_tail(payer, args, &[AccountMeta::new(mirror, false)])
-            .await
+        let index = self.index_key(&args.code);
+        self.create_group_with_tail(
+            payer,
+            args,
+            &[
+                AccountMeta::new(mirror, false),
+                AccountMeta::new(index, false),
+            ],
+        )
+        .await
+    }
+
+    fn index_key(&self, code: &str) -> Pubkey {
+        get_index_pda(&self.program_id, SEED_MULTICAST_GROUP, code).0
     }
 
     /// `create_group`, with `tail` after the fixed accounts in place of the mirror.
@@ -337,6 +364,19 @@ impl Cluster {
             },
             "the create must change the mirror's count and nothing else"
         );
+
+        let index_key = self.index_key(&args.code);
+        let index = get_account_data(&mut self.banks_client, index_key)
+            .await
+            .expect("the group's code should be claimed in the Index")
+            .get_index()
+            .unwrap();
+        assert_eq!(
+            index.pk, group,
+            "the Index entry should point at the new group"
+        );
+        assert_eq!(index.entity_account_type, AccountType::MulticastGroup);
+        assert_eq!(index.key, args.code.to_ascii_lowercase());
     }
 }
 
@@ -651,6 +691,29 @@ async fn test_a_staked_groups_owner_cannot_reach_another_users_pass() {
     assert_eq!(c.pass_lists(client_ip, user).await.0, vec![group]);
 }
 
+/// The owner of a staked group cannot create a pass for another user. That pass would be the
+/// builder's, and it would block the user's real pass and later pass the owner check.
+#[tokio::test]
+async fn test_a_staked_groups_owner_cannot_create_a_pass_for_another_user() {
+    let mut c = cluster().await;
+    let builder = test_payer();
+    let group = c.staked_group(&builder, "squat").await;
+    let user = Pubkey::new_unique();
+    let client_ip = Ipv4Addr::new(10, 0, 0, 10);
+
+    let result = c.allow(&builder, true, group, client_ip, user).await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+    let (accesspass, _) = get_accesspass_pda(&c.program_id, &client_ip, &user);
+    assert!(
+        c.banks_client
+            .get_account(accesspass)
+            .await
+            .unwrap()
+            .is_none(),
+        "no pass may be left behind for the user"
+    );
+}
+
 /// The owner of a staked group cannot admit subscribers. They would join on a Prepaid pass and
 /// skip the EdgeSeat check where a feed sells its seats. An admin still can.
 #[tokio::test]
@@ -669,4 +732,182 @@ async fn test_a_staked_groups_owner_cannot_admit_subscribers() {
         .await
         .expect("an admin may still admit a subscriber");
     assert_eq!(c.pass_lists(client_ip, user).await.1, vec![group]);
+}
+
+/// A stake the relayer rewrote to tier `None`, because the bond was withdrawn or forfeited, admits
+/// no create, though the mirror still names the builder.
+#[tokio::test]
+async fn test_a_withdrawn_stake_admits_nothing() {
+    let mut c = cluster().await;
+    let builder = test_payer();
+    let stake_ref = Pubkey::new_unique();
+    c.mirror(stake_ref, builder.pubkey(), 1).await;
+    let mirror = c
+        .mirror_at_tier(stake_ref, builder.pubkey(), 2, StakeTier::None, 0)
+        .await;
+    assert_eq!(c.stake_mirror(mirror).await.tier, StakeTier::None);
+
+    let (_, result) = c
+        .create_group(
+            &builder,
+            staked_args("withdrawn", builder.pubkey(), stake_ref),
+            mirror,
+        )
+        .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::StakeDoesNotCoverRate));
+    assert_eq!(c.groups_created(mirror).await, 0);
+}
+
+/// With `require-permission-accounts` on, a builder that holds no Permission account still creates
+/// groups on its stake, because the stake path never calls `authorize`. The SDK sends the payer's
+/// Permission PDA after the mirror, never created, and the stake path ignores it.
+#[tokio::test]
+async fn test_the_stake_path_needs_no_permission_in_strict_mode() {
+    let mut c = cluster().await;
+    let builder = test_payer();
+    let stake_ref = Pubkey::new_unique();
+    let mirror = c.mirror(stake_ref, builder.pubkey(), 1).await;
+
+    // Turned on after setup: strict mode refuses the foundation's legacy path, which the relayer's
+    // permission and the mirror above were written through.
+    let recent_blockhash = wait_for_new_blockhash(&mut c.banks_client).await;
+    execute_transaction(
+        &mut c.banks_client,
+        recent_blockhash,
+        c.program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::AllowStakedFeeds.to_mask()
+                | FeatureFlag::RequirePermissionAccounts.to_mask(),
+        }),
+        vec![AccountMeta::new(c.globalstate, false)],
+        &c.foundation,
+    )
+    .await;
+
+    let (permission, _) = get_permission_pda(&c.program_id, &builder.pubkey());
+    let args = staked_args("strict", builder.pubkey(), stake_ref);
+    let mirror_before = c.stake_mirror(mirror).await;
+    let (group, result) = c
+        .create_group_with_tail(
+            &builder,
+            args.clone(),
+            &[
+                AccountMeta::new(mirror, false),
+                AccountMeta::new(c.index_key("strict"), false),
+                AccountMeta::new_readonly(permission, false),
+            ],
+        )
+        .await;
+    result.expect("the stake path should not need a Permission account");
+    c.assert_created(group, &args, mirror, mirror_before).await;
+}
+
+fn assert_already_initialized(result: &Result<(), TransactionError>) {
+    assert_eq!(
+        result,
+        &Err(TransactionError::InstructionError(
+            0,
+            InstructionError::AccountAlreadyInitialized
+        )),
+        "a taken code should fail the create"
+    );
+}
+
+/// Two staked groups cannot share a code, whichever builders and stakes create them. The Index
+/// compares codes without case, as clients resolve them.
+#[tokio::test]
+async fn test_a_staked_group_cannot_reuse_a_code() {
+    let mut c = cluster().await;
+    let builder = test_payer();
+    c.staked_group(&builder, "tokyo-tob").await;
+
+    let stake_ref = Pubkey::new_unique();
+    let mirror = c.mirror(stake_ref, builder.pubkey(), 1).await;
+    let (_, result) = c
+        .create_group(
+            &builder,
+            staked_args("TOKYO-tob", builder.pubkey(), stake_ref),
+            mirror,
+        )
+        .await;
+    assert_already_initialized(&result);
+    assert_eq!(c.groups_created(mirror).await, 0);
+}
+
+/// A staked group cannot take the code of an admin group once that group is in the Index, which
+/// is what the operator's backfill puts it in.
+#[tokio::test]
+async fn test_a_staked_group_cannot_take_an_indexed_admin_code() {
+    let mut c = cluster().await;
+    let builder = test_payer();
+
+    let index = get_globalstate(&mut c.banks_client, c.globalstate)
+        .await
+        .account_index
+        + 1;
+    let (admin_group, _) = get_multicastgroup_pda(&c.program_id, index);
+    let foundation = c.foundation.insecure_clone();
+    c.create_group_with_tail(
+        &foundation,
+        MulticastGroupCreateArgs {
+            code: "admin-mg".to_string(),
+            max_bandwidth: 1_000,
+            owner: foundation.pubkey(),
+            use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
+        },
+        &[],
+    )
+    .await
+    .1
+    .expect("the admin create should succeed");
+    let admin_index = c.index_key("admin-mg");
+    let recent_blockhash = wait_for_new_blockhash(&mut c.banks_client).await;
+    execute_transaction(
+        &mut c.banks_client,
+        recent_blockhash,
+        c.program_id,
+        DoubleZeroInstruction::CreateIndex(IndexCreateArgs {
+            entity_seed: String::from_utf8(SEED_MULTICAST_GROUP.to_vec()).unwrap(),
+            key: "admin-mg".to_string(),
+        }),
+        vec![
+            AccountMeta::new(admin_index, false),
+            AccountMeta::new_readonly(admin_group, false),
+            AccountMeta::new_readonly(c.globalstate, false),
+        ],
+        &foundation,
+    )
+    .await;
+
+    let stake_ref = Pubkey::new_unique();
+    let mirror = c.mirror(stake_ref, builder.pubkey(), 1).await;
+    let (_, result) = c
+        .create_group(
+            &builder,
+            staked_args("admin-mg", builder.pubkey(), stake_ref),
+            mirror,
+        )
+        .await;
+    assert_already_initialized(&result);
+}
+
+/// A staked create without its code's Index account is refused, so no staked group can skip the
+/// uniqueness check.
+#[tokio::test]
+async fn test_a_staked_group_must_claim_its_code() {
+    let mut c = cluster().await;
+    let builder = test_payer();
+    let stake_ref = Pubkey::new_unique();
+    let mirror = c.mirror(stake_ref, builder.pubkey(), 1).await;
+
+    let (_, result) = c
+        .create_group_with_tail(
+            &builder,
+            staked_args("no-index", builder.pubkey(), stake_ref),
+            &[AccountMeta::new(mirror, false)],
+        )
+        .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::InvalidArgument));
+    assert_eq!(c.groups_created(mirror).await, 0);
 }

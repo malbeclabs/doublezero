@@ -60,10 +60,27 @@ pub struct MonthlyRewards {
     pub rewards: Vec<RewardShare>,
 }
 
+/// The RPCs and the record prefix the monthly steps read.
+pub struct MonthlySettings {
+    pub dz_url: String,
+    pub solana_url: String,
+    pub contributor_rewards_prefix: Vec<u8>,
+}
+
+impl From<&Settings> for MonthlySettings {
+    fn from(settings: &Settings) -> Self {
+        Self {
+            dz_url: settings.rpc.dz_url.clone(),
+            solana_url: settings.rpc.solana_write_url.clone(),
+            contributor_rewards_prefix: settings.get_contributor_rewards_prefix(),
+        }
+    }
+}
+
 /// Calculate a UTC month's contributor shares by averaging the posted shares of
 /// every completed DZ epoch whose last block falls in that month.
 pub async fn try_calculate_monthly_rewards(
-    settings: &Settings,
+    settings: &MonthlySettings,
     year: u16,
     month: u8,
 ) -> Result<MonthlyRewards> {
@@ -72,10 +89,10 @@ pub async fn try_calculate_monthly_rewards(
     // Finalized, so every slot of a completed epoch is rooted, and one without a
     // block time was skipped rather than not yet confirmed.
     let dz_connection = DoubleZeroLedgerConnection::new_with_commitment(
-        settings.rpc.dz_url.clone(),
+        settings.dz_url.clone(),
         CommitmentConfig::finalized(),
     );
-    let solana_connection = SolanaConnection::new(settings.rpc.solana_write_url.clone());
+    let solana_connection = SolanaConnection::new(settings.solana_url.clone());
 
     let accountant_key = get_rewards_accountant(&solana_connection, None)
         .await
@@ -94,7 +111,7 @@ pub async fn try_calculate_monthly_rewards(
         .await
         .context("Failed to fetch the DZ epoch schedule")?;
 
-    let prefix = settings.get_contributor_rewards_prefix();
+    let prefix = settings.contributor_rewards_prefix.clone();
     let epochs = try_select_month_epochs(
         newest_completed_epoch,
         month_start,

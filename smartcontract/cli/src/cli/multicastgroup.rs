@@ -21,6 +21,7 @@ use crate::{
         create::CreateMulticastGroupCliCommand,
         delete::DeleteMulticastGroupCliCommand,
         get::GetMulticastGroupCliCommand,
+        index::IndexMulticastGroupCliCommand,
         list::ListMulticastGroupCliCommand,
         update::UpdateMulticastGroupCliCommand,
     },
@@ -52,6 +53,9 @@ pub enum MulticastGroupCommands {
     /// Delete a multicast group
     #[clap()]
     Delete(DeleteMulticastGroupCliCommand),
+    /// Claim a group's code in the Index, so no staked group can take it
+    #[clap()]
+    Index(IndexMulticastGroupCliCommand),
 }
 
 #[derive(Args, Debug)]
@@ -154,6 +158,7 @@ impl MulticastGroupCommands {
             Self::List(args) => args.execute(ctx, client, out).await,
             Self::Get(args) => args.execute(ctx, client, out).await,
             Self::Delete(args) => args.execute(ctx, client, out).await,
+            Self::Index(args) => args.execute(ctx, client, out).await,
         }
     }
 }

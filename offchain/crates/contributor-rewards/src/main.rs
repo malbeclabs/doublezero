@@ -126,6 +126,10 @@ impl Cli {
             dz_url,
         }) = self.command
         {
+            anyhow::ensure!(
+                self.config.is_none(),
+                "distribute-monthly-rewards reads no config file, so pass --solana-url and --dz-url instead of -c"
+            );
             init_logging("info")?;
             return rewards::distribute_monthly_rewards(
                 year, month, dry_run, keypair, solana_url, dz_url,
@@ -225,4 +229,33 @@ fn export_build_info() {
         "pkg_version" => pkg_version
     )
     .set(1.0);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_distribute_monthly_rewards_refuses_a_config_file() {
+        let cli = Cli::try_parse_from([
+            "contributor-rewards",
+            "-c",
+            "missing.toml",
+            "distribute-monthly-rewards",
+            "--year",
+            "2026",
+            "--month",
+            "8",
+            "--solana-url",
+            "http://127.0.0.1:1",
+            "--dz-url",
+            "http://127.0.0.1:1",
+        ])
+        .unwrap();
+        // Loading the settings first would fail on the missing file instead.
+        assert_eq!(
+            cli.run().await.unwrap_err().to_string(),
+            "distribute-monthly-rewards reads no config file, so pass --solana-url and --dz-url instead of -c"
+        );
+    }
 }

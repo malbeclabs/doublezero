@@ -60,8 +60,7 @@ pub struct MonthlyRewards {
     pub rewards: Vec<RewardShare>,
 }
 
-/// What the monthly steps read from the settings.
-#[derive(Debug, Clone)]
+/// The RPCs and the record prefix the monthly steps read.
 pub struct MonthlySettings {
     pub dz_url: String,
     pub solana_url: String,

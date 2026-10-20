@@ -417,6 +417,7 @@ class TestFixtureMulticastGroup:
                 "Status": mg.status,
                 "PublisherCount": mg.publisher_count,
                 "SubscriberCount": mg.subscriber_count,
+                "StakeRef": mg.stake_ref,
             },
         )
 

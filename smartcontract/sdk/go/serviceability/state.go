@@ -1091,7 +1091,9 @@ type MulticastGroup struct {
 	Code            string
 	PublisherCount  uint32
 	SubscriberCount uint32
-	PubKey          [32]byte
+	// StakeRef is the BuilderStake that created the group, or zero for a group an admin created.
+	StakeRef [32]uint8
+	PubKey   [32]byte
 }
 
 type ProgramVersion struct {

@@ -5,6 +5,7 @@ pub mod input;
 pub mod keypair_loader;
 pub mod ledger_operations;
 pub mod monthly;
+pub mod monthly_distribute;
 pub mod orchestrator;
 pub mod proof;
 pub mod recorder;

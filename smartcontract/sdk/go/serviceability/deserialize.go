@@ -334,6 +334,9 @@ func DeserializeMulticastGroup(reader *ByteReader, mg *MulticastGroup) {
 	mg.Code = reader.ReadString()
 	mg.PublisherCount = reader.ReadU32()
 	mg.SubscriberCount = reader.ReadU32()
+	// Zero for a group an admin created, and for any group created before the field existed:
+	// ReadPubkey returns zero bytes at EOF.
+	mg.StakeRef = reader.ReadPubkey()
 }
 
 func DeserializeTenant(reader *ByteReader, tenant *Tenant) {

@@ -16,11 +16,10 @@ use crate::{
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
-#[cfg(test)]
-use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     pubkey::Pubkey,
 };
 use std::net::Ipv4Addr;
@@ -89,8 +88,16 @@ pub fn process_add_multicastgroup_pub_allowlist(
 
     // Authorization: the multicast group owner, or MULTICAST_ADMIN (Permission
     // account) / foundation-or-sentinel (legacy).
-    let is_authorized = mgroup.owner == *payer_account.key
-        || authorize(
+    //
+    // The owner of a staked group is a builder whose rights came from a bond, not from an admin.
+    // It may grant its own publishers, which is how a builder sends on its feed, but only on passes
+    // it owns: it must not put its group on another user's pass. `owner_only` is that case, and the
+    // existing-pass branch below acts on it. The admin check runs for a staked group's owner too,
+    // so an owner that is also an admin keeps the admin's reach.
+    let is_owner = mgroup.owner == *payer_account.key;
+    let staked_group = mgroup.stake_ref != Pubkey::default();
+    let is_admin = (!is_owner || staked_group)
+        && authorize(
             program_id,
             &mut permission_account.into_iter(),
             payer_account.key,
@@ -98,9 +105,10 @@ pub fn process_add_multicastgroup_pub_allowlist(
             permission_flags::MULTICAST_ADMIN,
         )
         .is_ok();
-    if !is_authorized {
+    if !is_owner && !is_admin {
         return Err(DoubleZeroError::NotAllowed.into());
     }
+    let owner_only = staked_group && !is_admin;
 
     // Identify the access pass funding account and how many user seats it admits, so we can top up
     // its credits below. Both must be resolved regardless of whether the pass is created here or
@@ -160,6 +168,13 @@ pub fn process_add_multicastgroup_pub_allowlist(
         );
 
         let mut accesspass = AccessPass::try_from(accesspass_account)?;
+        if owner_only && accesspass.owner != *payer_account.key {
+            msg!(
+                "A staked group's owner may grant publish rights only on its own passes; this one belongs to {}",
+                accesspass.owner
+            );
+            return Err(DoubleZeroError::NotAllowed.into());
+        }
 
         // Validate PDA using the stored user_payer (so feed authority with different value.user_payer still works).
         // For allow_multiple_ip passes, also accept the dynamic (0.0.0.0) PDA.

@@ -554,6 +554,7 @@ mod tests {
             owner: Pubkey::new_unique(),
             publisher_count: 0,
             subscriber_count: 0,
+            stake_ref: Pubkey::default(),
         };
         client
             .expect_get_multicastgroup()

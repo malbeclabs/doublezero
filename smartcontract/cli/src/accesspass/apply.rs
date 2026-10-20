@@ -490,6 +490,7 @@ mod tests {
                     code: "g1".to_string(),
                     publisher_count: 0,
                     subscriber_count: 0,
+                    stake_ref: Pubkey::default(),
                 },
             )]))
         });
@@ -1273,6 +1274,7 @@ mod tests {
                     code: "g1".to_string(),
                     publisher_count: 0,
                     subscriber_count: 0,
+                    stake_ref: Pubkey::default(),
                 },
             )]))
         });

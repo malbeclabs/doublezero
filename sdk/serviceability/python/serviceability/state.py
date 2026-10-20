@@ -927,6 +927,8 @@ class MulticastGroup:
     code: str = ""
     publisher_count: int = 0
     subscriber_count: int = 0
+    # The BuilderStake that created the group, or the default key for a group an admin created.
+    stake_ref: Pubkey = Pubkey.default()
 
     @classmethod
     def from_bytes(cls, data: bytes) -> MulticastGroup:
@@ -943,6 +945,9 @@ class MulticastGroup:
         mg.code = r.read_string()
         mg.publisher_count = r.read_u32()
         mg.subscriber_count = r.read_u32()
+        # A group created before the field existed ends here, and the reader raises past the end.
+        if r.remaining >= 32:
+            mg.stake_ref = _read_pubkey(r)
         return mg
 
 

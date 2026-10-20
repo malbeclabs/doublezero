@@ -3,22 +3,33 @@
 //! Every mirror here comes from a real `WriteStakeMirror`, and the builder holds no permission at
 //! any point. The admin path is covered by `multicastgroup_onchain_allocation_test` and is
 //! unchanged.
+//!
+//! The last tests cover what the owner of a staked group may do with the allowlists. It may grant
+//! its own publishers, and no more.
 
 use doublezero_serviceability::{
     error::DoubleZeroError,
     instructions::DoubleZeroInstruction,
     pda::{
-        get_globalstate_pda, get_multicastgroup_pda, get_permission_pda,
+        get_accesspass_pda, get_globalstate_pda, get_multicastgroup_pda, get_permission_pda,
         get_resource_extension_pda, get_stake_mirror_pda,
     },
     processors::{
+        accesspass::set::SetAccessPassArgs,
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
-        multicastgroup::create::{MulticastGroupCreateArgs, MAX_GROUPS_PER_STAKE},
+        multicastgroup::{
+            allowlist::{
+                publisher::add::AddMulticastGroupPubAllowlistArgs,
+                subscriber::add::AddMulticastGroupSubAllowlistArgs,
+            },
+            create::{MulticastGroupCreateArgs, MAX_GROUPS_PER_STAKE},
+        },
         permission::create::PermissionCreateArgs,
         stake_mirror::write::StakeMirrorWriteArgs,
     },
     resource::ResourceType,
     state::{
+        accesspass::AccessPassType,
         accounttype::AccountType,
         feature_flags::FeatureFlag,
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
@@ -34,6 +45,7 @@ use solana_sdk::{
     signature::{Keypair, Signer},
     transaction::TransactionError,
 };
+use std::net::Ipv4Addr;
 
 mod test_helpers;
 use test_helpers::*;
@@ -197,6 +209,77 @@ impl Cluster {
         (group, result)
     }
 
+    /// A group the builder created on a fresh stake of its own.
+    async fn staked_group(&mut self, builder: &Keypair, code: &str) -> Pubkey {
+        let stake_ref = Pubkey::new_unique();
+        let mirror = self.mirror(stake_ref, builder.pubkey(), 1).await;
+        let (group, result) = self
+            .create_group(
+                builder,
+                staked_args(code, builder.pubkey(), stake_ref),
+                mirror,
+            )
+            .await;
+        result.expect("the staked create should succeed");
+        group
+    }
+
+    /// Run `AddMulticastGroupPubAllowlist` or `AddMulticastGroupSubAllowlist` for the pass at
+    /// `client_ip` and `user_payer`, signed by `signer`.
+    async fn allow(
+        &mut self,
+        signer: &Keypair,
+        publisher: bool,
+        group: Pubkey,
+        client_ip: Ipv4Addr,
+        user_payer: Pubkey,
+    ) -> Result<(), TransactionError> {
+        let (accesspass, _) = get_accesspass_pda(&self.program_id, &client_ip, &user_payer);
+        let instruction = if publisher {
+            DoubleZeroInstruction::AddMulticastGroupPubAllowlist(
+                AddMulticastGroupPubAllowlistArgs {
+                    client_ip,
+                    user_payer,
+                },
+            )
+        } else {
+            DoubleZeroInstruction::AddMulticastGroupSubAllowlist(
+                AddMulticastGroupSubAllowlistArgs {
+                    client_ip,
+                    user_payer,
+                },
+            )
+        };
+        try_execute_and_get_error(
+            &mut self.banks_client,
+            self.program_id,
+            instruction,
+            vec![
+                AccountMeta::new(group, false),
+                AccountMeta::new(accesspass, false),
+                AccountMeta::new(self.globalstate, false),
+                AccountMeta::new(user_payer, false),
+            ],
+            signer,
+            &[],
+        )
+        .await
+    }
+
+    async fn pass_lists(
+        &mut self,
+        client_ip: Ipv4Addr,
+        user_payer: Pubkey,
+    ) -> (Vec<Pubkey>, Vec<Pubkey>) {
+        let (accesspass, _) = get_accesspass_pda(&self.program_id, &client_ip, &user_payer);
+        let pass = get_account_data(&mut self.banks_client, accesspass)
+            .await
+            .expect("the pass should exist")
+            .get_accesspass()
+            .unwrap();
+        (pass.mgroup_pub_allowlist, pass.mgroup_sub_allowlist)
+    }
+
     async fn stake_mirror(&mut self, mirror: Pubkey) -> StakeMirror {
         get_account_data(&mut self.banks_client, mirror)
             .await
@@ -243,6 +326,7 @@ impl Cluster {
                 status: MulticastGroupStatus::Activated,
                 publisher_count: 0,
                 subscriber_count: 0,
+                stake_ref: args.stake_ref,
             }
         );
 
@@ -530,4 +614,89 @@ async fn test_the_instruction_builder_reaches_the_stake_path() {
         .expect("the builder's account list should reach the stake path");
 
     c.assert_created(group, &args, mirror, mirror_before).await;
+}
+
+/// The owner of a staked group grants its own publisher, on a pass the grant creates, and again
+/// on that pass once it exists. This is how a builder sends on its feed (A4).
+#[tokio::test]
+async fn test_a_staked_groups_owner_grants_its_own_publishers() {
+    let mut c = cluster().await;
+    let builder = test_payer();
+    let group = c.staked_group(&builder, "own-pub").await;
+    let client_ip = Ipv4Addr::new(10, 0, 0, 7);
+
+    c.allow(&builder, true, group, client_ip, builder.pubkey())
+        .await
+        .expect("the owner should grant a publisher on a new pass");
+    c.allow(&builder, true, group, client_ip, builder.pubkey())
+        .await
+        .expect("the owner should grant again on a pass it owns");
+
+    let (publishers, subscribers) = c.pass_lists(client_ip, builder.pubkey()).await;
+    assert_eq!(publishers, vec![group]);
+    assert!(subscribers.is_empty());
+}
+
+/// The owner of a staked group cannot put it on another user's pass. An admin still can.
+#[tokio::test]
+async fn test_a_staked_groups_owner_cannot_reach_another_users_pass() {
+    let mut c = cluster().await;
+    let builder = test_payer();
+    let group = c.staked_group(&builder, "reach").await;
+
+    // A pass the foundation set up for someone else.
+    let user = Pubkey::new_unique();
+    let client_ip = Ipv4Addr::new(10, 0, 0, 8);
+    let (accesspass, _) = get_accesspass_pda(&c.program_id, &client_ip, &user);
+    let recent_blockhash = wait_for_new_blockhash(&mut c.banks_client).await;
+    execute_transaction(
+        &mut c.banks_client,
+        recent_blockhash,
+        c.program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip,
+            last_access_epoch: 100,
+            allow_multiple_ip: false,
+            max_unicast_users: 1,
+            max_multicast_users: 1,
+        }),
+        vec![
+            AccountMeta::new(accesspass, false),
+            AccountMeta::new(c.globalstate, false),
+            AccountMeta::new(user, false),
+        ],
+        &c.foundation,
+    )
+    .await;
+
+    let result = c.allow(&builder, true, group, client_ip, user).await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+    assert!(c.pass_lists(client_ip, user).await.0.is_empty());
+
+    let foundation = c.foundation.insecure_clone();
+    c.allow(&foundation, true, group, client_ip, user)
+        .await
+        .expect("an admin keeps its reach over a staked group");
+    assert_eq!(c.pass_lists(client_ip, user).await.0, vec![group]);
+}
+
+/// The owner of a staked group cannot admit subscribers. They would join on a Prepaid pass and
+/// skip the EdgeSeat check where a feed sells its seats. An admin still can.
+#[tokio::test]
+async fn test_a_staked_groups_owner_cannot_admit_subscribers() {
+    let mut c = cluster().await;
+    let builder = test_payer();
+    let group = c.staked_group(&builder, "no-sub").await;
+    let user = Pubkey::new_unique();
+    let client_ip = Ipv4Addr::new(10, 0, 0, 9);
+
+    let result = c.allow(&builder, false, group, client_ip, user).await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+
+    let foundation = c.foundation.insecure_clone();
+    c.allow(&foundation, false, group, client_ip, user)
+        .await
+        .expect("an admin may still admit a subscriber");
+    assert_eq!(c.pass_lists(client_ip, user).await.1, vec![group]);
 }

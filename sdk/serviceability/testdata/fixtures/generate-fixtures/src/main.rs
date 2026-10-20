@@ -1202,6 +1202,8 @@ fn generate_user(dir: &Path) {
 fn generate_multicast_group(dir: &Path) {
     let owner = pubkey_from_byte(0x70);
     let tenant_pk = pubkey_from_byte(0x71);
+    // Not zero, so a decoder that skips the field fails the fixture rather than reading a default.
+    let stake_ref = pubkey_from_byte(0x72);
 
     let val = MulticastGroup {
         account_type: AccountType::MulticastGroup,
@@ -1215,6 +1217,7 @@ fn generate_multicast_group(dir: &Path) {
         code: "demo".into(),
         publisher_count: 2,
         subscriber_count: 10,
+        stake_ref,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -1234,6 +1237,7 @@ fn generate_multicast_group(dir: &Path) {
             FieldValue { name: "Code".into(), value: "demo".into(), typ: "string".into() },
             FieldValue { name: "PublisherCount".into(), value: "2".into(), typ: "u32".into() },
             FieldValue { name: "SubscriberCount".into(), value: "10".into(), typ: "u32".into() },
+            FieldValue { name: "StakeRef".into(), value: pubkey_bs58(&stake_ref), typ: "pubkey".into() },
         ],
     };
 

@@ -56,6 +56,11 @@
       "name": "SubscriberCount",
       "value": "10",
       "typ": "u32"
+    },
+    {
+      "name": "StakeRef",
+      "value": "8g1UhTictKSPZri4zXMu4dy4W7QsVJcMZtAEPENTAiNK",
+      "typ": "pubkey"
     }
   ]
 }

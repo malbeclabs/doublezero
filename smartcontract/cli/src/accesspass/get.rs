@@ -268,6 +268,7 @@ mod tests {
             code: "mcast-test".to_string(),
             publisher_count: 1,
             subscriber_count: 5,
+            stake_ref: Pubkey::default(),
         };
 
         let accesspass = AccessPass {
@@ -473,6 +474,7 @@ mod tests {
             code: "qa-payments-group".to_string(),
             publisher_count: 0,
             subscriber_count: 1,
+            stake_ref: Pubkey::default(),
         };
 
         client

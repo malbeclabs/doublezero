@@ -25,6 +25,9 @@ pub struct SchedulerState {
     /// Number of consecutive distribution failures
     #[serde(default)]
     pub consecutive_distribution_failures: u32,
+    /// Number of consecutive ticks in which a monthly step failed
+    #[serde(default)]
+    pub consecutive_monthly_failures: u32,
 }
 
 impl Default for SchedulerState {
@@ -37,6 +40,7 @@ impl Default for SchedulerState {
             last_success_time: None,
             last_distributed_epoch: None,
             consecutive_distribution_failures: 0,
+            consecutive_monthly_failures: 0,
         }
     }
 }
@@ -186,6 +190,16 @@ impl SchedulerState {
             self.consecutive_distribution_failures
         );
     }
+
+    /// Record a tick whose monthly steps all succeeded or had nothing to do.
+    pub fn mark_monthly_success(&mut self) {
+        self.consecutive_monthly_failures = 0;
+    }
+
+    /// Record a tick in which a monthly step failed.
+    pub fn mark_monthly_failure(&mut self) {
+        self.consecutive_monthly_failures += 1;
+    }
 }
 
 #[cfg(test)]
@@ -229,6 +243,22 @@ mod tests {
         let state: SchedulerState = serde_json::from_str(old_json).unwrap();
         assert_eq!(state.last_distributed_epoch, None);
         assert_eq!(state.consecutive_distribution_failures, 0);
+        assert_eq!(state.consecutive_monthly_failures, 0);
         assert_eq!(state.last_processed_epoch, Some(42));
+    }
+
+    #[test]
+    fn test_mark_monthly_success_resets_failures() {
+        let mut state = SchedulerState::default();
+        state.mark_monthly_failure();
+        state.mark_monthly_failure();
+        assert_eq!(state.consecutive_monthly_failures, 2);
+
+        let state_json = serde_json::to_string(&state).unwrap();
+        let mut state = serde_json::from_str::<SchedulerState>(&state_json).unwrap();
+        assert_eq!(state.consecutive_monthly_failures, 2);
+
+        state.mark_monthly_success();
+        assert_eq!(state.consecutive_monthly_failures, 0);
     }
 }

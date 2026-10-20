@@ -90,7 +90,13 @@ pub fn process_add_multicastgroup_sub_allowlist(
 
     // Authorization: the multicast group owner, or ACCESS_PASS_ADMIN (Permission
     // account) / foundation-sentinel-feed (legacy).
-    let is_authorized = mgroup.owner == *payer_account.key
+    //
+    // Not the owner of a staked group. That owner is a builder, and a subscriber it added here
+    // would join the group on a Prepaid pass, which skips the EdgeSeat check where a feed sells
+    // its seats. Its subscribers come in through seats instead.
+    let owner_may_grant =
+        mgroup.owner == *payer_account.key && mgroup.stake_ref == Pubkey::default();
+    let is_authorized = owner_may_grant
         || authorize(
             program_id,
             &mut permission_account.into_iter(),

@@ -173,6 +173,8 @@ pub fn process_create_multicastgroup(
         status: MulticastGroupStatus::Activated,
         publisher_count: 0,
         subscriber_count: 0,
+        // Zero on the admin path, which is what marks a group an admin created.
+        stake_ref: value.stake_ref,
     };
 
     try_acc_create(

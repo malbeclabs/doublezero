@@ -72,6 +72,18 @@ pub struct MulticastGroup {
     pub code: String,              // 4 + len
     pub publisher_count: u32,      // 4
     pub subscriber_count: u32,     // 4
+    #[cfg_attr(
+        feature = "serde",
+        serde(
+            serialize_with = "doublezero_program_common::serializer::serialize_pubkey_as_string",
+            deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
+        )
+    )]
+    /// The `BuilderStake` whose mirror admitted this group's create, or zero for a group an admin
+    /// created. A staked group's owner is a builder whose rights came from a bond rather than from an
+    /// admin, so the allowlist processors give it less than they give the owner of an admin-created
+    /// group. It also lets cleanup find a stake's groups once the bond is gone.
+    pub stake_ref: Pubkey, // 32
 }
 
 impl fmt::Display for MulticastGroup {
@@ -89,7 +101,8 @@ impl fmt::Display for MulticastGroup {
                 status: {}, \
                 code: \"{}\", \
                 publisher_count: {}, \
-                subscriber_count: {} \
+                subscriber_count: {}, \
+                stake_ref: {} \
             }}",
             self.account_type,
             self.owner,
@@ -101,7 +114,8 @@ impl fmt::Display for MulticastGroup {
             self.status,
             self.code,
             self.publisher_count,
-            self.subscriber_count
+            self.subscriber_count,
+            self.stake_ref
         )
     }
 }
@@ -120,6 +134,7 @@ impl Default for MulticastGroup {
             code: String::new(),
             publisher_count: 0,
             subscriber_count: 0,
+            stake_ref: Pubkey::default(),
         }
     }
 }
@@ -140,6 +155,7 @@ impl TryFrom<&[u8]> for MulticastGroup {
             code: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             publisher_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             subscriber_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            stake_ref: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::MulticastGroup {
@@ -240,10 +256,33 @@ mod tests {
             code: "test".to_string(),
             publisher_count: 0,
             subscriber_count: 0,
+            stake_ref: Pubkey::default(),
         };
         let err = val.validate();
         assert!(err.is_err());
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
+    }
+
+    /// Every group created before `stake_ref` existed is 32 bytes short. It must still decode, with
+    /// a zero `stake_ref`, so it keeps the rules of a group an admin created.
+    #[test]
+    fn test_state_multicastgroup_decodes_the_layout_before_stake_ref() {
+        let val = MulticastGroup {
+            code: "old".to_string(),
+            stake_ref: Pubkey::new_unique(),
+            ..MulticastGroup::default()
+        };
+        let data = borsh::to_vec(&val).unwrap();
+        let old = &data[..data.len() - 32];
+
+        let decoded = MulticastGroup::try_from(old).unwrap();
+        assert_eq!(
+            decoded,
+            MulticastGroup {
+                stake_ref: Pubkey::default(),
+                ..val
+            }
+        );
     }
 
     #[test]
@@ -260,10 +299,12 @@ mod tests {
             code: "test".to_string(),
             publisher_count: 5,
             subscriber_count: 10,
+            stake_ref: Pubkey::new_unique(),
         };
 
         let data = borsh::to_vec(&val).unwrap();
         let val2 = MulticastGroup::try_from(&data[..]).unwrap();
+        assert_eq!(val, val2);
 
         val.validate().unwrap();
         val2.validate().unwrap();

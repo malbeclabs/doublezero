@@ -204,6 +204,24 @@ fn apply_serviceability_json_compat_migrations(serviceability: &mut Value) {
         }
     }
 
+    // A8 appended `stake_ref` to MulticastGroup: the BuilderStake that created a
+    // group, zero for one an admin created. Historical snapshots predate it, and
+    // every group in them was created by an admin, so default it to the zero key,
+    // as onchain/Borsh deserialization does for the absent tail.
+    if let Some(groups) = serviceability
+        .get_mut("multicast_groups")
+        .and_then(|groups| groups.as_object_mut())
+    {
+        for group in groups
+            .values_mut()
+            .filter_map(|group| group.as_object_mut())
+        {
+            group
+                .entry("stake_ref")
+                .or_insert_with(|| Value::String(Pubkey::default().to_string()));
+        }
+    }
+
     // doublezero-serviceability client/v0.25.0 split a Device's single
     // `interfaces` vec into two: a flat `interfaces: Vec<Interface>` written at
     // the end of the on-disk layout, plus a legacy

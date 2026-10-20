@@ -189,6 +189,7 @@ mod tests {
             owner: owner_pk,
             publisher_count: 1,
             subscriber_count: 2,
+            stake_ref: Pubkey::default(),
         };
         client.expect_list_multicastgroup().returning(move |_| {
             let mut mgroups = HashMap::new();

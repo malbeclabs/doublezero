@@ -920,6 +920,8 @@ export interface MulticastGroup {
   code: string;
   publisherCount: number;
   subscriberCount: number;
+  /** The BuilderStake that created the group, or the default key for a group an admin created. */
+  stakeRef: PublicKey;
 }
 
 export function deserializeMulticastGroup(data: Uint8Array): MulticastGroup {
@@ -936,6 +938,8 @@ export function deserializeMulticastGroup(data: Uint8Array): MulticastGroup {
     code: r.readString(),
     publisherCount: r.readU32(),
     subscriberCount: r.readU32(),
+    // A group created before the field existed ends here, and the reader throws past the end.
+    stakeRef: r.remaining >= 32 ? readPubkey(r) : PublicKey.default,
   };
 }
 

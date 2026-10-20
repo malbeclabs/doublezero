@@ -6,7 +6,11 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use doublezero_contributor_rewards::{
     calculator::orchestrator::Orchestrator,
-    cli::{export::ExportCommands, inspect::InspectCommands, rewards::RewardsCommands},
+    cli::{
+        export::ExportCommands,
+        inspect::InspectCommands,
+        rewards::{self, RewardsCommands},
+    },
     settings::Settings,
 };
 use metrics_exporter_prometheus::PrometheusBuilder;
@@ -112,6 +116,27 @@ pub enum Commands {
 
 impl Cli {
     pub async fn run(self) -> Result<()> {
+        // It takes both RPCs as flags, so it runs without a config file.
+        if let Commands::Rewards(RewardsCommands::DistributeMonthlyRewards {
+            year,
+            month,
+            dry_run,
+            keypair,
+            solana_url,
+            dz_url,
+        }) = self.command
+        {
+            anyhow::ensure!(
+                self.config.is_none(),
+                "distribute-monthly-rewards reads no config file, so pass --solana-url and --dz-url instead of -c"
+            );
+            init_logging("info")?;
+            return rewards::distribute_monthly_rewards(
+                year, month, dry_run, keypair, solana_url, dz_url,
+            )
+            .await;
+        }
+
         let settings = if let Some(config_path) = &self.config {
             Settings::from_path(config_path)?
         } else {
@@ -204,4 +229,33 @@ fn export_build_info() {
         "pkg_version" => pkg_version
     )
     .set(1.0);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_distribute_monthly_rewards_refuses_a_config_file() {
+        let cli = Cli::try_parse_from([
+            "contributor-rewards",
+            "-c",
+            "missing.toml",
+            "distribute-monthly-rewards",
+            "--year",
+            "2026",
+            "--month",
+            "8",
+            "--solana-url",
+            "http://127.0.0.1:1",
+            "--dz-url",
+            "http://127.0.0.1:1",
+        ])
+        .unwrap();
+        // Loading the settings first would fail on the missing file instead.
+        assert_eq!(
+            cli.run().await.unwrap_err().to_string(),
+            "distribute-monthly-rewards reads no config file, so pass --solana-url and --dz-url instead of -c"
+        );
+    }
 }

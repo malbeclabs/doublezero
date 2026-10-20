@@ -40,14 +40,11 @@ use svm_hash::{
 };
 use tracing::{debug, info, warn};
 
-use crate::{
-    calculator::{
-        distribute::{LeafPayment, try_pay_leaf},
-        ledger_operations::get_rewards_accountant,
-        monthly::{self, MonthlyRewards},
-        recorder::try_write_record_confirmed,
-    },
-    settings::Settings,
+use crate::calculator::{
+    distribute::{LeafPayment, try_pay_leaf},
+    ledger_operations::get_rewards_accountant,
+    monthly::{self, MonthlyRewards, MonthlySettings},
+    recorder::try_write_record_confirmed,
 };
 
 // Keyed by root as well as month, so a month recomputed with a new root gets a
@@ -162,7 +159,7 @@ pub fn plan_months(
 }
 
 pub struct MonthlyContext<'a> {
-    pub settings: &'a Settings,
+    pub settings: &'a MonthlySettings,
     pub wallet: &'a Wallet,
     pub dz_connection: &'a DoubleZeroLedgerConnection,
     pub schedule: EpochSchedule,
@@ -173,7 +170,7 @@ impl<'a> MonthlyContext<'a> {
     /// Check that `wallet` signs as the rewards accountant, then read the DZ
     /// epoch state the monthly steps need.
     pub async fn try_new(
-        settings: &'a Settings,
+        settings: &'a MonthlySettings,
         wallet: &'a Wallet,
         dz_connection: &'a DoubleZeroLedgerConnection,
     ) -> Result<Self> {
@@ -243,7 +240,7 @@ impl<'a> MonthlyContext<'a> {
                 self.dz_connection,
                 &self.wallet.signer,
                 &[
-                    &self.settings.get_contributor_rewards_prefix(),
+                    &self.settings.contributor_rewards_prefix,
                     &month_record_seed(year, month, &merkle_root),
                 ],
                 &borsh::to_vec(&monthly_rewards)?,
@@ -420,7 +417,7 @@ impl<'a> MonthlyContext<'a> {
             self.dz_connection,
             &self.wallet.pubkey(),
             &[
-                &self.settings.get_contributor_rewards_prefix(),
+                &self.settings.contributor_rewards_prefix,
                 &month_record_seed(year, month, merkle_root),
             ],
         )

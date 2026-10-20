@@ -39,6 +39,7 @@ fn create_test_settings(
             enable_dry_run: false,
             storage_backend,
             grace_period_max_wait_seconds: 21600,
+            enable_monthly_distribution: false,
         },
         aws,
         shapley: doublezero_contributor_rewards::settings::ShapleySettings {

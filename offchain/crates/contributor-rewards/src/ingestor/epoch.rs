@@ -136,6 +136,12 @@ fn is_block_cleaned_up(err: &SolanaClientError) -> bool {
     )
 }
 
+// Context on a cleaned-up block's error, so a caller can tell the ledger's history
+// floor from a failed request.
+#[derive(Debug, thiserror::Error)]
+#[error("The RPC no longer holds slot {0}")]
+pub struct BlockCleanedUp(pub u64);
+
 /// Report whether an RPC error is settled, meaning a retry would sleep through
 /// the backoff schedule only to be told the same thing.
 fn is_settled_block_error(err: &SolanaClientError) -> bool {
@@ -352,8 +358,9 @@ impl EpochFinder {
         match block_time {
             Ok(block_time) => Ok(Some(block_time)),
             Err(err) if is_block_unavailable(&err) => Ok(None),
-            Err(err) if is_block_cleaned_up(&err) => Err(redacted_error(err))
-                .with_context(|| format!("The RPC no longer holds slot {slot}")),
+            Err(err) if is_block_cleaned_up(&err) => {
+                Err(redacted_error(err)).context(BlockCleanedUp(slot))
+            }
             Err(err) => Err(redacted_error(err))
                 .with_context(|| format!("Failed to get block time for slot {slot}")),
         }

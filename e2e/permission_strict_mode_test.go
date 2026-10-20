@@ -247,7 +247,12 @@ func TestE2E_PermissionAccounts_StrictMode(t *testing.T) {
 		run(t, "", `doublezero exchange update --pubkey psexc --name "Strict Exchange 2"`)
 		run(t, "", "doublezero contributor create --code psco --owner me")
 
-		// network-admin: devices, interfaces, a link.
+		// network-admin: devices, interfaces, a link. The handlers also accept the contributor
+		// owner, and devnet setup makes the manager the owner of co01, so hand co01 to another
+		// key first: the manager can then only use its network-admin grant.
+		_, contributorOwnerPubkey := cliKey(t, "contributor-owner")
+		run(t, "", "doublezero contributor update --pubkey co01 --owner "+contributorOwnerPubkey)
+		require.Contains(t, run(t, "", "doublezero contributor get --code co01"), contributorOwnerPubkey)
 		_, err := dn.GetOrCreateDeviceOnchain(ctx, "dev01", "ams", "xams", "", "45.33.100.1",
 			[]string{"45.33.100.8/29", "45.33.101.0/29"}, "mgmt")
 		require.NoError(t, err)

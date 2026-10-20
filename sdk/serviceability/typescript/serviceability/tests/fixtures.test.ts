@@ -456,6 +456,7 @@ describe("MulticastGroup fixture", () => {
       Status: mg.status,
       PublisherCount: mg.publisherCount,
       SubscriberCount: mg.subscriberCount,
+      StakeRef: mg.stakeRef,
     });
   });
 });

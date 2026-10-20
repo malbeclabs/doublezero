@@ -54,6 +54,7 @@ async fn test_multicast_subscriber_allowlist() {
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -172,6 +173,7 @@ async fn test_multicast_subscriber_allowlist_transfers_credits() {
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -266,6 +268,7 @@ async fn test_multicast_subscriber_allowlist_without_user_payer_account_skips_ai
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -368,6 +371,7 @@ async fn test_multicast_subscriber_allowlist_sentinel_authority() {
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -538,6 +542,7 @@ async fn test_multicast_subscriber_allowlist_access_pass_admin_permission() {
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -710,6 +715,7 @@ async fn test_multicast_subscriber_allowlist_feed_authority() {
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -835,6 +841,7 @@ async fn test_multicast_subscriber_allowlist_feed_authority_different_user_payer
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -991,6 +998,7 @@ async fn test_multicast_subscriber_allowlist_allow_multiple_ip() {
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -1127,6 +1135,7 @@ async fn test_multicast_subscriber_allowlist_allow_multiple_ip_real_ip_in_args()
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -1262,6 +1271,7 @@ async fn test_multicast_subscriber_allowlist_wrong_pda_rejected() {
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -1399,6 +1409,7 @@ async fn test_multicast_subscriber_allowlist_allow_multiple_ip_feed_authority_di
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -1556,6 +1567,7 @@ async fn test_multicast_subscriber_allowlist_feed_authority_remove() {
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),

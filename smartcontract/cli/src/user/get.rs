@@ -285,6 +285,7 @@ mod tests {
             multicast_ip: "100.0.0.1".parse().unwrap(),
             publisher_count: 0,
             subscriber_count: 1,
+            stake_ref: Pubkey::default(),
         };
 
         let user = User {
@@ -471,6 +472,7 @@ mod tests {
             code: "qa-payments-group".to_string(),
             publisher_count: 0,
             subscriber_count: 1,
+            stake_ref: Pubkey::default(),
         };
 
         let feed = Feed {

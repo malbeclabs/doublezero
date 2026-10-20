@@ -649,6 +649,7 @@ fn stake_mirror(stake_ref: Pubkey, builder: Pubkey, tier: StakeTier, bump_seed: 
         source_slot: 1,
         relayer: Pubkey::new_unique(),
         feed_key: Pubkey::default(),
+        groups_created: 0,
     })
     .unwrap()
 }
@@ -1066,6 +1067,7 @@ async fn test_builder_grants_its_own_publish_rights() {
                 max_bandwidth: 1_000_000_000,
                 owner: builder.pubkey(),
                 use_onchain_allocation: true,
+                stake_ref: Pubkey::default(),
             }),
             vec![
                 AccountMeta::new(mgroup_pubkey, false),

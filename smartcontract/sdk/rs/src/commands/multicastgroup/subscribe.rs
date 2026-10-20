@@ -168,6 +168,7 @@ mod tests {
             multicast_ip: "223.0.0.1".parse().unwrap(),
             publisher_count: 0,
             subscriber_count: 0,
+            stake_ref: Pubkey::default(),
         };
 
         client
@@ -298,6 +299,7 @@ mod tests {
             multicast_ip: "223.0.0.1".parse().unwrap(),
             publisher_count: 0,
             subscriber_count: 1,
+            stake_ref: Pubkey::default(),
         };
         client
             .expect_get()

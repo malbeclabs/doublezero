@@ -244,6 +244,7 @@ mod tests {
             owner: mgroup_pubkey,
             publisher_count: 1,
             subscriber_count: 2,
+            stake_ref: Pubkey::default(),
         };
 
         // AccessPass with group in publisher allowlist

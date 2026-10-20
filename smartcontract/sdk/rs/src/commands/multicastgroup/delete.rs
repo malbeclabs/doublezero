@@ -61,6 +61,7 @@ mod tests {
             owner,
             publisher_count: 1,
             subscriber_count: 0,
+            stake_ref: Pubkey::default(),
         }
     }
 

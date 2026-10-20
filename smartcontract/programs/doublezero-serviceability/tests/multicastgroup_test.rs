@@ -45,6 +45,7 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
             max_bandwidth: 1000,
             owner: Pubkey::new_unique(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -163,6 +164,7 @@ async fn test_multicastgroup_create_with_wrong_index_fails() {
             max_bandwidth: 1000,
             owner: Pubkey::new_unique(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(wrong_multicastgroup_pubkey, false),
@@ -195,6 +197,7 @@ async fn test_multicastgroup_create_with_wrong_index_fails() {
             max_bandwidth: 1000,
             owner: Pubkey::new_unique(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(correct_multicastgroup_pubkey, false),
@@ -242,6 +245,7 @@ async fn test_multicastgroup_reactivate_invalid_status_fails() {
             max_bandwidth: 1000,
             owner: Pubkey::new_unique(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -301,6 +305,7 @@ async fn test_suspend_multicastgroup_from_pending_fails() {
             max_bandwidth: 1000,
             owner: Pubkey::new_unique(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -379,6 +384,7 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
             max_bandwidth: 1000,
             owner: mgroup_owner,
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -580,6 +586,7 @@ async fn test_multicastgroup_create_with_permission_account_allowed() {
             max_bandwidth: 1000,
             owner: group_owner,
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         &vec![
             AccountMeta::new(mgroup_pubkey, false),

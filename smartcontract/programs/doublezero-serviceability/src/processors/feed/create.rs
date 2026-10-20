@@ -2,7 +2,7 @@ use crate::{
     authorize::{authorize, FEED_ADMIN_FLAGS},
     error::{DoubleZeroError, Validate},
     pda::get_feed_pda,
-    processors::feed::split_stake_mirror,
+    processors::stake_mirror::split_stake_mirror,
     seeds::{SEED_FEED, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
     state::{
@@ -77,8 +77,11 @@ pub fn process_create_feed(
 
     // The tail holds the stake's StakeMirror, the payer's Permission account, both, or neither.
     // `value` rather than a `Feed` here, because this is describing a feed that does not exist yet.
-    let (stake_mirror_account, authorize_candidates) =
-        split_stake_mirror(program_id, &value.builder, &value.stake_ref, accounts_iter);
+    let (stake_mirror_account, authorize_candidates) = split_stake_mirror(
+        program_id,
+        (value.builder != Pubkey::default()).then_some(&value.stake_ref),
+        accounts_iter,
+    );
     let mut authorize_iter = authorize_candidates.into_iter();
 
     assert!(payer_account.is_signer, "Payer must be a signer");

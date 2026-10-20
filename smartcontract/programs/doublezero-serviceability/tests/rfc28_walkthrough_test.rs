@@ -109,6 +109,7 @@ async fn test_a_builder_deploys_a_feed_and_an_operator_admits_it() {
             max_bandwidth: ONE_GBPS,
             owner: builder.pubkey(),
             use_onchain_allocation: true,
+            stake_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(group, false),

@@ -1,10 +1,10 @@
 use crate::{
     authorize::authorize,
     error::{DoubleZeroError, Validate},
-    pda::{get_multicastgroup_pda, get_resource_extension_pda},
+    pda::{get_index_pda, get_multicastgroup_pda, get_resource_extension_pda},
     processors::{
-        resource::allocate_ip, stake_mirror::split_stake_mirror,
-        validation::validate_program_account,
+        index::create::create_index_account, resource::allocate_ip,
+        stake_mirror::split_stake_mirror, validation::validate_program_account,
     },
     resource::ResourceType,
     seeds::{SEED_MULTICAST_GROUP, SEED_PREFIX},
@@ -128,12 +128,33 @@ pub fn process_create_multicastgroup(
             msg!("Staked feeds are not enabled on this cluster");
             return Err(DoubleZeroError::NotAllowed.into());
         }
-        let (mirror_account, _) =
+        let (mirror_account, rest) =
             split_stake_mirror(program_id, Some(&value.stake_ref), accounts_iter);
         let mirror_account = mirror_account.ok_or(DoubleZeroError::StakeMirrorMissing)?;
         let mirror =
             verify_stake_admits_group(program_id, mirror_account, payer_account.key, value)?;
-        Some((mirror_account, mirror))
+
+        // A staked group claims its code in the Index, so a duplicate fails. Anyone with a bond can
+        // create a group, and clients resolve a group by its code and take the first match, so two
+        // groups with one code would send an admin's grant or a subscriber to the wrong group.
+        // Found by its address, like the mirror. Checked here, before anything is allocated, so a
+        // taken code says so rather than failing inside the Index create below.
+        let (index_key, _) = get_index_pda(program_id, SEED_MULTICAST_GROUP, &code);
+        let index_account = rest
+            .into_iter()
+            .find(|a| a.key == &index_key)
+            .ok_or_else(|| {
+                msg!(
+                    "A staked group must pass the Index account for its code, {}",
+                    index_key
+                );
+                DoubleZeroError::InvalidArgument
+            })?;
+        if !index_account.data_is_empty() {
+            msg!("Multicast group code {} is already taken", code);
+            return Err(ProgramError::AccountAlreadyInitialized);
+        }
+        Some((mirror_account, mirror, index_account))
     } else {
         authorize(
             program_id,
@@ -167,7 +188,7 @@ pub fn process_create_multicastgroup(
         index: globalstate.account_index,
         bump_seed,
         tenant_pk: Pubkey::default(),
-        code,
+        code: code.clone(),
         multicast_ip: allocate_ip(multicast_group_block_ext, 1)?.ip(),
         max_bandwidth: value.max_bandwidth,
         status: MulticastGroupStatus::Activated,
@@ -192,8 +213,17 @@ pub fn process_create_multicastgroup(
     )?;
     try_acc_write(&globalstate, globalstate_account, payer_account, accounts)?;
 
-    // Count the group against the stake that admitted it.
-    if let Some((mirror_account, mut mirror)) = claimed_mirror {
+    // Count the group against the stake that admitted it, and claim its code.
+    if let Some((mirror_account, mut mirror, index_account)) = claimed_mirror {
+        create_index_account(
+            program_id,
+            index_account,
+            mgroup_account,
+            payer_account,
+            system_program,
+            SEED_MULTICAST_GROUP,
+            &code,
+        )?;
         // `verify_stake_admits_group` keeps the count under the limit. Checked here as well, so
         // the counter cannot wrap if the limit or the stored count ever changes.
         mirror.groups_created = mirror

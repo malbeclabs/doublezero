@@ -91,8 +91,9 @@ pub fn process_add_multicastgroup_pub_allowlist(
     //
     // The owner of a staked group is a builder whose rights came from a bond, not from an admin.
     // It may grant its own publishers, which is how a builder sends on its feed, but only on passes
-    // it owns: it must not put its group on another user's pass. `owner_only` is that case, and the
-    // existing-pass branch below acts on it. The admin check runs for a staked group's owner too,
+    // it owns: it must not put its group on another user's pass. `owner_only` is that case. Both
+    // branches below act on it: a new pass must be for the builder itself, and an existing one
+    // must be the builder's. The admin check runs for a staked group's owner too,
     // so an owner that is also an admin keeps the admin's reach.
     let is_owner = mgroup.owner == *payer_account.key;
     let staked_group = mgroup.stake_ref != Pubkey::default();
@@ -117,6 +118,16 @@ pub fn process_add_multicastgroup_pub_allowlist(
     let multiplier;
 
     if accesspass_account.data_is_empty() {
+        // The new pass would be owned by the builder, and a later SetAccessPass keeps its owner.
+        // A pass for someone else's `user_payer` would let the builder squat on that user's pass
+        // and pass the owner check below once an admin set it up for real.
+        if owner_only && value.user_payer != *payer_account.key {
+            msg!(
+                "A staked group's owner may create a pass only for itself, not for {}",
+                value.user_payer
+            );
+            return Err(DoubleZeroError::NotAllowed.into());
+        }
         let (expected_pda_account, bump_seed) =
             get_accesspass_pda(program_id, &value.client_ip, &value.user_payer);
         assert_eq!(

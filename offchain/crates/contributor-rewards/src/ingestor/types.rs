@@ -205,9 +205,10 @@ fn apply_serviceability_json_compat_migrations(serviceability: &mut Value) {
     }
 
     // A8 appended `bond_ref` to MulticastGroup: the BuilderBond that created a
-    // group, zero for one an admin created. Historical snapshots predate it, and
-    // every group in them was created by an admin, so default it to the zero key,
-    // as onchain/Borsh deserialization does for the absent tail.
+    // group, zero for one an admin created. Snapshots taken before the field was
+    // renamed carry it as `stake_ref`. Older snapshots predate it, and every
+    // group in them was created by an admin, so default it to the zero key, as
+    // onchain/Borsh deserialization does for the absent tail.
     if let Some(groups) = serviceability
         .get_mut("multicast_groups")
         .and_then(|groups| groups.as_object_mut())
@@ -216,9 +217,10 @@ fn apply_serviceability_json_compat_migrations(serviceability: &mut Value) {
             .values_mut()
             .filter_map(|group| group.as_object_mut())
         {
-            group
-                .entry("bond_ref")
-                .or_insert_with(|| Value::String(Pubkey::default().to_string()));
+            let legacy_stake_ref = group.remove("stake_ref");
+            group.entry("bond_ref").or_insert_with(|| {
+                legacy_stake_ref.unwrap_or_else(|| Value::String(Pubkey::default().to_string()))
+            });
         }
     }
 
@@ -575,4 +577,33 @@ where
     }
 
     deserializer.deserialize_map(IndexMapVisitor(PhantomData))
+}
+
+#[cfg(test)]
+mod tests {
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn test_multicast_group_bond_ref_migration() {
+        let bond_key = Pubkey::new_unique().to_string();
+        let mut snapshot = json!({
+            "dz_serviceability": {
+                "multicast_groups": {
+                    "legacy": { "stake_ref": bond_key },
+                    "absent": {},
+                }
+            }
+        });
+
+        apply_json_compat_migrations(&mut snapshot);
+
+        let groups = &snapshot["dz_serviceability"]["multicast_groups"];
+        assert_eq!(groups["legacy"], json!({ "bond_ref": bond_key }));
+        assert_eq!(
+            groups["absent"],
+            json!({ "bond_ref": Pubkey::default().to_string() })
+        );
+    }
 }

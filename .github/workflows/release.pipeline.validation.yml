@@ -9,34 +9,11 @@ permissions:
   contents: read
 
 jobs:
-  # Validates every GoReleaser config, including the Pro-only keys, without a
-  # license key, so it runs on pull requests with no secret.
+  # GoReleaser Pro skips its license check in snapshot mode, so the full build
+  # runs with no GORELEASER_KEY and no other secret. A snapshot neither publishes
+  # nor announces.
   validate_pipeline:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        release: [agent, client, controller, device-telemetry-agent, funder, monitor, qa-agent, s3-uploader, global-monitor]
-    name: release-validation-${{ matrix.release }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/install-goreleaser-pro
-      - name: Check GoReleaser config
-        run: goreleaser check -f release/.goreleaser.base.${{ matrix.release }}.yaml
-
-  # Builds the full snapshot, which needs the GoReleaser Pro key. The key sits in
-  # Secrets Manager in dz-ci behind a role that trusts only this workflow on main,
-  # so the job runs only there, and only once the role exists and
-  # GORELEASER_ROLE_ARN is set (malbeclabs/infra#3205). A snapshot neither
-  # publishes nor announces, so it gets no other secret.
-  release_snapshot:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.GORELEASER_ROLE_ARN != ''
     runs-on: ubuntu-24.04-16c-64gb
-    permissions:
-      contents: read
-      id-token: write
     strategy:
       matrix:
         include:
@@ -58,7 +35,7 @@ jobs:
             languages: ["go"]
           - release: global-monitor
             languages: ["go"]
-    name: release-snapshot-${{ matrix.release }}
+    name: release-validation-${{ matrix.release }}
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -96,28 +73,5 @@ jobs:
         run: ./scripts/env.sh >> $GITHUB_ENV
 
       - uses: ./.github/actions/install-goreleaser-pro
-
-      - name: Read the AWS region from the secret ARN
-        id: region
-        env:
-          GORELEASER_SECRET_ARN: ${{ vars.GORELEASER_SECRET_ARN }}
-        run: |
-          echo "region=$(cut -d: -f4 <<<"$GORELEASER_SECRET_ARN")" >> "$GITHUB_OUTPUT"
-
-      - uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
-        with:
-          role-to-assume: ${{ vars.GORELEASER_ROLE_ARN }}
-          aws-region: ${{ steps.region.outputs.region }}
-
-      # Fetched in the step that uses it, so the key never reaches GITHUB_ENV or
-      # another step.
       - name: Run GoReleaser
-        env:
-          GORELEASER_SECRET_ARN: ${{ vars.GORELEASER_SECRET_ARN }}
-          RELEASE: ${{ matrix.release }}
-        run: |
-          set -euo pipefail
-          GORELEASER_KEY=$(aws secretsmanager get-secret-value --secret-id "$GORELEASER_SECRET_ARN" --query SecretString --output text)
-          echo "::add-mask::$GORELEASER_KEY"
-          export GORELEASER_KEY
-          goreleaser release --snapshot -f "release/.goreleaser.base.${RELEASE}.yaml" --clean
+        run: goreleaser release --snapshot -f release/.goreleaser.base.${{ matrix.release }}.yaml --clean

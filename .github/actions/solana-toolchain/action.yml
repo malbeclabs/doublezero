@@ -99,6 +99,8 @@ runs:
     # fails on edition2024 -- and the logs could not say which binary ran.
     - name: Pin and report the SBF build tools
       shell: bash
+      env:
+        AGAVE_VERSION: ${{ inputs.version }}
       run: |
         set -euo pipefail
 

@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Go
+  - Go 1.26 (toolchain 1.26.10), with `golang.org/x/net` 0.60.0 and `golang.org/x/crypto` 0.57.0. The new `x/net` fixes the HTTP/2 server advisories GO-2026-6603, GO-2026-6610, GO-2026-6611, GO-2026-6612 and GO-2026-6617, and the new `x/crypto` fixes the `ssh` advisories GO-2026-6354 and GO-2026-6355. Both releases need Go 1.26. Every Dockerfile that builds Go code now uses Go 1.26.
 - CI
   - Release jobs install goreleaser-pro v2.18.2 through `.github/actions/install-goreleaser-pro`, which checks the download against a sha256 pinned in the repo and fails the job on any mismatch or failed download, then run `goreleaser` directly. This replaces goreleaser-action, which runs the binary unchecked when it cannot fetch the checksum or signature file, and stops goreleaser floating on `~> v2`.
 - CLI

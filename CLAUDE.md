@@ -76,7 +76,7 @@ go test -run TestFunctionName -v ./path/to/package/...
 
 Note: `controlplane/s3-uploader/` is a separate Go module — build/lint/test targets handle it automatically, but manual commands need `cd controlplane/s3-uploader`.
 
-Go version: 1.25.0.
+Go version: 1.26.0.
 
 ### SDKs
 

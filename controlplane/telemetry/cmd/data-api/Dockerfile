@@ -12,7 +12,7 @@ RUN apt update && \
     pkg-config
 
 # Install go
-ARG GO_VERSION=1.25.5
+ARG GO_VERSION=1.26.10
 RUN ARCH="$(uname -m)" && \
     case "$ARCH" in \
     x86_64) GOARCH=amd64 ;; \

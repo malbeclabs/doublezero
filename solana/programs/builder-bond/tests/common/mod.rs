@@ -1,12 +1,12 @@
-//! Minimal harness for the builder-stake program tests.
+//! Minimal harness for the builder-bond program tests.
 //!
 //! Instruction builders live here rather than in the crate because tests are the only caller so
 //! far. Move them into the crate when the relayer or a CLI needs them.
 
 #![allow(dead_code)]
 
-use doublezero_builder_stake::{
-    state::{BuilderStake, ProgramConfig},
+use doublezero_builder_bond::{
+    state::{BuilderBond, ProgramConfig},
     DOUBLEZERO_MINT_KEY, ID,
 };
 use solana_loader_v3_interface::{get_program_data_address, state::UpgradeableLoaderState};
@@ -43,7 +43,7 @@ pub struct TestSetup {
 }
 
 pub async fn start_test() -> TestSetup {
-    let mut program_test = ProgramTest::new("doublezero_builder_stake", ID, None);
+    let mut program_test = ProgramTest::new("doublezero_builder_bond", ID, None);
     program_test.prefer_bpf(true);
 
     let upgrade_authority = Keypair::new();
@@ -89,7 +89,7 @@ pub async fn start_test() -> TestSetup {
         token_account(&builder.pubkey(), TEST_2Z_SUPPLY),
     );
 
-    // The builder pays rent for its own stake and token account.
+    // The builder pays rent for its own bond and token account.
     program_test.add_account(
         builder.pubkey(),
         Account {
@@ -206,7 +206,7 @@ impl TestSetup {
     }
 
     /// Initialize, set the admin, set the tier table, and unpause. The state every test that
-    /// touches a stake needs.
+    /// touches a bond needs.
     pub async fn initialize_and_unpause(&mut self) {
         self.initialize_and_set_admin().await;
 
@@ -238,7 +238,7 @@ impl TestSetup {
         .unwrap();
     }
 
-    pub async fn read_builder_stake(&mut self, key: &Pubkey) -> BuilderStake {
+    pub async fn read_builder_bond(&mut self, key: &Pubkey) -> BuilderBond {
         let data = self
             .context
             .banks_client
@@ -247,7 +247,7 @@ impl TestSetup {
             .unwrap()
             .unwrap()
             .data;
-        *doublezero_program_tools::zero_copy::checked_from_bytes_with_discriminator::<BuilderStake>(
+        *doublezero_program_tools::zero_copy::checked_from_bytes_with_discriminator::<BuilderBond>(
             &data,
         )
         .unwrap()
@@ -285,4 +285,4 @@ impl TestSetup {
 
 // The instruction builders moved into the crate, where a caller outside these tests can reach
 // them. Re-exported so the test files that use them read unchanged.
-pub use doublezero_builder_stake::instruction::builders::*;
+pub use doublezero_builder_bond::instruction::builders::*;

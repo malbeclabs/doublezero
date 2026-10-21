@@ -2,7 +2,7 @@ mod common;
 
 //
 
-use doublezero_builder_stake::state::{self, BuilderStake, ProgramConfig};
+use doublezero_builder_bond::state::{self, BuilderBond, ProgramConfig};
 use solana_program_test::tokio;
 use solana_sdk::{
     instruction::InstructionError, program_error::ProgramError, pubkey::Pubkey, signature::Signer,
@@ -75,9 +75,9 @@ async fn test_admin_is_set_by_the_upgrade_authority() {
     assert_eq!(t.read_program_config().await.admin_key, delegate);
 }
 
-/// A builder posts a 2Z bond against a committed rate and the stake records what it holds.
+/// A builder posts a 2Z bond against a committed rate and the bond records what it holds.
 #[tokio::test]
-async fn test_post_bond_moves_2z_into_the_stake() {
+async fn test_post_bond_moves_2z_into_the_bond() {
     let mut t = common::start_test().await;
     t.initialize_and_unpause().await;
 
@@ -86,22 +86,22 @@ async fn test_post_bond_moves_2z_into_the_stake() {
     let source_token_account = t.builder_2z_key;
 
     t.send(
-        common::initialize_builder_stake(&builder_key, 0, ONE_GBPS),
+        common::initialize_builder_bond(&builder_key, 0, ONE_GBPS),
         &[&builder],
     )
     .await
     .unwrap();
 
-    let (stake_key, stake_bump) = BuilderStake::find_address(&builder_key, 0);
-    let (vault_key, vault_bump) = state::find_2z_token_pda_address(&stake_key);
+    let (bond_key, bond_bump) = BuilderBond::find_address(&builder_key, 0);
+    let (vault_key, vault_bump) = state::find_2z_token_pda_address(&bond_key);
 
-    let stake = t.read_builder_stake(&stake_key).await;
-    assert_eq!(stake.builder, builder_key);
-    assert_eq!(stake.stake_index, 0);
-    assert_eq!(stake.committed_rate_bits_per_sec, ONE_GBPS);
-    assert_eq!(stake.bonded_2z_amount, 0);
-    assert_eq!(stake.bump_seed, stake_bump);
-    assert_eq!(stake.token_account_bump_seed, vault_bump);
+    let bond = t.read_builder_bond(&bond_key).await;
+    assert_eq!(bond.builder, builder_key);
+    assert_eq!(bond.bond_index, 0);
+    assert_eq!(bond.committed_rate_bits_per_sec, ONE_GBPS);
+    assert_eq!(bond.bonded_2z_amount, 0);
+    assert_eq!(bond.bump_seed, bond_bump);
+    assert_eq!(bond.token_account_bump_seed, vault_bump);
 
     let amount = 100_000;
     t.send(
@@ -113,11 +113,11 @@ async fn test_post_bond_moves_2z_into_the_stake() {
 
     assert_eq!(t.token_amount(&vault_key).await, amount);
     assert_eq!(
-        t.read_builder_stake(&stake_key).await.bonded_2z_amount,
+        t.read_builder_bond(&bond_key).await.bonded_2z_amount,
         amount
     );
 
-    // A second bond tops the same stake up rather than starting over.
+    // A second post tops the same bond up rather than starting over.
     t.send(
         common::post_bond(&builder_key, 0, &source_token_account, amount),
         &[&builder],
@@ -125,7 +125,7 @@ async fn test_post_bond_moves_2z_into_the_stake() {
     .await
     .unwrap();
     assert_eq!(
-        t.read_builder_stake(&stake_key).await.bonded_2z_amount,
+        t.read_builder_bond(&bond_key).await.bonded_2z_amount,
         amount * 2
     );
 
@@ -136,10 +136,10 @@ async fn test_post_bond_moves_2z_into_the_stake() {
     );
 }
 
-/// RFC-28 collateralizes each feed on its own bond, so a builder holds one stake per feed and
-/// the stakes are distinct accounts with distinct vaults.
+/// RFC-28 collateralizes each feed on its own bond, so a builder holds one bond per feed and
+/// the bonds are distinct accounts with distinct vaults.
 #[tokio::test]
-async fn test_a_builder_holds_one_stake_per_feed() {
+async fn test_a_builder_holds_one_bond_per_feed() {
     let mut t = common::start_test().await;
     t.initialize_and_unpause().await;
 
@@ -148,15 +148,15 @@ async fn test_a_builder_holds_one_stake_per_feed() {
 
     for index in 0..2u64 {
         t.send(
-            common::initialize_builder_stake(&builder_key, index, ONE_GBPS),
+            common::initialize_builder_bond(&builder_key, index, ONE_GBPS),
             &[&builder],
         )
         .await
         .unwrap();
     }
 
-    let first = BuilderStake::find_address(&builder_key, 0).0;
-    let second = BuilderStake::find_address(&builder_key, 1).0;
+    let first = BuilderBond::find_address(&builder_key, 0).0;
+    let second = BuilderBond::find_address(&builder_key, 1).0;
     assert_ne!(first, second);
     assert_ne!(
         state::find_2z_token_pda_address(&first).0,
@@ -171,17 +171,17 @@ async fn test_a_builder_holds_one_stake_per_feed() {
     )
     .await
     .unwrap();
-    assert_eq!(t.read_builder_stake(&first).await.bonded_2z_amount, 500);
-    assert_eq!(t.read_builder_stake(&second).await.bonded_2z_amount, 0);
+    assert_eq!(t.read_builder_bond(&first).await.bonded_2z_amount, 500);
+    assert_eq!(t.read_builder_bond(&second).await.bonded_2z_amount, 0);
 
     // The same index twice is the same address, so it cannot be created again.
     let err = t
         .send(
-            common::initialize_builder_stake(&builder_key, 0, ONE_GBPS),
+            common::initialize_builder_bond(&builder_key, 0, ONE_GBPS),
             &[&builder],
         )
         .await
-        .expect_err("reusing a stake index should fail");
+        .expect_err("reusing a bond index should fail");
     // The system program refuses to allocate an account that already exists.
     common::assert_instruction_error(err, InstructionError::Custom(0));
 }
@@ -189,7 +189,7 @@ async fn test_a_builder_holds_one_stake_per_feed() {
 /// A paused program takes no bonds. This is the switch that keeps a deployed but unconfigured
 /// program from holding money it has no tier table to size.
 #[tokio::test]
-async fn test_paused_program_takes_no_stake() {
+async fn test_paused_program_takes_no_bond() {
     let mut t = common::start_test().await;
     let payer = t.context.payer.pubkey();
     t.send(common::initialize_program(&payer), &[])
@@ -199,18 +199,18 @@ async fn test_paused_program_takes_no_stake() {
     let builder = t.builder.insecure_clone();
     let err = t
         .send(
-            common::initialize_builder_stake(&builder.pubkey(), 0, ONE_GBPS),
+            common::initialize_builder_bond(&builder.pubkey(), 0, ONE_GBPS),
             &[&builder],
         )
         .await
-        .expect_err("a paused program should refuse a new stake");
+        .expect_err("a paused program should refuse a new bond");
     common::assert_instruction_error(
         err,
         InstructionError::from(u64::from(ProgramError::InvalidAccountData)),
     );
 }
 
-/// A stake backing no rate backs nothing.
+/// A bond backing no rate backs nothing.
 #[tokio::test]
 async fn test_zero_committed_rate_rejected() {
     let mut t = common::start_test().await;
@@ -219,7 +219,7 @@ async fn test_zero_committed_rate_rejected() {
     let builder = t.builder.insecure_clone();
     let err = t
         .send(
-            common::initialize_builder_stake(&builder.pubkey(), 0, 0),
+            common::initialize_builder_bond(&builder.pubkey(), 0, 0),
             &[&builder],
         )
         .await
@@ -230,35 +230,35 @@ async fn test_zero_committed_rate_rejected() {
     );
 }
 
-/// A builder cannot bond to somebody else's stake, even though the token transfer itself
+/// A builder cannot post to somebody else's bond, even though the token transfer itself
 /// would be signed correctly.
 #[tokio::test]
-async fn test_post_bond_into_another_builders_stake_rejected() {
+async fn test_post_bond_into_another_builders_bond_rejected() {
     let mut t = common::start_test().await;
     t.initialize_and_unpause().await;
 
     let builder = t.builder.insecure_clone();
     t.send(
-        common::initialize_builder_stake(&builder.pubkey(), 0, ONE_GBPS),
+        common::initialize_builder_bond(&builder.pubkey(), 0, ONE_GBPS),
         &[&builder],
     )
     .await
     .unwrap();
 
-    // The payer signs, holding its own 2Z, and points at the builder's stake.
+    // The payer signs, holding its own 2Z, and points at the builder's bond.
     let payer = t.context.payer.insecure_clone();
     let stranger_2z = solana_sdk::pubkey::Pubkey::new_unique();
     let account = common::token_account(&payer.pubkey(), 1_000);
     t.context.set_account(&stranger_2z, &account.into());
 
     let mut ix = common::post_bond(&builder.pubkey(), 0, &stranger_2z, 500);
-    // Re-point the signer at the payer while leaving the stake as the builder's.
+    // Re-point the signer at the payer while leaving the bond as the builder's.
     ix.accounts[1] = solana_sdk::instruction::AccountMeta::new_readonly(payer.pubkey(), true);
 
     let err = t
         .send(ix, &[])
         .await
-        .expect_err("bonding to another builder's stake should fail");
+        .expect_err("posting to another builder's bond should fail");
     common::assert_instruction_error(
         err,
         InstructionError::from(u64::from(ProgramError::IncorrectAuthority)),

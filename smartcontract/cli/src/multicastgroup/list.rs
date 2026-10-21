@@ -187,7 +187,7 @@ mod tests {
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
             publisher_count: 5,
             subscriber_count: 10,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         };
 
         client.expect_list_multicastgroup().returning(move |_| {

@@ -6,8 +6,8 @@ use crate::common;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{
-        get_globalstate_pda, get_index_pda, get_multicastgroup_pda, get_resource_extension_pda,
-        get_stake_mirror_pda,
+        get_bond_mirror_pda, get_globalstate_pda, get_index_pda, get_multicastgroup_pda,
+        get_resource_extension_pda,
     },
     processors::multicastgroup::{
         allowlist::{
@@ -38,11 +38,11 @@ use solana_program::{
 };
 
 /// `CreateMulticastGroup` (variant 46).
-/// Accounts: `[mgroup, globalstate, multicast_group_block]`, plus the stake mirror and the Index
-/// account for `args.code` when `args.stake_ref` is set.
+/// Accounts: `[mgroup, globalstate, multicast_group_block]`, plus the bond mirror and the Index
+/// account for `args.code` when `args.bond_ref` is set.
 ///
 /// `account_index` is the new group's index (`globalstate.account_index + 1`). A non-zero
-/// `stake_ref` asks the payer's own stake to admit the create in place of `MULTICAST_ADMIN`, and
+/// `bond_ref` asks the payer's own bond to admit the create in place of `MULTICAST_ADMIN`, and
 /// the processor then requires `args.owner` to be the payer.
 pub fn create_multicast_group(
     program_id: &Pubkey,
@@ -60,10 +60,10 @@ pub fn create_multicast_group(
     // the `multicast_group_block` account, so it forces the flag (as the SDK does).
     args.use_onchain_allocation = true;
     // Derived from the args, as `create_feed` does, so a caller cannot pass the wrong accounts.
-    // Both writable: the processor counts the group against the stake and claims its code.
-    let staked_accounts = if args.stake_ref != Pubkey::default() {
+    // Both writable: the processor counts the group against the bond and claims its code.
+    let bonded_accounts = if args.bond_ref != Pubkey::default() {
         vec![
-            AccountMeta::new(get_stake_mirror_pda(program_id, &args.stake_ref).0, false),
+            AccountMeta::new(get_bond_mirror_pda(program_id, &args.bond_ref).0, false),
             AccountMeta::new(
                 get_index_pda(program_id, SEED_MULTICAST_GROUP, &args.code).0,
                 false,
@@ -80,7 +80,7 @@ pub fn create_multicast_group(
             AccountMeta::new(globalstate, false),
             AccountMeta::new(multicast_group_block, false),
         ],
-        staked_accounts,
+        bonded_accounts,
         payer,
     )
 }
@@ -501,26 +501,26 @@ mod tests {
     }
 
     #[test]
-    fn test_create_multicast_group_appends_the_stake_mirror_when_staked() {
+    fn test_create_multicast_group_appends_the_bond_mirror_when_bonded() {
         let pid = Pubkey::new_unique();
         let payer = Pubkey::new_unique();
-        let stake_ref = Pubkey::new_unique();
+        let bond_ref = Pubkey::new_unique();
         let ix = create_multicast_group(
             &pid,
             &payer,
             1,
             MulticastGroupCreateArgs {
                 owner: payer,
-                stake_ref,
+                bond_ref,
                 ..Default::default()
             },
         );
-        let (mirror, _) = get_stake_mirror_pda(&pid, &stake_ref);
+        let (mirror, _) = get_bond_mirror_pda(&pid, &bond_ref);
         let (index, _) = get_index_pda(&pid, SEED_MULTICAST_GROUP, "");
         assert_eq!(
             ix.accounts[ix.accounts.len() - 3..ix.accounts.len() - 1],
             [AccountMeta::new(mirror, false), AccountMeta::new(index, false)],
-            "the mirror and the code's Index account are writable: the create counts against the stake and claims the code"
+            "the mirror and the code's Index account are writable: the create counts against the bond and claims the code"
         );
         assert_eq!(
             ix.accounts.last().unwrap(),

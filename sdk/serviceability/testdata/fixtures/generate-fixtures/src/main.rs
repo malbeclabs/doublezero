@@ -1203,7 +1203,7 @@ fn generate_multicast_group(dir: &Path) {
     let owner = pubkey_from_byte(0x70);
     let tenant_pk = pubkey_from_byte(0x71);
     // Not zero, so a decoder that skips the field fails the fixture rather than reading a default.
-    let stake_ref = pubkey_from_byte(0x72);
+    let bond_ref = pubkey_from_byte(0x72);
 
     let val = MulticastGroup {
         account_type: AccountType::MulticastGroup,
@@ -1217,7 +1217,7 @@ fn generate_multicast_group(dir: &Path) {
         code: "demo".into(),
         publisher_count: 2,
         subscriber_count: 10,
-        stake_ref,
+        bond_ref,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -1237,7 +1237,7 @@ fn generate_multicast_group(dir: &Path) {
             FieldValue { name: "Code".into(), value: "demo".into(), typ: "string".into() },
             FieldValue { name: "PublisherCount".into(), value: "2".into(), typ: "u32".into() },
             FieldValue { name: "SubscriberCount".into(), value: "10".into(), typ: "u32".into() },
-            FieldValue { name: "StakeRef".into(), value: pubkey_bs58(&stake_ref), typ: "pubkey".into() },
+            FieldValue { name: "BondRef".into(), value: pubkey_bs58(&bond_ref), typ: "pubkey".into() },
         ],
     };
 
@@ -1501,7 +1501,7 @@ fn generate_access_pass_edge_seat(dir: &Path) {
 }
 
 /// Borsh-encoded `Feed` account. Field order: account_type, owner, bump_seed, code, name,
-/// exchange (Pubkey), groups (Vec<Pubkey>), then the RFC-28 tail: builder, stake_ref, spec_id,
+/// exchange (Pubkey), groups (Vec<Pubkey>), then the RFC-28 tail: builder, bond_ref, spec_id,
 /// sla_hash, committed_rate_bits_per_sec, status. Two groups, so the vec decoding is exercised.
 fn generate_feed(dir: &Path) {
     let owner = pubkey_from_byte(0xE0);
@@ -1509,7 +1509,7 @@ fn generate_feed(dir: &Path) {
     let group0 = pubkey_from_byte(0xE2);
     let group1 = pubkey_from_byte(0xE3);
     let builder = pubkey_from_byte(0xE4);
-    let stake_ref = pubkey_from_byte(0xE5);
+    let bond_ref = pubkey_from_byte(0xE5);
 
     let val = Feed {
         account_type: AccountType::Feed,
@@ -1520,7 +1520,7 @@ fn generate_feed(dir: &Path) {
         exchange,
         groups: vec![group0, group1],
         builder,
-        stake_ref,
+        bond_ref,
         spec_id: "top-of-book@v1.0.0".into(),
         sla_hash: [0xE6; 32],
         committed_rate_bits_per_sec: 1_000_000_000,
@@ -1549,7 +1549,7 @@ fn generate_feed(dir: &Path) {
             FieldValue { name: "Group0".into(), value: pubkey_bs58(&group0), typ: "pubkey".into() },
             FieldValue { name: "Group1".into(), value: pubkey_bs58(&group1), typ: "pubkey".into() },
             FieldValue { name: "Builder".into(), value: pubkey_bs58(&builder), typ: "pubkey".into() },
-            FieldValue { name: "StakeRef".into(), value: pubkey_bs58(&stake_ref), typ: "pubkey".into() },
+            FieldValue { name: "BondRef".into(), value: pubkey_bs58(&bond_ref), typ: "pubkey".into() },
             FieldValue { name: "SpecId".into(), value: "top-of-book@v1.0.0".into(), typ: "string".into() },
             FieldValue { name: "SlaHash".into(), value: "e6".repeat(32), typ: "string".into() },
             FieldValue { name: "CommittedRateBitsPerSec".into(), value: "1000000000".into(), typ: "u64".into() },

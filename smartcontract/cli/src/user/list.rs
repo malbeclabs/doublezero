@@ -582,7 +582,7 @@ mod tests {
                 owner: Pubkey::default(),
                 publisher_count: 0,
                 subscriber_count: 0,
-                stake_ref: Pubkey::default(),
+                bond_ref: Pubkey::default(),
             }
         }
         let g1 = Pubkey::new_unique();
@@ -782,7 +782,7 @@ mod tests {
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
             publisher_count: 0,
             subscriber_count: 0,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         };
 
         client.expect_list_location().returning(move |_| {
@@ -1659,7 +1659,7 @@ mod tests {
             owner: Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9"),
             publisher_count: 0,
             subscriber_count: 0,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         };
 
         let user1 = User {

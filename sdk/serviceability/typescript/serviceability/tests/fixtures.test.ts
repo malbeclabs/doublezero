@@ -456,7 +456,7 @@ describe("MulticastGroup fixture", () => {
       Status: mg.status,
       PublisherCount: mg.publisherCount,
       SubscriberCount: mg.subscriberCount,
-      StakeRef: mg.stakeRef,
+      BondRef: mg.bondRef,
     });
   });
 });
@@ -646,7 +646,7 @@ describe("Feed fixture", () => {
       Group0: feed.groups[0],
       Group1: feed.groups[1],
       Builder: feed.builder,
-      StakeRef: feed.stakeRef,
+      BondRef: feed.bondRef,
       SpecId: feed.specId,
       SlaHash: Buffer.from(feed.slaHash).toString("hex"),
       CommittedRateBitsPerSec: feed.committedRateBitsPerSec,
@@ -668,7 +668,7 @@ describe("Feed fixture", () => {
     expect(feed.retiresAt).toBe(-1764547200n);
   });
 
-  // A feed written before RFC-28 ends after groups. The stake fields default, and the status reads
+  // A feed written before RFC-28 ends after groups. The bond fields default, and the status reads
   // active: reading it as pending would show every live catalog feed as out of service.
   test("legacy deserialize", () => {
     const [data, meta] = loadFixture("feed_legacy");
@@ -683,7 +683,7 @@ describe("Feed fixture", () => {
 
     expect(feed.status).toBe(FEED_STATUS_ACTIVE);
     expect(feed.builder.equals(PublicKey.default)).toBe(true);
-    expect(feed.stakeRef.equals(PublicKey.default)).toBe(true);
+    expect(feed.bondRef.equals(PublicKey.default)).toBe(true);
     expect(feed.specId).toBe("");
     expect(feed.slaHash).toEqual(new Uint8Array(32));
     expect(feed.committedRateBitsPerSec).toBe(0n);

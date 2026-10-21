@@ -8,6 +8,7 @@ use crate::processors::{
         foundation::{add::AddFoundationAllowlistArgs, remove::RemoveFoundationAllowlistArgs},
         qa::{add::AddQaAllowlistArgs, remove::RemoveQaAllowlistArgs},
     },
+    bond_mirror::write::BondMirrorWriteArgs,
     contributor::{
         create::ContributorCreateArgs, delete::ContributorDeleteArgs,
         resume::ContributorResumeArgs, suspend::ContributorSuspendArgs,
@@ -75,7 +76,6 @@ use crate::processors::{
         allocate::ResourceAllocateArgs, closeaccount::ResourceExtensionCloseAccountArgs,
         create::ResourceCreateArgs, deallocate::ResourceDeallocateArgs,
     },
-    stake_mirror::write::StakeMirrorWriteArgs,
     tenant::{
         add_administrator::TenantAddAdministratorArgs, create::TenantCreateArgs,
         delete::TenantDeleteArgs, remove_administrator::TenantRemoveAdministratorArgs,
@@ -270,7 +270,7 @@ pub enum DoubleZeroInstruction {
     SubscribeFeed(SubscribeFeedArgs),     // variant 117
     UnsubscribeFeed(UnsubscribeFeedArgs), // variant 118
 
-    WriteStakeMirror(StakeMirrorWriteArgs), // variant 119
+    WriteBondMirror(BondMirrorWriteArgs), // variant 119
 
     HaltFeed(FeedHaltArgs),                             // variant 120
     ResumeFeed(FeedResumeArgs),                         // variant 121
@@ -444,8 +444,8 @@ impl DoubleZeroInstruction {
 
             117 => Ok(Self::SubscribeFeed(SubscribeFeedArgs::try_from(rest).unwrap())),
             118 => Ok(Self::UnsubscribeFeed(UnsubscribeFeedArgs::try_from(rest).unwrap())),
-            119 => Ok(Self::WriteStakeMirror(
-                StakeMirrorWriteArgs::try_from(rest).unwrap(),
+            119 => Ok(Self::WriteBondMirror(
+                BondMirrorWriteArgs::try_from(rest).unwrap(),
             )),
             120 => Ok(Self::HaltFeed(FeedHaltArgs::try_from(rest).unwrap())),
             121 => Ok(Self::ResumeFeed(FeedResumeArgs::try_from(rest).unwrap())),
@@ -614,7 +614,7 @@ impl DoubleZeroInstruction {
             Self::Deprecated111() => "Deprecated111".to_string(), // variant 111
 
             Self::CreateFeed(_) => "CreateFeed".to_string(), // variant 112
-            Self::WriteStakeMirror(_) => "WriteStakeMirror".to_string(), // variant 119
+            Self::WriteBondMirror(_) => "WriteBondMirror".to_string(), // variant 119
             Self::HaltFeed(_) => "HaltFeed".to_string(),     // variant 120
             Self::ResumeFeed(_) => "ResumeFeed".to_string(), // variant 121
             Self::RetireFeed(_) => "RetireFeed".to_string(), // variant 122
@@ -776,7 +776,7 @@ impl DoubleZeroInstruction {
             Self::Deprecated111() => String::new(),            // variant 111
 
             Self::CreateFeed(args) => format!("{args:?}"), // variant 112
-            Self::WriteStakeMirror(args) => format!("{args:?}"), // variant 119
+            Self::WriteBondMirror(args) => format!("{args:?}"), // variant 119
             Self::HaltFeed(args) => format!("{args:?}"),   // variant 120
             Self::ResumeFeed(args) => format!("{args:?}"), // variant 121
             Self::RetireFeed(args) => format!("{args:?}"), // variant 122
@@ -1105,7 +1105,7 @@ mod tests {
                 code: "test".to_string(),
                 owner: Pubkey::new_unique(),
                 use_onchain_allocation: false,
-                stake_ref: Pubkey::default(),
+                bond_ref: Pubkey::default(),
             }),
             "CreateMulticastGroup",
         );

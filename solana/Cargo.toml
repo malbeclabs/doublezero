@@ -2,7 +2,7 @@
 exclude = []
 members = [
     "crates/program-tools",
-    "programs/builder-stake",
+    "programs/builder-bond",
     "mock/rewards-integration",
     "mock/swap-sol-2z",
     "programs/passport",
@@ -49,8 +49,8 @@ sha2-const-stable = "=0.1.0"
 solana-program-test = "=3.0.12"
 solana-sdk = "=3.0"
 
-[workspace.dependencies.doublezero-builder-stake]
-path = "programs/builder-stake"
+[workspace.dependencies.doublezero-builder-bond]
+path = "programs/builder-bond"
 
 [workspace.dependencies.doublezero-passport]
 path = "programs/passport"

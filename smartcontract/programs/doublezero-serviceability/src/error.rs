@@ -247,14 +247,14 @@ pub enum DoubleZeroError {
     IpProofMessageMismatch, // variant 117
     #[error("IP ownership proof carries an unsupported layout version")]
     IpProofVersionUnsupported, // variant 118
-    #[error("A staked feed must present the builder's stake mirror account")]
-    StakeMirrorMissing, // variant 119
-    #[error("The builder's stake does not cover the rate this feed commits to")]
-    StakeDoesNotCoverRate, // variant 120
-    #[error("This stake already backs a feed; RFC-28 is one feed per stake")]
-    StakeAlreadyBacksFeed, // variant 121
-    #[error("A staked feed must be retired, not deleted; deleting it would strand its stake")]
-    StakedFeedCannotBeDeleted, // variant 122
+    #[error("A bonded feed must present the builder's bond mirror account")]
+    BondMirrorMissing, // variant 119
+    #[error("The builder's bond does not cover the rate this feed commits to")]
+    BondDoesNotCoverRate, // variant 120
+    #[error("This bond already backs a feed; RFC-28 is one feed per bond")]
+    BondAlreadyBacksFeed, // variant 121
+    #[error("A bonded feed must be retired, not deleted; deleting it would strand its bond")]
+    BondedFeedCannotBeDeleted, // variant 122
     #[error("This feed is not publishing, so it admits no new subscribers")]
     FeedNotActive, // variant 123
     #[error("Only an active feed can be halted")]
@@ -273,8 +273,8 @@ pub enum DoubleZeroError {
     FeedNotActivatable, // variant 130
     #[error("This instruction is for a different access pass type")]
     InvalidAccessPassType, // variant 131
-    #[error("This stake has created as many multicast groups as one stake may")]
-    StakeGroupLimitReached, // variant 132
+    #[error("This bond has created as many multicast groups as one bond may")]
+    BondGroupLimitReached, // variant 132
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -399,10 +399,10 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::IpProofSignatureMismatch => ProgramError::Custom(116),
             DoubleZeroError::IpProofMessageMismatch => ProgramError::Custom(117),
             DoubleZeroError::IpProofVersionUnsupported => ProgramError::Custom(118),
-            DoubleZeroError::StakeMirrorMissing => ProgramError::Custom(119),
-            DoubleZeroError::StakeDoesNotCoverRate => ProgramError::Custom(120),
-            DoubleZeroError::StakeAlreadyBacksFeed => ProgramError::Custom(121),
-            DoubleZeroError::StakedFeedCannotBeDeleted => ProgramError::Custom(122),
+            DoubleZeroError::BondMirrorMissing => ProgramError::Custom(119),
+            DoubleZeroError::BondDoesNotCoverRate => ProgramError::Custom(120),
+            DoubleZeroError::BondAlreadyBacksFeed => ProgramError::Custom(121),
+            DoubleZeroError::BondedFeedCannotBeDeleted => ProgramError::Custom(122),
             DoubleZeroError::FeedNotActive => ProgramError::Custom(123),
             DoubleZeroError::FeedNotHaltable => ProgramError::Custom(124),
             DoubleZeroError::FeedNotResumable => ProgramError::Custom(125),
@@ -412,7 +412,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::RetiringFeedCannotBeDeleted => ProgramError::Custom(129),
             DoubleZeroError::FeedNotActivatable => ProgramError::Custom(130),
             DoubleZeroError::InvalidAccessPassType => ProgramError::Custom(131),
-            DoubleZeroError::StakeGroupLimitReached => ProgramError::Custom(132),
+            DoubleZeroError::BondGroupLimitReached => ProgramError::Custom(132),
         }
     }
 }
@@ -538,10 +538,10 @@ impl From<u32> for DoubleZeroError {
             116 => DoubleZeroError::IpProofSignatureMismatch,
             117 => DoubleZeroError::IpProofMessageMismatch,
             118 => DoubleZeroError::IpProofVersionUnsupported,
-            119 => DoubleZeroError::StakeMirrorMissing,
-            120 => DoubleZeroError::StakeDoesNotCoverRate,
-            121 => DoubleZeroError::StakeAlreadyBacksFeed,
-            122 => DoubleZeroError::StakedFeedCannotBeDeleted,
+            119 => DoubleZeroError::BondMirrorMissing,
+            120 => DoubleZeroError::BondDoesNotCoverRate,
+            121 => DoubleZeroError::BondAlreadyBacksFeed,
+            122 => DoubleZeroError::BondedFeedCannotBeDeleted,
             123 => DoubleZeroError::FeedNotActive,
             124 => DoubleZeroError::FeedNotHaltable,
             125 => DoubleZeroError::FeedNotResumable,
@@ -551,7 +551,7 @@ impl From<u32> for DoubleZeroError {
             129 => DoubleZeroError::RetiringFeedCannotBeDeleted,
             130 => DoubleZeroError::FeedNotActivatable,
             131 => DoubleZeroError::InvalidAccessPassType,
-            132 => DoubleZeroError::StakeGroupLimitReached,
+            132 => DoubleZeroError::BondGroupLimitReached,
             _ => DoubleZeroError::Custom(e),
         }
     }

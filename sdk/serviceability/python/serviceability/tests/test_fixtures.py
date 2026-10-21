@@ -417,7 +417,7 @@ class TestFixtureMulticastGroup:
                 "Status": mg.status,
                 "PublisherCount": mg.publisher_count,
                 "SubscriberCount": mg.subscriber_count,
-                "StakeRef": mg.stake_ref,
+                "BondRef": mg.bond_ref,
             },
         )
 
@@ -626,7 +626,7 @@ class TestFixtureFeed:
                 "Group0": feed.groups[0],
                 "Group1": feed.groups[1],
                 "Builder": feed.builder,
-                "StakeRef": feed.stake_ref,
+                "BondRef": feed.bond_ref,
                 "SpecId": feed.spec_id,
                 "SlaHash": feed.sla_hash.hex(),
                 "CommittedRateBitsPerSec": feed.committed_rate_bits_per_sec,
@@ -648,7 +648,7 @@ class TestFixtureFeed:
         assert feed.retires_at == -1_764_547_200
 
     def test_legacy_deserialize(self):
-        # A feed written before RFC-28 ends after groups. The stake fields default, and the status
+        # A feed written before RFC-28 ends after groups. The bond fields default, and the status
         # reads Active: reading it as Pending would show every live catalog feed as out of service.
         data, meta = _load_fixture("feed_legacy")
         feed = Feed.from_bytes(data)
@@ -664,7 +664,7 @@ class TestFixtureFeed:
         )
         assert feed.status == FEED_STATUS_ACTIVE
         assert feed.builder == Pubkey.default()
-        assert feed.stake_ref == Pubkey.default()
+        assert feed.bond_ref == Pubkey.default()
         assert feed.spec_id == ""
         assert feed.sla_hash == b"\x00" * 32
         assert feed.committed_rate_bits_per_sec == 0

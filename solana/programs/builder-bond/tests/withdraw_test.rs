@@ -2,7 +2,7 @@ mod common;
 
 //
 
-use doublezero_builder_stake::state::BuilderStake;
+use doublezero_builder_bond::state::BuilderBond;
 use solana_program_test::tokio;
 use solana_sdk::{
     instruction::InstructionError, program_error::ProgramError, pubkey::Pubkey, signature::Signer,
@@ -11,8 +11,8 @@ use solana_sdk::{
 
 const ONE_GBPS: u64 = 1_000_000_000;
 
-/// Set up a funded, over-funded stake and return the pieces a withdrawal needs.
-async fn staked(extra: u64) -> (common::TestSetup, Pubkey, Pubkey, Pubkey) {
+/// Set up a funded, over-funded bond and return the pieces a withdrawal needs.
+async fn bonded(extra: u64) -> (common::TestSetup, Pubkey, Pubkey, Pubkey) {
     let mut t = common::start_test().await;
     t.initialize_and_unpause().await;
 
@@ -21,7 +21,7 @@ async fn staked(extra: u64) -> (common::TestSetup, Pubkey, Pubkey, Pubkey) {
     let source_token_account = t.builder_2z_key;
 
     t.send(
-        common::initialize_builder_stake(&builder_key, 0, ONE_GBPS),
+        common::initialize_builder_bond(&builder_key, 0, ONE_GBPS),
         &[&builder],
     )
     .await
@@ -38,18 +38,18 @@ async fn staked(extra: u64) -> (common::TestSetup, Pubkey, Pubkey, Pubkey) {
     .await
     .unwrap();
 
-    let stake_key = BuilderStake::find_address(&builder_key, 0).0;
-    (t, builder_key, stake_key, source_token_account)
+    let bond_key = BuilderBond::find_address(&builder_key, 0).0;
+    (t, builder_key, bond_key, source_token_account)
 }
 
 /// The first bond starts the hold, and a later one does not restart it. A repricing can force a
 /// top-up, and that must not push the builder's withdrawal date out.
 #[tokio::test]
 async fn test_first_bond_starts_the_hold_and_later_ones_do_not_restart_it() {
-    let (mut t, builder_key, stake_key, source_token_account) = staked(500).await;
+    let (mut t, builder_key, bond_key, source_token_account) = bonded(500).await;
     let builder = t.builder.insecure_clone();
 
-    let started = t.read_builder_stake(&stake_key).await.hold_expires_at;
+    let started = t.read_builder_bond(&bond_key).await.hold_expires_at;
     assert!(started > 0, "the first bond sets the hold");
 
     t.send(
@@ -60,21 +60,21 @@ async fn test_first_bond_starts_the_hold_and_later_ones_do_not_restart_it() {
     .unwrap();
 
     assert_eq!(
-        t.read_builder_stake(&stake_key).await.hold_expires_at,
+        t.read_builder_bond(&bond_key).await.hold_expires_at,
         started,
         "a top-up must not move the hold"
     );
 }
 
-/// Nothing comes out during the hold, however much the stake holds above its requirement.
+/// Nothing comes out during the hold, however much the bond holds above its requirement.
 #[tokio::test]
 async fn test_nothing_is_withdrawable_during_the_hold() {
-    let (mut t, builder_key, stake_key, destination) = staked(500).await;
+    let (mut t, builder_key, bond_key, destination) = bonded(500).await;
     let builder = t.builder.insecure_clone();
 
-    let stake = t.read_builder_stake(&stake_key).await;
-    assert_eq!(stake.bonded_2z_amount, common::TIER_1GBPS + 500);
-    assert_eq!(stake.withdrawable_2z_amount(0), 0);
+    let bond = t.read_builder_bond(&bond_key).await;
+    assert_eq!(bond.bonded_2z_amount, common::TIER_1GBPS + 500);
+    assert_eq!(bond.withdrawable_2z_amount(0), 0);
 
     let (err, logs) = common::simulate_error(
         &mut t,
@@ -93,29 +93,29 @@ async fn test_nothing_is_withdrawable_during_the_hold() {
     common::assert_logged(&logs, "nothing is withdrawable yet");
 }
 
-/// A stake that has never been bonded has no hold, and zero is not "the hold ended in 1970".
+/// A bond never posted to has no hold, and zero is not "the hold ended in 1970".
 #[tokio::test]
-async fn test_a_stake_with_no_bond_cannot_withdraw() {
+async fn test_a_bond_with_no_bond_cannot_withdraw() {
     let mut t = common::start_test().await;
     t.initialize_and_unpause().await;
 
     let builder = t.builder.insecure_clone();
     let builder_key = builder.pubkey();
     t.send(
-        common::initialize_builder_stake(&builder_key, 0, ONE_GBPS),
+        common::initialize_builder_bond(&builder_key, 0, ONE_GBPS),
         &[&builder],
     )
     .await
     .unwrap();
 
-    let stake_key = BuilderStake::find_address(&builder_key, 0).0;
-    let stake = t.read_builder_stake(&stake_key).await;
-    assert_eq!(stake.hold_expires_at, 0);
-    assert!(!stake.hold_started());
+    let bond_key = BuilderBond::find_address(&builder_key, 0).0;
+    let bond = t.read_builder_bond(&bond_key).await;
+    assert_eq!(bond.hold_expires_at, 0);
+    assert!(!bond.hold_started());
     assert_eq!(
-        stake.withdrawable_2z_amount(i64::MAX),
+        bond.withdrawable_2z_amount(i64::MAX),
         0,
-        "an unbonded stake is not unlocked"
+        "a bond never posted to is not unlocked"
     );
 
     let destination = t.builder_2z_key;
@@ -134,7 +134,7 @@ async fn test_a_stake_with_no_bond_cannot_withdraw() {
 #[cfg(feature = "development")]
 #[tokio::test]
 async fn test_the_excess_comes_out_after_the_hold() {
-    let (mut t, builder_key, stake_key, destination) = staked(500).await;
+    let (mut t, builder_key, bond_key, destination) = bonded(500).await;
     let builder = t.builder.insecure_clone();
     let admin = t.upgrade_authority.pubkey();
     let upgrade_authority = t.upgrade_authority.insecure_clone();
@@ -156,9 +156,9 @@ async fn test_the_excess_comes_out_after_the_hold() {
     .await
     .unwrap();
 
-    let stake = t.read_builder_stake(&stake_key).await;
-    assert_eq!(stake.bonded_2z_amount, common::TIER_1GBPS);
-    assert!(stake.is_funded(), "the requirement stays behind");
+    let bond = t.read_builder_bond(&bond_key).await;
+    assert_eq!(bond.bonded_2z_amount, common::TIER_1GBPS);
+    assert!(bond.is_funded(), "the requirement stays behind");
     assert_eq!(t.token_amount(&destination).await, before + 500);
 
     // And now there is nothing spare left.
@@ -168,7 +168,7 @@ async fn test_the_excess_comes_out_after_the_hold() {
             &[&builder],
         )
         .await
-        .expect_err("a funded stake has no excess");
+        .expect_err("a funded bond has no excess");
     common::assert_instruction_error(
         err,
         InstructionError::from(u64::from(ProgramError::InsufficientFunds)),
@@ -182,7 +182,7 @@ async fn test_the_excess_comes_out_after_the_hold() {
 #[cfg(feature = "development")]
 #[tokio::test]
 async fn test_the_requirement_cannot_be_withdrawn() {
-    let (mut t, builder_key, stake_key, destination) = staked(500).await;
+    let (mut t, builder_key, bond_key, destination) = bonded(500).await;
     let builder = t.builder.insecure_clone();
     let admin = t.upgrade_authority.pubkey();
     let upgrade_authority = t.upgrade_authority.insecure_clone();
@@ -207,8 +207,8 @@ async fn test_the_requirement_cannot_be_withdrawn() {
         InstructionError::from(u64::from(ProgramError::InsufficientFunds)),
     );
 
-    let stake = t.read_builder_stake(&stake_key).await;
-    assert_eq!(stake.bonded_2z_amount, common::TIER_1GBPS + 500);
+    let bond = t.read_builder_bond(&bond_key).await;
+    assert_eq!(bond.bonded_2z_amount, common::TIER_1GBPS + 500);
 }
 
 /// A stranger cannot withdraw another builder's bond, even to their own token account.
@@ -217,7 +217,7 @@ async fn test_the_requirement_cannot_be_withdrawn() {
 #[cfg(feature = "development")]
 #[tokio::test]
 async fn test_only_the_builder_can_withdraw() {
-    let (mut t, builder_key, _, destination) = staked(500).await;
+    let (mut t, builder_key, _, destination) = bonded(500).await;
     let admin = t.upgrade_authority.pubkey();
     let upgrade_authority = t.upgrade_authority.insecure_clone();
 
@@ -228,7 +228,7 @@ async fn test_only_the_builder_can_withdraw() {
     .await
     .unwrap();
 
-    // The payer signs in the builder's place, pointing at the builder's stake.
+    // The payer signs in the builder's place, pointing at the builder's bond.
     let payer = t.context.payer.insecure_clone();
     let mut ix = common::withdraw(&builder_key, 0, &destination, 500);
     ix.accounts[1] = solana_sdk::instruction::AccountMeta::new_readonly(payer.pubkey(), true);
@@ -236,7 +236,7 @@ async fn test_only_the_builder_can_withdraw() {
     let err = t
         .send(ix, &[])
         .await
-        .expect_err("only the stake's builder may withdraw");
+        .expect_err("only the bond's builder may withdraw");
     common::assert_instruction_error(
         err,
         InstructionError::from(u64::from(ProgramError::IncorrectAuthority)),
@@ -249,10 +249,10 @@ async fn test_only_the_builder_can_withdraw() {
 #[cfg(feature = "development")]
 #[tokio::test]
 async fn test_only_the_admin_can_move_the_hold() {
-    let (mut t, builder_key, stake_key, _) = staked(500).await;
+    let (mut t, builder_key, bond_key, _) = bonded(500).await;
     let builder = t.builder.insecure_clone();
 
-    let before = t.read_builder_stake(&stake_key).await.hold_expires_at;
+    let before = t.read_builder_bond(&bond_key).await.hold_expires_at;
 
     let err = t
         .send(
@@ -266,10 +266,7 @@ async fn test_only_the_admin_can_move_the_hold() {
         InstructionError::from(u64::from(ProgramError::IncorrectAuthority)),
     );
 
-    assert_eq!(
-        t.read_builder_stake(&stake_key).await.hold_expires_at,
-        before
-    );
+    assert_eq!(t.read_builder_bond(&bond_key).await.hold_expires_at, before);
 }
 
 /// A mainnet build refuses to move a hold at all.
@@ -280,11 +277,11 @@ async fn test_only_the_admin_can_move_the_hold() {
 #[cfg(not(feature = "development"))]
 #[tokio::test]
 async fn test_moving_a_hold_is_refused_outside_a_development_build() {
-    let (mut t, builder_key, stake_key, _) = staked(500).await;
+    let (mut t, builder_key, bond_key, _) = bonded(500).await;
     let admin = t.upgrade_authority.pubkey();
     let upgrade_authority = t.upgrade_authority.insecure_clone();
 
-    let before = t.read_builder_stake(&stake_key).await.hold_expires_at;
+    let before = t.read_builder_bond(&bond_key).await.hold_expires_at;
 
     let err = t
         .send(
@@ -299,7 +296,7 @@ async fn test_moving_a_hold_is_refused_outside_a_development_build() {
     );
 
     assert_eq!(
-        t.read_builder_stake(&stake_key).await.hold_expires_at,
+        t.read_builder_bond(&bond_key).await.hold_expires_at,
         before,
         "the hold did not move"
     );

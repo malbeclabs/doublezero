@@ -920,8 +920,8 @@ export interface MulticastGroup {
   code: string;
   publisherCount: number;
   subscriberCount: number;
-  /** The BuilderStake that created the group, or the default key for a group an admin created. */
-  stakeRef: PublicKey;
+  /** The BuilderBond that created the group, or the default key for a group an admin created. */
+  bondRef: PublicKey;
 }
 
 export function deserializeMulticastGroup(data: Uint8Array): MulticastGroup {
@@ -939,7 +939,7 @@ export function deserializeMulticastGroup(data: Uint8Array): MulticastGroup {
     publisherCount: r.readU32(),
     subscriberCount: r.readU32(),
     // A group created before the field existed ends here, and the reader throws past the end.
-    stakeRef: r.remaining >= 32 ? readPubkey(r) : PublicKey.default,
+    bondRef: r.remaining >= 32 ? readPubkey(r) : PublicKey.default,
   };
 }
 
@@ -1263,7 +1263,7 @@ export interface Feed {
   // RFC-28. Absent from feeds written before RFC-28, which decode with these defaulted and
   // status "active".
   builder: PublicKey;
-  stakeRef: PublicKey;
+  bondRef: PublicKey;
   specId: string;
   slaHash: Uint8Array;
   committedRateBitsPerSec: bigint;
@@ -1303,7 +1303,7 @@ export function deserializeFeed(data: Uint8Array): Feed {
   // themselves leave `remaining` at zero either way.
   const hasRfc28Tail = r.remaining > 0;
   const builder = readPubkey(r);
-  const stakeRef = readPubkey(r);
+  const bondRef = readPubkey(r);
   const specId = r.readString();
   const slaHash = r.readBytes(32);
   const committedRateBitsPerSec = r.readU64();
@@ -1323,7 +1323,7 @@ export function deserializeFeed(data: Uint8Array): Feed {
     exchange,
     groups,
     builder,
-    stakeRef,
+    bondRef,
     specId,
     slaHash,
     committedRateBitsPerSec,

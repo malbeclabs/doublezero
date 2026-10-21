@@ -11,9 +11,9 @@ use doublezero_sdk::commands::{
 use doublezero_serviceability::seeds::SEED_MULTICAST_GROUP;
 use std::io::Write;
 
-/// Claims a group's code in the Index, so no group created on a stake can take the same code.
+/// Claims a group's code in the Index, so no group created on a bond can take the same code.
 ///
-/// A group created on a stake claims its code itself. A group an admin creates does not, so an
+/// A group created on a bond claims its code itself. A group an admin creates does not, so an
 /// operator runs this once for each of those. The code comes from the group rather than from a
 /// flag, so the entry cannot name a code the group does not have.
 #[derive(Args, Debug)]

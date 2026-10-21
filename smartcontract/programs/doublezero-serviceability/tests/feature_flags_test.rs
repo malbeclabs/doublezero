@@ -385,7 +385,7 @@ async fn try_set_flags(
 /// without its (nonexistent) Permission PDA attached. Other flags are preserved.
 #[tokio::test]
 async fn test_foundation_disables_strict_mode_without_permission_account() {
-    let other = FeatureFlag::AllowStakedFeeds.to_mask();
+    let other = FeatureFlag::AllowBondedFeeds.to_mask();
 
     let (mut banks_client, program_id, payer, globalstate_pubkey) = setup_globalstate().await;
     let (member, permission_pda) = new_signer(
@@ -495,7 +495,7 @@ async fn test_foundation_disables_strict_mode_with_unusable_permission_account()
             program_id,
             member,
             globalstate_pubkey,
-            strict() | FeatureFlag::AllowStakedFeeds.to_mask(),
+            strict() | FeatureFlag::AllowBondedFeeds.to_mask(),
             &[AccountMeta::new_readonly(pda, false)],
         )
         .await;
@@ -521,7 +521,7 @@ async fn test_foundation_disables_strict_mode_with_unusable_permission_account()
 /// another flag alongside disabling strict mode.
 #[tokio::test]
 async fn test_foundation_strict_mode_recovery_cannot_change_other_flags() {
-    let other = FeatureFlag::AllowStakedFeeds.to_mask();
+    let other = FeatureFlag::AllowBondedFeeds.to_mask();
     let ip_proof = FeatureFlag::RequireIpOwnershipProof.to_mask();
 
     let (mut banks_client, program_id, payer, globalstate_pubkey) = setup_globalstate().await;

@@ -247,7 +247,7 @@ pub fn find_orphans(
             .flat_map(|pass| pass.feed_seats().iter().map(|seat| seat.feed_key))
             .collect();
         // Not feed-gated: with no EdgeSeat pass, memberships come from the pass's own allowlists,
-        // so no feed change can orphan them and no seat is at stake. `feed_pks` is the record of
+        // so no feed change can orphan them and no seat is at risk. `feed_pks` is the record of
         // seats actually consumed at connect, so a user holding one stays in scope even if their
         // pass no longer shows the seat.
         let edge_seat = passes
@@ -412,7 +412,7 @@ pub(crate) mod fixtures {
             owner: Pubkey::new_unique(),
             publisher_count: 0,
             subscriber_count: 0,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         }
     }
 

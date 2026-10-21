@@ -1,18 +1,18 @@
-//! Stake-mirror instruction builders.
+//! Bond-mirror instruction builders.
 //!
-//! One instruction, and one caller: the relayer that copies a builder's Solana stake onto the DZ
-//! ledger. It routes through `authorize(.., STAKE_ORACLE)`, so it belongs on the
+//! One instruction, and one caller: the relayer that copies a builder's Solana bond onto the DZ
+//! ledger. It routes through `authorize(.., BOND_ORACLE)`, so it belongs on the
 //! permission-appending path like feed and topology.
 //!
-//! `STAKE_ORACLE` differs from its neighbours in one way worth knowing here: no legacy
+//! `BOND_ORACLE` differs from its neighbours in one way worth knowing here: no legacy
 //! `GlobalState` key satisfies it, so the Permission account is not an optimisation for this
 //! instruction, it is the only way a caller is ever authorized. A builder that omitted it would
 //! produce a transaction that cannot succeed on any cluster.
 
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::{get_globalstate_pda, get_stake_mirror_pda},
-    processors::stake_mirror::write::StakeMirrorWriteArgs,
+    pda::{get_bond_mirror_pda, get_globalstate_pda},
+    processors::bond_mirror::write::BondMirrorWriteArgs,
 };
 use solana_program::{
     instruction::{AccountMeta, Instruction},
@@ -21,30 +21,30 @@ use solana_program::{
 
 use crate::common;
 
-/// `WriteStakeMirror` (variant 119).
+/// `WriteBondMirror` (variant 119).
 ///
-/// Returns `[stake_mirror, globalstate, payer, system_program, permission]`. The payer's
+/// Returns `[bond_mirror, globalstate, payer, system_program, permission]`. The payer's
 /// `Permission` account is required rather than optional for this instruction: nothing else
-/// authorizes `STAKE_ORACLE`, so it must exist onchain and grant the flag.
+/// authorizes `BOND_ORACLE`, so it must exist onchain and grant the flag.
 ///
 /// `globalstate` is read-only. The processor reads `feature_flags` and hands it to `authorize`,
 /// and writes nothing, so marking it writable would take a lock it does not need.
 ///
-/// The mirror PDA derives from `args.stake_ref`, the `builder-stake` account being mirrored, not
+/// The mirror PDA derives from `args.bond_ref`, the `builder-bond` account being mirrored, not
 /// from the builder: RFC-28 collateralizes each feed on its own bond, and a builder-keyed address
 /// would let one bond back two feeds.
-pub fn write_stake_mirror(
+pub fn write_bond_mirror(
     program_id: &Pubkey,
     payer: &Pubkey,
-    args: StakeMirrorWriteArgs,
+    args: BondMirrorWriteArgs,
 ) -> Instruction {
-    let (stake_mirror, _) = get_stake_mirror_pda(program_id, &args.stake_ref);
+    let (bond_mirror, _) = get_bond_mirror_pda(program_id, &args.bond_ref);
     let (globalstate, _) = get_globalstate_pda(program_id);
     common::build_with_permission(
         program_id,
-        DoubleZeroInstruction::WriteStakeMirror(args),
+        DoubleZeroInstruction::WriteBondMirror(args),
         vec![
-            AccountMeta::new(stake_mirror, false),
+            AccountMeta::new(bond_mirror, false),
             AccountMeta::new_readonly(globalstate, false),
         ],
         payer,
@@ -53,34 +53,34 @@ pub fn write_stake_mirror(
 
 #[cfg(test)]
 mod tests {
-    use doublezero_serviceability::state::stake_mirror::StakeTier;
+    use doublezero_serviceability::state::bond_mirror::BondTier;
 
     use super::*;
 
-    fn args(stake_ref: Pubkey, builder: Pubkey) -> StakeMirrorWriteArgs {
-        StakeMirrorWriteArgs {
-            stake_ref,
+    fn args(bond_ref: Pubkey, builder: Pubkey) -> BondMirrorWriteArgs {
+        BondMirrorWriteArgs {
+            bond_ref,
             builder,
-            tier: StakeTier::UpTo1Gbps,
+            tier: BondTier::UpTo1Gbps,
             committed_rate_bits_per_sec: 1_000_000_000,
             source_slot: 42,
         }
     }
 
-    /// The mirror account comes first and derives from the stake, the payer and system program
+    /// The mirror account comes first and derives from the bond, the payer and system program
     /// follow, and `globalstate` is read-only because the processor never writes it.
     #[test]
-    fn test_write_stake_mirror_accounts() {
+    fn test_write_bond_mirror_accounts() {
         let program_id = Pubkey::new_unique();
         let payer = Pubkey::new_unique();
-        let stake_ref = Pubkey::new_unique();
+        let bond_ref = Pubkey::new_unique();
 
-        let ix = write_stake_mirror(&program_id, &payer, args(stake_ref, Pubkey::new_unique()));
+        let ix = write_bond_mirror(&program_id, &payer, args(bond_ref, Pubkey::new_unique()));
 
         assert_eq!(ix.program_id, program_id);
         assert_eq!(
             ix.accounts[0].pubkey,
-            get_stake_mirror_pda(&program_id, &stake_ref).0
+            get_bond_mirror_pda(&program_id, &bond_ref).0
         );
         assert!(ix.accounts[0].is_writable);
         assert_eq!(ix.accounts[1].pubkey, get_globalstate_pda(&program_id).0);
@@ -95,16 +95,16 @@ mod tests {
         assert_eq!(ix.accounts.len(), 5);
     }
 
-    /// Keyed on the stake, not the builder. Two stakes held by one builder mirror to two accounts,
-    /// which is what makes RFC-28's one feed per stake enforceable.
+    /// Keyed on the bond, not the builder. Two bonds held by one builder mirror to two accounts,
+    /// which is what makes RFC-28's one feed per bond enforceable.
     #[test]
-    fn test_the_mirror_derives_from_the_stake_not_the_builder() {
+    fn test_the_mirror_derives_from_the_bond_not_the_builder() {
         let program_id = Pubkey::new_unique();
         let payer = Pubkey::new_unique();
         let builder = Pubkey::new_unique();
 
-        let first = write_stake_mirror(&program_id, &payer, args(Pubkey::new_unique(), builder));
-        let second = write_stake_mirror(&program_id, &payer, args(Pubkey::new_unique(), builder));
+        let first = write_bond_mirror(&program_id, &payer, args(Pubkey::new_unique(), builder));
+        let second = write_bond_mirror(&program_id, &payer, args(Pubkey::new_unique(), builder));
 
         assert_ne!(first.accounts[0].pubkey, second.accounts[0].pubkey);
     }
@@ -115,12 +115,12 @@ mod tests {
         let program_id = Pubkey::new_unique();
         let expected = args(Pubkey::new_unique(), Pubkey::new_unique());
 
-        let ix = write_stake_mirror(&program_id, &Pubkey::new_unique(), expected.clone());
+        let ix = write_bond_mirror(&program_id, &Pubkey::new_unique(), expected.clone());
 
         assert_eq!(ix.data[0], 119);
         match DoubleZeroInstruction::unpack(&ix.data).unwrap() {
-            DoubleZeroInstruction::WriteStakeMirror(actual) => assert_eq!(actual, expected),
-            other => panic!("expected WriteStakeMirror, got {other:?}"),
+            DoubleZeroInstruction::WriteBondMirror(actual) => assert_eq!(actual, expected),
+            other => panic!("expected WriteBondMirror, got {other:?}"),
         }
     }
 }

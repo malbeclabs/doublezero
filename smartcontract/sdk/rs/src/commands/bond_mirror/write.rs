@@ -1,24 +1,24 @@
 use doublezero_serviceability::{
-    pda::{get_permission_pda, get_stake_mirror_pda},
-    processors::stake_mirror::write::StakeMirrorWriteArgs,
+    pda::{get_bond_mirror_pda, get_permission_pda},
+    processors::bond_mirror::write::BondMirrorWriteArgs,
     state::{
+        bond_mirror::BondTier,
         permission::{permission_flags, Permission, PermissionStatus},
-        stake_mirror::StakeTier,
     },
 };
-use doublezero_serviceability_instruction::stake_mirror::write_stake_mirror;
+use doublezero_serviceability_instruction::bond_mirror::write_bond_mirror;
 use solana_sdk::{account::Account, pubkey::Pubkey, signature::Signature};
 use std::fmt;
 
 use crate::DoubleZeroClient;
 
-/// Why a caller's `Permission` account cannot exercise `STAKE_ORACLE`.
+/// Why a caller's `Permission` account cannot exercise `BOND_ORACLE`.
 ///
 /// Separated from the command so every reason can be tested against an account directly rather
 /// than through a mocked client, and so a caller reading a failure is told which way it is short
 /// rather than just that it is.
 #[derive(Debug, PartialEq)]
-pub enum StakeOraclePreflight {
+pub enum BondOraclePreflight {
     /// No account at the PDA, or one the program does not own. Either way the payer holds nothing.
     NoPermissionAccount,
     /// An account exists at the address but is not a `Permission`.
@@ -26,10 +26,10 @@ pub enum StakeOraclePreflight {
     /// A `Permission` that is suspended, or was never activated.
     NotActivated(PermissionStatus),
     /// An activated `Permission` that does not carry the flag.
-    MissingStakeOracle,
+    MissingBondOracle,
 }
 
-impl fmt::Display for StakeOraclePreflight {
+impl fmt::Display for BondOraclePreflight {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::NoPermissionAccount => write!(f, "has no Permission account"),
@@ -40,61 +40,61 @@ impl fmt::Display for StakeOraclePreflight {
                 )
             }
             Self::NotActivated(status) => write!(f, "has a Permission that is {status}"),
-            Self::MissingStakeOracle => write!(f, "has a Permission without STAKE_ORACLE"),
+            Self::MissingBondOracle => write!(f, "has a Permission without BOND_ORACLE"),
         }
     }
 }
 
-/// Whether `account` lets its owner exercise `STAKE_ORACLE`.
+/// Whether `account` lets its owner exercise `BOND_ORACLE`.
 ///
 /// Checks what `authorize` checks. Ownership alone is not enough: `authorize` also rejects a
 /// `Permission` that is suspended or lacks the flag, so a preflight that stopped at ownership
 /// would still send transactions that cannot succeed.
-pub fn check_stake_oracle(
+pub fn check_bond_oracle(
     account: Option<&Account>,
     program_id: &Pubkey,
-) -> Result<(), StakeOraclePreflight> {
+) -> Result<(), BondOraclePreflight> {
     let account = account
         .filter(|a| &a.owner == program_id)
-        .ok_or(StakeOraclePreflight::NoPermissionAccount)?;
+        .ok_or(BondOraclePreflight::NoPermissionAccount)?;
 
-    let permission = Permission::try_from(&account.data[..])
-        .map_err(|_| StakeOraclePreflight::NotAPermission)?;
+    let permission =
+        Permission::try_from(&account.data[..]).map_err(|_| BondOraclePreflight::NotAPermission)?;
 
     if permission.status != PermissionStatus::Activated {
-        return Err(StakeOraclePreflight::NotActivated(permission.status));
+        return Err(BondOraclePreflight::NotActivated(permission.status));
     }
-    if permission.permissions & permission_flags::STAKE_ORACLE == 0 {
-        return Err(StakeOraclePreflight::MissingStakeOracle);
+    if permission.permissions & permission_flags::BOND_ORACLE == 0 {
+        return Err(BondOraclePreflight::MissingBondOracle);
     }
 
     Ok(())
 }
 
-/// Copy a builder's Solana stake onto the DZ ledger. The relayer's write.
+/// Copy a builder's Solana bond onto the DZ ledger. The relayer's write.
 #[derive(Debug, PartialEq, Clone)]
-pub struct WriteStakeMirrorCommand {
-    /// The `builder-stake` account on Solana being mirrored. The PDA seed.
-    pub stake_ref: Pubkey,
+pub struct WriteBondMirrorCommand {
+    /// The `builder-bond` account on Solana being mirrored. The PDA seed.
+    pub bond_ref: Pubkey,
     pub builder: Pubkey,
-    pub tier: StakeTier,
+    pub tier: BondTier,
     pub committed_rate_bits_per_sec: u64,
     /// The Solana slot these values were read at. The program refuses a write whose slot is not
     /// strictly newer than the stored one, so a caller must track what it last wrote.
     pub source_slot: u64,
 }
 
-impl WriteStakeMirrorCommand {
+impl WriteBondMirrorCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
         let program_id = client.get_program_id();
         let payer = client.get_payer();
-        let (mirror_pubkey, _) = get_stake_mirror_pda(&program_id, &self.stake_ref);
+        let (mirror_pubkey, _) = get_bond_mirror_pda(&program_id, &self.bond_ref);
 
-        let ix = write_stake_mirror(
+        let ix = write_bond_mirror(
             &program_id,
             &payer,
-            StakeMirrorWriteArgs {
-                stake_ref: self.stake_ref,
+            BondMirrorWriteArgs {
+                bond_ref: self.bond_ref,
                 builder: self.builder,
                 tier: self.tier,
                 committed_rate_bits_per_sec: self.committed_rate_bits_per_sec,
@@ -104,7 +104,7 @@ impl WriteStakeMirrorCommand {
 
         // The builder already appends the payer's Permission PDA, whether or not it exists. For an
         // instruction a legacy `GlobalState` key can also authorize that is all it takes, but no
-        // legacy key satisfies `STAKE_ORACLE`, so anything short of a usable Permission account is
+        // legacy key satisfies `BOND_ORACLE`, so anything short of a usable Permission account is
         // a transaction that cannot succeed on any cluster. Check it first, so the caller learns
         // which way it is short instead of paying for a transaction that fails.
         let (permission_pubkey, _) = get_permission_pda(&program_id, &payer);
@@ -114,9 +114,9 @@ impl WriteStakeMirrorCommand {
             .next()
             .flatten();
 
-        check_stake_oracle(account.as_ref(), &program_id).map_err(|problem| {
+        check_bond_oracle(account.as_ref(), &program_id).map_err(|problem| {
             eyre::eyre!(
-                "{payer} {problem} at {permission_pubkey}. WriteStakeMirror needs STAKE_ORACLE, \
+                "{payer} {problem} at {permission_pubkey}. WriteBondMirror needs BOND_ORACLE, \
                  and no GlobalState key grants it, so a Permission account is the only way to \
                  hold it."
             )
@@ -135,11 +135,11 @@ mod tests {
     use super::*;
     use crate::tests::utils::create_test_client;
 
-    fn command(stake_ref: Pubkey, builder: Pubkey) -> WriteStakeMirrorCommand {
-        WriteStakeMirrorCommand {
-            stake_ref,
+    fn command(bond_ref: Pubkey, builder: Pubkey) -> WriteBondMirrorCommand {
+        WriteBondMirrorCommand {
+            bond_ref,
             builder,
-            tier: StakeTier::UpTo1Gbps,
+            tier: BondTier::UpTo1Gbps,
             committed_rate_bits_per_sec: 1_000_000_000,
             source_slot: 7,
         }
@@ -172,7 +172,7 @@ mod tests {
         permission_account(
             program_id,
             PermissionStatus::Activated,
-            permission_flags::STAKE_ORACLE,
+            permission_flags::BOND_ORACLE,
         )
     }
 
@@ -184,7 +184,7 @@ mod tests {
     fn test_an_activated_permission_with_the_flag_passes() {
         let program_id = Pubkey::new_unique();
         assert_eq!(
-            check_stake_oracle(Some(&usable(program_id)), &program_id),
+            check_bond_oracle(Some(&usable(program_id)), &program_id),
             Ok(())
         );
     }
@@ -193,12 +193,12 @@ mod tests {
     fn test_no_account_or_a_foreign_owner_holds_nothing() {
         let program_id = Pubkey::new_unique();
         assert_eq!(
-            check_stake_oracle(None, &program_id),
-            Err(StakeOraclePreflight::NoPermissionAccount)
+            check_bond_oracle(None, &program_id),
+            Err(BondOraclePreflight::NoPermissionAccount)
         );
         assert_eq!(
-            check_stake_oracle(Some(&usable(Pubkey::new_unique())), &program_id),
-            Err(StakeOraclePreflight::NoPermissionAccount)
+            check_bond_oracle(Some(&usable(Pubkey::new_unique())), &program_id),
+            Err(BondOraclePreflight::NoPermissionAccount)
         );
     }
 
@@ -213,8 +213,8 @@ mod tests {
             rent_epoch: 0,
         };
         assert_eq!(
-            check_stake_oracle(Some(&junk), &program_id),
-            Err(StakeOraclePreflight::NotAPermission)
+            check_bond_oracle(Some(&junk), &program_id),
+            Err(BondOraclePreflight::NotAPermission)
         );
     }
 
@@ -224,10 +224,10 @@ mod tests {
     fn test_a_suspended_or_unactivated_permission_is_refused() {
         let program_id = Pubkey::new_unique();
         for status in [PermissionStatus::Suspended, PermissionStatus::None] {
-            let account = permission_account(program_id, status, permission_flags::STAKE_ORACLE);
+            let account = permission_account(program_id, status, permission_flags::BOND_ORACLE);
             assert_eq!(
-                check_stake_oracle(Some(&account), &program_id),
-                Err(StakeOraclePreflight::NotActivated(status))
+                check_bond_oracle(Some(&account), &program_id),
+                Err(BondOraclePreflight::NotActivated(status))
             );
         }
     }
@@ -242,8 +242,8 @@ mod tests {
             permission_flags::FOUNDATION | permission_flags::HEALTH_ORACLE,
         );
         assert_eq!(
-            check_stake_oracle(Some(&account), &program_id),
-            Err(StakeOraclePreflight::MissingStakeOracle)
+            check_bond_oracle(Some(&account), &program_id),
+            Err(BondOraclePreflight::MissingBondOracle)
         );
     }
 
@@ -252,11 +252,11 @@ mod tests {
     //
 
     #[test]
-    fn test_write_stake_mirror_appends_the_permission_account() {
+    fn test_write_bond_mirror_appends_the_permission_account() {
         let mut client = create_test_client();
         let program_id = client.get_program_id();
         let payer = client.get_payer();
-        let stake_ref = Pubkey::new_unique();
+        let bond_ref = Pubkey::new_unique();
         let (permission_pubkey, _) = get_permission_pda(&program_id, &payer);
 
         client
@@ -272,10 +272,10 @@ mod tests {
             })
             .returning(|_| Ok(Signature::new_unique()));
 
-        let (_, mirror) = command(stake_ref, Pubkey::new_unique())
+        let (_, mirror) = command(bond_ref, Pubkey::new_unique())
             .execute(&client)
-            .expect("a STAKE_ORACLE holder can write");
-        assert_eq!(mirror, get_stake_mirror_pda(&program_id, &stake_ref).0);
+            .expect("a BOND_ORACLE holder can write");
+        assert_eq!(mirror, get_bond_mirror_pda(&program_id, &bond_ref).0);
     }
 
     /// A caller the program would reject never gets a transaction sent on its behalf.
@@ -292,7 +292,7 @@ mod tests {
                 Ok(vec![Some(permission_account(
                     program_id,
                     PermissionStatus::Suspended,
-                    permission_flags::STAKE_ORACLE,
+                    permission_flags::BOND_ORACLE,
                 ))])
             });
         client.expect_send_transaction().never();

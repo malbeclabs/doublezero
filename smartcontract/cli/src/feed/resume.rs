@@ -1,6 +1,6 @@
 use crate::{
     doublezerocommand::CliCommand,
-    feed::resolve::{stake_mirror_of, FeedTargetArgs},
+    feed::resolve::{bond_mirror_of, FeedTargetArgs},
 };
 use clap::Args;
 use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
@@ -28,11 +28,11 @@ impl ResumeFeedCliCommand {
 
         let (pubkey, feed) = self.target.resolve(client)?;
 
-        let stake_mirror = stake_mirror_of(client, &feed);
+        let bond_mirror = bond_mirror_of(client, &feed);
 
         let signature = client.resume_feed(ResumeFeedCommand {
             pubkey,
-            stake_mirror,
+            bond_mirror,
         })?;
         print_signature(out, &signature)
     }
@@ -50,11 +50,11 @@ mod tests {
         commands::feed::{get::GetFeedCommand, resume::ResumeFeedCommand},
         AccountType, Feed,
     };
-    use doublezero_serviceability::{pda::get_stake_mirror_pda, state::feed::FeedStatus};
+    use doublezero_serviceability::{pda::get_bond_mirror_pda, state::feed::FeedStatus};
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
-    fn halted_feed(builder: Pubkey, stake_ref: Pubkey) -> Feed {
+    fn halted_feed(builder: Pubkey, bond_ref: Pubkey) -> Feed {
         Feed {
             account_type: AccountType::Feed,
             owner: builder,
@@ -64,13 +64,13 @@ mod tests {
             exchange: Pubkey::new_unique(),
             groups: vec![],
             builder,
-            stake_ref,
+            bond_ref,
             status: FeedStatus::Halted,
             ..Default::default()
         }
     }
 
-    /// Resuming re-proves the stake still covers the rate, so a staked feed sends its mirror, and
+    /// Resuming re-proves the bond still covers the rate, so a bonded feed sends its mirror, and
     /// the address comes from the feed rather than from a flag.
     #[test]
     fn test_cli_feed_resume_derives_the_mirror_from_the_feed() {
@@ -78,10 +78,10 @@ mod tests {
         client.expect_check_requirements().returning(|_| Ok(()));
 
         let feed_pk = Pubkey::new_unique();
-        let stake_ref = Pubkey::new_unique();
-        let feed = halted_feed(Pubkey::new_unique(), stake_ref);
+        let bond_ref = Pubkey::new_unique();
+        let feed = halted_feed(Pubkey::new_unique(), bond_ref);
         let signature = Signature::new_unique();
-        let (expected_mirror, _) = get_stake_mirror_pda(&client.get_program_id(), &stake_ref);
+        let (expected_mirror, _) = get_bond_mirror_pda(&client.get_program_id(), &bond_ref);
 
         client
             .expect_get_feed()
@@ -95,7 +95,7 @@ mod tests {
             .expect_resume_feed()
             .with(predicate::eq(ResumeFeedCommand {
                 pubkey: feed_pk,
-                stake_mirror: Some(expected_mirror),
+                bond_mirror: Some(expected_mirror),
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -119,7 +119,7 @@ mod tests {
         );
     }
 
-    /// A catalog feed has no stake to re-prove, so it sends no mirror.
+    /// A catalog feed has no bond to re-prove, so it sends no mirror.
     #[test]
     fn test_cli_feed_resume_sends_no_mirror_for_a_catalog_feed() {
         let mut client = create_test_client();
@@ -141,7 +141,7 @@ mod tests {
             .expect_resume_feed()
             .with(predicate::eq(ResumeFeedCommand {
                 pubkey: feed_pk,
-                stake_mirror: None,
+                bond_mirror: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));

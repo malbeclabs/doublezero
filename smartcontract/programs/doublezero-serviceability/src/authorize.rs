@@ -343,7 +343,7 @@ fn check_legacy_any(payer: &Pubkey, globalstate: &GlobalState, any_of: u128) -> 
 /// enabling strict mode cannot take anything away. They are listed because the audit's own test
 /// asserts every other gated flag resolves to a legacy key, and a flag that deliberately resolves
 /// to none would otherwise read as a gap in the enumeration rather than a decision.
-pub const PERMISSION_ONLY_FLAGS: &[u128] = &[permission_flags::STAKE_ORACLE];
+pub const PERMISSION_ONLY_FLAGS: &[u128] = &[permission_flags::BOND_ORACLE];
 
 pub const AUTHORIZE_GATED_FLAGS: &[u128] = &[
     permission_flags::PERMISSION_ADMIN,
@@ -360,7 +360,7 @@ pub const AUTHORIZE_GATED_FLAGS: &[u128] = &[
     permission_flags::INDEX_ADMIN,
     permission_flags::ACTIVATOR,
     permission_flags::HEALTH_ORACLE,
-    permission_flags::STAKE_ORACLE,
+    permission_flags::BOND_ORACLE,
     // The feed instructions pass this pair to `authorize()` as one any-of set, so it is listed
     // as one entry: a key is covered if its Permission account grants either flag.
     // `FOUNDATION` reaches `authorize()` only through them.

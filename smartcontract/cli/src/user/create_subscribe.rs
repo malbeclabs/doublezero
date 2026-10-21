@@ -200,7 +200,7 @@ mod tests {
             owner: mgroup_pubkey,
             publisher_count: 0,
             subscriber_count: 0,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         };
 
         let contributor_pk = Pubkey::from_str_const("HQ3UUt18uJqKaQFJhgV9zaTdQxUZjNrsKFgoEDquBkcx");
@@ -365,7 +365,7 @@ mod tests {
             status: MulticastGroupStatus::Activated,
             publisher_count: 0,
             subscriber_count: 0,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         };
         client
             .expect_get_multicastgroup()
@@ -485,7 +485,7 @@ mod tests {
             status: MulticastGroupStatus::Activated,
             publisher_count: 0,
             subscriber_count: 0,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         };
         client
             .expect_get_multicastgroup()
@@ -616,7 +616,7 @@ mod tests {
             status: MulticastGroupStatus::Activated,
             publisher_count: 0,
             subscriber_count: 0,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         };
         client
             .expect_get_multicastgroup()

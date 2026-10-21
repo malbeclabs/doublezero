@@ -53,7 +53,7 @@ pub enum MulticastGroupCommands {
     /// Delete a multicast group
     #[clap()]
     Delete(DeleteMulticastGroupCliCommand),
-    /// Claim a group's code in the Index, so no staked group can take it
+    /// Claim a group's code in the Index, so no bonded group can take it
     #[clap()]
     Index(IndexMulticastGroupCliCommand),
 }

@@ -231,7 +231,7 @@ async fn test_pub_allowlist_user_payer_with_trailing_permission_pda() {
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         },
     );
     let mgroup = create.accounts[0].pubkey;

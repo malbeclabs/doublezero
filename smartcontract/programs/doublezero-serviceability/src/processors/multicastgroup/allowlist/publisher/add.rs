@@ -89,15 +89,15 @@ pub fn process_add_multicastgroup_pub_allowlist(
     // Authorization: the multicast group owner, or MULTICAST_ADMIN (Permission
     // account) / foundation-or-sentinel (legacy).
     //
-    // The owner of a staked group is a builder whose rights came from a bond, not from an admin.
+    // The owner of a bonded group is a builder whose rights came from a bond, not from an admin.
     // It may grant its own publishers, which is how a builder sends on its feed, but only on passes
     // it owns: it must not put its group on another user's pass. `owner_only` is that case. Both
     // branches below act on it: a new pass must be for the builder itself, and an existing one
-    // must be the builder's. The admin check runs for a staked group's owner too,
+    // must be the builder's. The admin check runs for a bonded group's owner too,
     // so an owner that is also an admin keeps the admin's reach.
     let is_owner = mgroup.owner == *payer_account.key;
-    let staked_group = mgroup.stake_ref != Pubkey::default();
-    let is_admin = (!is_owner || staked_group)
+    let bonded_group = mgroup.bond_ref != Pubkey::default();
+    let is_admin = (!is_owner || bonded_group)
         && authorize(
             program_id,
             &mut permission_account.into_iter(),
@@ -109,7 +109,7 @@ pub fn process_add_multicastgroup_pub_allowlist(
     if !is_owner && !is_admin {
         return Err(DoubleZeroError::NotAllowed.into());
     }
-    let owner_only = staked_group && !is_admin;
+    let owner_only = bonded_group && !is_admin;
 
     // Identify the access pass funding account and how many user seats it admits, so we can top up
     // its credits below. Both must be resolved regardless of whether the pass is created here or
@@ -123,7 +123,7 @@ pub fn process_add_multicastgroup_pub_allowlist(
         // and pass the owner check below once an admin set it up for real.
         if owner_only && value.user_payer != *payer_account.key {
             msg!(
-                "A staked group's owner may create a pass only for itself, not for {}",
+                "A bonded group's owner may create a pass only for itself, not for {}",
                 value.user_payer
             );
             return Err(DoubleZeroError::NotAllowed.into());
@@ -181,7 +181,7 @@ pub fn process_add_multicastgroup_pub_allowlist(
         let mut accesspass = AccessPass::try_from(accesspass_account)?;
         if owner_only && accesspass.owner != *payer_account.key {
             msg!(
-                "A staked group's owner may grant publish rights only on its own passes; this one belongs to {}",
+                "A bonded group's owner may grant publish rights only on its own passes; this one belongs to {}",
                 accesspass.owner
             );
             return Err(DoubleZeroError::NotAllowed.into());

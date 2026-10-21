@@ -12,9 +12,9 @@ use crate::{
     error::{DoubleZeroError, Validate},
     state::{
         accesspass::AccessPass,
+        bond_mirror::BondMirror,
         feed::{Feed, FeedStatus},
         globalstate::GlobalState,
-        stake_mirror::StakeMirror,
     },
 };
 use solana_program::{
@@ -167,35 +167,35 @@ where
     )
 }
 
-/// Whether the stake behind `feed` still covers the rate it publishes at.
+/// Whether the bond behind `feed` still covers the rate it publishes at.
 ///
-/// Not the same question `CreateFeed` asks. Creation claims an unspent stake, so it requires
+/// Not the same question `CreateFeed` asks. Creation claims an unspent bond, so it requires
 /// `feed_key` to be empty; here the feed already holds the claim, so the mirror must name this
 /// feed and no other. What both check is the tier, because a mirror can be corrected downward
 /// while a feed sits halted.
-pub fn require_stake_still_covers(
+pub fn require_bond_still_covers(
     program_id: &Pubkey,
     mirror_account: &AccountInfo,
     feed_key: &Pubkey,
     feed: &Feed,
 ) -> Result<(), DoubleZeroError> {
     if mirror_account.data_is_empty() || mirror_account.owner != program_id {
-        msg!("No stake mirror written for stake {}", feed.stake_ref);
-        return Err(DoubleZeroError::StakeMirrorMissing);
+        msg!("No bond mirror written for bond {}", feed.bond_ref);
+        return Err(DoubleZeroError::BondMirrorMissing);
     }
 
     let mirror =
-        StakeMirror::try_from(mirror_account).map_err(|_| DoubleZeroError::InvalidAccountType)?;
+        BondMirror::try_from(mirror_account).map_err(|_| DoubleZeroError::InvalidAccountType)?;
     mirror.validate()?;
 
-    if mirror.stake_ref != feed.stake_ref || mirror.builder != feed.builder {
-        msg!("Stake mirror names a different stake or builder");
+    if mirror.bond_ref != feed.bond_ref || mirror.builder != feed.builder {
+        msg!("Bond mirror names a different bond or builder");
         return Err(DoubleZeroError::InvalidArgument);
     }
     // The claim has to point back at this feed. A mirror claimed by another feed is not this
     // feed's cover, whatever its tier says.
     if &mirror.feed_key != feed_key {
-        msg!("Stake mirror is claimed by feed {}", mirror.feed_key);
+        msg!("Bond mirror is claimed by feed {}", mirror.feed_key);
         return Err(DoubleZeroError::InvalidArgument);
     }
 
@@ -206,7 +206,7 @@ pub fn require_stake_still_covers(
             mirror.tier.max_rate_bits_per_sec(),
             feed.committed_rate_bits_per_sec
         );
-        return Err(DoubleZeroError::StakeDoesNotCoverRate);
+        return Err(DoubleZeroError::BondDoesNotCoverRate);
     }
 
     Ok(())

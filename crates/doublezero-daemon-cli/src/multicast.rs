@@ -496,7 +496,7 @@ mod tests {
             code: code.to_string(),
             publisher_count: 0,
             subscriber_count: 0,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         }
     }
 

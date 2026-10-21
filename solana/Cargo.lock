@@ -1376,7 +1376,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "doublezero-builder-stake"
+name = "doublezero-builder-bond"
 version = "0.1.0"
 dependencies = [
  "bincode",

@@ -91,7 +91,7 @@ pub async fn init_test() -> (BanksClient, Pubkey, Keypair, solana_program::hash:
 /// and owned by the program. The caller picks the id because seeded accounts are usually PDAs,
 /// which cannot be derived until it is known.
 ///
-/// Some accounts are written by an offchain service rather than by an instruction — `StakeMirror`
+/// Some accounts are written by an offchain service rather than by an instruction — `BondMirror`
 /// is written by the cross-chain relayer. Seeding one directly is how a test exercises the read
 /// path before the writer exists.
 #[allow(dead_code)]

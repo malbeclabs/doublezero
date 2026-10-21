@@ -10,9 +10,9 @@ use doublezero_serviceability::{
     entrypoint::process_instruction,
     instructions::DoubleZeroInstruction,
     pda::{
-        get_accesspass_pda, get_contributor_pda, get_device_pda, get_exchange_pda, get_feed_pda,
-        get_globalconfig_pda, get_globalstate_pda, get_location_pda, get_multicastgroup_pda,
-        get_resource_extension_pda, get_stake_mirror_pda, get_user_pda,
+        get_accesspass_pda, get_bond_mirror_pda, get_contributor_pda, get_device_pda,
+        get_exchange_pda, get_feed_pda, get_globalconfig_pda, get_globalstate_pda,
+        get_location_pda, get_multicastgroup_pda, get_resource_extension_pda, get_user_pda,
     },
     processors::{
         accesspass::{
@@ -32,10 +32,10 @@ use doublezero_serviceability::{
     state::{
         accesspass::{AccessPassType, FeedSeat},
         accounttype::AccountType,
+        bond_mirror::{BondMirror, BondTier},
         device::DeviceType,
         feature_flags::FeatureFlag,
         feed::FeedStatus,
-        stake_mirror::{StakeMirror, StakeTier},
         user::{UserCYOA, UserStatus, UserType},
     },
 };
@@ -66,8 +66,8 @@ struct FeedFixture {
     accesspass_pubkey: Pubkey,
     mgroup_pubkey: Pubkey,
     user_ip: Ipv4Addr,
-    /// A stake the fixture pre-mirrors, so a test can create a staked (Pending) feed.
-    stake_ref: Pubkey,
+    /// A bond the fixture pre-mirrors, so a test can create a bonded (Pending) feed.
+    bond_ref: Pubkey,
     builder: Pubkey,
     user_tunnel_block: Pubkey,
     multicast_publisher_block: Pubkey,
@@ -86,19 +86,19 @@ async fn setup_feed_fixture(client_ip: [u8; 4]) -> FeedFixture {
     );
     program_test.set_compute_max_units(1_000_000);
 
-    // Pre-mirror one stake so a test can create a staked feed, which lands Pending. No instruction
-    // writes a StakeMirror yet, and nothing else reaches a non-Active status until halt and retire
+    // Pre-mirror one bond so a test can create a bonded feed, which lands Pending. No instruction
+    // writes a BondMirror yet, and nothing else reaches a non-Active status until halt and retire
     // exist.
     let builder = Pubkey::new_unique();
-    let stake_ref = Pubkey::new_unique();
-    let (mirror_pubkey, mirror_bump) = get_stake_mirror_pda(&program_id, &stake_ref);
-    let mirror = borsh::to_vec(&StakeMirror {
-        account_type: AccountType::StakeMirror,
+    let bond_ref = Pubkey::new_unique();
+    let (mirror_pubkey, mirror_bump) = get_bond_mirror_pda(&program_id, &bond_ref);
+    let mirror = borsh::to_vec(&BondMirror {
+        account_type: AccountType::BondMirror,
         owner: Pubkey::new_unique(),
         bump_seed: mirror_bump,
-        stake_ref,
+        bond_ref,
         builder,
-        tier: StakeTier::Unmetered,
+        tier: BondTier::Unmetered,
         committed_rate_bits_per_sec: 1_000_000_000,
         source_slot: 1,
         relayer: Pubkey::new_unique(),
@@ -254,7 +254,7 @@ async fn setup_feed_fixture(client_ip: [u8; 4]) -> FeedFixture {
             max_bandwidth: 1000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),
@@ -302,7 +302,7 @@ async fn setup_feed_fixture(client_ip: [u8; 4]) -> FeedFixture {
         accesspass_pubkey,
         mgroup_pubkey,
         user_ip,
-        stake_ref,
+        bond_ref,
         builder,
         user_tunnel_block,
         multicast_publisher_block,
@@ -341,9 +341,9 @@ async fn create_feed(
     feed_pubkey
 }
 
-/// Create a staked RFC-28 feed against the fixture's pre-mirrored stake. It lands `Pending`,
+/// Create a bonded RFC-28 feed against the fixture's pre-mirrored bond. It lands `Pending`,
 /// waiting on a conformance verdict, which is the status the subscribe gate must refuse.
-async fn create_staked_feed(
+async fn create_bonded_feed(
     f: &mut FeedFixture,
     code: &str,
     exchange: Pubkey,
@@ -355,7 +355,7 @@ async fn create_staked_feed(
         recent_blockhash,
         f.program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::AllowStakedFeeds.to_mask(),
+            feature_flags: FeatureFlag::AllowBondedFeeds.to_mask(),
         }),
         vec![AccountMeta::new(f.globalstate_pubkey, false)],
         &f.payer,
@@ -363,7 +363,7 @@ async fn create_staked_feed(
     .await;
 
     let (feed_pubkey, _) = get_feed_pda(&f.program_id, code, &exchange);
-    let (mirror_pubkey, _) = get_stake_mirror_pda(&f.program_id, &f.stake_ref);
+    let (mirror_pubkey, _) = get_bond_mirror_pda(&f.program_id, &f.bond_ref);
     let recent_blockhash = f.banks_client.get_latest_blockhash().await.unwrap();
     execute_transaction_with_extra_accounts(
         &mut f.banks_client,
@@ -375,7 +375,7 @@ async fn create_staked_feed(
             exchange,
             groups,
             builder: f.builder,
-            stake_ref: f.stake_ref,
+            bond_ref: f.bond_ref,
             spec_id: "top-of-book@v1.0.0".to_string(),
             sla_hash: [9u8; 32],
             committed_rate_bits_per_sec: 1_000_000_000,
@@ -660,7 +660,7 @@ async fn create_second_group(f: &mut FeedFixture) -> Pubkey {
             max_bandwidth: 1000,
             owner: f.payer.pubkey(),
             use_onchain_allocation: true,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(mgroup2_pubkey, false),
@@ -820,7 +820,7 @@ async fn test_batch_extra_group_not_in_feed_rejected_and_seat_not_ticked() {
 async fn test_non_active_feed_admits_no_subscriber() {
     let mut f = setup_feed_fixture([100, 0, 0, 26]).await;
     let (exchange, mgroup) = (f.exchange_pubkey, f.mgroup_pubkey);
-    let feed = create_staked_feed(&mut f, "pending", exchange, vec![mgroup]).await;
+    let feed = create_bonded_feed(&mut f, "pending", exchange, vec![mgroup]).await;
 
     // A seat provisioner sold a seat on it. Pre-selling a Pending feed is legitimate; connecting is not.
     set_pass_feeds(

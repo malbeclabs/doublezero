@@ -1,0 +1,257 @@
+# Advisories the osv-scanner workflow accepts for now. Each entry needs a reason
+# and an ignoreUntil date no more than 90 days out, so it comes back for review.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0344"
+ignoreUntil = 2027-01-17
+reason = "curve25519-dalek: curve25519-dalek 3.2.0 comes in with ed25519-dalek 1.0.1 through the Solana crates. It moves when Solana moves."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2022-0093"
+ignoreUntil = 2027-01-17
+reason = "ed25519-dalek: ed25519-dalek 1.0.1 comes in through the Solana crates. It moves when Solana moves."
+
+[[IgnoredVulns]]
+id = "GO-2026-4883"
+ignoreUntil = 2027-01-17
+reason = "github.com/docker/docker: docker/docker comes in through testcontainers-go in the e2e harness only. The fix is the moby v2 module, which testcontainers has not moved to."
+
+[[IgnoredVulns]]
+id = "GHSA-w88c-9vg8-cmq8"
+ignoreUntil = 2027-01-17
+reason = "github.com/osrg/gobgp: doublezerod decodes BGP UPDATEs with gobgp v2.0.0+incompatible. Upgrade tracked in #4424."
+
+[[IgnoredVulns]]
+id = "GO-2025-3630"
+ignoreUntil = 2027-01-17
+reason = "github.com/osrg/gobgp: doublezerod decodes BGP UPDATEs with gobgp v2.0.0+incompatible. Upgrade tracked in #4424."
+
+[[IgnoredVulns]]
+id = "GO-2025-3632"
+ignoreUntil = 2027-01-17
+reason = "github.com/osrg/gobgp: doublezerod decodes BGP UPDATEs with gobgp v2.0.0+incompatible. Upgrade tracked in #4424."
+
+[[IgnoredVulns]]
+id = "GO-2025-3633"
+ignoreUntil = 2027-01-17
+reason = "github.com/osrg/gobgp: doublezerod decodes BGP UPDATEs with gobgp v2.0.0+incompatible. Upgrade tracked in #4424."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0340"
+ignoreUntil = 2027-01-17
+reason = "quinn-proto: quinn-proto in solana/ is held at 0.11.15 by solana-client 3.0 (its portable-atomic requirement blocks 0.11.17+). It moves when the Solana crates move."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0341"
+ignoreUntil = 2027-01-17
+reason = "quinn-proto: quinn-proto in solana/ is held at 0.11.15 by solana-client 3.0 (its portable-atomic requirement blocks 0.11.17+). It moves when the Solana crates move."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2025-0137"
+ignoreUntil = 2027-01-17
+reason = "ruint: ruint is capped at <=1.16 in solana/Cargo.toml for the onchain programs (revenue-distribution, builder-stake) and the crates built on them."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0346"
+ignoreUntil = 2027-01-17
+reason = "rustls: rustls 0.21 comes in through the AWS SDK (aws-smithy-http-client) and the Solana crates. It moves when they move to rustls 0.23."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0349"
+ignoreUntil = 2027-01-17
+reason = "rustls: rustls 0.21 comes in through the AWS SDK (aws-smithy-http-client) and the Solana crates. It moves when they move to rustls 0.23."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0098"
+ignoreUntil = 2027-01-17
+reason = "rustls-webpki: rustls-webpki 0.101 comes in with rustls 0.21 through the AWS SDK and the Solana crates. It moves when they move."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0099"
+ignoreUntil = 2027-01-17
+reason = "rustls-webpki: rustls-webpki 0.101 comes in with rustls 0.21 through the AWS SDK and the Solana crates. It moves when they move."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2026-0104"
+ignoreUntil = 2027-01-17
+reason = "rustls-webpki: rustls-webpki 0.101 comes in with rustls 0.21 through the AWS SDK and the Solana crates. It moves when they move."
+
+[[IgnoredVulns]]
+id = "GHSA-528h-pc64-c93x"
+ignoreUntil = 2027-01-17
+reason = "stream-json: stream-json 1.9 comes in through jayson in @solana/web3.js, used by the TypeScript SDKs. The fix is a major release jayson has not taken."
+
+[[IgnoredVulns]]
+id = "GHSA-hqr4-qq8f-hg3x"
+ignoreUntil = 2027-01-17
+reason = "stream-json: stream-json 1.9 comes in through jayson in @solana/web3.js, used by the TypeScript SDKs. The fix is a major release jayson has not taken."
+
+[[IgnoredVulns]]
+id = "GHSA-mjw6-4jj6-33hc"
+ignoreUntil = 2027-01-17
+reason = "stream-json: stream-json 1.9 comes in through jayson in @solana/web3.js, used by the TypeScript SDKs. The fix is a major release jayson has not taken."
+
+[[IgnoredVulns]]
+id = "GHSA-2f9f-gq7v-9h6m"
+ignoreUntil = 2027-01-17
+reason = "thrift: thrift 0.17 comes in through parquet in validator-debt. The fix is thrift 0.23, a breaking release parquet has not taken."
+
+[[IgnoredVulns]]
+id = "GHSA-w5hq-g745-h8pq"
+ignoreUntil = 2027-01-17
+reason = "uuid: uuid 8 comes in through jayson and rpc-websockets in @solana/web3.js, used by the TypeScript SDKs. The fix is a major release they have not taken."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-65624"
+ignoreUntil = 2027-01-17
+reason = "cowboy: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-8466"
+ignoreUntil = 2027-01-17
+reason = "cowboy: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "GHSA-w4f7-4cxr-rv3c"
+ignoreUntil = 2027-01-17
+reason = "cowboy: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-43966"
+ignoreUntil = 2027-01-17
+reason = "cowlib: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-43968"
+ignoreUntil = 2027-01-17
+reason = "cowlib: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-43969"
+ignoreUntil = 2027-01-17
+reason = "cowlib: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-43970"
+ignoreUntil = 2027-01-17
+reason = "cowlib: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-43971"
+ignoreUntil = 2027-01-17
+reason = "cowlib: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-59248"
+ignoreUntil = 2027-01-17
+reason = "cowlib: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-7790"
+ignoreUntil = 2027-01-17
+reason = "cowlib: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-58226"
+ignoreUntil = 2027-01-17
+reason = "hpax: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-48861"
+ignoreUntil = 2027-01-17
+reason = "mint: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-48862"
+ignoreUntil = 2027-01-17
+reason = "mint: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-49753"
+ignoreUntil = 2027-01-17
+reason = "mint: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-49754"
+ignoreUntil = 2027-01-17
+reason = "mint: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-56810"
+ignoreUntil = 2027-01-17
+reason = "mint: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-58229"
+ignoreUntil = 2027-01-17
+reason = "mint: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-59246"
+ignoreUntil = 2027-01-17
+reason = "mint: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-59249"
+ignoreUntil = 2027-01-17
+reason = "mint: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-82672"
+ignoreUntil = 2027-01-17
+reason = "mint: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-82728"
+ignoreUntil = 2027-01-17
+reason = "mint: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-91043"
+ignoreUntil = 2027-01-17
+reason = "mint: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-92103"
+ignoreUntil = 2027-01-17
+reason = "mint: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-94194"
+ignoreUntil = 2027-01-17
+reason = "mint: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-54892"
+ignoreUntil = 2027-01-17
+reason = "plug: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-56813"
+ignoreUntil = 2027-01-17
+reason = "plug: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-56814"
+ignoreUntil = 2027-01-17
+reason = "plug: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-8468"
+ignoreUntil = 2027-01-17
+reason = "plug: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-32688"
+ignoreUntil = 2027-01-17
+reason = "plug_cowboy: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-49755"
+ignoreUntil = 2027-01-17
+reason = "req: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."
+
+[[IgnoredVulns]]
+id = "EEF-CVE-2026-49756"
+ignoreUntil = 2027-01-17
+reason = "req: offchain/scheduler is not deployed; removal pending. Its Elixir dependencies are not updated meanwhile."

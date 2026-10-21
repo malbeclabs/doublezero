@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - CI
+  - A new `osv-scanner` workflow fails a pull request, a push to `main` or a daily run when a locked dependency (Rust, Go, Python, npm or Elixir) has a scored advisory that `osv-scanner.toml` does not list. Go advisories fail only when call analysis shows our code reaches them. Each accepted advisory in `osv-scanner.toml` carries a reason and an expiry date.
   - Release jobs install goreleaser-pro v2.18.2 through `.github/actions/install-goreleaser-pro`, which checks the download against a sha256 pinned in the repo and fails the job on any mismatch or failed download, then run `goreleaser` directly. This replaces goreleaser-action, which runs the binary unchecked when it cannot fetch the checksum or signature file, and stops goreleaser floating on `~> v2`.
 - CLI
   - `doublezero multicast group index --pubkey <pubkey-or-code>` claims a group's code in the Index, so no group created on a stake can take it. The code comes from the group. An operator runs it once for each group an admin created, because only staked creates claim their code themselves.

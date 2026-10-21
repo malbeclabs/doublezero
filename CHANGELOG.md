@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 - Serviceability, SDK, CLI
-  - Rename builder stake to bond throughout: `builder-stake` is now `builder-bond` (`BuilderBond`), `StakeMirror` is `BondMirror`, `STAKE_ORACLE` is `BOND_ORACLE` (`bond-oracle`), `allow-staked-feeds` is `allow-bonded-feeds`, and `stake_ref` is `bond_ref` (`--bond-ref`). The PDA seeds and the `BuilderBond` discriminator change with the names, so existing `BuilderStake` and `StakeMirror` accounts are not found and must be recreated.
+  - Rename builder stake to bond throughout: `builder-stake` is now `builder-bond` (`BuilderBond`), `StakeMirror` is `BondMirror`, `STAKE_ORACLE` is `BOND_ORACLE` (`bond-oracle`), `allow-staked-feeds` is `allow-bonded-feeds`, and `stake_ref` is `bond_ref` (`--bond-ref`). The PDA seeds and the `BuilderBond` discriminator change with the names, so existing `BuilderStake` and `StakeMirror` accounts are not found. They cannot be migrated: builders post new bonds, and 2Z in the old vaults stays there.
 
 ### Changes
 

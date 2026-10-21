@@ -50,15 +50,16 @@ jobs:
           # 0 is clean and 1 is findings; anything else is a scanner error.
           if [ "$rc" -gt 1 ]; then exit "$rc"; fi
 
-          # A finding fails the job when it has a severity score and is not a Go
-          # advisory that call analysis showed our code never calls. Unscored
-          # advisories, mostly unmaintained-crate notices, are listed only.
+          # A finding fails the job when call analysis shows our code calls it,
+          # when it has a severity score and no call analysis, or when it is a
+          # malicious-package report (MAL-). Other unscored advisories, mostly
+          # unmaintained-crate notices, are listed only.
           jq -r '
             .results[] | .source.path as $file | .packages[] |
             "\(.package.name)@\(.package.version)" as $package | .groups[]? |
             ((.max_severity // "") != "") as $scored |
             ((.experimental_analysis // {}) | to_entries | map(.value.called)) as $called |
-            (if ($scored and (($called | length) == 0 or ($called | any))) then "FAIL" else "info" end) as $level |
+            (if (($called | any) or ($scored and ($called | length) == 0) or any(.ids[]; startswith("MAL-"))) then "FAIL" else "info" end) as $level |
             "\($level)\t\(.max_severity // "-")\t\($file)\t\($package)\t\(.ids | join(","))"
           ' osv.json | sort > findings.tsv
           cat findings.tsv

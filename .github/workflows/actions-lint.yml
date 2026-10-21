@@ -50,6 +50,8 @@ jobs:
       - name: Lint workflows
         env:
           GH_TOKEN: ${{ github.token }}
+          # actionlint's shellcheck pass would otherwise read a .shellcheckrc a PR adds.
+          SHELLCHECK_OPTS: --norc
         run: |
           disabled=(
             # cEOS e2e on the retired self-hosted runners

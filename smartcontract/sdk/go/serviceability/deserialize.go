@@ -336,7 +336,7 @@ func DeserializeMulticastGroup(reader *ByteReader, mg *MulticastGroup) {
 	mg.SubscriberCount = reader.ReadU32()
 	// Zero for a group an admin created, and for any group created before the field existed:
 	// ReadPubkey returns zero bytes at EOF.
-	mg.StakeRef = reader.ReadPubkey()
+	mg.BondRef = reader.ReadPubkey()
 }
 
 func DeserializeTenant(reader *ByteReader, tenant *Tenant) {
@@ -518,7 +518,7 @@ func DeserializeFeed(reader *ByteReader, feed *Feed) {
 	feed.Groups = reader.ReadPubkeySlice()
 	hasRfc28Tail := reader.Remaining() > 0
 	feed.Builder = reader.ReadPubkey()
-	feed.StakeRef = reader.ReadPubkey()
+	feed.BondRef = reader.ReadPubkey()
 	feed.SpecId = reader.ReadString()
 	if slaHash := reader.ReadBytes(32); len(slaHash) == 32 {
 		copy(feed.SlaHash[:], slaHash)

@@ -1,4 +1,4 @@
-//! Integration tests for `WriteStakeMirror` (RFC-28 A6).
+//! Integration tests for `WriteBondMirror` (RFC-28 A6).
 //!
 //! The instruction that gives the relayer something to call. Everything here is about what the
 //! program refuses, because the mirror is an assertion and these checks are all that bound it.
@@ -6,15 +6,15 @@
 use doublezero_serviceability::{
     error::DoubleZeroError,
     instructions::DoubleZeroInstruction,
-    pda::{get_globalstate_pda, get_permission_pda, get_stake_mirror_pda},
+    pda::{get_bond_mirror_pda, get_globalstate_pda, get_permission_pda},
     processors::{
-        globalstate::setfeatureflags::SetFeatureFlagsArgs,
-        permission::create::PermissionCreateArgs, stake_mirror::write::StakeMirrorWriteArgs,
+        bond_mirror::write::BondMirrorWriteArgs, globalstate::setfeatureflags::SetFeatureFlagsArgs,
+        permission::create::PermissionCreateArgs,
     },
     state::{
+        bond_mirror::{BondMirror, BondTier},
         feature_flags::FeatureFlag,
         permission::permission_flags,
-        stake_mirror::{StakeMirror, StakeTier},
     },
 };
 use solana_program_test::*;
@@ -34,11 +34,11 @@ struct Fixture {
     program_id: Pubkey,
     payer: Keypair,
     globalstate_pubkey: Pubkey,
-    /// A funded key holding `STAKE_ORACLE` and nothing else.
+    /// A funded key holding `BOND_ORACLE` and nothing else.
     relayer: Keypair,
 }
 
-/// Bring up a cluster with `allow-staked-feeds` set and one key holding `STAKE_ORACLE`.
+/// Bring up a cluster with `allow-bonded-feeds` set and one key holding `BOND_ORACLE`.
 async fn setup() -> Fixture {
     let program_id = Pubkey::new_unique();
     let relayer = test_payer();
@@ -54,14 +54,14 @@ async fn setup() -> Fixture {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::AllowStakedFeeds.to_mask(),
+            feature_flags: FeatureFlag::AllowBondedFeeds.to_mask(),
         }),
         vec![AccountMeta::new(globalstate_pubkey, false)],
         &payer,
     )
     .await;
 
-    // The foundation payer grants the relayer STAKE_ORACLE. No legacy GlobalState key maps to
+    // The foundation payer grants the relayer BOND_ORACLE. No legacy GlobalState key maps to
     // this flag, so a Permission account is the only way to hold it.
     let (relayer_permission, _) = get_permission_pda(&program_id, &relayer.pubkey());
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
@@ -71,7 +71,7 @@ async fn setup() -> Fixture {
         program_id,
         DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
             user_payer: relayer.pubkey(),
-            permissions: permission_flags::STAKE_ORACLE,
+            permissions: permission_flags::BOND_ORACLE,
         }),
         vec![
             AccountMeta::new(relayer_permission, false),
@@ -90,9 +90,9 @@ async fn setup() -> Fixture {
     }
 }
 
-fn args(stake_ref: Pubkey, builder: Pubkey, tier: StakeTier, slot: u64) -> StakeMirrorWriteArgs {
-    StakeMirrorWriteArgs {
-        stake_ref,
+fn args(bond_ref: Pubkey, builder: Pubkey, tier: BondTier, slot: u64) -> BondMirrorWriteArgs {
+    BondMirrorWriteArgs {
+        bond_ref,
         builder,
         tier,
         committed_rate_bits_per_sec: ONE_GBPS,
@@ -109,11 +109,11 @@ fn accounts(mirror: Pubkey, globalstate: Pubkey) -> Vec<AccountMeta> {
     ]
 }
 
-async fn get_mirror(banks_client: &mut BanksClient, key: Pubkey) -> StakeMirror {
+async fn get_mirror(banks_client: &mut BanksClient, key: Pubkey) -> BondMirror {
     get_account_data(banks_client, key)
         .await
-        .expect("Unable to get StakeMirror")
-        .get_stake_mirror()
+        .expect("Unable to get BondMirror")
+        .get_bond_mirror()
         .unwrap()
 }
 
@@ -121,9 +121,9 @@ async fn get_mirror(banks_client: &mut BanksClient, key: Pubkey) -> StakeMirror 
 #[tokio::test]
 async fn test_relayer_writes_and_updates_a_mirror() {
     let mut f = setup().await;
-    let stake_ref = Pubkey::new_unique();
+    let bond_ref = Pubkey::new_unique();
     let builder = Pubkey::new_unique();
-    let (mirror_pubkey, bump) = get_stake_mirror_pda(&f.program_id, &stake_ref);
+    let (mirror_pubkey, bump) = get_bond_mirror_pda(&f.program_id, &bond_ref);
     let (relayer_permission, _) = get_permission_pda(&f.program_id, &f.relayer.pubkey());
 
     let recent_blockhash = wait_for_new_blockhash(&mut f.banks_client).await;
@@ -131,7 +131,7 @@ async fn test_relayer_writes_and_updates_a_mirror() {
         &mut f.banks_client,
         recent_blockhash,
         f.program_id,
-        DoubleZeroInstruction::WriteStakeMirror(args(stake_ref, builder, StakeTier::UpTo1Gbps, 10)),
+        DoubleZeroInstruction::WriteBondMirror(args(bond_ref, builder, BondTier::UpTo1Gbps, 10)),
         accounts(mirror_pubkey, f.globalstate_pubkey),
         &f.relayer,
         &[AccountMeta::new_readonly(relayer_permission, false)],
@@ -139,9 +139,9 @@ async fn test_relayer_writes_and_updates_a_mirror() {
     .await;
 
     let mirror = get_mirror(&mut f.banks_client, mirror_pubkey).await;
-    assert_eq!(mirror.stake_ref, stake_ref);
+    assert_eq!(mirror.bond_ref, bond_ref);
     assert_eq!(mirror.builder, builder);
-    assert_eq!(mirror.tier, StakeTier::UpTo1Gbps);
+    assert_eq!(mirror.tier, BondTier::UpTo1Gbps);
     assert_eq!(mirror.source_slot, 10);
     assert_eq!(mirror.bump_seed, bump);
     assert_eq!(
@@ -157,7 +157,7 @@ async fn test_relayer_writes_and_updates_a_mirror() {
         &mut f.banks_client,
         recent_blockhash,
         f.program_id,
-        DoubleZeroInstruction::WriteStakeMirror(args(stake_ref, builder, StakeTier::Unmetered, 11)),
+        DoubleZeroInstruction::WriteBondMirror(args(bond_ref, builder, BondTier::Unmetered, 11)),
         accounts(mirror_pubkey, f.globalstate_pubkey),
         &f.relayer,
         &[AccountMeta::new_readonly(relayer_permission, false)],
@@ -165,7 +165,7 @@ async fn test_relayer_writes_and_updates_a_mirror() {
     .await;
 
     let mirror = get_mirror(&mut f.banks_client, mirror_pubkey).await;
-    assert_eq!(mirror.tier, StakeTier::Unmetered);
+    assert_eq!(mirror.tier, BondTier::Unmetered);
     assert_eq!(mirror.source_slot, 11);
 }
 
@@ -176,9 +176,9 @@ async fn test_relayer_writes_and_updates_a_mirror() {
 #[tokio::test]
 async fn test_a_stale_slot_cannot_walk_the_mirror_backwards() {
     let mut f = setup().await;
-    let stake_ref = Pubkey::new_unique();
+    let bond_ref = Pubkey::new_unique();
     let builder = Pubkey::new_unique();
-    let (mirror_pubkey, _) = get_stake_mirror_pda(&f.program_id, &stake_ref);
+    let (mirror_pubkey, _) = get_bond_mirror_pda(&f.program_id, &bond_ref);
     let (relayer_permission, _) = get_permission_pda(&f.program_id, &f.relayer.pubkey());
     let extra = [AccountMeta::new_readonly(relayer_permission, false)];
 
@@ -187,7 +187,7 @@ async fn test_a_stale_slot_cannot_walk_the_mirror_backwards() {
         &mut f.banks_client,
         recent_blockhash,
         f.program_id,
-        DoubleZeroInstruction::WriteStakeMirror(args(stake_ref, builder, StakeTier::UpTo5Gbps, 20)),
+        DoubleZeroInstruction::WriteBondMirror(args(bond_ref, builder, BondTier::UpTo5Gbps, 20)),
         accounts(mirror_pubkey, f.globalstate_pubkey),
         &f.relayer,
         &extra,
@@ -198,10 +198,10 @@ async fn test_a_stale_slot_cannot_walk_the_mirror_backwards() {
         let result = try_execute_and_get_error(
             &mut f.banks_client,
             f.program_id,
-            DoubleZeroInstruction::WriteStakeMirror(args(
-                stake_ref,
+            DoubleZeroInstruction::WriteBondMirror(args(
+                bond_ref,
                 builder,
-                StakeTier::UpTo1Gbps,
+                BondTier::UpTo1Gbps,
                 stale,
             )),
             accounts(mirror_pubkey, f.globalstate_pubkey),
@@ -213,18 +213,18 @@ async fn test_a_stale_slot_cannot_walk_the_mirror_backwards() {
     }
 
     let mirror = get_mirror(&mut f.banks_client, mirror_pubkey).await;
-    assert_eq!(mirror.tier, StakeTier::UpTo5Gbps, "the tier did not move");
+    assert_eq!(mirror.tier, BondTier::UpTo5Gbps, "the tier did not move");
     assert_eq!(mirror.source_slot, 20);
 }
 
 /// A write must not reassign a mirror to a different builder. The builder is not a PDA seed, so
-/// nothing else stops it, and a funded stake could otherwise be handed to another key.
+/// nothing else stops it, and a funded bond could otherwise be handed to another key.
 #[tokio::test]
 async fn test_a_mirror_cannot_change_builder() {
     let mut f = setup().await;
-    let stake_ref = Pubkey::new_unique();
+    let bond_ref = Pubkey::new_unique();
     let builder = Pubkey::new_unique();
-    let (mirror_pubkey, _) = get_stake_mirror_pda(&f.program_id, &stake_ref);
+    let (mirror_pubkey, _) = get_bond_mirror_pda(&f.program_id, &bond_ref);
     let (relayer_permission, _) = get_permission_pda(&f.program_id, &f.relayer.pubkey());
     let extra = [AccountMeta::new_readonly(relayer_permission, false)];
 
@@ -233,7 +233,7 @@ async fn test_a_mirror_cannot_change_builder() {
         &mut f.banks_client,
         recent_blockhash,
         f.program_id,
-        DoubleZeroInstruction::WriteStakeMirror(args(stake_ref, builder, StakeTier::UpTo1Gbps, 30)),
+        DoubleZeroInstruction::WriteBondMirror(args(bond_ref, builder, BondTier::UpTo1Gbps, 30)),
         accounts(mirror_pubkey, f.globalstate_pubkey),
         &f.relayer,
         &extra,
@@ -243,10 +243,10 @@ async fn test_a_mirror_cannot_change_builder() {
     let result = try_execute_and_get_error(
         &mut f.banks_client,
         f.program_id,
-        DoubleZeroInstruction::WriteStakeMirror(args(
-            stake_ref,
+        DoubleZeroInstruction::WriteBondMirror(args(
+            bond_ref,
             Pubkey::new_unique(),
-            StakeTier::UpTo1Gbps,
+            BondTier::UpTo1Gbps,
             31,
         )),
         accounts(mirror_pubkey, f.globalstate_pubkey),
@@ -262,21 +262,21 @@ async fn test_a_mirror_cannot_change_builder() {
     );
 }
 
-/// A caller without `STAKE_ORACLE` cannot write a mirror, even the foundation payer that granted
+/// A caller without `BOND_ORACLE` cannot write a mirror, even the foundation payer that granted
 /// the flag in the first place.
 #[tokio::test]
-async fn test_only_a_stake_oracle_can_write() {
+async fn test_only_a_bond_oracle_can_write() {
     let mut f = setup().await;
-    let stake_ref = Pubkey::new_unique();
-    let (mirror_pubkey, _) = get_stake_mirror_pda(&f.program_id, &stake_ref);
+    let bond_ref = Pubkey::new_unique();
+    let (mirror_pubkey, _) = get_bond_mirror_pda(&f.program_id, &bond_ref);
 
     let result = try_execute_and_get_error(
         &mut f.banks_client,
         f.program_id,
-        DoubleZeroInstruction::WriteStakeMirror(args(
-            stake_ref,
+        DoubleZeroInstruction::WriteBondMirror(args(
+            bond_ref,
             Pubkey::new_unique(),
-            StakeTier::UpTo1Gbps,
+            BondTier::UpTo1Gbps,
             40,
         )),
         accounts(mirror_pubkey, f.globalstate_pubkey),
@@ -287,7 +287,7 @@ async fn test_only_a_stake_oracle_can_write() {
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
 }
 
-/// The mirror ships dormant with the rest of RFC-28: with the flag clear, even a `STAKE_ORACLE`
+/// The mirror ships dormant with the rest of RFC-28: with the flag clear, even a `BOND_ORACLE`
 /// holder is refused.
 #[tokio::test]
 async fn test_writing_is_refused_while_the_flag_is_clear() {
@@ -306,7 +306,7 @@ async fn test_writing_is_refused_while_the_flag_is_clear() {
         program_id,
         DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
             user_payer: relayer.pubkey(),
-            permissions: permission_flags::STAKE_ORACLE,
+            permissions: permission_flags::BOND_ORACLE,
         }),
         vec![
             AccountMeta::new(relayer_permission, false),
@@ -316,15 +316,15 @@ async fn test_writing_is_refused_while_the_flag_is_clear() {
     )
     .await;
 
-    let stake_ref = Pubkey::new_unique();
-    let (mirror_pubkey, _) = get_stake_mirror_pda(&program_id, &stake_ref);
+    let bond_ref = Pubkey::new_unique();
+    let (mirror_pubkey, _) = get_bond_mirror_pda(&program_id, &bond_ref);
     let result = try_execute_and_get_error(
         &mut banks_client,
         program_id,
-        DoubleZeroInstruction::WriteStakeMirror(args(
-            stake_ref,
+        DoubleZeroInstruction::WriteBondMirror(args(
+            bond_ref,
             Pubkey::new_unique(),
-            StakeTier::UpTo1Gbps,
+            BondTier::UpTo1Gbps,
             50,
         )),
         accounts(mirror_pubkey, globalstate_pubkey),

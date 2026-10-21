@@ -58,7 +58,7 @@
       "typ": "u32"
     },
     {
-      "name": "StakeRef",
+      "name": "BondRef",
       "value": "8g1UhTictKSPZri4zXMu4dy4W7QsVJcMZtAEPENTAiNK",
       "typ": "pubkey"
     }

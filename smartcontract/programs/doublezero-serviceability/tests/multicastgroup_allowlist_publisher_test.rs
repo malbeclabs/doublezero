@@ -53,7 +53,7 @@ async fn test_multicast_publisher_allowlist() {
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -174,7 +174,7 @@ async fn test_multicast_publisher_allowlist_transfers_credits() {
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -269,7 +269,7 @@ async fn test_multicast_publisher_allowlist_without_user_payer_account_skips_air
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -372,7 +372,7 @@ async fn test_multicast_publisher_allowlist_sentinel_authority() {
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -540,7 +540,7 @@ async fn test_multicast_publisher_allowlist_allow_multiple_ip() {
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -677,7 +677,7 @@ async fn test_multicast_publisher_allowlist_allow_multiple_ip_real_ip_in_args() 
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -813,7 +813,7 @@ async fn test_multicast_publisher_allowlist_wrong_pda_rejected() {
             max_bandwidth: 1_000_000_000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),

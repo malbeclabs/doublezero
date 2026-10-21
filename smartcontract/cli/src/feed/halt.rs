@@ -45,8 +45,8 @@ mod tests {
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
-    /// Halting names the feed and nothing else: there is no stake to re-read, so the mirror a
-    /// staked feed's activate and resume carry has no place here.
+    /// Halting names the feed and nothing else: there is no bond to re-read, so the mirror a
+    /// bonded feed's activate and resume carry has no place here.
     #[test]
     fn test_cli_feed_halt_sends_the_resolved_feed() {
         let mut client = create_test_client();
@@ -63,7 +63,7 @@ mod tests {
             exchange: Pubkey::new_unique(),
             groups: vec![],
             builder,
-            stake_ref: Pubkey::new_unique(),
+            bond_ref: Pubkey::new_unique(),
             status: FeedStatus::Active,
             ..Default::default()
         };

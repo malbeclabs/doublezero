@@ -1,32 +1,33 @@
 //! The RFC-28 sequence, driven end to end through real instructions.
 //!
 //! What is new here is the reach: this is the first test that gets to `ActivateFeed` from a real
-//! `CreateFeed` against a mirror a real `WriteStakeMirror` produced. The relayer mirrors a stake, a
+//! `CreateFeed` against a mirror a real `WriteBondMirror` produced. The relayer mirrors a bond, a
 //! builder holding no permission creates a feed against it, grants its own publisher the right to
 //! send, and an operator admits the feed. That is steps 2 to 5 of the demo.
 //!
 //! Two siblings already chain instructions, so composition on its own is not the novelty:
 //! `feed_test::test_builder_grants_its_own_publish_rights` walks create plus two allowlist grants
 //! with two signers, and `feed_test::test_a_mirror_update_keeps_the_claiming_feed` drives
-//! `CreatePermission` to `WriteStakeMirror` to `CreateFeed` without seeding either.
+//! `CreatePermission` to `WriteBondMirror` to `CreateFeed` without seeding either.
 //!
 //! What it does not cover, and what still has to be proven elsewhere:
 //!
 //! - **The bond.** `PostBond` is a different program on Solana, so the mirror here is written from
-//!   values rather than read from a `BuilderStake`. The relayer decoding a real bond is C2.
+//!   values rather than read from a `BuilderBond`. The relayer decoding a real bond is C2.
 //! - **Datagrams.** Nothing in a `ProgramTest` sends multicast. That is G2, against a cluster.
 //! - **The refusals.** Only the path that succeeds runs here. `feed_lifecycle_test` holds the
 //!   guards: `test_a_builder_cannot_activate_its_own_feed`,
 //!   `test_a_builder_in_the_foundation_allowlist_still_cannot_activate`, and
-//!   `test_a_feed_cannot_activate_beyond_its_stake`.
+//!   `test_a_feed_cannot_activate_beyond_its_bond`.
 
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
     pda::{
-        get_accesspass_pda, get_feed_pda, get_globalstate_pda, get_multicastgroup_pda,
-        get_permission_pda, get_resource_extension_pda, get_stake_mirror_pda,
+        get_accesspass_pda, get_bond_mirror_pda, get_feed_pda, get_globalstate_pda,
+        get_multicastgroup_pda, get_permission_pda, get_resource_extension_pda,
     },
     processors::{
+        bond_mirror::write::BondMirrorWriteArgs,
         feed::{activate::FeedActivateArgs, create::FeedCreateArgs},
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
         multicastgroup::{
@@ -34,12 +35,11 @@ use doublezero_serviceability::{
             create::MulticastGroupCreateArgs,
         },
         permission::create::PermissionCreateArgs,
-        stake_mirror::write::StakeMirrorWriteArgs,
     },
     resource::ResourceType,
     state::{
-        feature_flags::FeatureFlag, feed::FeedStatus, permission::permission_flags,
-        stake_mirror::StakeTier,
+        bond_mirror::BondTier, feature_flags::FeatureFlag, feed::FeedStatus,
+        permission::permission_flags,
     },
 };
 use solana_program_test::*;
@@ -57,7 +57,7 @@ const ONE_GBPS: u64 = 1_000_000_000;
 
 /// The tier the bond buys. Both committed rates come from its own ceiling, so the coverage check
 /// runs at the boundary rather than comfortably under it wherever that ceiling moves.
-const TIER: StakeTier = StakeTier::UpTo1Gbps;
+const TIER: BondTier = BondTier::UpTo1Gbps;
 
 /// The whole sequence, in order, with nothing seeded that an instruction could write.
 #[tokio::test]
@@ -67,7 +67,7 @@ async fn test_a_builder_deploys_a_feed_and_an_operator_admits_it() {
     // The builder holds no permission at any point. That is the claim under test.
     let builder = test_payer();
     let relayer = Keypair::new();
-    let stake_ref = Pubkey::new_unique();
+    let bond_ref = Pubkey::new_unique();
 
     let (mut banks_client, foundation, recent_blockhash) =
         init_test_with_accounts(program_id, &[]).await;
@@ -89,7 +89,7 @@ async fn test_a_builder_deploys_a_feed_and_an_operator_admits_it() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::AllowStakedFeeds.to_mask(),
+            feature_flags: FeatureFlag::AllowBondedFeeds.to_mask(),
         }),
         vec![AccountMeta::new(globalstate, false)],
         &foundation,
@@ -109,7 +109,7 @@ async fn test_a_builder_deploys_a_feed_and_an_operator_admits_it() {
             max_bandwidth: ONE_GBPS,
             owner: builder.pubkey(),
             use_onchain_allocation: true,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(group, false),
@@ -132,7 +132,7 @@ async fn test_a_builder_deploys_a_feed_and_an_operator_admits_it() {
         program_id,
         DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
             user_payer: relayer.pubkey(),
-            permissions: permission_flags::STAKE_ORACLE,
+            permissions: permission_flags::BOND_ORACLE,
         }),
         vec![
             AccountMeta::new(relayer_permission, false),
@@ -143,14 +143,14 @@ async fn test_a_builder_deploys_a_feed_and_an_operator_admits_it() {
     .await;
 
     // ---- Relayer: the bond reaches the ledger. -----------------------------------------------
-    let (mirror, _) = get_stake_mirror_pda(&program_id, &stake_ref);
+    let (mirror, _) = get_bond_mirror_pda(&program_id, &bond_ref);
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
-        DoubleZeroInstruction::WriteStakeMirror(StakeMirrorWriteArgs {
-            stake_ref,
+        DoubleZeroInstruction::WriteBondMirror(BondMirrorWriteArgs {
+            bond_ref,
             builder: builder.pubkey(),
             tier: TIER,
             committed_rate_bits_per_sec: TIER.max_rate_bits_per_sec(),
@@ -179,7 +179,7 @@ async fn test_a_builder_deploys_a_feed_and_an_operator_admits_it() {
             exchange,
             groups: vec![group],
             builder: builder.pubkey(),
-            stake_ref,
+            bond_ref,
             spec_id: "top-of-book@v1.0.0".to_string(),
             sla_hash: [9u8; 32],
             committed_rate_bits_per_sec: TIER.max_rate_bits_per_sec(),
@@ -208,16 +208,16 @@ async fn test_a_builder_deploys_a_feed_and_an_operator_admits_it() {
     assert_eq!(
         written.status,
         FeedStatus::Pending,
-        "a staked feed waits on a verdict"
+        "a bonded feed waits on a verdict"
     );
 
-    // The stake is spent on this feed, which is what makes one bond back one feed.
+    // The bond is spent on this feed, which is what makes one bond back one feed.
     let claimed = get_account_data(&mut banks_client, mirror)
         .await
         .expect("the mirror should exist")
-        .get_stake_mirror()
+        .get_bond_mirror()
         .unwrap();
-    assert_eq!(claimed.feed_key, feed, "the feed spent the stake");
+    assert_eq!(claimed.feed_key, feed, "the feed spent the bond");
 
     // ---- Builder: grant its own publisher the right to send. ---------------------------------
     let client_ip = Ipv4Addr::new(10, 0, 0, 7);

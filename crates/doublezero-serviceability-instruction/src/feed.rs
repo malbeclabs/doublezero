@@ -8,13 +8,13 @@
 //! processors call `authorize(.., FEED_AUTHORITY | FOUNDATION)`, so feed is a
 //! permission-gated instruction like topology/tenant and belongs on the
 //! permission-appending path: every builder here except `finalize_feed_retirement`
-//! appends the payer's Permission PDA last. A staked feed's stake mirror rides
+//! appends the payer's Permission PDA last. A bonded feed's bond mirror rides
 //! between the system program and the Permission account.
 
 use crate::common;
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::{get_feed_pda, get_globalstate_pda, get_stake_mirror_pda},
+    pda::{get_bond_mirror_pda, get_feed_pda, get_globalstate_pda},
     processors::feed::{
         activate::FeedActivateArgs, create::FeedCreateArgs, delete::FeedDeleteArgs,
         finalize_retirement::FeedFinalizeRetirementArgs, halt::FeedHaltArgs,
@@ -33,12 +33,12 @@ pub fn create_feed(program_id: &Pubkey, payer: &Pubkey, args: FeedCreateArgs) ->
     let (feed, _) = get_feed_pda(program_id, &args.code, &args.exchange);
     let (globalstate, _) = get_globalstate_pda(program_id);
 
-    // A staked feed needs its stake mirror: `CreateFeed` reads the tier from it and writes the
-    // feed's key onto it to claim the stake. Derived rather than taken as a parameter, because
-    // unlike `resume_feed` the args already carry the stake it is seeded on, so asking a caller
+    // A bonded feed needs its bond mirror: `CreateFeed` reads the tier from it and writes the
+    // feed's key onto it to claim the bond. Derived rather than taken as a parameter, because
+    // unlike `resume_feed` the args already carry the bond it is seeded on, so asking a caller
     // for it would only create a way to get it wrong. Writable: creating the feed claims it.
-    let stake_mirror = (args.builder != Pubkey::default())
-        .then(|| get_stake_mirror_pda(program_id, &args.stake_ref).0);
+    let bond_mirror = (args.builder != Pubkey::default())
+        .then(|| get_bond_mirror_pda(program_id, &args.bond_ref).0);
 
     common::build_with_permission_after_system(
         program_id,
@@ -47,8 +47,8 @@ pub fn create_feed(program_id: &Pubkey, payer: &Pubkey, args: FeedCreateArgs) ->
             AccountMeta::new(feed, false),
             AccountMeta::new(globalstate, false),
         ],
-        stake_mirror
-            .map(|stake_mirror| AccountMeta::new(stake_mirror, false))
+        bond_mirror
+            .map(|bond_mirror| AccountMeta::new(bond_mirror, false))
             .into_iter()
             .collect(),
         payer,
@@ -112,21 +112,21 @@ pub fn halt_feed(program_id: &Pubkey, payer: &Pubkey, feed: &Pubkey) -> Instruct
     )
 }
 
-/// `ActivateFeed` (variant 124). Accounts: `[feed, globalstate]`, plus the stake mirror for a
-/// staked feed.
+/// `ActivateFeed` (variant 124). Accounts: `[feed, globalstate]`, plus the bond mirror for a
+/// bonded feed.
 ///
 /// Admits a feed that was waiting on a conformance verdict. Signed by a `FEED_AUTHORITY` or
 /// `FOUNDATION` key and by nobody else: the feed's own builder can halt and resume, but a builder
 /// that could admit its own feed would be attesting to its own conformance.
 ///
-/// `stake_mirror` is required for a staked feed and must be `None` for a catalog one, as in
-/// `resume_feed`. This is the step that re-reads the mirror, so a staked feed without it is refused
-/// rather than read as having no stake to check.
+/// `bond_mirror` is required for a bonded feed and must be `None` for a catalog one, as in
+/// `resume_feed`. This is the step that re-reads the mirror, so a bonded feed without it is refused
+/// rather than read as having no bond to check.
 pub fn activate_feed(
     program_id: &Pubkey,
     payer: &Pubkey,
     feed: &Pubkey,
-    stake_mirror: Option<&Pubkey>,
+    bond_mirror: Option<&Pubkey>,
 ) -> Instruction {
     let (globalstate, _) = get_globalstate_pda(program_id);
     common::build_with_permission_after_system(
@@ -136,29 +136,29 @@ pub fn activate_feed(
             AccountMeta::new(*feed, false),
             AccountMeta::new(globalstate, false),
         ],
-        stake_mirror
-            .map(|stake_mirror| AccountMeta::new_readonly(*stake_mirror, false))
+        bond_mirror
+            .map(|bond_mirror| AccountMeta::new_readonly(*bond_mirror, false))
             .into_iter()
             .collect(),
         payer,
     )
 }
 
-/// `ResumeFeed` (variant 121). Accounts: `[feed, globalstate]`, then the stake mirror.
+/// `ResumeFeed` (variant 121). Accounts: `[feed, globalstate]`, then the bond mirror.
 ///
 /// Puts a halted feed back to publishing. Signed by the keys `halt_feed` accepts, except that an
 /// operator's halt takes an operator to lift.
 ///
-/// `stake_mirror` is required for a staked feed and must be `None` for a catalog one. Resume
-/// re-proves that the stake still covers the feed's rate, because a mirror can be corrected
-/// downward while a feed sits halted, so a staked feed without its mirror is refused rather than
-/// read as having no stake to check. It rides after the payer and system program, found by its
+/// `bond_mirror` is required for a bonded feed and must be `None` for a catalog one. Resume
+/// re-proves that the bond still covers the feed's rate, because a mirror can be corrected
+/// downward while a feed sits halted, so a bonded feed without its mirror is refused rather than
+/// read as having no bond to check. It rides after the payer and system program, found by its
 /// address rather than its position, so a catalog feed's caller is not forced to send one.
 pub fn resume_feed(
     program_id: &Pubkey,
     payer: &Pubkey,
     feed: &Pubkey,
-    stake_mirror: Option<&Pubkey>,
+    bond_mirror: Option<&Pubkey>,
 ) -> Instruction {
     let (globalstate, _) = get_globalstate_pda(program_id);
     common::build_with_permission_after_system(
@@ -168,8 +168,8 @@ pub fn resume_feed(
             AccountMeta::new(*feed, false),
             AccountMeta::new(globalstate, false),
         ],
-        stake_mirror
-            .map(|stake_mirror| AccountMeta::new_readonly(*stake_mirror, false))
+        bond_mirror
+            .map(|bond_mirror| AccountMeta::new_readonly(*bond_mirror, false))
             .into_iter()
             .collect(),
         payer,
@@ -215,40 +215,40 @@ mod tests {
     use super::*;
     use solana_system_interface::program as system_program;
 
-    /// A staked feed carries its mirror; a catalog feed must not, or a caller that sends neither
+    /// A bonded feed carries its mirror; a catalog feed must not, or a caller that sends neither
     /// stops working.
     #[test]
-    fn test_create_feed_appends_the_stake_mirror_only_when_staked() {
+    fn test_create_feed_appends_the_bond_mirror_only_when_bonded() {
         let pid = Pubkey::new_unique();
         let payer = Pubkey::new_unique();
         let exchange = Pubkey::new_unique();
         let builder = Pubkey::new_unique();
-        let stake_ref = Pubkey::new_unique();
+        let bond_ref = Pubkey::new_unique();
 
-        let staked = create_feed(
+        let bonded = create_feed(
             &pid,
             &payer,
             FeedCreateArgs {
-                code: "staked".to_string(),
-                name: "Staked".to_string(),
+                code: "bonded".to_string(),
+                name: "Bonded".to_string(),
                 exchange,
                 groups: vec![Pubkey::new_unique()],
                 builder,
-                stake_ref,
+                bond_ref,
                 spec_id: "top-of-book@v1.0.0".to_string(),
                 sla_hash: [9u8; 32],
                 committed_rate_bits_per_sec: 1_000_000_000,
                 ..Default::default()
             },
         );
-        let (mirror, _) = get_stake_mirror_pda(&pid, &stake_ref);
+        let (mirror, _) = get_bond_mirror_pda(&pid, &bond_ref);
         assert_eq!(
-            staked.accounts[staked.accounts.len() - 2],
+            bonded.accounts[bonded.accounts.len() - 2],
             AccountMeta::new(mirror, false),
-            "the mirror is writable: creating the feed claims the stake"
+            "the mirror is writable: creating the feed claims the bond"
         );
         assert_eq!(
-            staked.accounts.last().unwrap(),
+            bonded.accounts.last().unwrap(),
             &common::permission_meta(&pid, &payer),
             "the Permission account stays last, after the mirror"
         );
@@ -268,7 +268,7 @@ mod tests {
             !catalog
                 .accounts
                 .iter()
-                .any(|a| a.pubkey == get_stake_mirror_pda(&pid, &Pubkey::default()).0),
+                .any(|a| a.pubkey == get_bond_mirror_pda(&pid, &Pubkey::default()).0),
             "a catalog feed sends no mirror"
         );
     }
@@ -346,23 +346,23 @@ mod tests {
         assert_eq!(activate.data[0], 124);
         assert_eq!(activate.accounts, expected);
 
-        // A staked feed's mirror rides after the payer and system program, read-only, because the
+        // A bonded feed's mirror rides after the payer and system program, read-only, because the
         // step reads it rather than claiming it. `resume_feed` places it the same way, and the
         // processor finds it by address rather than position, so its place in the list is the
         // caller-side half of that contract.
         let mirror = Pubkey::new_unique();
         // The Permission account stays last, after the mirror.
         let (permission, before_permission) = expected.split_last().unwrap();
-        let staked_expected = [
+        let bonded_expected = [
             before_permission.to_vec(),
             vec![AccountMeta::new_readonly(mirror, false), permission.clone()],
         ]
         .concat();
-        let staked_activate = activate_feed(&pid, &payer, &feed, Some(&mirror));
-        assert_eq!(staked_activate.data[0], 124);
-        assert_eq!(staked_activate.accounts, staked_expected);
-        let staked_resume = resume_feed(&pid, &payer, &feed, Some(&mirror));
-        assert_eq!(staked_resume.accounts, staked_expected);
+        let bonded_activate = activate_feed(&pid, &payer, &feed, Some(&mirror));
+        assert_eq!(bonded_activate.data[0], 124);
+        assert_eq!(bonded_activate.accounts, bonded_expected);
+        let bonded_resume = resume_feed(&pid, &payer, &feed, Some(&mirror));
+        assert_eq!(bonded_resume.accounts, bonded_expected);
 
         let retire = retire_feed(&pid, &payer, &feed);
         assert_eq!(retire.data[0], 122);
@@ -382,16 +382,16 @@ mod tests {
             ]
         );
 
-        // A staked feed's mirror rides after the payer and system program, where the processor
-        // looks for it. Without it, resume refuses with `StakeMirrorMissing`.
+        // A bonded feed's mirror rides after the payer and system program, where the processor
+        // looks for it. Without it, resume refuses with `BondMirrorMissing`.
         let mirror = Pubkey::new_unique();
-        let staked = resume_feed(&pid, &payer, &feed, Some(&mirror));
+        let bonded = resume_feed(&pid, &payer, &feed, Some(&mirror));
         assert_eq!(
-            staked.accounts[..expected.len() - 1],
+            bonded.accounts[..expected.len() - 1],
             expected[..expected.len() - 1]
         );
         assert_eq!(
-            staked.accounts[staked.accounts.len() - 2..],
+            bonded.accounts[bonded.accounts.len() - 2..],
             [
                 AccountMeta::new_readonly(mirror, false),
                 common::permission_meta(&pid, &payer),

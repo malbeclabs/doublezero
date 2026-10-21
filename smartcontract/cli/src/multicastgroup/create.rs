@@ -19,13 +19,13 @@ pub struct CreateMulticastGroupCliCommand {
     /// Maximum bandwidth for the group (e.g. 10Gbps, 100Mbps)
     #[arg(long, value_parser = validate_parse_bandwidth)]
     pub max_bandwidth: u64,
-    /// Owner Pubkey or 'me' for current payer. Defaults to me with --stake-ref
-    #[arg(long, value_parser = validate_pubkey, required_unless_present = "stake_ref")]
+    /// Owner Pubkey or 'me' for current payer. Defaults to me with --bond-ref
+    #[arg(long, value_parser = validate_pubkey, required_unless_present = "bond_ref")]
     pub owner: Option<String>,
-    /// Create the group on this BuilderStake instead of on the multicast admin permission. The
-    /// stake must be yours, and the group is owned by you
+    /// Create the group on this BuilderBond instead of on the multicast admin permission. The
+    /// bond must be yours, and the group is owned by you
     #[arg(long)]
-    pub stake_ref: Option<Pubkey>,
+    pub bond_ref: Option<Pubkey>,
     /// Wait for the multicast group to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -46,11 +46,11 @@ impl CreateMulticastGroupCliCommand {
             Some(owner) if owner.eq_ignore_ascii_case("me") => client.get_payer(),
             Some(owner) => Pubkey::from_str(owner)?,
         };
-        // The program refuses a group created on a stake unless the payer owns it. Say so here
+        // The program refuses a group created on a bond unless the payer owns it. Say so here
         // rather than after a transaction fee.
-        if self.stake_ref.is_some() && owner_pk != client.get_payer() {
+        if self.bond_ref.is_some() && owner_pk != client.get_payer() {
             eyre::bail!(
-                "a group created on a stake is owned by you: drop --owner or pass --owner me"
+                "a group created on a bond is owned by you: drop --owner or pass --owner me"
             );
         }
 
@@ -58,7 +58,7 @@ impl CreateMulticastGroupCliCommand {
             code: self.code.clone(),
             max_bandwidth: self.max_bandwidth,
             owner: owner_pk,
-            stake_ref: self.stake_ref.unwrap_or_default(),
+            bond_ref: self.bond_ref.unwrap_or_default(),
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -111,7 +111,7 @@ mod tests {
                 code: "test".to_string(),
                 max_bandwidth: 10_000_000_000,
                 owner: pda_pubkey,
-                stake_ref: Pubkey::default(),
+                bond_ref: Pubkey::default(),
             }))
             .times(1)
             .returning(move |_| Ok((signature, pda_pubkey)));
@@ -124,7 +124,7 @@ mod tests {
                 code: "test".to_string(),
                 max_bandwidth: 10_000_000_000,
                 owner: Some(pda_pubkey.to_string()),
-                stake_ref: None,
+                bond_ref: None,
                 wait: false,
             }
             .execute(&ctx, &client, &mut output),
@@ -137,10 +137,10 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_multicastgroup_create_on_a_stake() {
+    fn test_cli_multicastgroup_create_on_a_bond() {
         let mut client = create_test_client();
         let payer = client.get_payer();
-        let stake_ref = Pubkey::new_unique();
+        let bond_ref = Pubkey::new_unique();
         let group = Pubkey::new_unique();
 
         client
@@ -150,10 +150,10 @@ mod tests {
         client
             .expect_create_multicastgroup()
             .with(predicate::eq(CreateMulticastGroupCommand {
-                code: "staked".to_string(),
+                code: "bonded".to_string(),
                 max_bandwidth: 1_000_000_000,
                 owner: payer,
-                stake_ref,
+                bond_ref,
             }))
             .times(1)
             .returning(move |_| Ok((Signature::new_unique(), group)));
@@ -161,10 +161,10 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             CreateMulticastGroupCliCommand {
-                code: "staked".to_string(),
+                code: "bonded".to_string(),
                 max_bandwidth: 1_000_000_000,
                 owner: None,
-                stake_ref: Some(stake_ref),
+                bond_ref: Some(bond_ref),
                 wait: false,
             }
             .execute(&cli_context_default_for_tests(), &client, &mut output),
@@ -173,7 +173,7 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_multicastgroup_create_on_a_stake_for_someone_else_fails_early() {
+    fn test_cli_multicastgroup_create_on_a_bond_for_someone_else_fails_early() {
         let mut client = create_test_client();
         client
             .expect_check_requirements()
@@ -184,10 +184,10 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             CreateMulticastGroupCliCommand {
-                code: "staked".to_string(),
+                code: "bonded".to_string(),
                 max_bandwidth: 1_000_000_000,
                 owner: Some(Pubkey::new_unique().to_string()),
-                stake_ref: Some(Pubkey::new_unique()),
+                bond_ref: Some(Pubkey::new_unique()),
                 wait: false,
             }
             .execute(&cli_context_default_for_tests(), &client, &mut output),

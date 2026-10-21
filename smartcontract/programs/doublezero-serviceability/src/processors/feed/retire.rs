@@ -60,7 +60,7 @@ pub fn process_retire_feed(
     )?;
 
     // A feed already retiring or retired has nothing left to start. Everything else can retire,
-    // including `Pending`: `DeleteFeed` refuses a staked feed, so refusing here as well would
+    // including `Pending`: `DeleteFeed` refuses a bonded feed, so refusing here as well would
     // leave a feed that never went live with no way out at all.
     if matches!(feed.status, FeedStatus::Retiring | FeedStatus::Retired) {
         msg!(

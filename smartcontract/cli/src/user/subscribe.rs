@@ -217,7 +217,7 @@ mod tests {
             owner: mgroup_pubkey,
             publisher_count: 0,
             subscriber_count: 0,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         };
 
         client
@@ -324,7 +324,7 @@ mod tests {
             owner: mgroup_pubkey1,
             publisher_count: 0,
             subscriber_count: 0,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         };
 
         let mgroup_pubkey2 = Pubkey::from_str_const("11111116EPqoQskEM2Pddp8KTL9JoFhVBkC8GXfRH");
@@ -340,7 +340,7 @@ mod tests {
             owner: mgroup_pubkey2,
             publisher_count: 0,
             subscriber_count: 0,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         };
 
         client
@@ -466,7 +466,7 @@ mod tests {
             owner: mgroup_pubkey1,
             publisher_count: 1,
             subscriber_count: 0,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         };
         let mgroup2 = MulticastGroup {
             account_type: AccountType::MulticastGroup,
@@ -480,7 +480,7 @@ mod tests {
             owner: mgroup_pubkey2,
             publisher_count: 0,
             subscriber_count: 0,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         };
         client
             .expect_get_multicastgroup()
@@ -600,7 +600,7 @@ mod tests {
             owner: mgroup_pubkey,
             publisher_count: 1,
             subscriber_count: 1,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         };
 
         client
@@ -703,7 +703,7 @@ mod tests {
             owner: mgroup_pubkey,
             publisher_count: 1,
             subscriber_count: 1,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         };
 
         client

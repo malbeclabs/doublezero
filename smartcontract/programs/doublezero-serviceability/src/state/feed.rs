@@ -8,15 +8,15 @@ use std::{fmt, str::FromStr};
 
 /// Where a feed sits in the RFC-28 deployment lifecycle.
 ///
-/// A feed created without a stake is `Active` on creation: the pre-RFC-28 catalog feeds have no
-/// builder to attest and sell seats today. A staked feed starts `Pending` and an attestor verdict
+/// A feed created without a bond is `Active` on creation: the pre-RFC-28 catalog feeds have no
+/// builder to attest and sell seats today. A bonded feed starts `Pending` and an attestor verdict
 /// moves it to `Active`.
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Eq, Clone, Copy, Default)]
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FeedStatus {
-    /// Staked and created, waiting on a conformance verdict. No seats sell.
+    /// Bonded and created, waiting on a conformance verdict. No seats sell.
     #[default]
     Pending = 0,
     /// Publishing and sellable.
@@ -111,7 +111,7 @@ pub struct Feed {
     // RFC-28 fields. Everything below is absent from feeds created before RFC-28, so every one of
     // them decodes to a default on a short account and is written back on the next update.
     /// The builder that deployed this feed and posted its bond, zero for a catalog feed with no
-    /// builder. The `StakeMirror` is keyed on `stake_ref`, not on this, so that one bond backs
+    /// builder. The `BondMirror` is keyed on `bond_ref`, not on this, so that one bond backs
     /// one feed.
     #[cfg_attr(
         feature = "serde",
@@ -121,8 +121,8 @@ pub struct Feed {
         )
     )]
     pub builder: Pubkey, // 32
-    /// The `BuilderStake` PDA on Solana holding this feed's bond. A record, not a check: the DZ
-    /// ledger cannot read a Solana account, so the covering check runs against `StakeMirror`.
+    /// The `BuilderBond` PDA on Solana holding this feed's bond. A record, not a check: the DZ
+    /// ledger cannot read a Solana account, so the covering check runs against `BondMirror`.
     #[cfg_attr(
         feature = "serde",
         serde(
@@ -130,7 +130,7 @@ pub struct Feed {
             deserialize_with = "doublezero_program_common::serializer::deserialize_pubkey_from_string"
         )
     )]
-    pub stake_ref: Pubkey, // 32
+    pub bond_ref: Pubkey, // 32
     /// The `edge-feed-spec` wire format this feed conforms to, as `<spec>@<version>`
     /// (e.g. `top-of-book@v1.0.0`). A string, not an enum: specs are added in `edge-feed-spec`
     /// without a program upgrade.
@@ -152,7 +152,7 @@ pub struct Feed {
     /// Who halted this feed, zero when it is not halted.
     ///
     /// A halt by an operator is not the builder's to lift. Without this the builder resumes the
-    /// moment an operator halts, and with `Retired` unreachable and `DeleteFeed` refusing a staked
+    /// moment an operator halts, and with `Retired` unreachable and `DeleteFeed` refusing a bonded
     /// feed, nothing else stops one.
     pub halted_by: Pubkey, // 32
     /// When this feed's retirement notice elapses, as a unix timestamp, zero when it is not
@@ -210,7 +210,7 @@ impl TryFrom<&[u8]> for Feed {
             exchange: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             groups: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             builder: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
-            stake_ref: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            bond_ref: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             spec_id: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             sla_hash: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             committed_rate_bits_per_sec: BorshDeserialize::deserialize(&mut data)
@@ -320,19 +320,19 @@ mod tests {
         assert_eq!(feed.groups_for(&exchange), &[group]);
         assert_eq!(feed.status, FeedStatus::Active);
         assert_eq!(feed.builder, Pubkey::default());
-        assert_eq!(feed.stake_ref, Pubkey::default());
+        assert_eq!(feed.bond_ref, Pubkey::default());
         assert_eq!(feed.spec_id, "");
         assert_eq!(feed.sla_hash, [0u8; 32]);
         assert_eq!(feed.committed_rate_bits_per_sec, 0);
         assert_eq!(feed.feed_chain, FeedChain::Unspecified);
     }
 
-    /// The RFC-28 tail round-trips, and a staked feed keeps the Pending it was created with.
+    /// The RFC-28 tail round-trips, and a bonded feed keeps the Pending it was created with.
     #[test]
-    fn test_staked_feed_roundtrip_keeps_pending() {
+    fn test_bonded_feed_roundtrip_keeps_pending() {
         let mut val = feed_with(Pubkey::new_unique(), vec![Pubkey::new_unique()]);
         val.builder = Pubkey::new_unique();
-        val.stake_ref = Pubkey::new_unique();
+        val.bond_ref = Pubkey::new_unique();
         val.spec_id = "top-of-book@v1.0.0".to_string();
         val.sla_hash = [7u8; 32];
         val.committed_rate_bits_per_sec = 1_000_000_000;

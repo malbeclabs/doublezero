@@ -66,14 +66,14 @@ pub fn process_finalize_feed_retirement(
 
     // The `FeedRetired` event, as a log line. This program has no event mechanism: no
     // `sol_log_data`, no return data, only `msg!`. Nothing consumes this yet, because releasing
-    // the stake on retirement waits for the slashing work, so inventing a mechanism for a single
+    // the bond on retirement waits for the slashing work, so inventing a mechanism for a single
     // absent consumer would buy nothing. The shape is fixed so that whoever consumes it can parse
     // it without this line changing.
     msg!(
-        "FeedRetired feed={} builder={} stake_ref={}",
+        "FeedRetired feed={} builder={} bond_ref={}",
         feed_account.key,
         feed.builder,
-        feed.stake_ref
+        feed.bond_ref
     );
 
     Ok(())

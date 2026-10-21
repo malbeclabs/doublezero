@@ -680,7 +680,7 @@ async fn setup() -> Fixture {
             max_bandwidth: 1000,
             owner: payer.pubkey(),
             use_onchain_allocation: true,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(mgroup, false),

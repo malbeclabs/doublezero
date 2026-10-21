@@ -123,7 +123,7 @@ mod tests {
             owner: pda_pubkey,
             publisher_count: 5,
             subscriber_count: 10,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         }
     }
 

@@ -204,7 +204,7 @@ fn apply_serviceability_json_compat_migrations(serviceability: &mut Value) {
         }
     }
 
-    // A8 appended `stake_ref` to MulticastGroup: the BuilderStake that created a
+    // A8 appended `bond_ref` to MulticastGroup: the BuilderBond that created a
     // group, zero for one an admin created. Historical snapshots predate it, and
     // every group in them was created by an admin, so default it to the zero key,
     // as onchain/Borsh deserialization does for the absent tail.
@@ -217,7 +217,7 @@ fn apply_serviceability_json_compat_migrations(serviceability: &mut Value) {
             .filter_map(|group| group.as_object_mut())
         {
             group
-                .entry("stake_ref")
+                .entry("bond_ref")
                 .or_insert_with(|| Value::String(Pubkey::default().to_string()));
         }
     }

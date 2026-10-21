@@ -2,15 +2,15 @@ mod common;
 
 //
 
-use doublezero_builder_stake::state::BuilderStake;
+use doublezero_builder_bond::state::BuilderBond;
 use solana_program_test::tokio;
 use solana_sdk::{instruction::InstructionError, program_error::ProgramError, signature::Signer};
 
 const ONE_GBPS: u64 = 1_000_000_000;
 const FIVE_GBPS: u64 = 5_000_000_000;
 
-/// A stake is sized by the rate it commits to, and the requirement is pinned on the account when
-/// the stake is created.
+/// A bond is sized by the rate it commits to, and the requirement is pinned on the account when
+/// the bond is created.
 #[tokio::test]
 async fn test_committed_rate_picks_the_tier_amount() {
     let mut t = common::start_test().await;
@@ -27,26 +27,26 @@ async fn test_committed_rate_picks_the_tier_amount() {
         (4, u64::MAX, common::TIER_UNMETERED),
     ] {
         t.send(
-            common::initialize_builder_stake(&builder_key, index, rate),
+            common::initialize_builder_bond(&builder_key, index, rate),
             &[&builder],
         )
         .await
         .unwrap();
 
-        let stake = t
-            .read_builder_stake(&BuilderStake::find_address(&builder_key, index).0)
+        let bond = t
+            .read_builder_bond(&BuilderBond::find_address(&builder_key, index).0)
             .await;
         assert_eq!(
-            stake.required_2z_amount, expected,
+            bond.required_2z_amount, expected,
             "rate {rate} should require {expected}"
         );
-        assert!(!stake.is_funded(), "a new stake holds nothing");
+        assert!(!bond.is_funded(), "a new bond holds nothing");
     }
 }
 
-/// A stake is funded once it holds its requirement, and bonds accumulate to get there.
+/// A bond is funded once it holds its requirement, and bonds accumulate to get there.
 #[tokio::test]
-async fn test_stake_is_funded_once_it_holds_the_requirement() {
+async fn test_bond_is_funded_once_it_holds_the_requirement() {
     let mut t = common::start_test().await;
     t.initialize_and_unpause().await;
 
@@ -55,14 +55,14 @@ async fn test_stake_is_funded_once_it_holds_the_requirement() {
     let source_token_account = t.builder_2z_key;
 
     t.send(
-        common::initialize_builder_stake(&builder_key, 0, ONE_GBPS),
+        common::initialize_builder_bond(&builder_key, 0, ONE_GBPS),
         &[&builder],
     )
     .await
     .unwrap();
-    let stake_key = BuilderStake::find_address(&builder_key, 0).0;
+    let bond_key = BuilderBond::find_address(&builder_key, 0).0;
 
-    // Short of the requirement. Allowed: a builder may fund in more than one transfer, and a stake
+    // Short of the requirement. Allowed: a builder may fund in more than one transfer, and a bond
     // that is short backs no feed.
     t.send(
         common::post_bond(
@@ -75,7 +75,7 @@ async fn test_stake_is_funded_once_it_holds_the_requirement() {
     )
     .await
     .unwrap();
-    assert!(!t.read_builder_stake(&stake_key).await.is_funded());
+    assert!(!t.read_builder_bond(&bond_key).await.is_funded());
 
     // The last unit tips it over.
     t.send(
@@ -84,9 +84,9 @@ async fn test_stake_is_funded_once_it_holds_the_requirement() {
     )
     .await
     .unwrap();
-    let stake = t.read_builder_stake(&stake_key).await;
-    assert!(stake.is_funded());
-    assert_eq!(stake.bonded_2z_amount, common::TIER_1GBPS);
+    let bond = t.read_builder_bond(&bond_key).await;
+    assert!(bond.is_funded());
+    assert_eq!(bond.bonded_2z_amount, common::TIER_1GBPS);
 
     // Over-funding is allowed. RFC-28 lets a builder withdraw the excess after the hold.
     t.send(
@@ -95,15 +95,15 @@ async fn test_stake_is_funded_once_it_holds_the_requirement() {
     )
     .await
     .unwrap();
-    let stake = t.read_builder_stake(&stake_key).await;
-    assert!(stake.is_funded());
-    assert_eq!(stake.bonded_2z_amount, common::TIER_1GBPS * 2);
+    let bond = t.read_builder_bond(&bond_key).await;
+    assert!(bond.is_funded());
+    assert_eq!(bond.bonded_2z_amount, common::TIER_1GBPS * 2);
 }
 
-/// An unpaused program with no tier table sizes no bond, so it takes no stake. Without this a
-/// misordered rollout would hand out stakes with a zero requirement.
+/// An unpaused program with no tier table sizes no bond, so it takes no bond. Without this a
+/// misordered rollout would hand out bonds with a zero requirement.
 #[tokio::test]
-async fn test_unset_tier_table_takes_no_stake() {
+async fn test_unset_tier_table_takes_no_bond() {
     let mut t = common::start_test().await;
     t.initialize_and_set_admin().await;
 
@@ -116,7 +116,7 @@ async fn test_unset_tier_table_takes_no_stake() {
     let builder = t.builder.insecure_clone();
     let err = t
         .send(
-            common::initialize_builder_stake(&builder.pubkey(), 0, ONE_GBPS),
+            common::initialize_builder_bond(&builder.pubkey(), 0, ONE_GBPS),
             &[&builder],
         )
         .await
@@ -168,13 +168,13 @@ async fn test_malformed_tier_table_rejected() {
     assert_eq!(tiers.unmetered_2z_amount, 500_000);
 }
 
-/// A stake that is still short pays the current price, not the price when it was created.
+/// A bond that is still short pays the current price, not the price when it was created.
 ///
-/// Creating a stake is permissionless and costs only rent, so pinning the requirement at creation
-/// would let a builder open stakes in bulk today and fund them years later at a price a repricing
+/// Creating a bond is permissionless and costs only rent, so pinning the requirement at creation
+/// would let a builder open bonds in bulk today and fund them years later at a price a repricing
 /// was meant to replace.
 #[tokio::test]
-async fn test_an_unfunded_stake_pays_the_current_price() {
+async fn test_an_unfunded_bond_pays_the_current_price() {
     let mut t = common::start_test().await;
     t.initialize_and_unpause().await;
 
@@ -184,14 +184,14 @@ async fn test_an_unfunded_stake_pays_the_current_price() {
 
     // Opened at today's price and left empty.
     t.send(
-        common::initialize_builder_stake(&builder_key, 0, ONE_GBPS),
+        common::initialize_builder_bond(&builder_key, 0, ONE_GBPS),
         &[&builder],
     )
     .await
     .unwrap();
-    let stake_key = BuilderStake::find_address(&builder_key, 0).0;
+    let bond_key = BuilderBond::find_address(&builder_key, 0).0;
     assert_eq!(
-        t.read_builder_stake(&stake_key).await.required_2z_amount,
+        t.read_builder_bond(&bond_key).await.required_2z_amount,
         common::TIER_1GBPS
     );
 
@@ -217,9 +217,9 @@ async fn test_an_unfunded_stake_pays_the_current_price() {
     )
     .await
     .unwrap();
-    let stake = t.read_builder_stake(&stake_key).await;
-    assert_eq!(stake.required_2z_amount, common::TIER_1GBPS * 10);
-    assert!(!stake.is_funded());
+    let bond = t.read_builder_bond(&bond_key).await;
+    assert_eq!(bond.required_2z_amount, common::TIER_1GBPS * 10);
+    assert!(!bond.is_funded());
 
     // The new price does.
     t.send(
@@ -233,13 +233,13 @@ async fn test_an_unfunded_stake_pays_the_current_price() {
     )
     .await
     .unwrap();
-    assert!(t.read_builder_stake(&stake_key).await.is_funded());
+    assert!(t.read_builder_bond(&bond_key).await.is_funded());
 }
 
-/// Repricing a tier does not move what an already funded stake owes. RFC-28 fixes the bond at the
-/// price prevailing when the tier is set, so a funded stake stays funded.
+/// Repricing a tier does not move what an already funded bond owes. RFC-28 fixes the bond at the
+/// price prevailing when the tier is set, so a funded bond stays funded.
 #[tokio::test]
-async fn test_repricing_a_tier_leaves_existing_stakes_alone() {
+async fn test_repricing_a_tier_leaves_existing_bonds_alone() {
     let mut t = common::start_test().await;
     t.initialize_and_unpause().await;
 
@@ -247,7 +247,7 @@ async fn test_repricing_a_tier_leaves_existing_stakes_alone() {
     let builder_key = builder.pubkey();
 
     t.send(
-        common::initialize_builder_stake(&builder_key, 0, ONE_GBPS),
+        common::initialize_builder_bond(&builder_key, 0, ONE_GBPS),
         &[&builder],
     )
     .await
@@ -259,8 +259,8 @@ async fn test_repricing_a_tier_leaves_existing_stakes_alone() {
     .await
     .unwrap();
 
-    let stake_key = BuilderStake::find_address(&builder_key, 0).0;
-    assert!(t.read_builder_stake(&stake_key).await.is_funded());
+    let bond_key = BuilderBond::find_address(&builder_key, 0).0;
+    assert!(t.read_builder_bond(&bond_key).await.is_funded());
 
     // The admin raises every tier tenfold.
     let admin = t.upgrade_authority.pubkey();
@@ -277,19 +277,19 @@ async fn test_repricing_a_tier_leaves_existing_stakes_alone() {
     .await
     .unwrap();
 
-    let stake = t.read_builder_stake(&stake_key).await;
-    assert_eq!(stake.required_2z_amount, common::TIER_1GBPS);
-    assert!(stake.is_funded());
+    let bond = t.read_builder_bond(&bond_key).await;
+    assert_eq!(bond.required_2z_amount, common::TIER_1GBPS);
+    assert!(bond.is_funded());
 
-    // A stake posted after the change pays the new price.
+    // A bond posted after the change pays the new price.
     t.send(
-        common::initialize_builder_stake(&builder_key, 1, ONE_GBPS),
+        common::initialize_builder_bond(&builder_key, 1, ONE_GBPS),
         &[&builder],
     )
     .await
     .unwrap();
     assert_eq!(
-        t.read_builder_stake(&BuilderStake::find_address(&builder_key, 1).0)
+        t.read_builder_bond(&BuilderBond::find_address(&builder_key, 1).0)
             .await
             .required_2z_amount,
         common::TIER_1GBPS * 10

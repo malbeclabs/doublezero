@@ -1,6 +1,7 @@
 pub mod accesspass;
 pub mod accountdata;
 pub mod accounttype;
+pub mod bond_mirror;
 pub mod contributor;
 pub mod device;
 pub mod exchange;
@@ -16,7 +17,6 @@ pub mod multicastgroup;
 pub mod permission;
 pub mod programconfig;
 pub mod resource_extension;
-pub mod stake_mirror;
 pub mod tenant;
 pub mod topology;
 pub mod user;

@@ -1091,8 +1091,8 @@ type MulticastGroup struct {
 	Code            string
 	PublisherCount  uint32
 	SubscriberCount uint32
-	// StakeRef is the BuilderStake that created the group, or zero for a group an admin created.
-	StakeRef [32]uint8
+	// BondRef is the BuilderBond that created the group, or zero for a group an admin created.
+	BondRef [32]uint8
 	PubKey   [32]byte
 }
 
@@ -1342,7 +1342,7 @@ const (
 	PermissionFlagUserAdmin        uint64 = 1 << 9
 	PermissionFlagAccessPassAdmin  uint64 = 1 << 10
 	PermissionFlagHealthOracle     uint64 = 1 << 11
-	PermissionFlagStakeOracle      uint64 = 1 << 18
+	PermissionFlagBondOracle      uint64 = 1 << 18
 	PermissionFlagQA               uint64 = 1 << 12
 	PermissionFlagGlobalstateAdmin uint64 = 1 << 13
 	PermissionFlagContributorAdmin uint64 = 1 << 14
@@ -1482,7 +1482,7 @@ type Feed struct {
 	Exchange                [32]byte
 	Groups                  [][32]byte
 	Builder                 [32]byte
-	StakeRef                [32]byte
+	BondRef                [32]byte
 	SpecId                  string
 	SlaHash                 [32]byte
 	CommittedRateBitsPerSec uint64

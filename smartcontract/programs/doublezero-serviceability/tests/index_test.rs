@@ -41,7 +41,7 @@ async fn create_multicast_group(
             max_bandwidth: 1000,
             owner: Pubkey::new_unique(),
             use_onchain_allocation: true,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),

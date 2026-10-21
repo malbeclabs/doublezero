@@ -22,7 +22,7 @@ pub enum ProgramFlagConfiguration {
 }
 
 #[derive(Debug, BorshDeserialize, BorshSerialize, Clone, PartialEq, Eq)]
-pub enum BuilderStakeInstructionData {
+pub enum BuilderBondInstructionData {
     /// Create the program config and pause the program. Signed by the payer.
     InitializeProgram,
 
@@ -34,29 +34,29 @@ pub enum BuilderStakeInstructionData {
     /// Change a program setting. Signed by the admin.
     ConfigureProgram(ProgramConfiguration),
 
-    /// Create a stake and its 2Z token account. Signed by the builder, which pays the rent.
+    /// Create a bond and its 2Z token account. Signed by the builder, which pays the rent.
     ///
-    /// `stake_index` distinguishes a builder's stakes from each other and is part of the address,
+    /// `bond_index` distinguishes a builder's bonds from each other and is part of the address,
     /// so creating the same index twice fails. `committed_rate_bits_per_sec` is the rate the feed
-    /// backed by this stake may commit to. It selects the tier, and the tier sets the bond this
-    /// stake has to hold, pinned on the account as `required_2z_amount`.
-    InitializeBuilderStake {
-        stake_index: u64,
+    /// backed by this bond may commit to. It selects the tier, and the tier sets the bond this
+    /// bond has to hold, pinned on the account as `required_2z_amount`.
+    InitializeBuilderBond {
+        bond_index: u64,
         committed_rate_bits_per_sec: u64,
     },
 
-    /// Move 2Z from the builder's token account into the stake's. Signed by the builder, which
+    /// Move 2Z from the builder's token account into the bond's. Signed by the builder, which
     /// signs the transfer as the source token account's authority.
     ///
-    /// The first bond starts the six-month hold. Later ones top the stake up and do not restart
+    /// The first bond starts the six-month hold. Later ones top the bond up and do not restart
     /// it, so a repricing that forces a top-up cannot extend the hold.
     PostBond { amount: u64 },
 
-    /// Return 2Z the stake holds above its requirement to a token account the builder names.
+    /// Return 2Z the bond holds above its requirement to a token account the builder names.
     /// Signed by the builder. Refused until the hold elapses, and never below the requirement.
     Withdraw { amount: u64 },
 
-    /// Move this stake's hold expiry, so a devnet demo can show a withdrawal without waiting six
+    /// Move this bond's hold expiry, so a devnet demo can show a withdrawal without waiting six
     /// months. Signed by the admin.
     ///
     /// Present in every build on purpose. Putting it behind `#[cfg]` would give the development

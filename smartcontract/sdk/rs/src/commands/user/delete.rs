@@ -224,7 +224,7 @@ mod tests {
             multicast_ip: "223.0.0.1".parse().unwrap(),
             publisher_count: 0,
             subscriber_count: 1,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         };
 
         let (accesspass_pubkey, _) = get_accesspass_pda(
@@ -436,7 +436,7 @@ mod tests {
             multicast_ip: "223.0.0.1".parse().unwrap(),
             publisher_count: 1,
             subscriber_count: 1,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         };
 
         let (accesspass_pubkey, _) = get_accesspass_pda(
@@ -693,7 +693,7 @@ mod tests {
             multicast_ip: "223.0.0.1".parse().unwrap(),
             publisher_count: 0,
             subscriber_count: 1,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         };
 
         let mut seq = Sequence::new();

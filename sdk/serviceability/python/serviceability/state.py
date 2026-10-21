@@ -927,8 +927,8 @@ class MulticastGroup:
     code: str = ""
     publisher_count: int = 0
     subscriber_count: int = 0
-    # The BuilderStake that created the group, or the default key for a group an admin created.
-    stake_ref: Pubkey = Pubkey.default()
+    # The BuilderBond that created the group, or the default key for a group an admin created.
+    bond_ref: Pubkey = Pubkey.default()
 
     @classmethod
     def from_bytes(cls, data: bytes) -> MulticastGroup:
@@ -947,7 +947,7 @@ class MulticastGroup:
         mg.subscriber_count = r.read_u32()
         # A group created before the field existed ends here, and the reader raises past the end.
         if r.remaining >= 32:
-            mg.stake_ref = _read_pubkey(r)
+            mg.bond_ref = _read_pubkey(r)
         return mg
 
 
@@ -1282,7 +1282,7 @@ class Feed:
     # RFC-28. Absent from feeds written before RFC-28, which decode with these defaulted and
     # status FEED_STATUS_ACTIVE.
     builder: Pubkey = Pubkey.default()
-    stake_ref: Pubkey = Pubkey.default()
+    bond_ref: Pubkey = Pubkey.default()
     spec_id: str = ""
     sla_hash: bytes = b"\x00" * 32
     committed_rate_bits_per_sec: int = 0
@@ -1313,7 +1313,7 @@ class Feed:
         # tail reads themselves leave `remaining` at zero either way.
         has_rfc28_tail = r.remaining > 0
         f.builder = _read_pubkey(r)
-        f.stake_ref = _read_pubkey(r)
+        f.bond_ref = _read_pubkey(r)
         f.spec_id = r.read_string()
         f.sla_hash = r.read_bytes(32)
         f.committed_rate_bits_per_sec = r.read_u64()

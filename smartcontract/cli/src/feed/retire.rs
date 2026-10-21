@@ -65,7 +65,7 @@ mod tests {
             exchange: Pubkey::new_unique(),
             groups: vec![],
             builder,
-            stake_ref: Pubkey::new_unique(),
+            bond_ref: Pubkey::new_unique(),
             status: FeedStatus::Active,
             ..Default::default()
         };

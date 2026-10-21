@@ -499,7 +499,7 @@ mod tests {
             code: "test".to_string(),
             publisher_count: 5,
             subscriber_count: 10,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         };
 
         let access1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
@@ -768,7 +768,7 @@ mod tests {
             code: "test".to_string(),
             publisher_count: 5,
             subscriber_count: 10,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         };
 
         // access1: publisher of "test", IP 1.2.3.4
@@ -1003,7 +1003,7 @@ mod tests {
             code: code.to_string(),
             publisher_count: 0,
             subscriber_count: 1,
-            stake_ref: Pubkey::default(),
+            bond_ref: Pubkey::default(),
         };
         let feed_group = group("qa-payments-group");
         let comped_group = group("comped");

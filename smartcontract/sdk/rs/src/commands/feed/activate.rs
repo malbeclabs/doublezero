@@ -5,12 +5,12 @@ use solana_sdk::{pubkey::Pubkey, signature::Signature};
 #[derive(Debug, PartialEq, Clone)]
 pub struct ActivateFeedCommand {
     pub pubkey: Pubkey,
-    /// The feed's stake mirror, required for a staked feed and `None` for a catalog one.
+    /// The feed's bond mirror, required for a bonded feed and `None` for a catalog one.
     ///
-    /// Activation re-reads the mirror, so a staked feed without it is refused rather than read as
-    /// having no stake to check. The caller derives it from the feed's own `stake_ref` rather than
+    /// Activation re-reads the mirror, so a bonded feed without it is refused rather than read as
+    /// having no bond to check. The caller derives it from the feed's own `bond_ref` rather than
     /// choosing it.
-    pub stake_mirror: Option<Pubkey>,
+    pub bond_mirror: Option<Pubkey>,
 }
 
 impl ActivateFeedCommand {
@@ -19,7 +19,7 @@ impl ActivateFeedCommand {
             &client.get_program_id(),
             &client.get_payer(),
             &self.pubkey,
-            self.stake_mirror.as_ref(),
+            self.bond_mirror.as_ref(),
         );
 
         client.send_transaction(ix)
@@ -37,10 +37,10 @@ mod tests {
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
-    /// Activation re-reads the mirror the feed's `stake_ref` names. Dropping the mirror here would reach the program as a staked feed with no stake
+    /// Activation re-reads the mirror the feed's `bond_ref` names. Dropping the mirror here would reach the program as a bonded feed with no bond
     /// to read, which it refuses.
     #[test]
-    fn test_commands_feed_activate_forwards_the_stake_mirror() {
+    fn test_commands_feed_activate_forwards_the_bond_mirror() {
         let mut client = create_test_client();
         let program_id = client.get_program_id();
         let payer = client.get_payer();
@@ -58,7 +58,7 @@ mod tests {
 
         let res = ActivateFeedCommand {
             pubkey: feed_pk,
-            stake_mirror: Some(mirror),
+            bond_mirror: Some(mirror),
         }
         .execute(&client);
         assert_eq!(res.unwrap(), signature);
@@ -66,7 +66,7 @@ mod tests {
 
     /// A catalog feed sends no mirror, so the instruction carries one account fewer.
     #[test]
-    fn test_commands_feed_activate_sends_no_stake_mirror_for_a_catalog_feed() {
+    fn test_commands_feed_activate_sends_no_bond_mirror_for_a_catalog_feed() {
         let mut client = create_test_client();
         let program_id = client.get_program_id();
         let payer = client.get_payer();
@@ -83,7 +83,7 @@ mod tests {
 
         let res = ActivateFeedCommand {
             pubkey: feed_pk,
-            stake_mirror: None,
+            bond_mirror: None,
         }
         .execute(&client);
         assert_eq!(res.unwrap(), signature);

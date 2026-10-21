@@ -1,11 +1,11 @@
 use crate::{
     error::DoubleZeroError,
     state::{
-        accesspass::AccessPass, accounttype::AccountType, contributor::Contributor, device::Device,
-        exchange::Exchange, feed::Feed, globalconfig::GlobalConfig, globalstate::GlobalState,
-        index::Index, link::Link, location::Location, multicastgroup::MulticastGroup,
-        permission::Permission, programconfig::ProgramConfig,
-        resource_extension::ResourceExtensionOwned, stake_mirror::StakeMirror, tenant::Tenant,
+        accesspass::AccessPass, accounttype::AccountType, bond_mirror::BondMirror,
+        contributor::Contributor, device::Device, exchange::Exchange, feed::Feed,
+        globalconfig::GlobalConfig, globalstate::GlobalState, index::Index, link::Link,
+        location::Location, multicastgroup::MulticastGroup, permission::Permission,
+        programconfig::ProgramConfig, resource_extension::ResourceExtensionOwned, tenant::Tenant,
         topology::TopologyInfo, user::User,
     },
 };
@@ -33,7 +33,7 @@ pub enum AccountData {
     Index(Index),
     Topology(TopologyInfo),
     Feed(Feed),
-    StakeMirror(StakeMirror),
+    BondMirror(BondMirror),
 }
 
 impl AccountData {
@@ -57,7 +57,7 @@ impl AccountData {
             AccountData::Index(_) => "Index",
             AccountData::Topology(_) => "Topology",
             AccountData::Feed(_) => "Feed",
-            AccountData::StakeMirror(_) => "StakeMirror",
+            AccountData::BondMirror(_) => "BondMirror",
         }
     }
 
@@ -81,7 +81,7 @@ impl AccountData {
             AccountData::Index(index) => index.to_string(),
             AccountData::Topology(topology) => topology.to_string(),
             AccountData::Feed(feed) => feed.to_string(),
-            AccountData::StakeMirror(m) => m.to_string(),
+            AccountData::BondMirror(m) => m.to_string(),
         }
     }
 
@@ -221,8 +221,8 @@ impl AccountData {
         }
     }
 
-    pub fn get_stake_mirror(&self) -> Result<StakeMirror, DoubleZeroError> {
-        if let AccountData::StakeMirror(mirror) = self {
+    pub fn get_bond_mirror(&self) -> Result<BondMirror, DoubleZeroError> {
+        if let AccountData::BondMirror(mirror) = self {
             Ok(mirror.clone())
         } else {
             Err(DoubleZeroError::InvalidAccountType)
@@ -274,7 +274,7 @@ impl TryFrom<&[u8]> for AccountData {
                 bytes as &[u8],
             )?)),
             AccountType::Feed => Ok(AccountData::Feed(Feed::try_from(bytes as &[u8])?)),
-            AccountType::StakeMirror => Ok(AccountData::StakeMirror(StakeMirror::try_from(
+            AccountType::BondMirror => Ok(AccountData::BondMirror(BondMirror::try_from(
                 bytes as &[u8],
             )?)),
         }

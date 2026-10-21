@@ -54,18 +54,18 @@ pub fn process_delete_feed(
     // catalog feed is safe and the oracle owns keeping feeds and passes in sync.
     let feed = Feed::try_from(feed_account)?;
 
-    // A staked feed is not a catalog entry an admin can drop. Its stake mirror records this feed
-    // in `feed_key` to enforce RFC-28's one feed per stake, and closing the feed here would leave
+    // A bonded feed is not a catalog entry an admin can drop. Its bond mirror records this feed
+    // in `feed_key` to enforce RFC-28's one feed per bond, and closing the feed here would leave
     // that pointing at an account that no longer exists: the builder's bond would back nothing
     // and still refuse to back anything else. Retirement is the path out, and it releases the
-    // stake with it. Both land in the feed lifecycle work (D2).
+    // bond with it. Both land in the feed lifecycle work (D2).
     if feed.builder != Pubkey::default() {
         msg!(
-            "Feed {} is staked by builder {}; retire it instead",
+            "Feed {} is bonded by builder {}; retire it instead",
             feed_account.key,
             feed.builder
         );
-        return Err(DoubleZeroError::StakedFeedCannotBeDeleted.into());
+        return Err(DoubleZeroError::BondedFeedCannotBeDeleted.into());
     }
 
     // A feed under notice is not a catalog entry to drop either. Closing it here would end the

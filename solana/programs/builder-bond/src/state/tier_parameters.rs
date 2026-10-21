@@ -7,7 +7,7 @@ use bytemuck::{Pod, Zeroable};
 /// price feed this program reads.
 ///
 /// The rate ceilings are compiled in rather than configured, because they have to agree with
-/// `StakeTier::max_rate_bits_per_sec` in the serviceability program on the DZ ledger. If those two
+/// `BondTier::max_rate_bits_per_sec` in the serviceability program on the DZ ledger. If those two
 /// disagree, a builder funds one tier here and a feed is checked against another there.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Pod, Zeroable)]
 #[repr(C, align(8))]

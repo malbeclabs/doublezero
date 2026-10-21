@@ -218,6 +218,43 @@ pub fn can_grant_foundation(
     false
 }
 
+/// Whether `payer_key` acts as the feed authority: it is the legacy `feed_authority_pk`, or its
+/// own Permission account carries `FEED_AUTHORITY`.
+///
+/// The access-pass and subscriber-allowlist handlers use this to keep the feed authority to the
+/// passes it owns, and to let it act on a pass whose `user_payer` differs from the one named in
+/// the instruction. Keyed on the legacy field alone, both rules stop applying once the feed
+/// authority signs only through its Permission account and `feed_authority_pk` names another key
+/// or none (malbeclabs/doublezero#4092).
+///
+/// The Permission account's status is ignored. The ownership rule is a restriction, and
+/// suspending the account must not lift it. Whether the payer may act at all is still decided by
+/// [`authorize`].
+///
+/// `permission_account` is the payer's trailing Permission account, if the caller passed one. It
+/// is bound to `payer_key` by re-deriving the PDA, so another key's account is ignored, as is an
+/// uninitialized one.
+pub fn is_feed_authority(
+    program_id: &Pubkey,
+    permission_account: Option<&AccountInfo>,
+    payer_key: &Pubkey,
+    globalstate: &GlobalState,
+) -> bool {
+    if globalstate.feed_authority_pk == *payer_key {
+        return true;
+    }
+    let Some(acc) = permission_account else {
+        return false;
+    };
+    let (expected_pda, _) = get_permission_pda(program_id, payer_key);
+    acc.key == &expected_pda
+        && acc.owner == program_id
+        && !acc.data_is_empty()
+        && Permission::try_from(acc)
+            .map(|p| p.permissions & permission_flags::FEED_AUTHORITY != 0)
+            .unwrap_or(false)
+}
+
 /// Returns true if `payer` satisfies at least one of the requested flags using legacy
 /// GlobalState fields.
 fn check_legacy_any(payer: &Pubkey, globalstate: &GlobalState, any_of: u128) -> bool {
@@ -2320,6 +2357,133 @@ mod tests {
             &program_id,
             Some(&account),
             &payer,
+            &gs
+        ));
+    }
+
+    // ── is_feed_authority ────────────────────────────────────────────────────
+
+    /// Runs `is_feed_authority` for `payer` with a Permission account at `pda`, owned by `owner`.
+    fn feed_authority_with_account(
+        program_id: &Pubkey,
+        payer: &Pubkey,
+        pda: &Pubkey,
+        owner: &Pubkey,
+        data: &mut [u8],
+        gs: &GlobalState,
+    ) -> bool {
+        let mut lamports = 100_000u64;
+        let account = AccountInfo::new(pda, false, false, &mut lamports, data, owner, false);
+        is_feed_authority(program_id, Some(&account), payer, gs)
+    }
+
+    #[test]
+    fn test_is_feed_authority_legacy_key() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        assert!(is_feed_authority(
+            &program_id,
+            None,
+            &payer,
+            &gs_with_feed(&payer)
+        ));
+        assert!(!is_feed_authority(
+            &program_id,
+            None,
+            &payer,
+            &gs_with_feed(&Pubkey::new_unique())
+        ));
+        // ACCESS_PASS_ADMIN through another legacy route does not make a feed authority.
+        assert!(!is_feed_authority(
+            &program_id,
+            None,
+            &payer,
+            &gs_with_sentinel(&payer)
+        ));
+        assert!(!is_feed_authority(
+            &program_id,
+            None,
+            &payer,
+            &gs_with_foundation(&payer)
+        ));
+    }
+
+    #[test]
+    fn test_is_feed_authority_permission_flag_whatever_the_status() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let gs = GlobalState::default();
+        for status in [PermissionStatus::Activated, PermissionStatus::Suspended] {
+            let (pda, _, mut data) = make_permission_data(
+                &program_id,
+                &payer,
+                status,
+                permission_flags::ACCESS_PASS_ADMIN | permission_flags::FEED_AUTHORITY,
+            );
+            assert!(
+                feed_authority_with_account(&program_id, &payer, &pda, &program_id, &mut data, &gs),
+                "{status:?}"
+            );
+        }
+        let (pda, _, mut data) = make_permission_data(
+            &program_id,
+            &payer,
+            PermissionStatus::Activated,
+            permission_flags::ACCESS_PASS_ADMIN,
+        );
+        assert!(!feed_authority_with_account(
+            &program_id,
+            &payer,
+            &pda,
+            &program_id,
+            &mut data,
+            &gs
+        ));
+    }
+
+    #[test]
+    fn test_is_feed_authority_ignores_an_account_not_bound_to_the_payer() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let other = Pubkey::new_unique();
+        let gs = GlobalState::default();
+        // Another key's Permission account carrying FEED_AUTHORITY.
+        let (other_pda, _, mut data) = make_permission_data(
+            &program_id,
+            &other,
+            PermissionStatus::Activated,
+            permission_flags::FEED_AUTHORITY,
+        );
+        assert!(!feed_authority_with_account(
+            &program_id,
+            &payer,
+            &other_pda,
+            &program_id,
+            &mut data,
+            &gs
+        ));
+        // The payer's PDA address, but owned by another program.
+        let (pda, _, mut data) = make_permission_data(
+            &program_id,
+            &payer,
+            PermissionStatus::Activated,
+            permission_flags::FEED_AUTHORITY,
+        );
+        assert!(!feed_authority_with_account(
+            &program_id,
+            &payer,
+            &pda,
+            &Pubkey::new_unique(),
+            &mut data,
+            &gs
+        ));
+        // The payer's PDA, never created.
+        assert!(!feed_authority_with_account(
+            &program_id,
+            &payer,
+            &pda,
+            &solana_system_interface::program::ID,
+            &mut [],
             &gs
         ));
     }

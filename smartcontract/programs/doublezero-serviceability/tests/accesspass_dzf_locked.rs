@@ -474,12 +474,10 @@ async fn test_accesspass_dzf_locked_requires_permission_account_in_strict_mode()
 
     // Grant path: the Permission PDA is appended as the trailing account authorize() reads.
     //
-    // Note that `pass_admin` is not the feed authority, so the ownership guard in
-    // `process_set_access_pass_flags` never fires and this succeeds against a pass owned by
-    // `payer`. That is correct today — an ACCESS_PASS_ADMIN holder may target any pass — but it is
-    // also the exact shape the oracle takes after the feed-authority -> Permission migration. When
-    // that migration lands, revisit this assertion together with the DEPENDENCY comment on that
-    // guard: what reads as an expected success here would then be the regression. Tracked in #4092.
+    // `pass_admin` holds ACCESS_PASS_ADMIN but not FEED_AUTHORITY, so the feed authority's
+    // ownership rule does not apply and this succeeds against a pass owned by `payer`. A signer
+    // whose Permission account also carries FEED_AUTHORITY is kept to its own passes; see
+    // feed_authority_permission_test.rs.
     execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,

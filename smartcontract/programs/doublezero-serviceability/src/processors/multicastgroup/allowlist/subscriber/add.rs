@@ -1,5 +1,5 @@
 use crate::{
-    authorize::{authorize, split_trailing_permission},
+    authorize::{authorize, is_feed_authority, split_trailing_permission},
     error::DoubleZeroError,
     pda::get_accesspass_pda,
     processors::{accesspass::airdrop_user_credits, validation::validate_program_account},
@@ -96,6 +96,12 @@ pub fn process_add_multicastgroup_sub_allowlist(
     // its seats. Its subscribers come in through seats instead.
     let owner_may_grant =
         mgroup.owner == *payer_account.key && mgroup.bond_ref == Pubkey::default();
+    let payer_is_feed_authority = is_feed_authority(
+        program_id,
+        permission_account,
+        payer_account.key,
+        &globalstate,
+    );
     let is_authorized = owner_may_grant
         || authorize(
             program_id,
@@ -181,9 +187,7 @@ pub fn process_add_multicastgroup_sub_allowlist(
         );
 
         // Feed authority can only modify access passes they own
-        if globalstate.feed_authority_pk == *payer_account.key
-            && accesspass.owner != *payer_account.key
-        {
+        if payer_is_feed_authority && accesspass.owner != *payer_account.key {
             return Err(DoubleZeroError::NotAllowed.into());
         }
 
@@ -195,7 +199,7 @@ pub fn process_add_multicastgroup_sub_allowlist(
             );
         }
         // Feed authority may operate on access passes with a different user_payer
-        if globalstate.feed_authority_pk != *payer_account.key {
+        if !payer_is_feed_authority {
             assert!(
                 accesspass.user_payer == value.user_payer,
                 "AccessPass user_payer does not match"

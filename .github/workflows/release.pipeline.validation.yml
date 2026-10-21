@@ -9,33 +9,69 @@ permissions:
   contents: read
 
 jobs:
-  # Validates each GoReleaser config with `goreleaser check`, which needs no license
-  # key, so no run reads a secret. The full Pro snapshot comes back on `main` only,
-  # with GORELEASER_KEY from Secrets Manager, once its role exists
-  # (malbeclabs/infra#3034).
+  # Builds a GoReleaser snapshot of each release. A snapshot skips the Pro license
+  # check and publishes nothing, so no run reads a secret.
   validate_pipeline:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        release:
-          - agent
-          - client
-          - controller
-          - device-telemetry-agent
-          - funder
-          - monitor
-          - qa-agent
-          - s3-uploader
-          - global-monitor
+        include:
+          - release: agent
+            languages: ["go"]
+          - release: client
+            languages: ["go", "rust"]
+          - release: controller
+            languages: ["go"]
+          - release: device-telemetry-agent
+            languages: ["go"]
+          - release: funder
+            languages: ["go"]
+          - release: monitor
+            languages: ["go"]
+          - release: qa-agent
+            languages: ["go"]
+          - release: s3-uploader
+            languages: ["go"]
+          - release: global-monitor
+            languages: ["go"]
     name: release-validation-${{ matrix.release }}
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          fetch-depth: 0
           persist-credentials: false
 
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: true
+        if: contains(matrix.languages, 'go')
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        if: contains(matrix.languages, 'rust')
+        with:
+          cache-targets: |
+            target
+            target/x86_64-unknown-linux-gnu/release
+
+      - name: Install rust toolchain
+        uses: dtolnay/rust-toolchain@59a558e8c538bf4a23bbffa19e5a278b703f2920 # 1.97.1
+        if: contains(matrix.languages, 'rust')
+        with:
+          targets: x86_64-unknown-linux-musl
+
+      - name: Install dependencies for rpm packaging
+        run: |
+          sudo apt update
+          sudo apt-get install build-essential pkg-config libssl-dev squashfs-tools rpm musl-tools -y
+
+      - name: Set env vars
+        run: ./scripts/env.sh >> "$GITHUB_ENV"
+
       - uses: $/.github/actions/install-goreleaser-pro
-      - name: Check GoReleaser config
+      - name: Run GoReleaser
         env:
           RELEASE: ${{ matrix.release }}
-        run: goreleaser check -f "release/.goreleaser.base.${RELEASE}.yaml"
+        run: goreleaser release --snapshot -f "release/.goreleaser.base.${RELEASE}.yaml" --clean

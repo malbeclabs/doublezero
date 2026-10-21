@@ -13,6 +13,9 @@ jobs:
   # check and publishes nothing, so no run reads a secret.
   validate_pipeline:
     runs-on: ubuntu-latest
+    # The client snapshot (Go plus three Rust builds) took about 10 minutes on the old
+    # 16-core runner; ubuntu-latest has 4 cores.
+    timeout-minutes: 45
     strategy:
       matrix:
         include:

@@ -106,3 +106,26 @@ jobs:
             -ignore 'specifying action "\$/[^"]+" in invalid format because ref is missing' \
             "${workflows[@]}"
           "$RUNNER_TEMP/zizmor" --no-config --no-ignores "${workflows[@]}"
+      # The in-repo actions the linted workflows call. zizmor does not follow `$/` into
+      # them, so they are linted here. Each of these two puts a fixed directory on
+      # PATH, which zizmor reports as github-env; that finding is allowed in these two
+      # files only, and every other finding fails the job. dispatch-and-wait is used
+      # only by a disabled release workflow.
+      - name: Lint in-repo actions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mapfile -t actions < <(find .github/actions -name 'action.y*ml' \
+            ! -path '.github/actions/dispatch-and-wait/*' | sort)
+          "$RUNNER_TEMP/zizmor" --no-config --no-ignores --format json "${actions[@]}" > zizmor-actions.json || true
+          jq -e 'type == "array"' zizmor-actions.json > /dev/null
+          if jq -e '[.[] | select(
+                .ident != "github-env" or
+                ([.locations[].symbolic.key.Local.verbatim_path] - [
+                  ".github/actions/install-goreleaser-pro/action.yml",
+                  ".github/actions/solana-toolchain/action.yml"
+                ] | length > 0)
+              )] | length > 0' zizmor-actions.json > /dev/null; then
+            "$RUNNER_TEMP/zizmor" --no-config --no-ignores "${actions[@]}"
+            exit 1
+          fi

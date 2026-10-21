@@ -11,13 +11,16 @@ jobs:
   sdk-version-check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - name: Verify Python and TypeScript versions match
         run: |
           check_versions() {
             local sdk=$1
-            local py_ver=$(python3 -c "import tomllib; print(tomllib.load(open('sdk/$sdk/python/pyproject.toml','rb'))['project']['version'])")
-            local ts_ver=$(node -p "require('./sdk/$sdk/typescript/package.json').version")
+            local py_ver ts_ver
+            py_ver=$(python3 -c "import tomllib; print(tomllib.load(open('sdk/$sdk/python/pyproject.toml','rb'))['project']['version'])")
+            ts_ver=$(node -p "require('./sdk/$sdk/typescript/package.json').version")
             if [ "$py_ver" != "$ts_ver" ]; then
               echo "❌ $sdk: Python=$py_ver TypeScript=$ts_ver"
               return 1
@@ -40,13 +43,15 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
           cache: true
-      - uses: astral-sh/setup-uv@v6
-      - uses: oven-sh/setup-bun@v2
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: make sdk-test
 
   # Committed .bin/.json goldens must match Rust Borsh output. Regenerating every
@@ -56,22 +61,26 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.97.1
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@59a558e8c538bf4a23bbffa19e5a278b703f2920 # 1.97.1
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Check fixture drift
         run: make check-fixtures
 
   sdk-compat-test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
           cache: true
-      - uses: astral-sh/setup-uv@v6
-      - uses: oven-sh/setup-bun@v2
+      - uses: astral-sh/setup-uv@d0cc045d04ccac9d8b7881df0226f9e82c39688e # v6.8.0
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
       - run: make sdk-compat-test
         env:
           REVDIST_COMPAT_TEST: "1"

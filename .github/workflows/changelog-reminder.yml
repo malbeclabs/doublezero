@@ -4,20 +4,26 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
 
+permissions:
+  contents: read
+
 jobs:
   changelog:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: check-changelog
+        env:
+          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
         run: |
           set -euo pipefail
 
-          if echo "${{ toJson(github.event.pull_request.labels.*.name) }}" | grep -q "skip-changelog"; then
+          if echo "$LABELS" | grep -q "skip-changelog"; then
             echo "skip-changelog label present; passing without requiring changelog update."
             exit 0
           fi

@@ -42,11 +42,16 @@ env:
 # network-bound and needs no cargo lock, so it overlaps with that build instead
 # of sitting wholly inside the readiness window.
 
+permissions:
+  contents: read
+
 jobs:
   test-doublezero-solana-fork:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - name: Free disk space
         run: |
           df -h
@@ -54,10 +59,12 @@ jobs:
           sudo docker image prune --all --force
           sudo docker builder prune -a --force
           df -h
-      - uses: dtolnay/rust-toolchain@1.97.1
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # Add 1.99.1 patch release (master, 2026-10-16)
+        with:
+          toolchain: "1.97.1"
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Solana toolchain
-        uses: ./.github/actions/solana-toolchain
+        uses: $/.github/actions/solana-toolchain
         with:
           version: ${{ env.SOLANA_CLI }}
       - name: Generate ~/.config/solana/id.json
@@ -81,7 +88,9 @@ jobs:
   test-doublezero-solana-validator-debt-fork-current:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - name: Free disk space
         run: |
           df -h
@@ -89,10 +98,12 @@ jobs:
           sudo docker image prune --all --force
           sudo docker builder prune -a --force
           df -h
-      - uses: dtolnay/rust-toolchain@1.97.1
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # Add 1.99.1 patch release (master, 2026-10-16)
+        with:
+          toolchain: "1.97.1"
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Solana toolchain
-        uses: ./.github/actions/solana-toolchain
+        uses: $/.github/actions/solana-toolchain
         with:
           version: ${{ env.SOLANA_CLI }}
       - name: Generate ~/.config/solana/id.json

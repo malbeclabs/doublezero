@@ -9,6 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - CI
+  - The CI workflows (`go`, `rust`, `solana`, `sdk`, `elixir`, `offchain.local-validator`, `changelog-reminder` and `release pipeline validation`) pin every action to a commit SHA, run with a read-only token, and drop the checkout token. `go-container-test` no longer logs in to Docker Hub. `release pipeline validation` builds its GoReleaser snapshots on GitHub-hosted runners and reads no secret: a snapshot skips the Pro license check. A new `actions-lint` workflow runs actionlint and zizmor on every enabled workflow.
   - A new `osv-scanner` workflow fails a pull request, a push to `main` or a daily run when a locked dependency (Rust, Go, Python, npm or Elixir) has a scored advisory that `osv-scanner.toml` does not list. Go advisories fail only when call analysis shows our code reaches them. Each accepted advisory in `osv-scanner.toml` carries a reason and an expiry date.
   - Release jobs install goreleaser-pro v2.18.2 through `.github/actions/install-goreleaser-pro`, which checks the download against a sha256 pinned in the repo and fails the job on any mismatch or failed download, then run `goreleaser` directly. This replaces goreleaser-action, which runs the binary unchecked when it cannot fetch the checksum or signature file, and stops goreleaser floating on `~> v2`.
 - CLI

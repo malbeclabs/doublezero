@@ -6,11 +6,16 @@ on:
   pull_request:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
+  # Builds a GoReleaser snapshot of each release. A snapshot skips the Pro license
+  # check and publishes nothing, so no run reads a secret.
   validate_pipeline:
-    runs-on: doublezero-k8s-ci
+    runs-on: ubuntu-latest
+    # The client snapshot (Go plus three Rust builds) took about 10 minutes on the old
+    # 16-core runner; ubuntu-latest has 4 cores.
+    timeout-minutes: 45
     strategy:
       matrix:
         include:
@@ -35,18 +40,19 @@ jobs:
     name: release-validation-${{ matrix.release }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
         with:
           go-version-file: go.mod
           cache: true
         if: contains(matrix.languages, 'go')
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         if: contains(matrix.languages, 'rust')
         with:
           cache-targets: |
@@ -54,9 +60,10 @@ jobs:
             target/x86_64-unknown-linux-gnu/release
 
       - name: Install rust toolchain
-        uses: dtolnay/rust-toolchain@1.97.1
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # Add 1.99.1 patch release (master, 2026-10-16)
         if: contains(matrix.languages, 'rust')
         with:
+          toolchain: "1.97.1"
           targets: x86_64-unknown-linux-musl
 
       - name: Install dependencies for rpm packaging
@@ -65,13 +72,10 @@ jobs:
           sudo apt-get install build-essential pkg-config libssl-dev squashfs-tools rpm musl-tools -y
 
       - name: Set env vars
-        run: ./scripts/env.sh >> $GITHUB_ENV
+        run: ./scripts/env.sh >> "$GITHUB_ENV"
 
-      - uses: ./.github/actions/install-goreleaser-pro
+      - uses: $/.github/actions/install-goreleaser-pro
       - name: Run GoReleaser
-        run: goreleaser release --snapshot -f release/.goreleaser.base.${{ matrix.release }}.yaml --clean
         env:
-          SLACK_WEBHOOK: ${{ secrets.SLACK_BOTS_WEBHOOK }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GORELEASER_KEY: ${{ secrets.GORELEASER_KEY }}
-          CLOUDSMITH_TOKEN: ${{ secrets.CLOUDSMITH_TOKEN }}
+          RELEASE: ${{ matrix.release }}
+        run: goreleaser release --snapshot -f "release/.goreleaser.base.${RELEASE}.yaml" --clean

@@ -104,6 +104,12 @@ make generate-fixtures   # Regenerate .bin/.json fixtures from Rust
 
 - Main is expected to be green. If a test fails on your branch, your changes most likely broke it — investigate and fix it rather than assuming the failure is pre-existing.
 
+## GitHub Actions
+
+- CI runs on GitHub-hosted runners, and no job a pull request can trigger may read a secret other than `GITHUB_TOKEN`: PRs from anyone run there, so a secret in reach is a secret leaked.
+- The `actions-lint` workflow runs actionlint and zizmor with no config or ignore comments honored. A new or edited workflow must pass it: actions pinned to a full commit SHA with a `# vX.Y.Z` comment, checkouts with `persist-credentials: false`, and an explicit minimal `permissions:` block.
+- Release, deploy, QA, bot and cEOS e2e workflows stay disabled until they are moved (malbeclabs/infra#3172, malbeclabs/infra#3175). `actions-lint` skips the files on its `disabled` list; remove a file from that list in the PR that hardens it.
+
 ## RFCs and Documentation
 
 - When asked if a doc is up to date, evaluate it against its intended purpose and scope — not against whatever was most recently worked on. Implementation bug fixes and edge-case handling are not design decisions. Don't inflate docs with implementation details just because they're fresh in context.

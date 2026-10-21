@@ -4,13 +4,20 @@ on:
     branches: [ main, 'hotfix/**' ]
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   rust-build:
     runs-on: ubuntu-24.04-16c-64gb
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.97.1
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # Add 1.99.1 patch release (master, 2026-10-16)
+        with:
+          toolchain: "1.97.1"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Solana toolchain
         uses: ./.github/actions/solana-toolchain
         with:
@@ -19,18 +26,25 @@ jobs:
   rust-lint:
     runs-on: ubuntu-24.04-16c-64gb
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # Add 1.99.1 patch release (master, 2026-10-16)
+        with:
+          toolchain: "1.97.1"
           components: clippy, rustfmt
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - run: make rust-lint
   rust-test:
     runs-on: ubuntu-24.04-16c-64gb
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.97.1
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # Add 1.99.1 patch release (master, 2026-10-16)
+        with:
+          toolchain: "1.97.1"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Solana toolchain
         uses: ./.github/actions/solana-toolchain
         with:
@@ -39,9 +53,13 @@ jobs:
   rust-validator-test:
     runs-on: ubuntu-24.04-16c-64gb
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.97.1
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # Add 1.99.1 patch release (master, 2026-10-16)
+        with:
+          toolchain: "1.97.1"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Solana toolchain
         uses: ./.github/actions/solana-toolchain
         with:
@@ -71,11 +89,14 @@ jobs:
           - package: doublezero-solana-validator-debt
             bin: doublezero-solana-validator-debt
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # Add 1.99.1 patch release (master, 2026-10-16)
+        with:
+          toolchain: "1.97.1"
           targets: x86_64-unknown-linux-musl
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           # Five legs means five cache entries where there used to be one.
           # Only main writes them, so PR runs read a main-primed cache
@@ -115,8 +136,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@1.97.1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # Add 1.99.1 patch release (master, 2026-10-16)
+        with:
+          toolchain: "1.97.1"
       - name: Dry-run the release version bump
         run: |
           set -euo pipefail

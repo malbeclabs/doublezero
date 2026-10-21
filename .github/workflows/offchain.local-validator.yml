@@ -24,6 +24,9 @@ on:
       - 'Cargo.toml'
       - '.github/workflows/offchain.local-validator.yml'
 
+permissions:
+  contents: read
+
 env:
   SOLANA_CLI: v3.0.12
 
@@ -46,7 +49,9 @@ jobs:
   test-doublezero-solana-fork:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - name: Free disk space
         run: |
           df -h
@@ -54,8 +59,10 @@ jobs:
           sudo docker image prune --all --force
           sudo docker builder prune -a --force
           df -h
-      - uses: dtolnay/rust-toolchain@1.97.1
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # Add 1.99.1 patch release (master, 2026-10-16)
+        with:
+          toolchain: "1.97.1"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Solana toolchain
         uses: ./.github/actions/solana-toolchain
         with:
@@ -81,7 +88,9 @@ jobs:
   test-doublezero-solana-validator-debt-fork-current:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
       - name: Free disk space
         run: |
           df -h
@@ -89,8 +98,10 @@ jobs:
           sudo docker image prune --all --force
           sudo docker builder prune -a --force
           df -h
-      - uses: dtolnay/rust-toolchain@1.97.1
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # Add 1.99.1 patch release (master, 2026-10-16)
+        with:
+          toolchain: "1.97.1"
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Solana toolchain
         uses: ./.github/actions/solana-toolchain
         with:

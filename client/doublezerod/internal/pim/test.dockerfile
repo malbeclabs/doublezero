@@ -1,4 +1,4 @@
-FROM public.ecr.aws/docker/library/golang:1.25.5-alpine AS builder
+FROM public.ecr.aws/docker/library/golang:1.26.10-alpine AS builder
 WORKDIR /work
 COPY . .
 WORKDIR /work/client/doublezerod/internal/pim

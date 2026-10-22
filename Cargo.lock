@@ -2789,6 +2789,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "doublezero-builder-bond"
+version = "0.1.0"
+dependencies = [
+ "borsh",
+ "bytemuck",
+ "doublezero-program-tools",
+ "ruint",
+ "solana-account-info",
+ "solana-cpi",
+ "solana-instruction",
+ "solana-msg",
+ "solana-program-entrypoint",
+ "solana-program-error",
+ "solana-program-pack",
+ "solana-pubkey 3.0.0",
+ "solana-system-interface 2.0.0",
+ "solana-sysvar",
+ "spl-token-interface",
+]
+
+[[package]]
 name = "doublezero-cli-core"
 version = "0.45.0"
 dependencies = [
@@ -3461,6 +3482,7 @@ dependencies = [
  "anyhow",
  "borsh",
  "bytemuck",
+ "doublezero-builder-bond",
  "doublezero-passport",
  "doublezero-program-tools",
  "doublezero-revenue-distribution",

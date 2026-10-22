@@ -846,7 +846,7 @@ func TestStartReconciler_InitialReconcileWhenEnabled(t *testing.T) {
 	// Give the initial reconcile time to execute
 	time.Sleep(100 * time.Millisecond)
 	cancel()
-	<-done
+	_ = <-done
 
 	if fetcher.calls < 1 {
 		t.Fatal("expected at least 1 fetch call from initial reconcile")
@@ -874,7 +874,7 @@ func TestStartReconciler_NoReconcileWhenDisabled(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	cancel()
-	<-done
+	_ = <-done
 
 	if fetcher.calls != 0 {
 		t.Fatalf("expected 0 fetch calls when disabled, got %d", fetcher.calls)

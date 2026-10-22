@@ -63,13 +63,15 @@ The scheduler's keypair must be the rewards accountant. A failed step logs an er
 
 ## Fetching snapshots from S3
 
-Replace `<num>` with the DZ epoch (229, 230, .. etc). Snapshots for epoch 229 and later are in the bucket `malbeclabs-contributor-rewards-snapshots-mn-beta-967501763874`.
+Replace `<num>` with DZ Epoch (50, 51, .. etc). Snapshots for epoch 228 and earlier are public.
 
 ```bash
-$ wget https://malbeclabs-contributor-rewards-snapshots-mn-beta-967501763874.s3.us-east-1.amazonaws.com/mn-epoch-<num>-snapshot.json
+$ wget https://doublezero-contributor-rewards-mn-beta-snapshots.s3.us-east-1.amazonaws.com/mn-epoch-<num>-snapshot.json
 ```
 
-Snapshots for epoch 228 and earlier stay in the bucket `doublezero-contributor-rewards-mn-beta-snapshots`, with the same file names.
+Snapshots for epoch 229 and later are in the private bucket `malbeclabs-contributor-rewards-snapshots-mn-beta-967501763874`, and they are not public yet.
+
+<!-- TODO: serve the snapshots for epoch 229 and later through a CloudFront distribution in front of the new bucket, then put its address here. -->
 
 ## Snapshot Compatibility Matrix
 

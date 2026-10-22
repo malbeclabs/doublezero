@@ -11,6 +11,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CI
+  - `go-lint` pins golangci-lint to v2.14.0 instead of `latest`, so a new linter release cannot fail every PR on unchanged code.
+
 ## [v0.45.0](https://github.com/malbeclabs/doublezero/compare/client/v0.44.0...client/v0.45.0) - 2026-10-21
 
 ### Breaking

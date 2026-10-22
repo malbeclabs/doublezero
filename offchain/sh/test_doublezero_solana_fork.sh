@@ -153,16 +153,24 @@ echo "doublezero-solana -ul revenue-distribution fetch distribution"
 $CLI_BIN -ul revenue-distribution fetch distribution
 echo
 
-echo "doublezero-solana -um revenue-distribution fetch distribution"
-$CLI_BIN -um revenue-distribution fetch distribution
+# The program finalizes the rewards of an epoch after a set number of epochs pass.
+# The epoch before the next distribution can have no finalized rewards, and then the rewards view fails.
+# This test reads the epoch that is two epochs before the next distribution.
+echo "doublezero-solana -um revenue-distribution fetch config"
+NEXT_DZ_EPOCH=$($CLI_BIN -um revenue-distribution fetch config | awk -F'|' '/Next distribution/ { gsub(/ /, "", $3); print $3 }')
+MAINNET_DZ_EPOCH=$((NEXT_DZ_EPOCH - 2))
 echo
 
-echo "doublezero-solana -um revenue-distribution fetch distribution --view summary"
-$CLI_BIN -um revenue-distribution fetch distribution --view summary
+echo "doublezero-solana -um revenue-distribution fetch distribution --dz-epoch $MAINNET_DZ_EPOCH"
+$CLI_BIN -um revenue-distribution fetch distribution --dz-epoch $MAINNET_DZ_EPOCH
 echo
 
-echo "doublezero-solana -um revenue-distribution fetch distribution --view rewards"
-$CLI_BIN -um revenue-distribution fetch distribution --view rewards
+echo "doublezero-solana -um revenue-distribution fetch distribution --dz-epoch $MAINNET_DZ_EPOCH --view summary"
+$CLI_BIN -um revenue-distribution fetch distribution --dz-epoch $MAINNET_DZ_EPOCH --view summary
+echo
+
+echo "doublezero-solana -um revenue-distribution fetch distribution --dz-epoch $MAINNET_DZ_EPOCH --view rewards"
+$CLI_BIN -um revenue-distribution fetch distribution --dz-epoch $MAINNET_DZ_EPOCH --view rewards
 echo
 
 echo "doublezero-solana -ul revenue-distribution validator-deposit --withdraw-excess-balance -v --node-id $DUMMY_KEY"

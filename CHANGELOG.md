@@ -6,23 +6,21 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
-- Serviceability, SDK, CLI
-  - Rename builder stake to bond throughout: `builder-stake` is now `builder-bond` (`BuilderBond`), `StakeMirror` is `BondMirror`, `STAKE_ORACLE` is `BOND_ORACLE` (`bond-oracle`), `allow-staked-feeds` is `allow-bonded-feeds`, and `stake_ref` is `bond_ref` (`--bond-ref`). The PDA seeds and the `BuilderBond` discriminator change with the names, so existing `BuilderStake` and `StakeMirror` accounts are not found. They cannot be migrated: builders post new bonds, and 2Z in the old vaults stays there.
-
 ### Changes
 
-- CI
-  - `go-lint` pins golangci-lint to v2.14.0 instead of `latest`, so a new linter release cannot fail every PR on unchanged code.
-
-## [v0.45.0](https://github.com/malbeclabs/doublezero/compare/client/v0.44.0...client/v0.45.0) - 2026-10-21
+## [v0.45.0](https://github.com/malbeclabs/doublezero/compare/client/v0.44.0...client/v0.45.0) - 2026-10-22
 
 ### Breaking
+
+- Serviceability, SDK, CLI
+  - Rename builder stake to bond throughout: `builder-stake` is now `builder-bond` (`BuilderBond`), `StakeMirror` is `BondMirror`, `STAKE_ORACLE` is `BOND_ORACLE` (`bond-oracle`), `allow-staked-feeds` is `allow-bonded-feeds`, and `stake_ref` is `bond_ref` (`--bond-ref`). The PDA seeds and the `BuilderBond` discriminator change with the names, so existing `BuilderStake` and `StakeMirror` accounts are not found. They cannot be migrated: builders post new bonds, and 2Z in the old vaults stays there.
 
 ### Changes
 
 - Go
   - Go 1.26 (toolchain 1.26.10), with `golang.org/x/net` 0.60.0 and `golang.org/x/crypto` 0.57.0. The new `x/net` fixes the HTTP/2 server advisories GO-2026-6603, GO-2026-6610, GO-2026-6611, GO-2026-6612 and GO-2026-6617, and the new `x/crypto` fixes the `ssh` advisories GO-2026-6354 and GO-2026-6355. Both releases need Go 1.26. Every Dockerfile that builds Go code now uses Go 1.26.
 - CI
+  - `go-lint` pins golangci-lint to v2.14.0 instead of `latest`, so a new linter release cannot fail every PR on unchanged code.
   - The CI workflows (`go`, `rust`, `solana`, `sdk`, `elixir`, `offchain.local-validator`, `changelog-reminder` and `release pipeline validation`) pin every action to a commit SHA, run with a read-only token, and drop the checkout token. `go-container-test` no longer logs in to Docker Hub. `release pipeline validation` builds its GoReleaser snapshots on GitHub-hosted runners and reads no secret: a snapshot skips the Pro license check. A new `actions-lint` workflow runs actionlint and zizmor on every enabled workflow.
   - A new `osv-scanner` workflow fails a pull request, a push to `main` or a daily run when a locked dependency (Rust, Go, Python, npm or Elixir) has a scored advisory that `osv-scanner.toml` does not list. Go advisories fail only when call analysis shows our code reaches them. Each accepted advisory in `osv-scanner.toml` carries a reason and an expiry date.
   - Release jobs install goreleaser-pro v2.18.2 through `.github/actions/install-goreleaser-pro`, which checks the download against a sha256 pinned in the repo and fails the job on any mismatch or failed download, then run `goreleaser` directly. This replaces goreleaser-action, which runs the binary unchecked when it cannot fetch the checksum or signature file, and stops goreleaser floating on `~> v2`.

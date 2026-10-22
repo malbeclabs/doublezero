@@ -13,6 +13,7 @@ All notable changes to this project will be documented in this file.
 
 - CI
   - `go-test` and `go-container-test` load the container-test base images from GHCR mirrors, pinned by digest, and tag them with their Public ECR names, so the builds no longer pull from Public ECR, which throttles GitHub's shared runners. The test Dockerfiles and local runs are unchanged.
+  - `go-lint` pins golangci-lint to v2.14.0 instead of `latest`, so a new linter release cannot fail every PR on unchanged code.
 
 ## [v0.45.0](https://github.com/malbeclabs/doublezero/compare/client/v0.44.0...client/v0.45.0) - 2026-10-21
 

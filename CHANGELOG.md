@@ -8,6 +8,11 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+  - `doublezero feed create` creates a bonded feed with `--bond-ref <BuilderBond>`, which needs `--spec-id`, `--sla-hash` (64 hex characters) and `--committed-rate` (e.g. `1Gbps`) with it and takes no `--chain`. `--builder` defaults to the payer, and names another key only for an admin creating the feed on a builder's behalf. Before, the command always sent a zero `bond_ref`, so it could only create a catalog feed.
+- SDK
+  - `CreateFeedCommand` takes `bond: Option<FeedBondTerms>`: the builder, `bond_ref`, `spec_id`, `sla_hash` and committed rate, which the program requires together. `None` creates a catalog feed, as before.
+
 ## [v0.45.0](https://github.com/malbeclabs/doublezero/compare/client/v0.44.0...client/v0.45.0) - 2026-10-22
 
 ### Breaking

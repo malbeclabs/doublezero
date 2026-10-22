@@ -3278,6 +3278,7 @@ dependencies = [
  "eyre",
  "futures",
  "futures-util",
+ "hex",
  "http 1.5.0",
  "indicatif",
  "ipnetwork",

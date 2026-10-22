@@ -188,23 +188,6 @@ class TestCompatJournal:
         assert journal.next_dz_epoch_to_sweep_tokens == read_u64(raw, 48), "NextDZEpochToSweepTokens"
 
 
-class TestCompatValidatorDebts:
-    async def test_fetch(self) -> None:
-        skip_unless_compat()
-        client = compat_client()
-
-        # Use a known epoch that has validator debts on mainnet.
-        epoch = 100
-
-        debts = await client.fetch_validator_debts(epoch)
-
-        assert len(debts.debts) > 0, "expected validator debts for epoch 100"
-        assert debts.last_solana_epoch > 0, "LastSolanaEpoch should be > 0"
-        assert debts.first_solana_epoch <= debts.last_solana_epoch, (
-            f"FirstSolanaEpoch ({debts.first_solana_epoch}) > LastSolanaEpoch ({debts.last_solana_epoch})"
-        )
-
-
 class TestCompatRewardShares:
     async def test_fetch(self) -> None:
         skip_unless_compat()

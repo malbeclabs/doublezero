@@ -912,8 +912,8 @@ func TestClient_Liveness_Manager_Close_NoErrOnErrCh(t *testing.T) {
 		select {
 		case <-timer.C:
 			return
-		case <-m.Err():
-			t.Fatalf("unexpected error before Close")
+		case err := <-m.Err():
+			t.Fatalf("unexpected error before Close: %v", err)
 		}
 	}()
 
@@ -926,8 +926,8 @@ func TestClient_Liveness_Manager_Close_NoErrOnErrCh(t *testing.T) {
 		select {
 		case <-timer.C:
 			return
-		case <-m.Err():
-			t.Fatalf("unexpected error after Close")
+		case err := <-m.Err():
+			t.Fatalf("unexpected error after Close: %v", err)
 		}
 	}()
 }

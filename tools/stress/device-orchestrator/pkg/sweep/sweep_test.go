@@ -992,8 +992,8 @@ func TestRun_QuiescenceBlocksOnPendingCommit(t *testing.T) {
 	// blocked because the pending-commit flag is sticky.
 	time.Sleep(5 * quietWindow)
 	select {
-	case <-done:
-		t.Fatal("Run returned while a config was pending commit — quiescence wait should block")
+	case err := <-done:
+		t.Fatalf("Run returned while a config was pending commit, quiescence wait should block: %v", err)
 	default:
 	}
 

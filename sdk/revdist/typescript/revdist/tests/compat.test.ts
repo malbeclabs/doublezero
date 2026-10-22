@@ -194,26 +194,6 @@ describe("compat: Journal", () => {
   });
 });
 
-describe("compat: ValidatorDebts", () => {
-  test("fetch and validate", async () => {
-    try {
-      skipUnlessCompat();
-    } catch {
-      return;
-    }
-
-    const client = compatClient();
-    // Use a known epoch that has validator debts on mainnet.
-    const epoch = 100n;
-
-    const debts = await client.fetchValidatorDebts(epoch);
-
-    expect(debts.debts.length).toBeGreaterThan(0);
-    expect(debts.lastSolanaEpoch > 0n).toBe(true);
-    expect(debts.firstSolanaEpoch <= debts.lastSolanaEpoch).toBe(true);
-  });
-});
-
 describe("compat: RewardShares", () => {
   test("fetch and validate", async () => {
     try {

@@ -1,11 +1,8 @@
 #!/bin/bash
 
-GENESIS_DZ_EPOCH=31
-
 set -eu
 
-# Wait for the Solana fork the caller started in the background. Shared with
-# test_validator_debt_fork.sh so the two cannot drift apart.
+# Wait for the Solana fork the caller started in the background.
 # shellcheck source=lib/wait_for_fork.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib/wait_for_fork.sh"
 wait_for_fork
@@ -156,61 +153,16 @@ echo "doublezero-solana -ul revenue-distribution fetch distribution"
 $CLI_BIN -ul revenue-distribution fetch distribution
 echo
 
-echo "doublezero-solana -um revenue-distribution fetch distribution --dz-epoch $GENESIS_DZ_EPOCH"
-$CLI_BIN -um revenue-distribution fetch distribution --dz-epoch $GENESIS_DZ_EPOCH
+echo "doublezero-solana -um revenue-distribution fetch distribution"
+$CLI_BIN -um revenue-distribution fetch distribution
 echo
 
-echo "doublezero-solana -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH"
-$CLI_BIN -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH
+echo "doublezero-solana -um revenue-distribution fetch distribution --view summary"
+$CLI_BIN -um revenue-distribution fetch distribution --view summary
 echo
 
-echo "doublezero-solana -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH --view summary"
-$CLI_BIN -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH --view summary
-echo
-
-echo "doublezero-solana -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH --view validator-debt"
-$CLI_BIN -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH --view validator-debt
-echo
-
-echo "doublezero-solana -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH --view unprocessed-validator-debt"
-$CLI_BIN -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH --view unprocessed-validator-debt
-echo
-
-echo "doublezero-solana -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH --view written-off-validator-debt"
-$CLI_BIN -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH --view written-off-validator-debt
-echo
-
-echo "doublezero-solana -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH --view rewards"
-$CLI_BIN -um revenue-distribution fetch distribution -e $GENESIS_DZ_EPOCH --view rewards
-echo
-
-### Pay outstanding debt for a random validator.
-NODE_ID=12i8gndWWWMTRzJBFhnYkobNgZB3XMUUJq75HeUrshrk
-
-echo "doublezero-solana -ul revenue-distribution fetch validator-deposits --node-id $NODE_ID"
-$CLI_BIN -ul revenue-distribution fetch validator-deposits --node-id $NODE_ID
-echo
-
-# --dz-env pins the DZ Ledger environment (debt records live there): the
-# fork's genesis hash is unknown, so detection would fall back to localnet.
-# Same flag main's pre-RFC-20 script passes on these invocations.
-echo "doublezero-solana -ul revenue-distribution fetch validator-debts --node-id $NODE_ID --dz-env mainnet-beta"
-$CLI_BIN -ul revenue-distribution fetch validator-debts --node-id $NODE_ID --dz-env mainnet-beta
-echo
-
-echo "doublezero-solana -ul revenue-distribution validator-deposit --node-id $NODE_ID --fund-outstanding-debt --dz-env mainnet-beta"
-$CLI_BIN -ul revenue-distribution validator-deposit \
-    --node-id $NODE_ID \
-    --fund-outstanding-debt \
-    --dz-env mainnet-beta
-echo
-
-echo "doublezero-solana -ul revenue-distribution fetch validator-deposits --node-id $NODE_ID"
-$CLI_BIN -ul revenue-distribution fetch validator-deposits --node-id $NODE_ID
-echo
-
-echo "doublezero-solana -ul revenue-distribution fetch validator-debts --node-id $NODE_ID --dz-env mainnet-beta"
-$CLI_BIN -ul revenue-distribution fetch validator-debts --node-id $NODE_ID --dz-env mainnet-beta
+echo "doublezero-solana -um revenue-distribution fetch distribution --view rewards"
+$CLI_BIN -um revenue-distribution fetch distribution --view rewards
 echo
 
 echo "doublezero-solana -ul revenue-distribution validator-deposit --withdraw-excess-balance -v --node-id $DUMMY_KEY"

@@ -63,10 +63,10 @@ The scheduler's keypair must be the rewards accountant. A failed step logs an er
 
 ## Fetching snapshots from S3
 
-Replace `<num>` with the DZ epoch (229, 230, .. etc). Snapshots for epoch 229 and later are in the bucket `malbeclabs-contributor-rewards-snapshots-mainnet-beta-967501763874`.
+Replace `<num>` with the DZ epoch (229, 230, .. etc). Snapshots for epoch 229 and later are in the bucket `malbeclabs-contributor-rewards-snapshots-mn-beta-967501763874`.
 
 ```bash
-$ wget https://malbeclabs-contributor-rewards-snapshots-mainnet-beta-967501763874.s3.us-east-1.amazonaws.com/mn-epoch-<num>-snapshot.json
+$ wget https://malbeclabs-contributor-rewards-snapshots-mn-beta-967501763874.s3.us-east-1.amazonaws.com/mn-epoch-<num>-snapshot.json
 ```
 
 Snapshots for epoch 228 and earlier stay in the bucket `doublezero-contributor-rewards-mn-beta-snapshots`, with the same file names.
@@ -245,7 +245,7 @@ max_consecutive_failures = 10
 # ========== AWS Configuration (Optional) ==========
 [aws]
 region = "us-east-1"
-bucket = "malbeclabs-contributor-rewards-snapshots-mainnet-beta-967501763874"
+bucket = "malbeclabs-contributor-rewards-snapshots-mn-beta-967501763874"
 access_key_id = "not"
 secret_access_key = "required"
 

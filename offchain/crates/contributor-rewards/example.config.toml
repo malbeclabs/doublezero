@@ -178,7 +178,7 @@ region = "us-east-1"
 # S3 bucket name
 # Environment variable: DZ__AWS__BUCKET
 # Testnet example: doublezero-contributor-rewards-testnet-snapshots
-# Mainnet example: malbeclabs-contributor-rewards-snapshots-mainnet-beta-967501763874
+# Mainnet example: malbeclabs-contributor-rewards-snapshots-mn-beta-967501763874
 bucket = "doublezero-contributor-rewards-testnet-snapshots"
 
 # AWS access key ID

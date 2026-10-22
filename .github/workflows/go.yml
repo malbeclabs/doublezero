@@ -37,22 +37,7 @@ jobs:
   go-test:
     runs-on: ubuntu-24.04-16c-64gb
     needs: go-build
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
-        with:
-          go-version-file: go.mod
-          cache: true
-      - run: sudo sysctl -w net.ipv4.ping_group_range="0 0"
-      - run: sudo apt install -y libpcap-dev
-      - run: make go-test nocontainertest
-  go-container-test:
-    runs-on: ubuntu-latest
-    needs: go-build
-    # The container tests build from base images mirrored to GHCR, which this repo may read.
-    # Public ECR throttles GitHub's shared runner addresses.
+    # Also builds the container test images (go-test-docker); see go-container-test.
     permissions:
       contents: read
       packages: read
@@ -64,11 +49,34 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
-      - name: Log in to GHCR
+      - run: sudo sysctl -w net.ipv4.ping_group_range="0 0"
+      - run: sudo apt install -y libpcap-dev
+      - name: Load the container-test base images from GHCR
         env:
           GHCR_TOKEN: ${{ github.token }}
-        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+        run: dev/ci-ghcr-base-images.sh
+      - run: make go-test nocontainertest
+  go-container-test:
+    runs-on: ubuntu-latest
+    needs: go-build
+    # The base images come from GHCR mirrors (dev/ci-ghcr-base-images.sh): Public ECR
+    # throttles GitHub's shared runners. The default builder sees the tagged images; a
+    # buildx container builder would not.
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Load the container-test base images from GHCR
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: dev/ci-ghcr-base-images.sh
       - run: make go-container-test
   go-fuzz:
     runs-on: ubuntu-latest

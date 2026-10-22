@@ -201,6 +201,8 @@ pub async fn try_initialize_distribution(
             let expected_fill_count =
                 rewards_distribution.checked_total_sol_debt().unwrap() / fixed_fill_quantity + 1;
 
+            // Validators no longer pay SOL debt, so an epoch has no SOL to convert to 2Z.
+            // The program then sweeps no tokens and only moves the journal to the next epoch.
             let sweep_distribution_tokens_ix = try_build_instruction(
                 &ID,
                 SweepDistributionTokensAccounts::new(

@@ -1,4 +1,5 @@
 #!/bin/bash
+# TODO: Delete this script. Validators no longer pay debt to DoubleZero, and no CI job or recipe runs it.
 #
 # End-to-End Test: Initialize → Calculate → Finalize → Collect Debt
 #

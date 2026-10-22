@@ -1,5 +1,6 @@
 
 #!/bin/bash
+# TODO: Delete this script. Validators no longer pay debt to DoubleZero, and no CI job or recipe runs it.
 
 MAINNET_BETA_DEBT_ACCOUNTANT_KEY=acLisxTpNkoctPZoqssyo58pcdnHzJyRFhod7Wxkz5a
 

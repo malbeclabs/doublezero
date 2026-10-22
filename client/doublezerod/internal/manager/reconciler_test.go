@@ -846,7 +846,7 @@ func TestStartReconciler_InitialReconcileWhenEnabled(t *testing.T) {
 	// Give the initial reconcile time to execute
 	time.Sleep(100 * time.Millisecond)
 	cancel()
-	<-done
+	_ = <-done
 
 	if fetcher.calls < 1 {
 		t.Fatal("expected at least 1 fetch call from initial reconcile")
@@ -874,7 +874,7 @@ func TestStartReconciler_NoReconcileWhenDisabled(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	cancel()
-	<-done
+	_ = <-done
 
 	if fetcher.calls != 0 {
 		t.Fatalf("expected 0 fetch calls when disabled, got %d", fetcher.calls)
@@ -918,7 +918,7 @@ func TestStartReconciler_EnableViaChannel(t *testing.T) {
 	}
 
 	cancel()
-	<-done
+	_ = <-done
 }
 
 func TestStartReconciler_DisableViaChannel_TearsDown(t *testing.T) {
@@ -967,7 +967,7 @@ func TestStartReconciler_DisableViaChannel_TearsDown(t *testing.T) {
 	}
 
 	cancel()
-	<-done
+	_ = <-done
 }
 
 func TestStartReconciler_TickerReconcileWhenEnabled(t *testing.T) {
@@ -989,7 +989,7 @@ func TestStartReconciler_TickerReconcileWhenEnabled(t *testing.T) {
 	// Wait for initial + a few ticker reconciles
 	time.Sleep(200 * time.Millisecond)
 	cancel()
-	<-done
+	_ = <-done
 
 	// Initial + at least 1 ticker-driven reconcile
 	if fetcher.calls < 2 {
@@ -1718,7 +1718,7 @@ func TestStartup_UpgradeFromOldDaemon_WasConnected(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	cancel()
-	<-done
+	_ = <-done
 
 	if fetcher.calls < 1 {
 		t.Fatal("expected reconciler to fetch after migration-enabled startup")
@@ -1770,7 +1770,7 @@ func TestStartup_DaemonRestart_WasEnabled(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	cancel()
-	<-done
+	_ = <-done
 
 	if n.UnicastService == nil {
 		t.Fatal("expected unicast service to be provisioned after restart with enabled state")
@@ -1812,7 +1812,7 @@ func TestStartup_FreshInstall_DoesNotProvision(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	cancel()
-	<-done
+	_ = <-done
 
 	if fetcher.calls != 0 {
 		t.Fatalf("expected 0 fetch calls for fresh install (disabled), got %d", fetcher.calls)
@@ -1860,7 +1860,7 @@ func TestStartup_DaemonRestart_WasDisabled(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	cancel()
-	<-done
+	_ = <-done
 
 	if fetcher.calls != 0 {
 		t.Fatalf("expected 0 fetch calls when restarted disabled, got %d", fetcher.calls)

@@ -389,39 +389,44 @@ fn seeded_feed(
     )
 }
 
-/// Bring up a cluster holding one halted bonded feed and its mirror.
+/// Who sends the `HaltFeed` that `cluster_with_halted_feed` drives.
+#[derive(Clone, Copy)]
+enum Halter {
+    Builder,
+    // The cluster's payer, which holds the foundation role.
+    Operator,
+}
+
+/// Bring up a cluster holding one bonded feed, created and then halted through real instructions,
+/// with the mirror that covers it. The program writes `halted_by`, so the resume rules are tested
+/// against what `HaltFeed` records rather than a value the test chose.
 async fn cluster_with_halted_feed(
     code: &str,
-    builder: Pubkey,
-    halted_by: Pubkey,
+    builder: &Keypair,
+    halter: Halter,
 ) -> (BanksClient, Pubkey, Keypair, Pubkey, Pubkey, Pubkey) {
-    let program_id = Pubkey::new_unique();
-    let (feed_key, feed_data, mirror_key, mirror_data) = seeded_feed(
-        program_id,
-        code,
-        Pubkey::new_unique(),
-        builder,
-        FeedStatus::Halted,
-        halted_by,
-        Pubkey::new_unique(),
-    );
+    let (mut banks_client, program_id, payer, globalstate, feed, mirror) =
+        bonded_feed_owned_by(builder, code).await;
 
-    let (mut banks_client, payer, recent_blockhash) = init_test_with_accounts(
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
         program_id,
-        &[(feed_key, feed_data), (mirror_key, mirror_data)],
+        DoubleZeroInstruction::HaltFeed(FeedHaltArgs {}),
+        feed_accounts(feed, globalstate),
+        match halter {
+            Halter::Builder => builder,
+            Halter::Operator => &payer,
+        },
     )
     .await;
-    init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
-    let (globalstate, _) = get_globalstate_pda(&program_id);
+    assert_eq!(
+        feed_status(&mut banks_client, feed).await,
+        FeedStatus::Halted
+    );
 
-    (
-        banks_client,
-        program_id,
-        payer,
-        globalstate,
-        feed_key,
-        mirror_key,
-    )
+    (banks_client, program_id, payer, globalstate, feed, mirror)
 }
 
 /// A bonded feed left in `Pending`, with its mirror and bonded feeds turned on, shaped like
@@ -480,9 +485,8 @@ async fn pending_feed_owned_by(
 #[tokio::test]
 async fn test_a_builder_cannot_lift_an_operator_halt() {
     let builder = test_payer();
-    let operator = Pubkey::new_unique();
     let (mut banks_client, program_id, _payer, globalstate, feed, mirror) =
-        cluster_with_halted_feed("seized", builder.pubkey(), operator).await;
+        cluster_with_halted_feed("seized", &builder, Halter::Operator).await;
 
     let result = try_execute_and_get_error(
         &mut banks_client,
@@ -507,7 +511,7 @@ async fn test_a_builder_cannot_lift_an_operator_halt() {
 async fn test_a_builder_lifts_its_own_halt() {
     let builder = test_payer();
     let (mut banks_client, program_id, _payer, globalstate, feed, mirror) =
-        cluster_with_halted_feed("rotate", builder.pubkey(), builder.pubkey()).await;
+        cluster_with_halted_feed("rotate", &builder, Halter::Builder).await;
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     execute_transaction_with_extra_accounts(
@@ -584,7 +588,7 @@ async fn test_a_feed_cannot_resume_beyond_its_bond() {
 async fn test_a_bonded_feed_cannot_resume_without_its_mirror() {
     let builder = test_payer();
     let (mut banks_client, program_id, _payer, globalstate, feed, _mirror) =
-        cluster_with_halted_feed("nomirror", builder.pubkey(), builder.pubkey()).await;
+        cluster_with_halted_feed("nomirror", &builder, Halter::Builder).await;
 
     let result = try_execute_and_get_error(
         &mut banks_client,
@@ -956,9 +960,8 @@ async fn test_a_real_notice_cannot_be_finalized_early() {
 #[tokio::test]
 async fn test_a_halted_feed_retires_and_keeps_its_halter() {
     let builder = test_payer();
-    let operator = Pubkey::new_unique();
     let (mut banks_client, program_id, payer, globalstate, feed, _mirror) =
-        cluster_with_halted_feed("halted2retiring", builder.pubkey(), operator).await;
+        cluster_with_halted_feed("halted2retiring", &builder, Halter::Operator).await;
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     execute_transaction(
@@ -978,7 +981,8 @@ async fn test_a_halted_feed_retires_and_keeps_its_halter() {
         "a halted feed had seat holders, so it owes notice"
     );
     assert_eq!(
-        f.halted_by, operator,
+        f.halted_by,
+        payer.pubkey(),
         "retiring does not erase who halted; that record outlives the halt"
     );
 }

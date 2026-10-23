@@ -146,7 +146,7 @@ The first bullets say clearly what the PR added, who uses it and what changed. W
 
 The later bullets cover the rest. Each bullet adds information that a reader cannot get from the commit log. The number of bullets is not limited. For example, a PR that adds two flags to a command has this Summary of Changes:
 
-- Added the `--solana-url` and `--dz-url` flags to the `distribute-monthly-rewards` command, which let an operator name both RPCs because the command reads no config file.
+- This PR adds the `--solana-url` and `--dz-url` flags so operators can select both RPCs for `distribute-monthly-rewards`, which reads no config file.
 - An operator runs the command by hand to finalize and pay one month, and the contributor rewards scheduler does not use these flags.
 - The command no longer falls back to the RPCs in the settings, and it refuses to start without both flags.
 

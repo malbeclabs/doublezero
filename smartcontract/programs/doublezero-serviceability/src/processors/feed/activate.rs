@@ -23,7 +23,8 @@ pub struct FeedActivateArgs {}
 
 /// Admit a feed that was waiting on a conformance verdict.
 ///
-/// Only from `Pending`. `Halted` has its own way back through `ResumeFeed`, and nothing leaves
+/// `CreateFeed` no longer writes `Pending`, so this serves only a feed created before that
+/// change. Only from `Pending`. `Halted` has its own way back through `ResumeFeed`, and nothing leaves
 /// `Retired`.
 ///
 /// The args carry no verdict. Nothing reads one: the grounds a verdict would carry are what

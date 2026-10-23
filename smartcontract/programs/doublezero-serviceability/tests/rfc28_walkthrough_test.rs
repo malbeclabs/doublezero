@@ -1,9 +1,9 @@
 //! The RFC-28 sequence, driven end to end through real instructions.
 //!
-//! What is new here is the reach: this is the first test that gets to `ActivateFeed` from a real
-//! `CreateFeed` against a mirror a real `WriteBondMirror` produced. The relayer mirrors a bond, a
-//! builder holding no permission creates a feed against it, grants its own publisher the right to
-//! send, and an operator admits the feed. That is steps 2 to 5 of the demo.
+//! What is new here is the reach: a real `CreateFeed` against a mirror a real `WriteBondMirror`
+//! produced, ending on a feed that sells seats. The relayer mirrors a bond, a builder holding no
+//! permission creates a feed against it, which starts `Active`, and grants its own publisher the
+//! right to send. No operator takes part.
 //!
 //! Two siblings already chain instructions, so composition on its own is not the novelty:
 //! `feed_test::test_builder_grants_its_own_publish_rights` walks create plus two allowlist grants
@@ -15,10 +15,8 @@
 //! - **The bond.** `PostBond` is a different program on Solana, so the mirror here is written from
 //!   values rather than read from a `BuilderBond`. The relayer decoding a real bond is C2.
 //! - **Datagrams.** Nothing in a `ProgramTest` sends multicast. That is G2, against a cluster.
-//! - **The refusals.** Only the path that succeeds runs here. `feed_lifecycle_test` holds the
-//!   guards: `test_a_builder_cannot_activate_its_own_feed`,
-//!   `test_a_builder_in_the_foundation_allowlist_still_cannot_activate`, and
-//!   `test_a_feed_cannot_activate_beyond_its_bond`.
+//! - **The refusals.** Only the path that succeeds runs here. `feed_test` and
+//!   `feed_lifecycle_test` hold the guards.
 
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
@@ -28,7 +26,7 @@ use doublezero_serviceability::{
     },
     processors::{
         bond_mirror::write::BondMirrorWriteArgs,
-        feed::{activate::FeedActivateArgs, create::FeedCreateArgs},
+        feed::create::FeedCreateArgs,
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
         multicastgroup::{
             allowlist::publisher::add::AddMulticastGroupPubAllowlistArgs,
@@ -207,8 +205,8 @@ async fn test_a_builder_deploys_a_feed_and_an_operator_admits_it() {
     );
     assert_eq!(
         written.status,
-        FeedStatus::Pending,
-        "a bonded feed waits on a verdict"
+        FeedStatus::Active,
+        "the bond that admitted the create is the admission"
     );
 
     // The bond is spent on this feed, which is what makes one bond back one feed.
@@ -253,29 +251,6 @@ async fn test_a_builder_deploys_a_feed_and_an_operator_admits_it() {
         "the builder granted itself nothing"
     );
     assert_eq!(pass.user_payer, builder.pubkey());
-
-    // ---- Operator: the verdict, and the feed starts selling seats. ---------------------------
-    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-    execute_transaction_with_extra_accounts(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::ActivateFeed(FeedActivateArgs {}),
-        vec![
-            AccountMeta::new(feed, false),
-            AccountMeta::new(globalstate, false),
-        ],
-        &foundation,
-        &[AccountMeta::new_readonly(mirror, false)],
-    )
-    .await;
-
-    let admitted = get_account_data(&mut banks_client, feed)
-        .await
-        .expect("the feed should exist")
-        .get_feed()
-        .expect("it should be a feed");
-    assert_eq!(admitted.status, FeedStatus::Active);
 
     // The builder was authorized by its bond and nothing else. If anything else had admitted it,
     // the create above would prove nothing, so every route into `authorize` is ruled out rather

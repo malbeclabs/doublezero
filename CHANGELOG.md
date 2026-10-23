@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- Serviceability
+  - `CreateFeed` starts a bonded feed `Active`, as it already did a catalog feed. The bond check that admits the create is the admission, so nobody sends `ActivateFeed` for a new feed, and one sent anyway fails with `FeedNotActivatable`. `ActivateFeed` stays for a feed created `Pending` before this change. A new bonded feed admits subscribers at once, and it serves the thirty-day retirement notice even if nobody joined, since only a `Pending` feed retired without one.
+
 ### Changes
 
 - Serviceability

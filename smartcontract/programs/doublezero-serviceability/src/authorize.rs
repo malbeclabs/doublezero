@@ -203,19 +203,94 @@ pub fn can_grant_foundation(
     payer_key: &Pubkey,
     globalstate: &GlobalState,
 ) -> bool {
-    if globalstate.foundation_allowlist.contains(payer_key) {
-        return true;
+    globalstate.foundation_allowlist.contains(payer_key)
+        || own_permission(program_id, permission_account, payer_key)
+            .is_some_and(|p| grants_foundation(&p))
+}
+
+/// The payer's own Permission account, decoded. `None` when no account was passed, when it is not
+/// the payer's PDA, when another program owns it, or when it was never created or does not decode.
+fn own_permission(
+    program_id: &Pubkey,
+    permission_account: Option<&AccountInfo>,
+    payer_key: &Pubkey,
+) -> Option<Permission> {
+    let acc = permission_account?;
+    let (expected_pda, _) = get_permission_pda(program_id, payer_key);
+    if acc.key != &expected_pda || acc.owner != program_id || acc.data_is_empty() {
+        return None;
     }
-    if let Some(acc) = permission_account {
-        let (expected_pda, _) = get_permission_pda(program_id, payer_key);
-        if acc.key == &expected_pda && acc.owner == program_id && !acc.data_is_empty() {
-            if let Ok(p) = Permission::try_from(acc) {
-                return p.status == PermissionStatus::Activated
-                    && p.permissions & permission_flags::FOUNDATION != 0;
-            }
-        }
+    Permission::try_from(acc).ok()
+}
+
+fn grants_foundation(p: &Permission) -> bool {
+    p.status == PermissionStatus::Activated && p.permissions & permission_flags::FOUNDATION != 0
+}
+
+/// How the access-pass and subscriber-allowlist handlers treat the payer as the feed authority.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FeedAuthorityRole {
+    /// Not the feed authority.
+    None,
+    /// The feed authority, kept to the passes it owns.
+    OwnPassesOnly,
+    /// A foundation member holding `FEED_AUTHORITY`, not kept to the passes it owns.
+    Foundation,
+}
+
+impl FeedAuthorityRole {
+    /// Whether the payer may act on a pass whose `user_payer` differs from the one named in the
+    /// instruction.
+    pub fn is_feed_authority(self) -> bool {
+        self != FeedAuthorityRole::None
     }
-    false
+
+    /// Whether the payer may only change or close passes it owns.
+    pub fn limited_to_own_passes(self) -> bool {
+        self == FeedAuthorityRole::OwnPassesOnly
+    }
+}
+
+/// Whether `payer_key` acts as the feed authority, and whether it is kept to the passes it owns.
+///
+/// The payer is the feed authority when it is the legacy `feed_authority_pk` or when its own
+/// Permission account carries `FEED_AUTHORITY`. Keyed on the legacy field alone, the rules stop
+/// applying once the feed authority signs only through its Permission account and
+/// `feed_authority_pk` names another key or none (malbeclabs/doublezero#4092).
+///
+/// - `feed_authority_pk` is always kept to its own passes, as before, even when it is also a
+///   foundation member.
+/// - A Permission account with `FEED_AUTHORITY` is kept to its own passes unless the payer is a
+///   foundation member: on `foundation_allowlist`, or holding an activated `FOUNDATION` flag. The
+///   rollout grants `FEED_AUTHORITY` to every foundation member so the feed instructions keep
+///   working under strict mode, and those members were never limited before.
+///
+/// The status of the `FEED_AUTHORITY` grant is ignored. The rule is a restriction, and suspending
+/// the account must not lift it. Whether the payer may act at all is still decided by
+/// [`authorize`].
+///
+/// `permission_account` is the payer's trailing Permission account, if the caller passed one. It
+/// is bound to `payer_key` by re-deriving the PDA, so another key's account is ignored, as is an
+/// uninitialized one.
+pub fn feed_authority_role(
+    program_id: &Pubkey,
+    permission_account: Option<&AccountInfo>,
+    payer_key: &Pubkey,
+    globalstate: &GlobalState,
+) -> FeedAuthorityRole {
+    if globalstate.feed_authority_pk == *payer_key {
+        return FeedAuthorityRole::OwnPassesOnly;
+    }
+    let Some(p) = own_permission(program_id, permission_account, payer_key)
+        .filter(|p| p.permissions & permission_flags::FEED_AUTHORITY != 0)
+    else {
+        return FeedAuthorityRole::None;
+    };
+    if globalstate.foundation_allowlist.contains(payer_key) || grants_foundation(&p) {
+        FeedAuthorityRole::Foundation
+    } else {
+        FeedAuthorityRole::OwnPassesOnly
+    }
 }
 
 /// Returns true if `payer` satisfies at least one of the requested flags using legacy
@@ -2322,5 +2397,203 @@ mod tests {
             &payer,
             &gs
         ));
+    }
+
+    // ── feed_authority_role ──────────────────────────────────────────────────
+
+    /// Runs `feed_authority_role` for `payer` with a Permission account at `pda`, owned by `owner`.
+    fn role_with_account(
+        program_id: &Pubkey,
+        payer: &Pubkey,
+        pda: &Pubkey,
+        owner: &Pubkey,
+        data: &mut [u8],
+        gs: &GlobalState,
+    ) -> FeedAuthorityRole {
+        let mut lamports = 100_000u64;
+        let account = AccountInfo::new(pda, false, false, &mut lamports, data, owner, false);
+        feed_authority_role(program_id, Some(&account), payer, gs)
+    }
+
+    /// Runs `feed_authority_role` for `payer` with its own Permission account carrying `flags`.
+    fn role_with_flags(
+        program_id: &Pubkey,
+        payer: &Pubkey,
+        status: PermissionStatus,
+        flags: u128,
+        gs: &GlobalState,
+    ) -> FeedAuthorityRole {
+        let (pda, _, mut data) = make_permission_data(program_id, payer, status, flags);
+        role_with_account(program_id, payer, &pda, program_id, &mut data, gs)
+    }
+
+    #[test]
+    fn test_feed_authority_role_legacy_key() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        assert_eq!(
+            feed_authority_role(&program_id, None, &payer, &gs_with_feed(&payer)),
+            FeedAuthorityRole::OwnPassesOnly
+        );
+        assert_eq!(
+            feed_authority_role(
+                &program_id,
+                None,
+                &payer,
+                &gs_with_feed(&Pubkey::new_unique())
+            ),
+            FeedAuthorityRole::None
+        );
+        // ACCESS_PASS_ADMIN through another legacy route does not make a feed authority.
+        assert_eq!(
+            feed_authority_role(&program_id, None, &payer, &gs_with_sentinel(&payer)),
+            FeedAuthorityRole::None
+        );
+        assert_eq!(
+            feed_authority_role(&program_id, None, &payer, &gs_with_foundation(&payer)),
+            FeedAuthorityRole::None
+        );
+    }
+
+    #[test]
+    fn test_feed_authority_role_legacy_key_stays_limited_as_a_foundation_member() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let mut gs = gs_with_feed(&payer);
+        gs.foundation_allowlist = vec![payer];
+        assert_eq!(
+            feed_authority_role(&program_id, None, &payer, &gs),
+            FeedAuthorityRole::OwnPassesOnly
+        );
+        assert_eq!(
+            role_with_flags(
+                &program_id,
+                &payer,
+                PermissionStatus::Activated,
+                permission_flags::FEED_AUTHORITY | permission_flags::FOUNDATION,
+                &gs
+            ),
+            FeedAuthorityRole::OwnPassesOnly
+        );
+    }
+
+    #[test]
+    fn test_feed_authority_role_permission_flag_whatever_the_status() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let gs = GlobalState::default();
+        for status in [PermissionStatus::Activated, PermissionStatus::Suspended] {
+            assert_eq!(
+                role_with_flags(
+                    &program_id,
+                    &payer,
+                    status,
+                    permission_flags::ACCESS_PASS_ADMIN | permission_flags::FEED_AUTHORITY,
+                    &gs
+                ),
+                FeedAuthorityRole::OwnPassesOnly,
+                "{status:?}"
+            );
+        }
+        assert_eq!(
+            role_with_flags(
+                &program_id,
+                &payer,
+                PermissionStatus::Activated,
+                permission_flags::ACCESS_PASS_ADMIN,
+                &gs
+            ),
+            FeedAuthorityRole::None
+        );
+    }
+
+    #[test]
+    fn test_feed_authority_role_foundation_member_is_not_limited() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let flags = permission_flags::ACCESS_PASS_ADMIN | permission_flags::FEED_AUTHORITY;
+        // On foundation_allowlist, as the rollout provisions every member.
+        assert_eq!(
+            role_with_flags(
+                &program_id,
+                &payer,
+                PermissionStatus::Activated,
+                flags,
+                &gs_with_foundation(&payer)
+            ),
+            FeedAuthorityRole::Foundation
+        );
+        // Through an activated FOUNDATION flag.
+        let gs = GlobalState::default();
+        assert_eq!(
+            role_with_flags(
+                &program_id,
+                &payer,
+                PermissionStatus::Activated,
+                flags | permission_flags::FOUNDATION,
+                &gs
+            ),
+            FeedAuthorityRole::Foundation
+        );
+        // A suspended FOUNDATION flag does not lift the limit.
+        assert_eq!(
+            role_with_flags(
+                &program_id,
+                &payer,
+                PermissionStatus::Suspended,
+                flags | permission_flags::FOUNDATION,
+                &gs
+            ),
+            FeedAuthorityRole::OwnPassesOnly
+        );
+    }
+
+    #[test]
+    fn test_feed_authority_role_ignores_an_account_not_bound_to_the_payer() {
+        let program_id = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let other = Pubkey::new_unique();
+        let gs = GlobalState::default();
+        // Another key's Permission account carrying FEED_AUTHORITY.
+        let (other_pda, _, mut data) = make_permission_data(
+            &program_id,
+            &other,
+            PermissionStatus::Activated,
+            permission_flags::FEED_AUTHORITY,
+        );
+        assert_eq!(
+            role_with_account(&program_id, &payer, &other_pda, &program_id, &mut data, &gs),
+            FeedAuthorityRole::None
+        );
+        // The payer's PDA address, but owned by another program.
+        let (pda, _, mut data) = make_permission_data(
+            &program_id,
+            &payer,
+            PermissionStatus::Activated,
+            permission_flags::FEED_AUTHORITY,
+        );
+        assert_eq!(
+            role_with_account(
+                &program_id,
+                &payer,
+                &pda,
+                &Pubkey::new_unique(),
+                &mut data,
+                &gs
+            ),
+            FeedAuthorityRole::None
+        );
+        // The payer's PDA, never created.
+        assert_eq!(
+            role_with_account(
+                &program_id,
+                &payer,
+                &pda,
+                &solana_system_interface::program::ID,
+                &mut [],
+                &gs
+            ),
+            FeedAuthorityRole::None
+        );
     }
 }

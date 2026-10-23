@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Serviceability
+  - The feed authority's access-pass rules now also apply to a signer whose own Permission account carries `feed-authority`, not only to `feed_authority_pk`. `SetAccessPass`, `SetAccessPassFlags`, the `Close*AccessPass` instructions and `AddMulticastGroupSubAllowlist` keep it to passes it owns. `AddMulticastGroupSubAllowlist` and `RemoveMulticastGroupSubAllowlist` let it name a `user_payer` other than the pass's. Keyed on `feed_authority_pk` alone, the ownership checks would have stopped applying, without error, once the shred oracle signs only through its Permission account and that field names another key, so it could have cleared `dzf_locked` on or closed any pass. Its subscriber allowlist calls with another `user_payer` would have started failing. A foundation member, on `foundation_allowlist` or holding an activated `foundation` flag, is not kept to its own passes when its Permission account carries `feed-authority`: the rollout grants that flag to every foundation member for the feed instructions, and they were never limited before. `feed_authority_pk` itself stays limited, even when it is also a foundation member. Signers with `access-pass-admin` but not `feed-authority` are unaffected. (#4092)
 - Scheduler
   - `plug_crypto` 2.2.1 (from 2.1.1, through `plug_cowboy`), which fixes EEF-CVE-2026-105963: on a wrong-typed argument, earlier versions could put the secret key base into a logged stack trace.
 

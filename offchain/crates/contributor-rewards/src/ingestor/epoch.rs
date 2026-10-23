@@ -641,7 +641,10 @@ impl EpochFinder {
 
         // Find the corresponding Solana epochs for these timestamps
         let first_solana_epoch = self.find_epoch_at_timestamp(start_us).await?;
-        let last_solana_epoch = self.find_epoch_at_timestamp(end_us).await?;
+        // end_us is exclusive, so a window that ends on a Solana epoch boundary stops before it.
+        let last_solana_epoch = self
+            .find_epoch_at_timestamp(end_us.saturating_sub(1))
+            .await?;
         ensure!(
             last_solana_epoch >= first_solana_epoch
                 && last_solana_epoch - first_solana_epoch < MAX_SOLANA_EPOCHS_PER_DZ_EPOCH,

@@ -214,6 +214,18 @@ func filterValidProbes(log *slog.Logger, probes []Probe) []Probe {
 	return validProbes
 }
 
+// measurementStaleReason reports whether a measurement has gone quiet, and why. Shared
+// so Step 5's keep-the-target check cannot drift from the rule Step 4 marks probes on.
+func measurementStaleReason(meta MeasurementMeta, probeTimeout int64) (bool, string) {
+	switch {
+	case meta.LastExportAt == 0 && meta.CreatedAt > 0 && meta.CreatedAt < probeTimeout:
+		return true, "never_exported"
+	case meta.LastExportAt > 0 && meta.LastExportAt < probeTimeout:
+		return true, "no_recent_exports"
+	}
+	return false, ""
+}
+
 // filterSelectableTargets ignores the unresponsive-target marks by design; rankTargets
 // handles those by ordering instead.
 func filterSelectableTargets(probes []Probe) []Probe {
@@ -988,18 +1000,7 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 	for _, measurement := range doubleZeroMeasurements {
 		if meta, hasMeta := measurementState.GetMetadata(measurement.ID); hasMeta {
 			// Check if measurement is stale - either never exported, or last export was too long ago
-			isStale := false
-			var reason string
-
-			if meta.LastExportAt == 0 && meta.CreatedAt > 0 && meta.CreatedAt < probeTimeout {
-				// Case 1: Created > 1 hour ago but never exported
-				isStale = true
-				reason = "never_exported"
-			} else if meta.LastExportAt > 0 && meta.LastExportAt < probeTimeout {
-				// Case 2: Last export was > 1 hour ago
-				isStale = true
-				reason = "no_recent_exports"
-			}
+			isStale, reason := measurementStaleReason(meta, probeTimeout)
 
 			if isStale {
 				// never_exported is the offline case: the measurement has produced
@@ -1166,6 +1167,68 @@ func (c *Collector) configureMeasurements(ctx context.Context, locationMatches [
 		// Regenerate wanted measurements now that new probes are marked unresponsive,
 		// so the reconciliation below uses updated probe selections
 		wantedMeasurements = c.generateWantedMeasurements(locationMatches, probesPerLocation, measurementState)
+	}
+
+	// Step 4d: Keep a target that is still working. rankTargets knows only distance and
+	// the marks, so a nearer probe whose 24h mark just expired ranks first again — and a
+	// newly adopted probe's quality is only learned by running it, one to two hours to
+	// trip never_exported and about two to trip excessive loss. Columbus lost roughly
+	// four hours of telemetry a day to that loop (malbeclabs/doublezero#4362).
+	//
+	// The check below reads the target list alone, not IsTargetUnresponsive, which ORs
+	// in the source list. A source mark means the probe failed to send pings, which
+	// #4331 split out because it says nothing about answering them; on 2026-09-17 that
+	// conflation tore down four healthy anchors. Offline targets still rotate, since
+	// never_exported marks both lists and excessive_target_loss marks the target list.
+	markedTargets := make(map[int]struct{})
+	for _, probeID := range measurementState.GetUnresponsiveTargets() {
+		markedTargets[probeID] = struct{}{}
+	}
+
+	selectableByLocation := make(map[string]map[int]Probe, len(locationMatches))
+	for _, match := range locationMatches {
+		candidates := match.NearbyProbes
+		if len(match.FallbackTargetProbes) > 0 {
+			candidates = append(append([]Probe{}, candidates...), match.FallbackTargetProbes...)
+		}
+		byID := make(map[int]Probe, len(candidates))
+		for _, probe := range filterSelectableTargets(candidates) {
+			byID[probe.ID] = probe
+		}
+		selectableByLocation[match.LocationCode] = byID
+	}
+
+	for i := range wantedMeasurements {
+		wanted := &wantedMeasurements[i]
+		existing, exists := existingByTarget[wanted.TargetLocationCode]
+		if !exists {
+			continue
+		}
+		meta, hasMeta := measurementState.GetMetadata(existing.ID)
+		if !hasMeta || meta.TargetProbeID == wanted.TargetProbe.ID {
+			continue
+		}
+		if _, marked := markedTargets[meta.TargetProbeID]; marked {
+			continue
+		}
+		if stale, _ := measurementStaleReason(meta, probeTimeout); stale {
+			continue
+		}
+		keptProbe, selectable := selectableByLocation[wanted.TargetLocationCode][meta.TargetProbeID]
+		if !selectable {
+			continue
+		}
+
+		c.log.Info("Keeping the target probe in use, it is unmarked and exporting",
+			slog.Int("measurement_id", existing.ID),
+			slog.String("target", wanted.TargetLocationCode),
+			slog.Int("kept_probe_id", meta.TargetProbeID),
+			slog.Int("skipped_probe_id", wanted.TargetProbe.ID),
+			slog.Time("last_export_at", time.Unix(meta.LastExportAt, 0)))
+
+		// Replace the pick rather than only skipping the recreation: a source-set change
+		// still recreates, and Steps 5 and 8 both read the target off the spec.
+		wanted.TargetProbe = keptProbe
 	}
 
 	// Step 5: Determine what to create and what to remove

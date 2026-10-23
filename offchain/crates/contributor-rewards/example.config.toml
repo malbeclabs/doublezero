@@ -181,7 +181,8 @@ region = "us-east-1"
 # Mainnet example: doublezero-contributor-rewards-mn-beta-snapshots
 bucket = "doublezero-contributor-rewards-testnet-snapshots"
 
-# AWS access key ID
+# AWS access key ID. Leave out both keys to use the AWS default credential
+# chain, such as an instance role or a pod role.
 # Environment variable: DZ__AWS__ACCESS_KEY_ID
 access_key_id = "${DZ__AWS__ACCESS_KEY_ID}"
 

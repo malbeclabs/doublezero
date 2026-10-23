@@ -63,6 +63,7 @@ pub struct DistributionSummary {
     pub dz_epoch: u64,
     pub outcome: DistributionOutcome,
     pub contributors: Vec<ContributorDistributionResult>,
+    pub newly_distributed_count: usize,
 }
 
 /// Attempt to distribute rewards for the current eligible epoch.
@@ -86,6 +87,7 @@ pub async fn try_distribute_epoch_rewards(
             dz_epoch: dz_epoch_value,
             outcome: DistributionOutcome::NotReady,
             contributors: vec![],
+            newly_distributed_count: 0,
         });
     }
 
@@ -98,6 +100,7 @@ pub async fn try_distribute_epoch_rewards(
             dz_epoch: dz_epoch_value,
             outcome: DistributionOutcome::NotReady,
             contributors: vec![],
+            newly_distributed_count: 0,
         });
     }
 
@@ -180,6 +183,7 @@ pub async fn try_distribute_epoch_rewards(
         dz_epoch: dz_epoch_value,
         outcome,
         contributors,
+        newly_distributed_count: newly_distributed_leaf_indices.len(),
     })
 }
 

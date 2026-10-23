@@ -244,8 +244,6 @@ max_consecutive_failures = 10
 [aws]
 region = "us-east-1"
 bucket = "doublezero-contributor-rewards-mn-beta-snapshots"
-access_key_id = "not"
-secret_access_key = "required"
 
 # ========== Metrics Configuration (Optional) ==========
 [metrics]

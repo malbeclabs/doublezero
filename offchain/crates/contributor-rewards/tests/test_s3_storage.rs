@@ -140,6 +140,12 @@ async fn test_s3_upload_to_minio() {
         .expect("Failed to check existence");
     assert!(exists, "Snapshot should exist after upload");
 
+    let missing_exists = storage
+        .exists("test-snapshot-epoch-missing.json")
+        .await
+        .expect("Failed to check existence of a missing snapshot");
+    assert!(!missing_exists, "A missing snapshot should not exist");
+
     // Test load
     let loaded = storage
         .load(filename)

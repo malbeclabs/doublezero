@@ -202,7 +202,8 @@ impl ScheduleWorker {
             // Try to distribute rewards for the eligible epoch.
             if !self.dry_run {
                 match self.try_get_distribution_epoch().await {
-                    Ok((dz_epoch, rewards_accountant_key)) => {
+                    Ok(None) => debug!("No epochs have been swept yet"),
+                    Ok(Some((dz_epoch, rewards_accountant_key))) => {
                         let calc_epoch = state.last_processed_epoch;
                         info!(
                             "Calculation epoch: {:?} | Distribution epoch: {dz_epoch}",
@@ -285,6 +286,7 @@ impl ScheduleWorker {
                     }
                     Err(e) => {
                         warn!("Failed to fetch distribution epoch: {e}");
+                        has_failed = true;
                         metrics::counter!(
                             "doublezero_contributor_rewards_distribution_fetch_failure"
                         )
@@ -439,7 +441,7 @@ impl ScheduleWorker {
     }
 
     /// Fetch the config and compute the distribution-eligible epoch.
-    async fn try_get_distribution_epoch(&self) -> Result<(u64, Pubkey)> {
+    async fn try_get_distribution_epoch(&self) -> Result<Option<(u64, Pubkey)>> {
         let connection =
             SolanaConnection::new(self.orchestrator.settings.rpc.solana_write_url.clone());
         let (_, config) = try_fetch_config(&connection).await?;
@@ -450,10 +452,11 @@ impl ScheduleWorker {
             .1
             .next_dz_epoch_to_sweep_tokens
             .value();
-        ensure!(next_sweep > 0, "No epochs have been swept yet");
-        let dz_epoch_value = next_sweep - 1;
+        if next_sweep == 0 {
+            return Ok(None);
+        }
 
-        Ok((dz_epoch_value, config.rewards_accountant_key))
+        Ok(Some((next_sweep - 1, config.rewards_accountant_key)))
     }
 
     /// Attempt to distribute rewards for the given epoch.

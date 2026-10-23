@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- Serviceability
+  - `CreateFeed` starts a bonded feed `Active`, as it already did a catalog feed. The bond check that admits the create is the admission, so nobody sends `ActivateFeed` for a new feed. One sent anyway by an authorized key fails with `FeedNotActivatable`, and the feed's builder is still refused first with `NotAllowed`. `ActivateFeed` stays for a feed created `Pending` before this change. A new bonded feed admits subscribers at once, and it serves the thirty-day retirement notice even if nobody joined, since only a `Pending` feed retired without one. A relayer write that lowers the bond's tier after the create no longer reaches the feed before it publishes: the only re-check left is `ResumeFeed`, so a feed whose bond shrinks keeps selling seats until someone halts it.
+
 ### Changes
 
 - Serviceability

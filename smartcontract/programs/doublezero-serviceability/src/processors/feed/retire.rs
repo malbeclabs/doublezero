@@ -75,7 +75,8 @@ pub fn process_retire_feed(
 
     // The notice exists for seat holders, and a feed that was never `Active` has none: it admits
     // no subscriber until it publishes. So the wait is zero rather than absent, which keeps one
-    // path through retirement instead of two.
+    // path through retirement instead of two. Only a feed created before `CreateFeed` started
+    // every feed `Active` can still be `Pending` here.
     feed.retires_at = if feed.status == FeedStatus::Pending {
         now
     } else {

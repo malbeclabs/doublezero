@@ -834,8 +834,9 @@ async fn test_non_active_feed_admits_no_subscriber() {
     )
     .await;
 
-    // A seat provisioner sold a seat on it before the halt. Holding the seat is legitimate;
-    // connecting while the feed is halted is not.
+    // A seat provisioner sells a seat on the halted feed, which `SetAccessPassFeeds` allows: it
+    // refuses only a retiring or retired feed. Holding the seat is legitimate; connecting while
+    // the feed is halted is not.
     set_pass_feeds(
         &mut f,
         vec![FeedSeat {

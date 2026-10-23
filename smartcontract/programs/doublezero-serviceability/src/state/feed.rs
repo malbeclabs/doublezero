@@ -8,9 +8,9 @@ use std::{fmt, str::FromStr};
 
 /// Where a feed sits in the RFC-28 deployment lifecycle.
 ///
-/// A feed created without a bond is `Active` on creation: the pre-RFC-28 catalog feeds have no
-/// builder to attest and sell seats today. A bonded feed starts `Pending` and an attestor verdict
-/// moves it to `Active`.
+/// Every feed is `Active` on creation. A catalog feed has no builder to attest, and a bonded feed
+/// is admitted by the bond `CreateFeed` checks. `Pending` remains for bonded feeds created before
+/// that change, which `ActivateFeed` moves to `Active`.
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Eq, Clone, Copy, Default)]
 #[borsh(use_discriminant = true)]

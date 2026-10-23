@@ -59,7 +59,7 @@ const TIER: BondTier = BondTier::UpTo1Gbps;
 
 /// The whole sequence, in order, with nothing seeded that an instruction could write.
 #[tokio::test]
-async fn test_a_builder_deploys_a_feed_and_an_operator_admits_it() {
+async fn test_a_builder_deploys_a_feed_that_sells_seats_at_once() {
     let program_id = Pubkey::new_unique();
 
     // The builder holds no permission at any point. That is the claim under test.

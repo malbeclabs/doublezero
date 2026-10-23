@@ -98,10 +98,10 @@ pub fn process_activate_feed(
         return Err(DoubleZeroError::FeedNotActivatable.into());
     }
 
-    // This is the only place a corrected mirror reaches a feed that a bad one already admitted.
-    // `CreateFeed` checked the cover it was shown; a relayer can write a smaller tier afterwards,
-    // and between creation and this step is the whole window in which that correction can land
-    // before the feed ever publishes.
+    // `CreateFeed` checked the cover it was shown, and a relayer can write a smaller tier
+    // afterwards. For a feed created `Pending`, this is where that correction reaches it before it
+    // publishes. A feed created `Active` has no such step: a correction reaches it only at
+    // `ResumeFeed`.
     if let Some(mirror_account) = mirror_account {
         require_bond_still_covers(program_id, mirror_account, feed_account.key, &feed)?;
     } else if feed.builder != Pubkey::default() {

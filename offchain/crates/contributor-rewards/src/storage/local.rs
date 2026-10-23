@@ -39,7 +39,11 @@ impl SnapshotStorage for LocalFileStorage {
         tokio::fs::rename(&temp_path, &path).await?;
 
         info!("Snapshot saved successfully to: {:?}", path);
-        Ok(path.to_string_lossy().to_string())
+        Ok(self.location(filename))
+    }
+
+    fn location(&self, filename: &str) -> String {
+        self.resolve_path(filename).to_string_lossy().to_string()
     }
 
     async fn exists(&self, filename: &str) -> Result<bool> {

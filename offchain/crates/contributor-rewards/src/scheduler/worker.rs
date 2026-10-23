@@ -62,6 +62,7 @@ pub struct ScheduleWorker {
     keypair_path: Option<PathBuf>,
     dry_run: bool,
     interval: Duration,
+    once: bool,
 }
 
 impl ScheduleWorker {
@@ -73,6 +74,7 @@ impl ScheduleWorker {
         keypair_path: Option<PathBuf>,
         dry_run: bool,
         interval: Duration,
+        once: bool,
     ) -> Self {
         let snapshot_dir = PathBuf::from(&orchestrator.settings.scheduler.snapshot_dir);
         Self {
@@ -83,6 +85,7 @@ impl ScheduleWorker {
             keypair_path,
             dry_run,
             interval,
+            once,
         }
     }
 
@@ -91,6 +94,7 @@ impl ScheduleWorker {
         info!("Starting rewards worker");
         info!("Configuration:");
         info!("  Interval: {:?}", self.interval);
+        info!("  Once: {}", self.once);
         info!("  Dry run: {}", self.dry_run);
         info!("  State file: {:?}", self.state_file);
 
@@ -161,6 +165,7 @@ impl ScheduleWorker {
 
             // Mark that we're checking
             state.mark_check();
+            let mut has_failed = false;
 
             // Process rewards
             match self.process_rewards(&mut state).await {
@@ -177,6 +182,7 @@ impl ScheduleWorker {
                 }
                 Err(e) => {
                     error!("Failed to process rewards: {e:#}");
+                    has_failed = true;
                     state.mark_failure();
                     state.save(&self.state_file)?;
 
@@ -196,7 +202,8 @@ impl ScheduleWorker {
             // Try to distribute rewards for the eligible epoch.
             if !self.dry_run {
                 match self.try_get_distribution_epoch().await {
-                    Ok((dz_epoch, rewards_accountant_key)) => {
+                    Ok(None) => debug!("No epochs have been swept yet"),
+                    Ok(Some((dz_epoch, rewards_accountant_key))) => {
                         let calc_epoch = state.last_processed_epoch;
                         info!(
                             "Calculation epoch: {:?} | Distribution epoch: {dz_epoch}",
@@ -223,7 +230,12 @@ impl ScheduleWorker {
                                         )
                                         .increment(1);
 
-                                        self.post_distribution_slack_notification(&summary).await;
+                                        // The state file is gone between --once runs, so a
+                                        // run that paid no one has nothing new to report.
+                                        if summary.newly_distributed_count > 0 {
+                                            self.post_distribution_slack_notification(&summary)
+                                                .await;
+                                        }
                                     }
                                     DistributionOutcome::PartiallyComplete {
                                         total_contributors,
@@ -242,7 +254,10 @@ impl ScheduleWorker {
                                         )
                                         .increment(1);
 
-                                        self.post_distribution_slack_notification(&summary).await;
+                                        if summary.newly_distributed_count > 0 {
+                                            self.post_distribution_slack_notification(&summary)
+                                                .await;
+                                        }
                                     }
                                     DistributionOutcome::NotReady => {
                                         debug!("Distribution not ready for epoch {dz_epoch}");
@@ -252,6 +267,7 @@ impl ScheduleWorker {
                                     error!(
                                         "Failed to distribute rewards for epoch {dz_epoch}: {e}"
                                     );
+                                    has_failed = true;
                                     state.mark_distribution_failure();
                                     state.save(&self.state_file)?;
                                     metrics::counter!(
@@ -270,6 +286,7 @@ impl ScheduleWorker {
                     }
                     Err(e) => {
                         warn!("Failed to fetch distribution epoch: {e}");
+                        has_failed = true;
                         metrics::counter!(
                             "doublezero_contributor_rewards_distribution_fetch_failure"
                         )
@@ -279,8 +296,15 @@ impl ScheduleWorker {
             }
 
             if let Some(wallet) = &monthly_wallet {
-                self.try_process_monthly(&mut state, wallet, &warned_skips)
+                has_failed |= self
+                    .try_process_monthly(&mut state, wallet, &warned_skips)
                     .await?;
+            }
+
+            if self.once {
+                ensure!(!has_failed, "The scheduler tick failed");
+                info!("Tick complete, exiting (--once)");
+                break;
             }
         }
 
@@ -288,14 +312,15 @@ impl ScheduleWorker {
     }
 
     /// Run the monthly steps, counting a failed tick toward
-    /// `consecutive_monthly_failures`.
+    /// `consecutive_monthly_failures`, and return whether the tick failed.
     async fn try_process_monthly(
         &self,
         state: &mut SchedulerState,
         wallet: &Wallet,
         warned_skips: &Mutex<HashSet<(u16, u8, Pubkey)>>,
-    ) -> Result<()> {
-        if self.run_monthly_steps(wallet, warned_skips).await {
+    ) -> Result<bool> {
+        let has_failed = self.run_monthly_steps(wallet, warned_skips).await;
+        if has_failed {
             state.mark_monthly_failure();
 
             // Alert every 10 consecutive failures for Grafana monitoring
@@ -309,7 +334,8 @@ impl ScheduleWorker {
             state.mark_monthly_success();
         }
 
-        state.save(&self.state_file)
+        state.save(&self.state_file)?;
+        Ok(has_failed)
     }
 
     /// Run each monthly step and return whether the tick failed: a step failed,
@@ -415,7 +441,7 @@ impl ScheduleWorker {
     }
 
     /// Fetch the config and compute the distribution-eligible epoch.
-    async fn try_get_distribution_epoch(&self) -> Result<(u64, Pubkey)> {
+    async fn try_get_distribution_epoch(&self) -> Result<Option<(u64, Pubkey)>> {
         let connection =
             SolanaConnection::new(self.orchestrator.settings.rpc.solana_write_url.clone());
         let (_, config) = try_fetch_config(&connection).await?;
@@ -426,10 +452,11 @@ impl ScheduleWorker {
             .1
             .next_dz_epoch_to_sweep_tokens
             .value();
-        ensure!(next_sweep > 0, "No epochs have been swept yet");
-        let dz_epoch_value = next_sweep - 1;
+        if next_sweep == 0 {
+            return Ok(None);
+        }
 
-        Ok((dz_epoch_value, config.rewards_accountant_key))
+        Ok(Some((next_sweep - 1, config.rewards_accountant_key)))
     }
 
     /// Attempt to distribute rewards for the given epoch.
@@ -567,6 +594,16 @@ impl ScheduleWorker {
             return Ok(false);
         }
 
+        // Checked before the snapshot, so a run with nothing to do skips the fetch.
+        if !self.dry_run && self.rewards_exist_for_epoch(&fetcher, target_epoch).await? {
+            info!(
+                "Rewards already exist for epoch {}, marking as processed",
+                target_epoch
+            );
+            state.mark_success(target_epoch);
+            return Ok(false);
+        }
+
         info!("Processing rewards for epoch {}", target_epoch);
 
         // Step 1: Create snapshot for the target epoch
@@ -609,16 +646,6 @@ impl ScheduleWorker {
                 target_epoch
             );
         } else {
-            // Check if rewards already exist for this epoch (idempotency, only when not in dry-run)
-            if self.rewards_exist_for_epoch(&fetcher, target_epoch).await? {
-                info!(
-                    "Rewards already exist for epoch {}, marking as processed",
-                    target_epoch
-                );
-                state.mark_success(target_epoch);
-                return Ok(false);
-            }
-
             // Step 2: Calculate and write rewards using the snapshot
             info!("Step 2/2: Calculating rewards from snapshot");
             let write_summary = self
@@ -916,64 +943,78 @@ impl ScheduleWorker {
         // Generate snapshot filename
         let filename = format!("{}-epoch-{}-snapshot.json", network_prefix, epoch);
 
-        // Fetch all data for the epoch
-        info!("Fetching data for epoch {}", epoch);
-        let fetcher = Fetcher::from_settings(&self.orchestrator.settings)?;
-        let (fetch_epoch, fetch_data) = fetcher.fetch(Some(epoch)).await?;
-
-        if fetch_epoch != epoch {
-            bail!(
-                "Fetched epoch {} does not match target epoch {}",
-                fetch_epoch,
-                epoch
+        // A retry reads the snapshot the first attempt saved, so it posts the same root.
+        let (snapshot, snapshot_location) = if self.storage.exists(&filename).await? {
+            info!("Loading the saved snapshot for epoch {epoch}");
+            let snapshot = self.storage.load(&filename).await?;
+            ensure!(
+                snapshot.dz_epoch == epoch,
+                "Saved snapshot {filename} is for epoch {}, not {epoch}",
+                snapshot.dz_epoch
             );
-        }
+            snapshot.validate()?;
+            (snapshot, self.storage.location(&filename))
+        } else {
+            // Fetch all data for the epoch
+            info!("Fetching data for epoch {}", epoch);
+            let fetcher = Fetcher::from_settings(&self.orchestrator.settings)?;
+            let (fetch_epoch, fetch_data) = fetcher.fetch(Some(epoch)).await?;
 
-        // Required: every consumer rejects a snapshot without a leader schedule.
-        info!("Fetching leader schedule for epoch {}", epoch);
-        let leader_schedule = EpochFinder::new(
-            fetcher.dz_rpc_client.clone(),
-            fetcher.solana_read_client.clone(),
-        )
-        .fetch_leader_schedule(epoch, fetch_data.start_us)
-        .await
-        .with_context(|| format!("Failed to fetch leader schedule for DZ epoch {epoch}"))?;
-        info!(
-            "Leader schedule fetched successfully for Solana epoch {}",
-            leader_schedule.solana_epoch
-        );
+            if fetch_epoch != epoch {
+                bail!(
+                    "Fetched epoch {} does not match target epoch {}",
+                    fetch_epoch,
+                    epoch
+                );
+            }
 
-        // Create metadata
-        let metadata = SnapshotMetadata {
-            created_at: Utc::now().to_rfc3339(),
-            network: format!("{:?}", self.orchestrator.settings.network),
-            exchanges_count: fetch_data.dz_serviceability.exchanges.len(),
-            locations_count: fetch_data.dz_serviceability.locations.len(),
-            devices_count: fetch_data.dz_serviceability.devices.len(),
-            internet_samples_count: fetch_data.dz_internet.internet_latency_samples.len(),
-            device_samples_count: fetch_data.dz_telemetry.device_latency_samples.len(),
+            // Required: every consumer rejects a snapshot without a leader schedule.
+            info!("Fetching leader schedule for epoch {}", epoch);
+            let leader_schedule = EpochFinder::new(
+                fetcher.dz_rpc_client.clone(),
+                fetcher.solana_read_client.clone(),
+            )
+            .fetch_leader_schedule(epoch, fetch_data.start_us, fetch_data.end_us)
+            .await
+            .with_context(|| format!("Failed to fetch leader schedule for DZ epoch {epoch}"))?;
+            info!(
+                "Leader schedule fetched successfully for Solana epoch {}",
+                leader_schedule.solana_epoch
+            );
+
+            // Create metadata
+            let metadata = SnapshotMetadata {
+                created_at: Utc::now().to_rfc3339(),
+                network: format!("{:?}", self.orchestrator.settings.network),
+                exchanges_count: fetch_data.dz_serviceability.exchanges.len(),
+                locations_count: fetch_data.dz_serviceability.locations.len(),
+                devices_count: fetch_data.dz_serviceability.devices.len(),
+                internet_samples_count: fetch_data.dz_internet.internet_latency_samples.len(),
+                device_samples_count: fetch_data.dz_telemetry.device_latency_samples.len(),
+            };
+
+            // Create complete snapshot
+            let snapshot = CompleteSnapshot {
+                dz_epoch: epoch,
+                solana_epoch: Some(leader_schedule.solana_epoch),
+                fetch_data,
+                leader_schedule: Some(leader_schedule),
+                metadata,
+            };
+
+            // Validate before saving: storage.save writes the canonical per-epoch key, so
+            // an incomplete snapshot overwrites a good one, and a dry run never reads it
+            // back to find out.
+            snapshot.validate()?;
+
+            // Save snapshot using storage abstraction (S3 or local file)
+            info!(
+                "Saving snapshot using {} storage",
+                self.storage.storage_type()
+            );
+            let snapshot_location = self.storage.save(&snapshot, &filename).await?;
+            (snapshot, snapshot_location)
         };
-
-        // Create complete snapshot
-        let snapshot = CompleteSnapshot {
-            dz_epoch: epoch,
-            solana_epoch: Some(leader_schedule.solana_epoch),
-            fetch_data,
-            leader_schedule: Some(leader_schedule),
-            metadata,
-        };
-
-        // Validate before saving: storage.save writes the canonical per-epoch key, so
-        // an incomplete snapshot overwrites a good one, and a dry run never reads it
-        // back to find out.
-        snapshot.validate()?;
-
-        // Save snapshot using storage abstraction (S3 or local file)
-        info!(
-            "Saving snapshot using {} storage",
-            self.storage.storage_type()
-        );
-        let snapshot_location = self.storage.save(&snapshot, &filename).await?;
 
         // For calculate_rewards, we need a local file path
         // If using S3, create a temp file; if local storage, use the path directly

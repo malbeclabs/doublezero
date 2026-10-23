@@ -87,7 +87,10 @@ pub enum Commands {
 
     # Use with calculate-rewards for deterministic results
     snapshot --epoch 27 --local-file snapshot.json
-    calculate-rewards --snapshot snapshot.json --dry-run"#
+    calculate-rewards --snapshot snapshot.json --dry-run
+
+    # Add up leader schedules from files, one per Solana epoch, instead of fetching them
+    snapshot --epoch 27 --local-file snapshot.json --leader-schedule-file 1047.json --leader-schedule-file 1048.json"#
     )]
     Snapshot {
         /// DZ epoch to snapshot (defaults to previous epoch)
@@ -101,6 +104,11 @@ pub enum Commands {
         /// Override: save snapshot to local directory instead of configured storage
         #[arg(long, value_name = "DIR", conflicts_with = "local_file")]
         local_dir: Option<PathBuf>,
+
+        /// Read the leader schedule of one Solana epoch from a JSON file instead of fetching it
+        /// from the RPC. Repeat it to add up the epochs that the DZ epoch overlaps.
+        #[arg(long = "leader-schedule-file", value_name = "FILE")]
+        leader_schedule_files: Vec<PathBuf>,
     },
     /// Analyze telemetry data (internet or device)
     Telemetry {
@@ -176,12 +184,14 @@ impl Cli {
                 epoch,
                 local_file,
                 local_dir,
+                leader_schedule_files,
             } => {
                 doublezero_contributor_rewards::cli::snapshot::create_snapshot(
                     &orchestrator,
                     epoch,
                     local_file,
                     local_dir,
+                    leader_schedule_files,
                 )
                 .await
             }

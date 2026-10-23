@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Scheduler
+  - `plug_crypto` 2.2.1 (from 2.1.1, through `plug_cowboy`), which fixes EEF-CVE-2026-105963: on a wrong-typed argument, earlier versions could put the secret key base into a logged stack trace.
+
 ## [v0.45.0](https://github.com/malbeclabs/doublezero/compare/client/v0.44.0...client/v0.45.0) - 2026-10-22
 
 ### Breaking

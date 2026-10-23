@@ -11,6 +11,7 @@ use chrono::{DateTime, Utc};
 use clap::{Args, Subcommand};
 use doublezero_cli_core::{CliContext, validators::validate_parse_bandwidth};
 use doublezero_solana_client_tools::{
+    keypair::try_load_keypair,
     payer::TransactionOutcome,
     rpc::{SolanaConnection, SolanaConnectionOptions},
 };
@@ -74,7 +75,7 @@ pub struct InitCommand {
 
 impl InitCommand {
     async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
-        let moniker_env = self.write_opts.connection_options.moniker_env();
+        let moniker_env = explicit_moniker_env(&self.write_opts.connection_options);
         let wallet = build_wallet(ctx, self.write_opts)?;
         let builder = wallet.pubkey();
         // The program checks this mint, and the crate's own constant is fixed at build time,
@@ -114,7 +115,7 @@ pub struct PostCommand {
 impl PostCommand {
     async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
         let amount = to_base_units(&self.amount)?;
-        let moniker_env = self.write_opts.connection_options.moniker_env();
+        let moniker_env = explicit_moniker_env(&self.write_opts.connection_options);
         let wallet = build_wallet(ctx, self.write_opts)?;
         let builder = wallet.pubkey();
         let source = match self.source {
@@ -149,7 +150,7 @@ pub struct WithdrawCommand {
 impl WithdrawCommand {
     async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
         let amount = to_base_units(&self.amount)?;
-        let moniker_env = self.write_opts.connection_options.moniker_env();
+        let moniker_env = explicit_moniker_env(&self.write_opts.connection_options);
         let wallet = build_wallet(ctx, self.write_opts)?;
         let builder = wallet.pubkey();
         let destination = match self.destination {
@@ -174,6 +175,9 @@ pub struct ShowCommand {
     builder: Option<Pubkey>,
     #[arg(long, default_value_t = 0)]
     bond_index: u64,
+    /// Print the bond as JSON.
+    #[arg(long)]
+    json: bool,
     #[command(flatten)]
     connection_options: SolanaConnectionOptions,
 }
@@ -189,43 +193,90 @@ impl ShowCommand {
         let bond = connection
             .try_fetch_zero_copy_data::<BuilderBond>(&key)
             .await
-            .with_context(|| format!("no bond {} for {builder} at {key}", self.bond_index))?;
-        let now = Utc::now().timestamp();
-        write!(out, "{}", describe(&key, &bond, now))?;
+            .with_context(|| format!("reading bond {} for {builder} at {key}", self.bond_index))?;
+        let view = BondView::new(&key, &bond, Utc::now().timestamp());
+        if self.json {
+            writeln!(out, "{}", serde_json::to_string_pretty(&view)?)?;
+        } else {
+            write!(out, "{}", view.text())?;
+        }
         Ok(())
     }
 }
 
-/// The lines `show` prints. Split out so a test can check them without a cluster.
-fn describe(key: &Pubkey, bond: &BuilderBond, now: i64) -> String {
-    let hold = if bond.hold_started() {
-        DateTime::<Utc>::from_timestamp(bond.hold_expires_at, 0)
-            .map_or_else(|| bond.hold_expires_at.to_string(), |at| at.to_rfc3339())
-    } else {
-        "not started: nothing posted yet".to_string()
-    };
-    let rate = if bond.committed_rate_bits_per_sec == u64::MAX {
-        "unmetered".to_string()
-    } else {
-        format!("{} bits/sec", bond.committed_rate_bits_per_sec)
-    };
-    format!(
-        "Address:      {key}\n\
-         Builder:      {}\n\
-         Bond index:   {}\n\
-         Committed:    {rate}\n\
-         Bonded:       {}\n\
-         Required:     {}\n\
-         Covers:       {}\n\
-         Hold expires: {hold}\n\
-         Withdrawable: {}\n",
-        bond.builder,
-        bond.bond_index,
-        in_2z(bond.bonded_2z_amount),
-        in_2z(bond.required_2z_amount),
-        bond.is_funded(),
-        in_2z(bond.withdrawable_2z_amount(now)),
-    )
+/// What `show` prints. Split out so a test can check it without a cluster. Amounts are 2Z base
+/// units; `committed_rate_bits_per_sec` is `u64::MAX` for an unmetered bond, and
+/// `hold_expires_at` is `None` until the first post starts the hold.
+#[derive(Debug, serde::Serialize)]
+struct BondView {
+    address: String,
+    builder: String,
+    bond_index: u64,
+    committed_rate_bits_per_sec: u64,
+    bonded_2z_amount: u64,
+    required_2z_amount: u64,
+    covers: bool,
+    hold_expires_at: Option<i64>,
+    withdrawable_2z_amount: u64,
+}
+
+impl BondView {
+    fn new(key: &Pubkey, bond: &BuilderBond, now: i64) -> Self {
+        Self {
+            address: key.to_string(),
+            builder: bond.builder.to_string(),
+            bond_index: bond.bond_index,
+            committed_rate_bits_per_sec: bond.committed_rate_bits_per_sec,
+            bonded_2z_amount: bond.bonded_2z_amount,
+            required_2z_amount: bond.required_2z_amount,
+            covers: bond.is_funded(),
+            hold_expires_at: bond.hold_started().then_some(bond.hold_expires_at),
+            withdrawable_2z_amount: bond.withdrawable_2z_amount(now),
+        }
+    }
+
+    fn text(&self) -> String {
+        let hold = match self.hold_expires_at {
+            Some(at) => DateTime::<Utc>::from_timestamp(at, 0)
+                .map_or_else(|| at.to_string(), |at| at.to_rfc3339()),
+            None => "not started: nothing posted yet".to_string(),
+        };
+        let rate = if self.committed_rate_bits_per_sec == u64::MAX {
+            "unmetered".to_string()
+        } else {
+            format!("{} bits/sec", self.committed_rate_bits_per_sec)
+        };
+        format!(
+            "Address:      {}\n\
+             Builder:      {}\n\
+             Bond index:   {}\n\
+             Committed:    {rate}\n\
+             Bonded:       {}\n\
+             Required:     {}\n\
+             Covers:       {}\n\
+             Hold expires: {hold}\n\
+             Withdrawable: {}\n",
+            self.address,
+            self.builder,
+            self.bond_index,
+            in_2z(self.bonded_2z_amount),
+            in_2z(self.required_2z_amount),
+            self.covers,
+            in_2z(self.withdrawable_2z_amount),
+        )
+    }
+}
+
+/// The network a per-verb `-u` names, or `None` so the connection's genesis hash decides.
+/// `moniker_env` alone reports mainnet whenever `-u` is absent, which picks the mainnet mint for
+/// a run that reaches devnet through the global `--solana-url`.
+fn explicit_moniker_env(
+    options: &SolanaConnectionOptions,
+) -> Option<doublezero_solana_sdk::NetworkEnvironment> {
+    options
+        .solana_url_or_moniker
+        .as_ref()
+        .and_then(|_| options.moniker_env())
 }
 
 fn bond_address(builder: &Pubkey, bond_index: u64) -> Pubkey {
@@ -242,15 +293,12 @@ async fn own_2z_account(
     Ok(get_associated_token_address(owner, &mint))
 }
 
-/// The key `show` reads for when no `--builder` is given: the configured keypair's.
+/// The key `show` reads for when no `--builder` is given. Loaded the way the write verbs load
+/// theirs, so `show` finds the bond `init` created with the same options.
 fn own_key(ctx: &CliContext) -> Result<Pubkey> {
-    let path = ctx
-        .keypair_path
-        .as_ref()
-        .ok_or_else(|| anyhow!("no keypair configured: pass --builder"))?;
-    solana_sdk::signature::read_keypair_file(path)
-        .map(|keypair| solana_sdk::signer::Signer::pubkey(&keypair))
-        .map_err(|err| anyhow!("reading the keypair at {}: {err}", path.display()))
+    let keypair = try_load_keypair(ctx.keypair_path.clone())
+        .context("loading your keypair: pass --keypair, or --builder to read another bond")?;
+    Ok(solana_sdk::signer::Signer::pubkey(&keypair))
 }
 
 async fn send(
@@ -259,7 +307,15 @@ async fn send(
     done: &str,
     out: &mut impl Write,
 ) -> Result<()> {
-    let transaction = wallet.new_transaction(instructions).await?;
+    // `Wallet` holds the price instruction but does not add it, so a verb that skips this
+    // accepts `--with-compute-unit-price` and drops it.
+    let instructions: Vec<Instruction> = wallet
+        .compute_unit_price_ix
+        .iter()
+        .cloned()
+        .chain(instructions.iter().cloned())
+        .collect();
+    let transaction = wallet.new_transaction(&instructions).await?;
     if let TransactionOutcome::Executed(signature) =
         wallet.send_or_simulate_transaction(&transaction).await?
     {
@@ -328,7 +384,7 @@ mod tests {
     }
 
     #[test]
-    fn describe_reports_the_hold_and_what_can_be_withdrawn() {
+    fn show_reports_the_hold_and_what_can_be_withdrawn() {
         let builder = Pubkey::new_unique();
         let key = bond_address(&builder, 0);
         // Field by field: the struct's padding is private to the program crate.
@@ -337,13 +393,13 @@ mod tests {
         bond.committed_rate_bits_per_sec = 1_000_000_000;
         bond.required_2z_amount = 100_000_000;
 
-        let unposted = describe(&key, &bond, 0);
+        let unposted = BondView::new(&key, &bond, 0).text();
         assert!(unposted.contains("Hold expires: not started"), "{unposted}");
         assert!(unposted.contains("Covers:       false"), "{unposted}");
 
         bond.bonded_2z_amount = 150_000_000;
         bond.hold_expires_at = 1_800_000_000;
-        let held = describe(&key, &bond, 1_799_999_999);
+        let held = BondView::new(&key, &bond, 1_799_999_999).text();
         assert!(
             held.contains("Hold expires: 2027-01-15T08:00:00+00:00"),
             "{held}"
@@ -351,10 +407,50 @@ mod tests {
         assert!(held.contains("Withdrawable: 0.00000000 2Z"), "{held}");
         assert!(held.contains("Committed:    1000000000 bits/sec"), "{held}");
 
-        let elapsed = describe(&key, &bond, 1_800_000_000);
+        let elapsed = BondView::new(&key, &bond, 1_800_000_000).text();
         assert!(elapsed.contains("Withdrawable: 0.50000000 2Z"), "{elapsed}");
 
         bond.committed_rate_bits_per_sec = u64::MAX;
-        assert!(describe(&key, &bond, 0).contains("Committed:    unmetered"));
+        assert!(
+            BondView::new(&key, &bond, 0)
+                .text()
+                .contains("Committed:    unmetered")
+        );
+    }
+
+    #[test]
+    fn only_a_per_verb_moniker_overrides_the_genesis_hash() {
+        let unset = SolanaConnectionOptions {
+            solana_url_or_moniker: None,
+        };
+        assert_eq!(explicit_moniker_env(&unset), None);
+        let devnet = SolanaConnectionOptions {
+            solana_url_or_moniker: Some("devnet".to_string()),
+        };
+        assert_eq!(
+            explicit_moniker_env(&devnet),
+            Some(doublezero_solana_sdk::NetworkEnvironment::Devnet)
+        );
+    }
+
+    #[test]
+    fn show_json_has_base_units_and_no_hold_before_the_first_post() {
+        let builder = Pubkey::new_unique();
+        let key = bond_address(&builder, 0);
+        let mut bond = BuilderBond::default();
+        bond.builder = builder;
+        bond.required_2z_amount = 100_000_000;
+
+        let unposted = serde_json::to_value(BondView::new(&key, &bond, 0)).unwrap();
+        assert_eq!(unposted["address"], key.to_string());
+        assert_eq!(unposted["hold_expires_at"], serde_json::Value::Null);
+        assert_eq!(unposted["required_2z_amount"], 100_000_000);
+
+        bond.bonded_2z_amount = 150_000_000;
+        bond.hold_expires_at = 1_800_000_000;
+        let elapsed = serde_json::to_value(BondView::new(&key, &bond, 1_800_000_000)).unwrap();
+        assert_eq!(elapsed["hold_expires_at"], 1_800_000_000);
+        assert_eq!(elapsed["withdrawable_2z_amount"], 50_000_000);
+        assert_eq!(elapsed["covers"], true);
     }
 }

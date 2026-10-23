@@ -9,7 +9,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - CLI
-  - `doublezero-solana bond` gives a builder its own bond commands on the `builder-bond` program: `init` (with `--committed-rate`, e.g. `1Gbps`), `post` and `withdraw` (amounts in 2Z as decimals, parsed exactly), and `show`, which prints the bond's address, tier coverage, hold expiry and what can be withdrawn now. The 2Z mint follows the network the connection reaches. The admin commands stay out: a builder never runs them.
+  - `doublezero-solana bond` gives a builder its own bond commands on the `builder-bond` program: `init` (with `--committed-rate`, e.g. `1Gbps`), `post` and `withdraw` (amounts in 2Z as decimals, parsed exactly), and `show` (also `--json`), which prints the bond's address, tier coverage, hold expiry and what can be withdrawn now. The 2Z mint follows the network the connection reaches. The admin commands stay out: a builder never runs them.
 - SDK
   - `doublezero-solana-sdk` re-exports the `builder-bond` program as `builder_bond`. `builder-bond`'s instruction builders add `initialize_builder_bond_with_mint`, for a client that picks the 2Z mint at run time; `initialize_builder_bond` calls it with the mint the crate was built for. The program builds the same: both checksum sets verify unchanged.
 

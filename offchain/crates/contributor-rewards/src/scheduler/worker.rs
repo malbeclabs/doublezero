@@ -935,7 +935,7 @@ impl ScheduleWorker {
             fetcher.dz_rpc_client.clone(),
             fetcher.solana_read_client.clone(),
         )
-        .fetch_leader_schedule(epoch, fetch_data.start_us)
+        .fetch_leader_schedule(epoch, fetch_data.start_us, fetch_data.end_us)
         .await
         .with_context(|| format!("Failed to fetch leader schedule for DZ epoch {epoch}"))?;
         info!(

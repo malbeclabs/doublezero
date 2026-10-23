@@ -197,6 +197,7 @@ pub async fn create_snapshot(
     epoch: Option<u64>,
     local_file: Option<PathBuf>,
     local_dir: Option<PathBuf>,
+    leader_schedule_files: Vec<PathBuf>,
 ) -> Result<()> {
     info!("Creating complete snapshot");
 
@@ -247,18 +248,35 @@ pub async fn create_snapshot(
         fetch_data.dz_internet = internet_data;
     }
 
-    let mut epoch_finder = EpochFinder::new(
-        fetcher.dz_rpc_client.clone(),
-        fetcher.solana_read_client.clone(),
-    );
     // Required: validate() below rejects a snapshot without a leader schedule.
-    // fetch_leader_schedule resolves the Solana epoch itself and reports which one it
-    // used, so taking the epoch from its result avoids running the chain-verified
-    // epoch search twice over the same timestamp.
-    let leader_schedule = epoch_finder
-        .fetch_leader_schedule(fetch_epoch, fetch_data.start_us)
-        .await
-        .with_context(|| format!("Failed to fetch leader schedule for DZ epoch {fetch_epoch}"))?;
+    // fetch_leader_schedule resolves the Solana epochs itself and reports which ones it
+    // used, so taking the epochs from its result avoids running the chain-verified
+    // epoch search twice over the same timestamps.
+    let leader_schedule = if leader_schedule_files.is_empty() {
+        let mut epoch_finder = EpochFinder::new(
+            fetcher.dz_rpc_client.clone(),
+            fetcher.solana_read_client.clone(),
+        );
+        epoch_finder
+            .fetch_leader_schedule(fetch_epoch, fetch_data.start_us, fetch_data.end_us)
+            .await
+            .with_context(|| {
+                format!("Failed to fetch leader schedule for DZ epoch {fetch_epoch}")
+            })?
+    } else {
+        let schedules = leader_schedule_files
+            .iter()
+            .map(|path| {
+                let contents = std::fs::read_to_string(path).with_context(|| {
+                    format!("Failed to read leader schedule file {}", path.display())
+                })?;
+                serde_json::from_str::<LeaderSchedule>(&contents).with_context(|| {
+                    format!("Failed to parse leader schedule file {}", path.display())
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        LeaderSchedule::try_sum(schedules)?
+    };
 
     // Create metadata
     let metadata = SnapshotMetadata {

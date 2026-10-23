@@ -45,7 +45,7 @@ pub struct DemandBuildOutput {
 /// 3. Aggregates validators by city with their stake weights
 /// 4. Generates demand entries for all city-to-city traffic pairs
 pub async fn build(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<DemandBuildOutput> {
-    // Get first telemetry sample to extract epoch and timestamp
+    // Get first telemetry sample to extract the DZ epoch
     let first_sample = fetch_data
         .dz_telemetry
         .device_latency_samples
@@ -55,10 +55,6 @@ pub async fn build(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<DemandBu
     let dz_epoch = first_sample.epoch;
     info!("Building demands for DZ epoch {}", dz_epoch);
 
-    // Get the timestamp from first_sample
-    let timestamp_us = first_sample.start_timestamp_us;
-    assert_ne!(0, timestamp_us, "First sample timestamp is 0!");
-
     // Create an EpochFinder with explicit RPC clients
     let mut epoch_finder = EpochFinder::new(
         fetcher.dz_rpc_client.clone(),
@@ -67,7 +63,7 @@ pub async fn build(fetcher: &Fetcher, fetch_data: &FetchData) -> Result<DemandBu
 
     // Fetch leader schedule for this DZ epoch
     let leader_schedule = epoch_finder
-        .fetch_leader_schedule(dz_epoch, timestamp_us)
+        .fetch_leader_schedule(dz_epoch, fetch_data.start_us, fetch_data.end_us)
         .await?;
 
     build_with_schedule(&fetcher.settings, fetch_data, &leader_schedule)

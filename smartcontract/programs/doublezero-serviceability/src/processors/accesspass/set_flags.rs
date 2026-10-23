@@ -1,5 +1,5 @@
 use crate::{
-    authorize::{authorize, is_feed_authority},
+    authorize::{authorize, feed_authority_role},
     error::DoubleZeroError,
     serializer::try_acc_write,
     state::{
@@ -83,7 +83,7 @@ pub fn process_set_access_pass_flags(
     // allowlist, sentinel, or feed authority), matching the sibling SetAccessPass path.
     let globalstate = GlobalState::try_from(globalstate_account)?;
     // Read before authorize() consumes it from the iterator.
-    let payer_is_feed_authority = is_feed_authority(
+    let feed_role = feed_authority_role(
         program_id,
         accounts_iter.clone().next(),
         payer_account.key,
@@ -117,9 +117,10 @@ pub fn process_set_access_pass_flags(
 
     // Mirror the sibling accesspass handlers: the feed authority may only touch passes it owns.
     // This is what stops the oracle (which holds ACCESS_PASS_ADMIN) from clearing dzf_locked on a
-    // pass it did not create. `is_feed_authority` also reads the payer's Permission account, so the
-    // rule holds after the oracle stops being `feed_authority_pk`.
-    if payer_is_feed_authority && accesspass.owner != *payer_account.key {
+    // pass it did not create. `feed_authority_role` also reads the payer's Permission account, so
+    // the rule holds after the oracle stops being `feed_authority_pk`. Foundation members holding
+    // FEED_AUTHORITY are not limited.
+    if feed_role.limited_to_own_passes() && accesspass.owner != *payer_account.key {
         msg!("Feed authority can only modify access passes they own");
         return Err(DoubleZeroError::NotAllowed.into());
     }

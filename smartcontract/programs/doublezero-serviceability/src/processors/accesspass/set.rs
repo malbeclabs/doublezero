@@ -1,5 +1,5 @@
 use crate::{
-    authorize::{authorize, is_feed_authority},
+    authorize::{authorize, feed_authority_role},
     error::DoubleZeroError,
     pda::*,
     processors::accesspass::airdrop_user_credits,
@@ -151,7 +151,7 @@ pub fn process_set_access_pass(
     // granting ACCESS_PASS_ADMIN). Privileged callers retain unrestricted authority for the
     // tenant_remove path below; a tenant administrator is only authorized for their own tenant.
     // Read before authorize() consumes it from the iterator.
-    let payer_is_feed_authority = is_feed_authority(
+    let feed_role = feed_authority_role(
         program_id,
         accounts_iter.clone().next(),
         payer_account.key,
@@ -245,7 +245,7 @@ pub fn process_set_access_pass(
             let ap = AccessPass::try_from(accesspass_account)?;
 
             // Feed authority can only update access passes they own
-            if payer_is_feed_authority && ap.owner != *payer_account.key {
+            if feed_role.limited_to_own_passes() && ap.owner != *payer_account.key {
                 msg!("Feed authority can only update access passes they own");
                 return Err(DoubleZeroError::NotAllowed.into());
             }

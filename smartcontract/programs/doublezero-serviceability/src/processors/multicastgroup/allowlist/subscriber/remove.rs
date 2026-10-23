@@ -1,5 +1,5 @@
 use crate::{
-    authorize::{authorize, is_feed_authority},
+    authorize::{authorize, feed_authority_role},
     error::DoubleZeroError,
     pda::get_accesspass_pda,
     processors::validation::validate_program_account,
@@ -88,7 +88,7 @@ pub fn process_remove_multicast_sub_allowlist(
     // Authorization: the multicast group owner, or ACCESS_PASS_ADMIN (Permission
     // account) / foundation-sentinel-feed (legacy).
     // Read before authorize() consumes it from the iterator.
-    let payer_is_feed_authority = is_feed_authority(
+    let feed_role = feed_authority_role(
         program_id,
         accounts_iter.clone().next(),
         payer_account.key,
@@ -128,7 +128,7 @@ pub fn process_remove_multicast_sub_allowlist(
         );
     }
     // Feed authority may operate on access passes with a different user_payer
-    if !payer_is_feed_authority {
+    if !feed_role.is_feed_authority() {
         assert!(
             accesspass.user_payer == value.user_payer,
             "AccessPass user_payer does not match"

@@ -6,6 +6,9 @@
 //! signer as it is after the migration: it holds `ACCESS_PASS_ADMIN | FEED_AUTHORITY` through its
 //! Permission account, `feed_authority_pk` does not name it, and strict mode is on. Keyed on
 //! `feed_authority_pk` alone, every ownership check below would pass.
+//!
+//! A foundation member holding the same flags is not limited to its own passes: the rollout grants
+//! `FEED_AUTHORITY` to every foundation member, and they were never limited before.
 
 use doublezero_serviceability::{
     error::DoubleZeroError,
@@ -15,6 +18,7 @@ use doublezero_serviceability::{
         accesspass::{
             close::CloseAccessPassArgs, set::SetAccessPassArgs, set_flags::SetAccessPassFlagsArgs,
         },
+        allowlist::foundation::add::AddFoundationAllowlistArgs,
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
         multicastgroup::{
             allowlist::subscriber::{
@@ -42,6 +46,9 @@ struct Setup {
     mgroup: Pubkey,
     oracle: Keypair,
     oracle_permission: Pubkey,
+    /// A foundation member holding the oracle's flags through its Permission account.
+    foundation: Keypair,
+    foundation_permission: Pubkey,
     /// A pass the foundation payer created and owns.
     foreign_pass: Pubkey,
     foreign_ip: Ipv4Addr,
@@ -108,6 +115,44 @@ async fn setup() -> Setup {
     )
     .await;
 
+    // A foundation member provisioned as the rollout does: on foundation_allowlist, with
+    // FEED_AUTHORITY granted for the feed gap the audit reports.
+    let foundation = Keypair::new();
+    transfer(
+        &mut banks_client,
+        &payer,
+        &foundation.pubkey(),
+        10_000_000_000,
+    )
+    .await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::AddFoundationAllowlist(AddFoundationAllowlistArgs {
+            pubkey: foundation.pubkey(),
+        }),
+        vec![AccountMeta::new(globalstate, false)],
+        &payer,
+    )
+    .await;
+    let (foundation_permission, _) = get_permission_pda(&program_id, &foundation.pubkey());
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreatePermission(PermissionCreateArgs {
+            user_payer: foundation.pubkey(),
+            permissions: permission_flags::ACCESS_PASS_ADMIN | permission_flags::FEED_AUTHORITY,
+        }),
+        vec![
+            AccountMeta::new(foundation_permission, false),
+            AccountMeta::new_readonly(globalstate, false),
+        ],
+        &payer,
+    )
+    .await;
+
     let foreign_ip = Ipv4Addr::new(100, 0, 0, 30);
     let foreign_user_payer = payer.pubkey();
     let (foreign_pass, _) = get_accesspass_pda(&program_id, &foreign_ip, &foreign_user_payer);
@@ -163,6 +208,8 @@ async fn setup() -> Setup {
         mgroup,
         oracle,
         oracle_permission,
+        foundation,
+        foundation_permission,
         foreign_pass,
         foreign_ip,
         foreign_user_payer,
@@ -173,10 +220,14 @@ async fn setup() -> Setup {
 }
 
 fn set_access_pass(client_ip: Ipv4Addr) -> DoubleZeroInstruction {
+    set_access_pass_until(client_ip, 9999)
+}
+
+fn set_access_pass_until(client_ip: Ipv4Addr, last_access_epoch: u64) -> DoubleZeroInstruction {
     DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
         accesspass_type: AccessPassType::Prepaid,
         client_ip,
-        last_access_epoch: 9999,
+        last_access_epoch,
         allow_multiple_ip: false,
         max_unicast_users: 1,
         max_multicast_users: 1,
@@ -208,6 +259,34 @@ impl Setup {
             &[AccountMeta::new_readonly(self.oracle_permission, false)],
         )
         .await
+    }
+
+    /// Runs `instruction` signed by the foundation member, with its Permission account appended.
+    async fn as_foundation(
+        &mut self,
+        instruction: DoubleZeroInstruction,
+        accounts: Vec<AccountMeta>,
+    ) -> Result<(), BanksClientError> {
+        let blockhash = self.banks_client.get_latest_blockhash().await.unwrap();
+        try_execute_transaction_with_extra_accounts(
+            &mut self.banks_client,
+            blockhash,
+            self.program_id,
+            instruction,
+            accounts,
+            &self.foundation,
+            &[AccountMeta::new_readonly(self.foundation_permission, false)],
+        )
+        .await
+    }
+
+    async fn last_access_epoch(&mut self, pass: Pubkey) -> u64 {
+        get_account_data(&mut self.banks_client, pass)
+            .await
+            .expect("access pass")
+            .get_accesspass()
+            .unwrap()
+            .last_access_epoch
     }
 
     async fn sub_allowlist(&mut self, pass: Pubkey) -> Vec<Pubkey> {
@@ -312,6 +391,19 @@ async fn test_feed_authority_permission_keeps_its_rights_on_its_own_pass() {
     .await
     .expect("the oracle locks its own pass");
 
+    let user_payer = s.own_user_payer;
+    s.as_oracle(
+        set_access_pass_until(ip, 12_345),
+        vec![
+            AccountMeta::new(pass, false),
+            AccountMeta::new(gs, false),
+            AccountMeta::new(user_payer, false),
+        ],
+    )
+    .await
+    .expect("the oracle updates its own pass");
+    assert_eq!(s.last_access_epoch(pass).await, 12_345);
+
     s.as_oracle(
         DoubleZeroInstruction::AddMulticastGroupSubAllowlist(AddMulticastGroupSubAllowlistArgs {
             client_ip: ip,
@@ -350,5 +442,64 @@ async fn test_feed_authority_permission_keeps_its_rights_on_its_own_pass() {
     )
     .await
     .expect("the oracle closes its own pass");
+    assert!(account_is_closed(&mut s.banks_client, pass).await);
+}
+
+/// A foundation member holding `ACCESS_PASS_ADMIN | FEED_AUTHORITY` through its Permission account
+/// acts on a pass it does not own, as it could before the rollout granted it `FEED_AUTHORITY`.
+#[tokio::test]
+async fn test_feed_authority_permission_does_not_limit_a_foundation_member() {
+    let mut s = setup().await;
+    let (pass, gs, ip, user_payer, mgroup) = (
+        s.foreign_pass,
+        s.globalstate,
+        s.foreign_ip,
+        s.foreign_user_payer,
+        s.mgroup,
+    );
+
+    s.as_foundation(
+        lock_flags(),
+        vec![
+            AccountMeta::new(pass, false),
+            AccountMeta::new_readonly(gs, false),
+        ],
+    )
+    .await
+    .expect("a foundation member locks a pass it does not own");
+
+    s.as_foundation(
+        set_access_pass_until(ip, 12_345),
+        vec![
+            AccountMeta::new(pass, false),
+            AccountMeta::new(gs, false),
+            AccountMeta::new(user_payer, false),
+        ],
+    )
+    .await
+    .expect("a foundation member updates a pass it does not own");
+    assert_eq!(s.last_access_epoch(pass).await, 12_345);
+
+    s.as_foundation(
+        DoubleZeroInstruction::AddMulticastGroupSubAllowlist(AddMulticastGroupSubAllowlistArgs {
+            client_ip: ip,
+            user_payer,
+        }),
+        vec![
+            AccountMeta::new(mgroup, false),
+            AccountMeta::new(pass, false),
+            AccountMeta::new(gs, false),
+        ],
+    )
+    .await
+    .expect("a foundation member adds a group to a pass it does not own");
+    assert_eq!(s.sub_allowlist(pass).await, vec![mgroup]);
+
+    s.as_foundation(
+        DoubleZeroInstruction::ClosePrepaidAccessPass(CloseAccessPassArgs {}),
+        vec![AccountMeta::new(pass, false), AccountMeta::new(gs, false)],
+    )
+    .await
+    .expect("a foundation member closes a pass it does not own");
     assert!(account_is_closed(&mut s.banks_client, pass).await);
 }

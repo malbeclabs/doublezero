@@ -39,6 +39,7 @@ All notable changes to this project will be documented in this file.
   - `permission audit` no longer reports that the CLI does not attach Permission accounts, and `permission set` no longer warns that a grant is inert through the CLI.
 - Config
   - The mainnet-beta internet latency collector key moves from the retired `8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH` to `3Fs61T6u4etthEkFSy2cBwEA5i2ZqxQ5AEMd36mBkWsn`. The monitor, telemetry data-api, data CLI and funder (`-env mainnet-beta`) find or fund the collector by this key.
+  - The testnet internet latency collector key moves from the retired `HWGQSTmXWMB85NY2vFLhM1nGpXA8f4VCARRyeGNbqDF1` to `DtkyktXDfywXqEupfdsPtGZnFK6zCjJmpHjGq9X6uzCa`. The monitor, telemetry data-api, data CLI and funder (`-env testnet`) find or fund the collector by this key.
 - Dependencies
   - Lockfile bumps to the first fixed releases for published advisories: `rustls` 0.23.46 and `quinn-proto` 0.11.18 in the workspace, `rustls` 0.23.46 and `time` 0.3.47 in `solana/`, `anyio` 4.14.2 in the three Python SDKs, and `ws` 7.5.11 and 8.21.0 in the TypeScript SDKs. No onchain program depends on any of them.
 - E2E/QA

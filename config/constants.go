@@ -21,7 +21,7 @@ const (
 	TestnetLedgerPublicRPCURL         = "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16"
 	TestnetServiceabilityProgramID    = "DZtnuQ839pSaDMFG5q1ad2V95G82S5EC4RrB3Ndw2Heb"
 	TestnetTelemetryProgramID         = "3KogTMmVxc5eUHtjZnwm136H5P8tvPwVu4ufbGPvM7p1"
-	TestnetInternetLatencyCollectorPK = "HWGQSTmXWMB85NY2vFLhM1nGpXA8f4VCARRyeGNbqDF1"
+	TestnetInternetLatencyCollectorPK = "DtkyktXDfywXqEupfdsPtGZnFK6zCjJmpHjGq9X6uzCa"
 	TestnetDeviceLocalASN             = 65342
 	TestnetSolanaRPC                  = "https://api.testnet.solana.com"
 	TestnetTelemetryFlowIngestURL     = "http://telemetry-flow-in.testnet.doublezero.xyz"

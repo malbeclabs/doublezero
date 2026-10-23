@@ -16,7 +16,8 @@ use std::{fmt, str::FromStr};
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FeedStatus {
-    /// Bonded and created, waiting on a conformance verdict. No seats sell.
+    /// Waiting on a conformance verdict. No seats sell. Only a bonded feed created before
+    /// `CreateFeed` started every feed `Active` is in this state.
     #[default]
     Pending = 0,
     /// Publishing and sellable.
@@ -327,7 +328,8 @@ mod tests {
         assert_eq!(feed.feed_chain, FeedChain::Unspecified);
     }
 
-    /// The RFC-28 tail round-trips, and a bonded feed keeps the Pending it was created with.
+    /// The RFC-28 tail round-trips, and a bonded feed keeps a `Pending` status. A bonded feed
+    /// created before `CreateFeed` started every feed `Active` still holds one.
     #[test]
     fn test_bonded_feed_roundtrip_keeps_pending() {
         let mut val = feed_with(Pubkey::new_unique(), vec![Pubkey::new_unique()]);

@@ -32,11 +32,12 @@ pub struct FeedActivateArgs {}
 /// payload here before anything consumes it would fix its shape at the point we know least about
 /// it. What the caller's signature asserts is the whole of the verdict for now.
 ///
-/// The builder cannot sign this, unlike halt and resume, which RFC-28 makes its own levers. A
-/// builder that could admit its own feed would be attesting to its own conformance, which is the
-/// one thing the Pending state exists to prevent. It is refused by name before the permission
-/// check rather than left to it, because a builder may also hold `FEED_AUTHORITY` or sit in the
-/// foundation allowlist, and `authorize` would let it through on that strength.
+/// The builder cannot sign this, unlike halt and resume, which RFC-28 makes its own levers. A feed
+/// created `Pending` was created to wait on someone other than its builder, so a builder that
+/// admitted it would be attesting to its own conformance. A feed created now is admitted by its
+/// bond at `CreateFeed` instead. The builder is refused by name before the permission check rather
+/// than left to it, because a builder may also hold `FEED_AUTHORITY` or sit in the foundation
+/// allowlist, and `authorize` would let it through on that strength.
 pub fn process_activate_feed(
     program_id: &Pubkey,
     accounts: &[AccountInfo],

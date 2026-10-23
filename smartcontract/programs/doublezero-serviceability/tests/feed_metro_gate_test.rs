@@ -66,7 +66,7 @@ struct FeedFixture {
     accesspass_pubkey: Pubkey,
     mgroup_pubkey: Pubkey,
     user_ip: Ipv4Addr,
-    /// A bond the fixture pre-mirrors, so a test can create a bonded (Pending) feed.
+    /// A bond the fixture pre-mirrors, so a test can create a bonded feed.
     bond_ref: Pubkey,
     builder: Pubkey,
     user_tunnel_block: Pubkey,
@@ -86,9 +86,8 @@ async fn setup_feed_fixture(client_ip: [u8; 4]) -> FeedFixture {
     );
     program_test.set_compute_max_units(1_000_000);
 
-    // Pre-mirror one bond so a test can create a bonded feed, which lands Pending. No instruction
-    // writes a BondMirror yet, and nothing else reaches a non-Active status until halt and retire
-    // exist.
+    // Pre-mirror one bond so a test can create a bonded feed, which lands Active. Written here
+    // rather than through `WriteBondMirror`, so the fixture needs no `BOND_ORACLE` key.
     let builder = Pubkey::new_unique();
     let bond_ref = Pubkey::new_unique();
     let (mirror_pubkey, mirror_bump) = get_bond_mirror_pda(&program_id, &bond_ref);

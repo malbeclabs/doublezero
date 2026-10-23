@@ -130,12 +130,38 @@ make generate-fixtures   # Regenerate .bin/.json fixtures from Rust
 - Use the `/pr-text` skill to generate PR descriptions, then use `gh pr create`
 - Do not include "Generated with Claude Code" or similar footers
 - PR title format: `component: short description` (same as commit messages)
-- Summary bullets should be concise, ordered by importance/significance
+- A PR body has a `## Summary of Changes` section and a `## Testing Verification` section, both as bullets
 - Focus on "what" and "why", not implementation details
-- Include a "Testing Verification" section
 - Don't mention table-stakes items in testing verification (e.g., "compiles cleanly", "builds successfully", "no lint errors"). Only include meaningful verification like specific test scenarios, behavioral observations, or edge cases validated.
 - Limit the size of each PR to about 500 lines of new code if possible (not including tests). If not possible, make the operator aware that the size of the PR exceeds doublezero's best practice, and recommend breaking the work apart into multiple PRs.
 - If the change is related to an RFC in the rfcs/ directory, provide the reviewer with a link to the RFC.
+
+### What the Summary of Changes says first
+
+The first bullets say clearly what the PR added, who uses it and what changed. Write them in this order, and drop a bullet that does not apply:
+
+1. The first bullet says what is new. It names the new instruction, account, flag, cranker or command, and it says what that thing is for.
+2. The second bullet says who calls or uses it and when. The caller is the oracle, the admin, any user or a CLI command, and the time is a condition or a date.
+3. The third bullet says what existing code now does differently. It names the instruction or behavior and says what it does now.
+
+The later bullets cover the rest. Each bullet adds information that a reader cannot get from the commit log. The number of bullets is not limited. For example, a PR that adds two flags to a command has this Summary of Changes:
+
+- Added the `--solana-url` and `--dz-url` flags to the `distribute-monthly-rewards` command, which let an operator name both RPCs because the command reads no config file.
+- An operator runs the command by hand to finalize and pay one month, and the contributor rewards scheduler does not use these flags.
+- The command no longer falls back to the RPCs in the settings, and it refuses to start without both flags.
+
+### Simplified Technical English
+
+Write the Summary of Changes and the Testing Verification in Simplified Technical English, as the ASD-STE100 standard defines it. The rules are at https://github.com/danyuchn/asd-ste100-skill. These rules apply:
+
+- Write every bullet as one full sentence with a subject and a verb. Never write a label followed by a fragment.
+- Use one word for one action, and use a word as one part of speech only.
+- Write in the active voice, and name the actor. Use simple tenses.
+- Give one instruction per sentence. Keep an instruction under 20 words and a description under 25 words.
+- Stack at most three words into a noun phrase. Keep the articles.
+- Do not use an internal type or field name as a noun, except the name of what the PR adds, such as an instruction, a flag or a command, because the reader needs it to find the change.
+- Use a real value (a command, an amount, an id) when the change was exercised.
+- Do not join two ideas with a semicolon. Split them into two sentences.
 
 ## Local Devnet / E2E Environment
 

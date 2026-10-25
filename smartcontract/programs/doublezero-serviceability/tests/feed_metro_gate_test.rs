@@ -22,7 +22,7 @@ use doublezero_serviceability::{
         contributor::create::ContributorCreateArgs,
         device::{create::DeviceCreateArgs, update::DeviceUpdateArgs},
         exchange::create::ExchangeCreateArgs,
-        feed::{create::FeedCreateArgs, retire::FeedRetireArgs},
+        feed::{create::FeedCreateArgs, halt::FeedHaltArgs, retire::FeedRetireArgs},
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
         location::create::LocationCreateArgs,
         multicastgroup::create::MulticastGroupCreateArgs,
@@ -66,7 +66,7 @@ struct FeedFixture {
     accesspass_pubkey: Pubkey,
     mgroup_pubkey: Pubkey,
     user_ip: Ipv4Addr,
-    /// A bond the fixture pre-mirrors, so a test can create a bonded (Pending) feed.
+    /// A bond the fixture pre-mirrors, so a test can create a bonded feed.
     bond_ref: Pubkey,
     builder: Pubkey,
     user_tunnel_block: Pubkey,
@@ -86,9 +86,8 @@ async fn setup_feed_fixture(client_ip: [u8; 4]) -> FeedFixture {
     );
     program_test.set_compute_max_units(1_000_000);
 
-    // Pre-mirror one bond so a test can create a bonded feed, which lands Pending. No instruction
-    // writes a BondMirror yet, and nothing else reaches a non-Active status until halt and retire
-    // exist.
+    // Pre-mirror one bond so a test can create a bonded feed, which lands Active. Written here
+    // rather than through `WriteBondMirror`, so the fixture needs no `BOND_ORACLE` key.
     let builder = Pubkey::new_unique();
     let bond_ref = Pubkey::new_unique();
     let (mirror_pubkey, mirror_bump) = get_bond_mirror_pda(&program_id, &bond_ref);
@@ -341,8 +340,7 @@ async fn create_feed(
     feed_pubkey
 }
 
-/// Create a bonded RFC-28 feed against the fixture's pre-mirrored bond. It lands `Pending`,
-/// waiting on a conformance verdict, which is the status the subscribe gate must refuse.
+/// Create a bonded RFC-28 feed against the fixture's pre-mirrored bond. It lands `Active`.
 async fn create_bonded_feed(
     f: &mut FeedFixture,
     code: &str,
@@ -820,9 +818,24 @@ async fn test_batch_extra_group_not_in_feed_rejected_and_seat_not_ticked() {
 async fn test_non_active_feed_admits_no_subscriber() {
     let mut f = setup_feed_fixture([100, 0, 0, 26]).await;
     let (exchange, mgroup) = (f.exchange_pubkey, f.mgroup_pubkey);
-    let feed = create_bonded_feed(&mut f, "pending", exchange, vec![mgroup]).await;
+    let feed = create_bonded_feed(&mut f, "halted", exchange, vec![mgroup]).await;
+    let recent_blockhash = f.banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut f.banks_client,
+        recent_blockhash,
+        f.program_id,
+        DoubleZeroInstruction::HaltFeed(FeedHaltArgs {}),
+        vec![
+            AccountMeta::new(feed, false),
+            AccountMeta::new(f.globalstate_pubkey, false),
+        ],
+        &f.payer,
+    )
+    .await;
 
-    // A seat provisioner sold a seat on it. Pre-selling a Pending feed is legitimate; connecting is not.
+    // A seat provisioner sells a seat on the halted feed, which `SetAccessPassFeeds` allows: it
+    // refuses only a retiring or retired feed. Holding the seat is legitimate; connecting while
+    // the feed is halted is not.
     set_pass_feeds(
         &mut f,
         vec![FeedSeat {
@@ -839,7 +852,7 @@ async fn test_non_active_feed_admits_no_subscriber() {
 
     let err = try_subscribe_with_feed(&mut f, feed)
         .await
-        .expect_err("a Pending feed should admit no subscriber");
+        .expect_err("a halted feed should admit no subscriber");
     assert_custom_error(&err, 123); // FeedNotActive
 
     // The seat was not spent, so the subscriber keeps what they paid for.

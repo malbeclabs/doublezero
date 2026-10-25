@@ -45,7 +45,7 @@ pub const ENV_TESTNET_SERVICEABILITY_PUBKEY: Pubkey =
 pub const ENV_TESTNET_TELEMETRY_PUBKEY: Pubkey =
     Pubkey::from_str_const("3KogTMmVxc5eUHtjZnwm136H5P8tvPwVu4ufbGPvM7p1");
 pub const ENV_TESTNET_INTERNET_LATENCY_COLLECTOR_PUBKEY: Pubkey =
-    Pubkey::from_str_const("HWGQSTmXWMB85NY2vFLhM1nGpXA8f4VCARRyeGNbqDF1");
+    Pubkey::from_str_const("DtkyktXDfywXqEupfdsPtGZnFK6zCjJmpHjGq9X6uzCa");
 pub const ENV_TESTNET_GEOLOCATION_PUBKEY: Pubkey =
     Pubkey::from_str_const("3AG2BCA7gAm47Q6xZzPQcUUYvnBjxAvPKnPz919cxHF4");
 // The shred-subscription program for DZ testnet runs on Solana devnet, so the

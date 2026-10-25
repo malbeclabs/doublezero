@@ -211,3 +211,31 @@ pub fn require_bond_still_covers(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Every status, because no instruction writes `Pending` any more: a `Pending` dropped from the
+    // match would pass every test that drives real instructions.
+    #[test]
+    fn test_only_an_active_or_retiring_feed_admits() {
+        for (status, admits) in [
+            (FeedStatus::Pending, false),
+            (FeedStatus::Active, true),
+            (FeedStatus::Halted, false),
+            (FeedStatus::Retiring, true),
+            (FeedStatus::Retired, false),
+        ] {
+            let feed = Feed {
+                status,
+                ..Feed::default()
+            };
+            assert_eq!(
+                require_feed_admits(&Pubkey::new_unique(), &feed).is_ok(),
+                admits,
+                "{status:?}"
+            );
+        }
+    }
+}

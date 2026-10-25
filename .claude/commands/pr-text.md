@@ -50,6 +50,7 @@ PR Title guidelines:
 
 Guidelines:
 - Summary should describe the net result: what does this branch add or change compared to origin/main?
+- Write the Summary of Changes and the Testing Verification by the rules in the Pull Requests section of CLAUDE.md: the order of the first bullets, and Simplified Technical English
 - Ignore commit history - only describe what the final diff shows
 - Include a Diff Breakdown table categorizing changes (use the script output as a base, replacing Unclassified with Scaffolding and Core logic rows). Omit categories with zero changes. Add a one-line summary below the table characterizing the balance of changes.
 - Include a "Key files" list after the diff breakdown showing the most important core logic files (up to 8), sorted by lines changed descending. Each entry should have a brief description of what changed. This helps reviewers know where to focus.

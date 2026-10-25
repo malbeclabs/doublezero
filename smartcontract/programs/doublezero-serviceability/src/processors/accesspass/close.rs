@@ -1,5 +1,5 @@
 use crate::{
-    authorize::authorize,
+    authorize::{authorize, feed_authority_role},
     error::DoubleZeroError,
     serializer::try_acc_close,
     state::{
@@ -79,6 +79,13 @@ pub fn process_close_access_pass(
 
     // Parse the global state account & check authorization
     let globalstate = GlobalState::try_from(globalstate_account)?;
+    // Read before authorize() consumes it from the iterator.
+    let feed_role = feed_authority_role(
+        program_id,
+        accounts_iter.clone().next(),
+        payer_account.key,
+        &globalstate,
+    );
     authorize(
         program_id,
         accounts_iter,
@@ -110,8 +117,7 @@ pub fn process_close_access_pass(
     }
 
     // Feed authority can only close access passes they own
-    if globalstate.feed_authority_pk == *payer_account.key && accesspass.owner != *payer_account.key
-    {
+    if feed_role.limited_to_own_passes() && accesspass.owner != *payer_account.key {
         msg!("Feed authority can only close access passes they own");
         return Err(DoubleZeroError::NotAllowed.into());
     }

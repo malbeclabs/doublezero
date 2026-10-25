@@ -44,7 +44,7 @@ pub struct FeedCreateArgs {
     // RFC-28 tail. A client built before RFC-28 sends nothing past `groups` and still creates a
     // catalog feed, which is what the defaults below describe.
     /// The builder deploying this feed. Zero creates a catalog feed with no builder, the pre-RFC-28
-    /// behavior. Any other value makes this a bonded feed and starts it Pending.
+    /// behavior. Any other value makes this a bonded feed.
     #[incremental(default = Pubkey::default())]
     pub builder: Pubkey,
     /// The `BuilderBond` PDA on Solana holding this feed's bond.
@@ -154,13 +154,9 @@ pub fn process_create_feed(
         spec_id: value.spec_id.clone(),
         sla_hash: value.sla_hash,
         committed_rate_bits_per_sec: value.committed_rate_bits_per_sec,
-        // A bonded feed waits on a conformance verdict before it sells seats. A catalog feed has no
-        // builder to attest, so it is sellable on creation, as it was before RFC-28.
-        status: if value.builder == Pubkey::default() {
-            FeedStatus::Active
-        } else {
-            FeedStatus::Pending
-        },
+        // Sellable on creation. For a bonded feed, the bond that admitted this create is the
+        // admission: no verdict follows, so nobody has to come back and activate it.
+        status: FeedStatus::Active,
         halted_by: Pubkey::default(),
         retires_at: 0,
         feed_chain: value.feed_chain,

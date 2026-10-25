@@ -8,15 +8,16 @@ use std::{fmt, str::FromStr};
 
 /// Where a feed sits in the RFC-28 deployment lifecycle.
 ///
-/// A feed created without a bond is `Active` on creation: the pre-RFC-28 catalog feeds have no
-/// builder to attest and sell seats today. A bonded feed starts `Pending` and an attestor verdict
-/// moves it to `Active`.
+/// Every feed is `Active` on creation. A catalog feed has no builder to attest, and a bonded feed
+/// is admitted by the bond `CreateFeed` checks. `Pending` remains for bonded feeds created before
+/// that change, which `ActivateFeed` moves to `Active`.
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Eq, Clone, Copy, Default)]
 #[borsh(use_discriminant = true)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum FeedStatus {
-    /// Bonded and created, waiting on a conformance verdict. No seats sell.
+    /// Waiting on a conformance verdict. No seats sell. Only a bonded feed created before
+    /// `CreateFeed` started every feed `Active` is in this state.
     #[default]
     Pending = 0,
     /// Publishing and sellable.
@@ -327,7 +328,8 @@ mod tests {
         assert_eq!(feed.feed_chain, FeedChain::Unspecified);
     }
 
-    /// The RFC-28 tail round-trips, and a bonded feed keeps the Pending it was created with.
+    /// The RFC-28 tail round-trips, and a bonded feed keeps a `Pending` status. A bonded feed
+    /// created before `CreateFeed` started every feed `Active` still holds one.
     #[test]
     fn test_bonded_feed_roundtrip_keeps_pending() {
         let mut val = feed_with(Pubkey::new_unique(), vec![Pubkey::new_unique()]);

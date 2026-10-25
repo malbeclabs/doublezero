@@ -1,5 +1,5 @@
 use crate::{
-    authorize::authorize,
+    authorize::{authorize, feed_authority_role},
     error::DoubleZeroError,
     serializer::try_acc_write,
     state::{
@@ -82,6 +82,13 @@ pub fn process_set_access_pass_flags(
     // All flag changes gate on ACCESS_PASS_ADMIN (Permission PDA or legacy fallback: foundation
     // allowlist, sentinel, or feed authority), matching the sibling SetAccessPass path.
     let globalstate = GlobalState::try_from(globalstate_account)?;
+    // Read before authorize() consumes it from the iterator.
+    let feed_role = feed_authority_role(
+        program_id,
+        accounts_iter.clone().next(),
+        payer_account.key,
+        &globalstate,
+    );
     authorize(
         program_id,
         accounts_iter,
@@ -110,18 +117,10 @@ pub fn process_set_access_pass_flags(
 
     // Mirror the sibling accesspass handlers: the feed authority may only touch passes it owns.
     // This is what stops the oracle (which holds ACCESS_PASS_ADMIN) from clearing dzf_locked on a
-    // pass it did not create.
-    //
-    // DEPENDENCY: this holds only while the oracle's key lives in the legacy
-    // `globalstate.feed_authority_pk`. Once the oracle authorizes purely via a Permission account
-    // granting ACCESS_PASS_ADMIN and this legacy field is cleared or reassigned, the condition is
-    // never true and the guard silently no-ops — losing exactly the property dzf_locked exists to
-    // guarantee. The durable fix is to fence *any* non-foundation/sentinel ACCESS_PASS_ADMIN caller
-    // to passes it owns, which belongs with the feed-authority -> Permission migration because the
-    // same guard is duplicated in accesspass/set.rs and accesspass/close.rs. Revisit all three
-    // together at that point. Tracked in #4092.
-    if globalstate.feed_authority_pk == *payer_account.key && accesspass.owner != *payer_account.key
-    {
+    // pass it did not create. `feed_authority_role` also reads the payer's Permission account, so
+    // the rule holds after the oracle stops being `feed_authority_pk`. Foundation members holding
+    // FEED_AUTHORITY are not limited.
+    if feed_role.limited_to_own_passes() && accesspass.owner != *payer_account.key {
         msg!("Feed authority can only modify access passes they own");
         return Err(DoubleZeroError::NotAllowed.into());
     }

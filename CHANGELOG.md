@@ -6,12 +6,19 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- Serviceability
+  - `CreateFeed` starts a bonded feed `Active`, as it already did a catalog feed. The bond check that admits the create is the admission, so nobody sends `ActivateFeed` for a new feed. One sent anyway by an authorized key fails with `FeedNotActivatable`, and the feed's builder is still refused first with `NotAllowed`. `ActivateFeed` stays for a feed created `Pending` before this change. A new bonded feed admits subscribers at once, and it serves the thirty-day retirement notice even if nobody joined, since only a `Pending` feed retired without one. A relayer write that lowers the bond's tier after the create no longer reaches the feed before it publishes: the only re-check left is `ResumeFeed`, so a feed whose bond shrinks keeps selling seats until someone halts it.
+
 ### Changes
 
 - CLI
   - `doublezero-solana bond` gives a builder its own bond commands on the `builder-bond` program: `init` (with `--committed-rate`, e.g. `1Gbps`), `post` and `withdraw` (amounts in 2Z as decimals, parsed exactly), and `show` (also `--json`), which prints the bond's address, tier coverage, hold expiry and what can be withdrawn now. The 2Z mint follows the network the connection reaches. The admin commands stay out: a builder never runs them.
 - SDK
   - `doublezero-solana-sdk` re-exports the `builder-bond` program as `builder_bond`. `builder-bond`'s instruction builders add `initialize_builder_bond_with_mint`, for a client that picks the 2Z mint at run time; `initialize_builder_bond` calls it with the mint the crate was built for. The program builds the same: both checksum sets verify unchanged.
+- Serviceability
+  - The feed authority's access-pass rules now also apply to a signer whose own Permission account carries `feed-authority`, not only to `feed_authority_pk`. `SetAccessPass`, `SetAccessPassFlags`, the `Close*AccessPass` instructions and `AddMulticastGroupSubAllowlist` keep it to passes it owns. `AddMulticastGroupSubAllowlist` and `RemoveMulticastGroupSubAllowlist` let it name a `user_payer` other than the pass's. Keyed on `feed_authority_pk` alone, the ownership checks would have stopped applying, without error, once the shred oracle signs only through its Permission account and that field names another key, so it could have cleared `dzf_locked` on or closed any pass. Its subscriber allowlist calls with another `user_payer` would have started failing. A foundation member, on `foundation_allowlist` or holding an activated `foundation` flag, is not kept to its own passes when its Permission account carries `feed-authority`: the rollout grants that flag to every foundation member for the feed instructions, and they were never limited before. `feed_authority_pk` itself stays limited, even when it is also a foundation member. Signers with `access-pass-admin` but not `feed-authority` are unaffected. (#4092)
+- Scheduler
+  - `plug_crypto` 2.2.1 (from 2.1.1, through `plug_cowboy`), which fixes EEF-CVE-2026-105963: on a wrong-typed argument, earlier versions could put the secret key base into a logged stack trace.
 
 ## [v0.45.0](https://github.com/malbeclabs/doublezero/compare/client/v0.44.0...client/v0.45.0) - 2026-10-22
 
@@ -39,6 +46,7 @@ All notable changes to this project will be documented in this file.
   - `permission audit` no longer reports that the CLI does not attach Permission accounts, and `permission set` no longer warns that a grant is inert through the CLI.
 - Config
   - The mainnet-beta internet latency collector key moves from the retired `8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH` to `3Fs61T6u4etthEkFSy2cBwEA5i2ZqxQ5AEMd36mBkWsn`. The monitor, telemetry data-api, data CLI and funder (`-env mainnet-beta`) find or fund the collector by this key.
+  - The testnet internet latency collector key moves from the retired `HWGQSTmXWMB85NY2vFLhM1nGpXA8f4VCARRyeGNbqDF1` to `DtkyktXDfywXqEupfdsPtGZnFK6zCjJmpHjGq9X6uzCa`. The monitor, telemetry data-api, data CLI and funder (`-env testnet`) find or fund the collector by this key.
 - Dependencies
   - Lockfile bumps to the first fixed releases for published advisories: `rustls` 0.23.46 and `quinn-proto` 0.11.18 in the workspace, `rustls` 0.23.46 and `time` 0.3.47 in `solana/`, `anyio` 4.14.2 in the three Python SDKs, and `ws` 7.5.11 and 8.21.0 in the TypeScript SDKs. No onchain program depends on any of them.
 - E2E/QA

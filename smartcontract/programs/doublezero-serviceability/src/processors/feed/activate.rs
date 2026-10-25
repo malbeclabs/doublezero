@@ -23,7 +23,8 @@ pub struct FeedActivateArgs {}
 
 /// Admit a feed that was waiting on a conformance verdict.
 ///
-/// Only from `Pending`. `Halted` has its own way back through `ResumeFeed`, and nothing leaves
+/// `CreateFeed` no longer writes `Pending`, so this serves only a feed created before that
+/// change. Only from `Pending`. `Halted` has its own way back through `ResumeFeed`, and nothing leaves
 /// `Retired`.
 ///
 /// The args carry no verdict. Nothing reads one: the grounds a verdict would carry are what
@@ -31,11 +32,12 @@ pub struct FeedActivateArgs {}
 /// payload here before anything consumes it would fix its shape at the point we know least about
 /// it. What the caller's signature asserts is the whole of the verdict for now.
 ///
-/// The builder cannot sign this, unlike halt and resume, which RFC-28 makes its own levers. A
-/// builder that could admit its own feed would be attesting to its own conformance, which is the
-/// one thing the Pending state exists to prevent. It is refused by name before the permission
-/// check rather than left to it, because a builder may also hold `FEED_AUTHORITY` or sit in the
-/// foundation allowlist, and `authorize` would let it through on that strength.
+/// The builder cannot sign this, unlike halt and resume, which RFC-28 makes its own levers. A feed
+/// created `Pending` was created to wait on someone other than its builder, so a builder that
+/// admitted it would be attesting to its own conformance. A feed created now is admitted by its
+/// bond at `CreateFeed` instead. The builder is refused by name before the permission check rather
+/// than left to it, because a builder may also hold `FEED_AUTHORITY` or sit in the foundation
+/// allowlist, and `authorize` would let it through on that strength.
 pub fn process_activate_feed(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -97,10 +99,10 @@ pub fn process_activate_feed(
         return Err(DoubleZeroError::FeedNotActivatable.into());
     }
 
-    // This is the only place a corrected mirror reaches a feed that a bad one already admitted.
-    // `CreateFeed` checked the cover it was shown; a relayer can write a smaller tier afterwards,
-    // and between creation and this step is the whole window in which that correction can land
-    // before the feed ever publishes.
+    // `CreateFeed` checked the cover it was shown, and a relayer can write a smaller tier
+    // afterwards. For a feed created `Pending`, this is where that correction reaches it before it
+    // publishes. A feed created `Active` has no such step: a correction reaches it only at
+    // `ResumeFeed`.
     if let Some(mirror_account) = mirror_account {
         require_bond_still_covers(program_id, mirror_account, feed_account.key, &feed)?;
     } else if feed.builder != Pubkey::default() {

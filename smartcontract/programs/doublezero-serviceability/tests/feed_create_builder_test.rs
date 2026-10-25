@@ -143,8 +143,8 @@ async fn test_the_create_feed_builder_deploys_a_bonded_feed() {
     );
     assert_eq!(
         written.status,
-        FeedStatus::Pending,
-        "a bonded feed waits on a verdict"
+        FeedStatus::Active,
+        "a bonded feed starts active"
     );
 
     let claimed = get_account_data(&mut banks_client, mirror)

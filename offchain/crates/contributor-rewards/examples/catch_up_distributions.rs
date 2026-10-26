@@ -2,7 +2,10 @@ use std::time::Duration;
 
 use anyhow::{Context, Result, ensure};
 use clap::Parser;
-use doublezero_solana_client_tools::payer::{SolanaPayerOptions, TransactionOutcome, Wallet};
+use doublezero_solana_client_tools::{
+    payer::{SolanaPayerOptions, TransactionOutcome, Wallet},
+    rpc::DoubleZeroLedgerConnection,
+};
 use doublezero_solana_sdk::{
     environment_2z_token_mint_key,
     revenue_distribution::{
@@ -38,6 +41,16 @@ async fn main() -> Result<()> {
     let network_env = wallet.connection.try_network_environment().await?;
     let dz_mint_key = environment_2z_token_mint_key(network_env);
 
+    let last_completed_dz_epoch = DoubleZeroLedgerConnection::from(network_env)
+        .get_epoch_info()
+        .await?
+        .epoch
+        .saturating_sub(1);
+    ensure!(
+        through_dz_epoch <= last_completed_dz_epoch,
+        "DZ epoch {through_dz_epoch} is not complete yet, the last completed DZ epoch is {last_completed_dz_epoch}"
+    );
+
     loop {
         let config = wallet
             .connection
@@ -63,6 +76,21 @@ async fn main() -> Result<()> {
         let grace_period_seconds = config
             .checked_distribution_initialization_grace_period_seconds()
             .context("Distribution initialization grace period not set")?;
+
+        let current_timestamp = wallet
+            .connection
+            .try_fetch_sysvar::<solana_sdk::clock::Clock>()
+            .await?
+            .unix_timestamp;
+        let ready_timestamp = i64::from(config.last_initialized_distribution_timestamp)
+            + i64::from(grace_period_seconds);
+
+        if current_timestamp < ready_timestamp {
+            let wait_seconds = ready_timestamp - current_timestamp + 2;
+            println!("Waiting {wait_seconds} seconds for the initialization grace period");
+            tokio::time::sleep(Duration::from_secs(wait_seconds.unsigned_abs())).await;
+            continue;
+        }
 
         let (distribution_key, bump) = Distribution::find_address(next_dz_epoch);
         let (_, token_bump) = state::find_2z_token_pda_address(&distribution_key);
@@ -102,8 +130,5 @@ async fn main() -> Result<()> {
                 return Ok(());
             }
         }
-
-        // The program refuses another creation until the grace period passes.
-        tokio::time::sleep(Duration::from_secs(u64::from(grace_period_seconds) + 2)).await;
     }
 }

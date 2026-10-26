@@ -12,9 +12,7 @@ use tracing::{debug, warn};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 // TODO: Remove this crate, because validators no longer pay debt to DoubleZero.
-// First, another worker must do what `initialize-distribution` still does for each epoch.
-// It creates the distribution and finalizes its debt, which need the debt accountant key.
-// It also finalizes the rewards of the distribution.
+// First, `doublezero-solana` must stop reading debt records through it.
 #[derive(Debug, Parser)]
 #[command(term_width = 0)]
 #[command(version = option_env!("BUILD_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")))]

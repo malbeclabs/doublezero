@@ -411,7 +411,7 @@ impl DzRpcClient {
     /// billable epoch is `epoch - 1` because the current DZ Ledger epoch is
     /// still in progress. This matches how revenue-distribution syncs via
     /// `ProgramConfig.next_completed_dz_epoch` (see
-    /// validator-debt/worker/initialize_distribution.rs).
+    /// contributor-rewards/scheduler/initialize_distribution.rs).
     pub async fn get_current_dz_epoch(&self) -> Result<u64> {
         let epoch_info = self.client.get_epoch_info().await?;
         Ok(epoch_info.epoch.saturating_sub(1))

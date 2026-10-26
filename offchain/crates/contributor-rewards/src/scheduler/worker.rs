@@ -22,10 +22,7 @@ use doublezero_solana_client_tools::{
     payer::Wallet,
     rpc::{DoubleZeroLedgerConnection, SolanaConnection, try_fetch_zero_copy_data_with_commitment},
 };
-use doublezero_solana_sdk::revenue_distribution::fetch::{SolConversionState, try_fetch_config};
-use slack_notifier::contributor_rewards::{
-    DistributionRewardRow, WriteResultInfo, post_contributor_rewards, post_distribution_rewards,
-};
+use slack_notifier::contributor_rewards::{WriteResultInfo, post_contributor_rewards};
 use solana_client::client_error::ClientError as SolanaClientError;
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::pubkey::Pubkey;
@@ -39,7 +36,7 @@ use tracing::{debug, error, info, warn};
 
 use crate::{
     calculator::{
-        DistributionOutcome, DistributionSummary, WriteConfig, distribute,
+        WriteConfig,
         keypair_loader::load_keypair,
         ledger_operations::WriteResult,
         monthly,
@@ -48,7 +45,7 @@ use crate::{
     },
     cli::snapshot::{CompleteSnapshot, SnapshotMetadata},
     ingestor::{epoch::EpochFinder, fetcher::Fetcher},
-    scheduler::state::SchedulerState,
+    scheduler::{initialize_distribution, state::SchedulerState},
     settings::{aws::StorageBackend, network::Network},
     storage::SnapshotStorage,
 };
@@ -114,8 +111,8 @@ impl ScheduleWorker {
             .enable_monthly_distribution;
         info!("  Monthly distribution: {enable_monthly_distribution}");
 
-        // Every monthly step writes, so a dry run skips them all.
-        let monthly_wallet = if enable_monthly_distribution && !self.dry_run {
+        // Every step below writes, so a dry run skips them all.
+        let wallet = if !self.dry_run {
             Some(Wallet {
                 connection: SolanaConnection::new(
                     self.orchestrator.settings.rpc.solana_write_url.clone(),
@@ -167,6 +164,22 @@ impl ScheduleWorker {
             state.mark_check();
             let mut has_failed = false;
 
+            if let Some(wallet) = &wallet {
+                let dz_connection =
+                    DoubleZeroLedgerConnection::new(self.orchestrator.settings.rpc.dz_url.clone());
+                if let Err(e) =
+                    initialize_distribution::try_initialize_distribution(wallet, &dz_connection)
+                        .await
+                {
+                    error!("Failed to initialize distribution: {e:#}");
+                    has_failed = true;
+                    metrics::counter!(
+                        "doublezero_contributor_rewards_initialize_distribution_failure"
+                    )
+                    .increment(1);
+                }
+            }
+
             // Process rewards
             match self.process_rewards(&mut state).await {
                 Ok(processed) => {
@@ -199,103 +212,7 @@ impl ScheduleWorker {
                 }
             }
 
-            // Try to distribute rewards for the eligible epoch.
-            if !self.dry_run {
-                match self.try_get_distribution_epoch().await {
-                    Ok(None) => debug!("No epochs have been swept yet"),
-                    Ok(Some((dz_epoch, rewards_accountant_key))) => {
-                        let calc_epoch = state.last_processed_epoch;
-                        info!(
-                            "Calculation epoch: {:?} | Distribution epoch: {dz_epoch}",
-                            calc_epoch
-                        );
-
-                        if !state.should_distribute_epoch(dz_epoch) {
-                            debug!("Epoch {dz_epoch} already fully distributed, skipping");
-                        } else {
-                            match self
-                                .try_distribute_rewards(dz_epoch, &rewards_accountant_key)
-                                .await
-                            {
-                                Ok(summary) => match &summary.outcome {
-                                    DistributionOutcome::Complete { total_contributors } => {
-                                        let total_contributors = *total_contributors;
-                                        info!(
-                                            "Epoch {dz_epoch} complete: {total_contributors}/{total_contributors} distributed"
-                                        );
-                                        state.mark_distribution_success(dz_epoch);
-                                        state.save(&self.state_file)?;
-                                        metrics::counter!(
-                                            "doublezero_contributor_rewards_distribution_success"
-                                        )
-                                        .increment(1);
-
-                                        // The state file is gone between --once runs, so a
-                                        // run that paid no one has nothing new to report.
-                                        if summary.newly_distributed_count > 0 {
-                                            self.post_distribution_slack_notification(&summary)
-                                                .await;
-                                        }
-                                    }
-                                    DistributionOutcome::PartiallyComplete {
-                                        total_contributors,
-                                        distributed,
-                                        skipped,
-                                    } => {
-                                        let (total_contributors, distributed, skipped) =
-                                            (*total_contributors, *distributed, *skipped);
-                                        info!(
-                                            "Epoch {dz_epoch} partially complete: {distributed}/{total_contributors} distributed, {skipped} skipped (missing ContributorRewards accounts)"
-                                        );
-                                        state.mark_distribution_success(dz_epoch);
-                                        state.save(&self.state_file)?;
-                                        metrics::counter!(
-                                            "doublezero_contributor_rewards_distribution_success"
-                                        )
-                                        .increment(1);
-
-                                        if summary.newly_distributed_count > 0 {
-                                            self.post_distribution_slack_notification(&summary)
-                                                .await;
-                                        }
-                                    }
-                                    DistributionOutcome::NotReady => {
-                                        debug!("Distribution not ready for epoch {dz_epoch}");
-                                    }
-                                },
-                                Err(e) => {
-                                    error!(
-                                        "Failed to distribute rewards for epoch {dz_epoch}: {e}"
-                                    );
-                                    has_failed = true;
-                                    state.mark_distribution_failure();
-                                    state.save(&self.state_file)?;
-                                    metrics::counter!(
-                                        "doublezero_contributor_rewards_distribution_failure"
-                                    )
-                                    .increment(1);
-                                    if state.consecutive_distribution_failures % 10 == 0 {
-                                        error!(
-                                            "Distribution has failed {} consecutive times",
-                                            state.consecutive_distribution_failures
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        warn!("Failed to fetch distribution epoch: {e}");
-                        has_failed = true;
-                        metrics::counter!(
-                            "doublezero_contributor_rewards_distribution_fetch_failure"
-                        )
-                        .increment(1);
-                    }
-                }
-            }
-
-            if let Some(wallet) = &monthly_wallet {
+            if let Some(wallet) = wallet.as_ref().filter(|_| enable_monthly_distribution) {
                 has_failed |= self
                     .try_process_monthly(&mut state, wallet, &warned_skips)
                     .await?;
@@ -438,123 +355,6 @@ impl ScheduleWorker {
         }
 
         has_failed
-    }
-
-    /// Fetch the config and compute the distribution-eligible epoch.
-    async fn try_get_distribution_epoch(&self) -> Result<Option<(u64, Pubkey)>> {
-        let connection =
-            SolanaConnection::new(self.orchestrator.settings.rpc.solana_write_url.clone());
-        let (_, config) = try_fetch_config(&connection).await?;
-
-        let sol_conversion_state = SolConversionState::try_fetch(&connection).await?;
-        let next_sweep = sol_conversion_state
-            .journal
-            .1
-            .next_dz_epoch_to_sweep_tokens
-            .value();
-        if next_sweep == 0 {
-            return Ok(None);
-        }
-
-        Ok(Some((next_sweep - 1, config.rewards_accountant_key)))
-    }
-
-    /// Attempt to distribute rewards for the given epoch.
-    async fn try_distribute_rewards(
-        &self,
-        dz_epoch_value: u64,
-        rewards_accountant_key: &Pubkey,
-    ) -> Result<DistributionSummary> {
-        let signer = load_keypair(&self.keypair_path)?;
-        let connection =
-            SolanaConnection::new(self.orchestrator.settings.rpc.solana_write_url.clone());
-        let dz_connection =
-            DoubleZeroLedgerConnection::new(self.orchestrator.settings.rpc.dz_url.clone());
-
-        let wallet = Wallet {
-            connection,
-            signer,
-            compute_unit_price_ix: None,
-            verbose: false,
-            fee_payer: None,
-            dry_run: false,
-        };
-
-        let shapley_prefix = self.orchestrator.settings.get_contributor_rewards_prefix();
-
-        distribute::try_distribute_epoch_rewards(
-            &wallet,
-            &dz_connection,
-            rewards_accountant_key,
-            dz_epoch_value,
-            &shapley_prefix,
-        )
-        .await
-    }
-
-    /// Post a Slack notification with the per-contributor distribution table.
-    async fn post_distribution_slack_notification(&self, summary: &DistributionSummary) {
-        if summary.contributors.is_empty() {
-            return;
-        }
-
-        let Some(slack_settings) = &self.orchestrator.settings.slack else {
-            return;
-        };
-        if !slack_settings.enabled {
-            return;
-        }
-        let Some(webhook_url) = &slack_settings.webhook_url else {
-            return;
-        };
-
-        // Fetch contributor labels for human-readable names.
-        let dz_connection =
-            DoubleZeroLedgerConnection::new(self.orchestrator.settings.rpc.dz_url.clone());
-        let labels = crate::calculator::ledger_operations::try_fetch_contributor_labels(
-            &dz_connection,
-            &self
-                .orchestrator
-                .settings
-                .programs
-                .serviceability_program_id,
-        )
-        .await
-        .unwrap_or_default();
-
-        let network = format!("{:?}", self.orchestrator.settings.network);
-        let rows: Vec<DistributionRewardRow> = summary
-            .contributors
-            .iter()
-            .map(|c| {
-                let contributor = labels
-                    .get(&c.contributor_key)
-                    .cloned()
-                    .unwrap_or_else(|| c.contributor_key.to_string());
-                DistributionRewardRow {
-                    index: c.index,
-                    contributor,
-                    proportion: format!("{:.2}%", 100.0 * c.proportion),
-                    reward: format!("{:.1} 2Z", c.reward_tokens),
-                    distributed: if c.distributed { "yes" } else { "no" }.to_string(),
-                }
-            })
-            .collect();
-
-        match post_distribution_rewards(webhook_url, network, summary.dz_epoch, rows).await {
-            Ok(()) => {
-                info!(
-                    "[OK] Posted distribution Slack notification for epoch {}",
-                    summary.dz_epoch
-                );
-            }
-            Err(e) => {
-                warn!(
-                    "[WARN] Failed to post distribution Slack notification: {}",
-                    e
-                );
-            }
-        }
     }
 
     /// Process rewards for the current epoch if needed

@@ -15,6 +15,7 @@ name = "doublezero_serviceability_cli"
 [dependencies]
 anyhow.workspace = true
 borsh.workspace = true
+hex.workspace = true
 ipnetwork.workspace = true
 chrono.workspace = true
 clap.workspace = true

@@ -92,6 +92,23 @@ pub fn initialize_builder_bond(
     bond_index: u64,
     committed_rate_bits_per_sec: u64,
 ) -> Instruction {
+    initialize_builder_bond_with_mint(
+        builder,
+        bond_index,
+        committed_rate_bits_per_sec,
+        &DOUBLEZERO_MINT_KEY,
+    )
+}
+
+/// [`initialize_builder_bond`] for a caller that picks the 2Z mint at run time. The crate's
+/// `DOUBLEZERO_MINT_KEY` is fixed by the `development` feature at build time, so one client that
+/// serves devnet and mainnet-beta names the mint itself.
+pub fn initialize_builder_bond_with_mint(
+    builder: &Pubkey,
+    bond_index: u64,
+    committed_rate_bits_per_sec: u64,
+    mint: &Pubkey,
+) -> Instruction {
     let bond_key = BuilderBond::find_address(builder, bond_index).0;
 
     Instruction {
@@ -101,7 +118,7 @@ pub fn initialize_builder_bond(
             AccountMeta::new(*builder, true),
             AccountMeta::new(bond_key, false),
             AccountMeta::new(state::find_2z_token_pda_address(&bond_key).0, false),
-            AccountMeta::new_readonly(DOUBLEZERO_MINT_KEY, false),
+            AccountMeta::new_readonly(*mint, false),
             AccountMeta::new_readonly(spl_token_interface::ID, false),
             AccountMeta::new_readonly(system_program::ID, false),
         ],

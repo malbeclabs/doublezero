@@ -1,3 +1,4 @@
+mod bond;
 mod feeds;
 mod passport;
 mod revenue_distribution;
@@ -115,6 +116,9 @@ pub enum DoubleZeroSolanaCommand {
 
     /// Feed subscription program commands.
     Feeds(feeds::FeedsCommand),
+
+    /// A builder's bond on the builder-bond program: create, post, show and withdraw.
+    Bond(bond::BondCommand),
 }
 
 impl DoubleZeroSolanaCommand {
@@ -126,6 +130,7 @@ impl DoubleZeroSolanaCommand {
             }
             Self::Shreds(shreds) => shreds.execute(ctx, out).await,
             Self::Feeds(feeds) => feeds.execute(ctx, out).await,
+            Self::Bond(bond) => bond.execute(ctx, out).await,
         }
     }
 }

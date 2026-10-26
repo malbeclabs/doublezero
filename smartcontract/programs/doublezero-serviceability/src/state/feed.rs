@@ -137,7 +137,8 @@ pub struct Feed {
     /// without a program upgrade.
     pub spec_id: String, // 4 + len
     /// SHA-256 of the service level the builder declared at deployment. The declaration lives
-    /// offchain; slashing measures against it, so the hash pins which text was declared.
+    /// offchain; slashing measures against it, so the hash pins which text was declared. All
+    /// zeros means the builder declared none.
     pub sla_hash: [u8; 32], // 32
     /// The rate this feed committed to, in bits per second. `u64::MAX` is the unmetered tier.
     /// Not basis points: `bps` means basis points elsewhere in DoubleZero.

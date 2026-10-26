@@ -35,6 +35,17 @@ const TIER: BondTier = BondTier::UpTo1Gbps;
 
 #[tokio::test]
 async fn test_the_create_feed_builder_deploys_a_bonded_feed() {
+    deploy_bonded_feed([9u8; 32]).await;
+}
+
+/// A builder with no service-level document leaves the hash unset. All zeros is "none declared",
+/// and the feed is created like any other.
+#[tokio::test]
+async fn test_a_bonded_feed_need_not_declare_a_service_level() {
+    deploy_bonded_feed([0u8; 32]).await;
+}
+
+async fn deploy_bonded_feed(sla_hash: [u8; 32]) {
     let program_id = Pubkey::new_unique();
     // The builder holds no permission: the bond alone admits the create.
     let builder = test_payer();
@@ -118,7 +129,7 @@ async fn test_the_create_feed_builder_deploys_a_bonded_feed() {
             builder: builder.pubkey(),
             bond_ref,
             spec_id: "top-of-book@v1.0.0".to_string(),
-            sla_hash: [9u8; 32],
+            sla_hash,
             committed_rate_bits_per_sec: TIER.max_rate_bits_per_sec(),
             feed_chain: FeedChain::Unspecified,
         },
@@ -136,7 +147,7 @@ async fn test_the_create_feed_builder_deploys_a_bonded_feed() {
     assert_eq!(written.builder, builder.pubkey());
     assert_eq!(written.bond_ref, bond_ref);
     assert_eq!(written.spec_id, "top-of-book@v1.0.0");
-    assert_eq!(written.sla_hash, [9u8; 32]);
+    assert_eq!(written.sla_hash, sla_hash);
     assert_eq!(
         written.committed_rate_bits_per_sec,
         TIER.max_rate_bits_per_sec()

@@ -536,7 +536,8 @@ async fn test_feed_create_catalog_stays_active_with_flag_clear() {
 }
 
 /// The bond terms travel together. A builder without the rest describes a feed nothing downstream
-/// can measure, so create refuses it rather than storing a half-declared feed.
+/// can measure, so create refuses it rather than storing a half-declared feed. The service-level
+/// hash is the one term a bonded feed may leave unset.
 #[tokio::test]
 async fn test_feed_create_partial_bond_terms_rejected() {
     let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
@@ -546,13 +547,12 @@ async fn test_feed_create_partial_bond_terms_rejected() {
 
     // One term dropped per case, each on its own feed code so the PDAs do not collide.
     let mut cases = Vec::new();
-    for code in ["nobond", "nospec", "nosla", "norate"] {
+    for code in ["nobond", "nospec", "norate"] {
         let exchange = Pubkey::new_unique();
         let mut args = bonded_args(code, exchange);
         match code {
             "nobond" => args.bond_ref = Pubkey::default(),
             "nospec" => args.spec_id = String::new(),
-            "nosla" => args.sla_hash = [0u8; 32],
             _ => args.committed_rate_bits_per_sec = 0,
         }
         cases.push((get_feed_pda(&program_id, code, &exchange).0, args));

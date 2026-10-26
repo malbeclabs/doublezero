@@ -31,7 +31,7 @@ pub struct FeedBondTerms {
     pub bond_ref: Pubkey,
     /// The `edge-feed-spec` wire format, as `<spec>@<version>`.
     pub spec_id: String,
-    /// SHA-256 of the declared service level.
+    /// SHA-256 of the declared service level, or all zeros to declare none.
     pub sla_hash: [u8; 32],
     /// The rate the feed commits to, which the bond's tier must cover.
     pub committed_rate_bits_per_sec: u64,

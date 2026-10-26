@@ -45,7 +45,7 @@ use crate::{
     },
     cli::snapshot::{CompleteSnapshot, SnapshotMetadata},
     ingestor::{epoch::EpochFinder, fetcher::Fetcher},
-    scheduler::{initialize_distribution, state::SchedulerState},
+    scheduler::{finalize_distribution, initialize_distribution, state::SchedulerState},
     settings::{aws::StorageBackend, network::Network},
     storage::SnapshotStorage,
 };
@@ -181,8 +181,10 @@ impl ScheduleWorker {
             }
 
             // Process rewards
+            let mut rewards_processed = false;
             match self.process_rewards(&mut state).await {
                 Ok(processed) => {
+                    rewards_processed = true;
                     if processed {
                         info!("Successfully processed rewards");
                         metrics::counter!("doublezero_contributor_rewards_scheduler_success")
@@ -210,6 +212,19 @@ impl ScheduleWorker {
                         );
                     }
                 }
+            }
+
+            // Lock the root of the epoch that this tick processed, which has its root posted by now.
+            if rewards_processed
+                && let Some(wallet) = &wallet
+                && let Some(dz_epoch) = state.last_processed_epoch
+                && let Err(e) =
+                    finalize_distribution::try_finalize_distribution(wallet, dz_epoch).await
+            {
+                error!("Failed to finalize distribution for epoch {dz_epoch}: {e:#}");
+                has_failed = true;
+                metrics::counter!("doublezero_contributor_rewards_finalize_distribution_failure")
+                    .increment(1);
             }
 
             if let Some(wallet) = wallet.as_ref().filter(|_| enable_monthly_distribution) {

@@ -1,3 +1,4 @@
+mod finalize_distribution;
 mod initialize_distribution;
 mod pause_gate;
 pub mod state;

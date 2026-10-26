@@ -57,9 +57,15 @@ pub async fn try_initialize_distribution(
     // Ensure that the epoch from the DoubleZero Ledger network equals
     // the next one known by the Revenue Distribution program.
     if next_dz_epoch.value() != expected_completed_dz_epoch {
-        tracing::warn!(
-            "Last completed DZ epoch {expected_completed_dz_epoch} != program's epoch {next_dz_epoch}"
-        );
+        // The program is one epoch ahead of the ledger once this step has created the
+        // distribution, and it stays so until the ledger completes the next epoch.
+        if next_dz_epoch.value() == expected_completed_dz_epoch + 1 {
+            tracing::debug!("Distribution for DZ epoch {expected_completed_dz_epoch} exists");
+        } else {
+            tracing::warn!(
+                "Last completed DZ epoch {expected_completed_dz_epoch} != program's epoch {next_dz_epoch}"
+            );
+        }
         return Ok(());
     }
 

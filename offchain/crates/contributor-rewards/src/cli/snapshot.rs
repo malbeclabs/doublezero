@@ -252,11 +252,11 @@ pub async fn create_snapshot(
     // fetch_leader_schedule resolves the Solana epochs itself and reports which ones it
     // used, so taking the epochs from its result avoids running the chain-verified
     // epoch search twice over the same timestamps.
+    let mut epoch_finder = EpochFinder::new(
+        fetcher.dz_rpc_client.clone(),
+        fetcher.solana_read_client.clone(),
+    );
     let leader_schedule = if leader_schedule_files.is_empty() {
-        let mut epoch_finder = EpochFinder::new(
-            fetcher.dz_rpc_client.clone(),
-            fetcher.solana_read_client.clone(),
-        );
         epoch_finder
             .fetch_leader_schedule(fetch_epoch, fetch_data.start_us, fetch_data.end_us)
             .await
@@ -275,7 +275,20 @@ pub async fn create_snapshot(
                 })
             })
             .collect::<Result<Vec<_>>>()?;
-        LeaderSchedule::try_sum(schedules)?
+        let leader_schedule = LeaderSchedule::try_sum(schedules)?;
+
+        // end_us is exclusive, so a window that ends on a Solana epoch boundary stops before it.
+        let first_solana_epoch = epoch_finder
+            .find_epoch_at_timestamp(fetch_data.start_us)
+            .await?;
+        let last_solana_epoch = epoch_finder
+            .find_epoch_at_timestamp(fetch_data.end_us.saturating_sub(1))
+            .await?;
+        leader_schedule
+            .ensure_covers_epochs(first_solana_epoch, last_solana_epoch)
+            .with_context(|| format!("Leader schedule files do not fit DZ epoch {fetch_epoch}"))?;
+
+        leader_schedule
     };
 
     // Create metadata

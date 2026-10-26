@@ -710,82 +710,62 @@ impl ScheduleWorker {
     /// Check if rewards already exist for a given epoch
     ///
     /// Returns true only if ALL steps are complete:
-    /// 1. Records exist (contributor rewards OR reward input)
+    /// 1. All four records exist: device telemetry, internet telemetry, reward input
+    ///    and shapley output
     /// 2. Merkle root posted to Distribution account
     async fn rewards_exist_for_epoch(&self, fetcher: &Fetcher, epoch: u64) -> Result<bool> {
-        // Check if records exist (either contributor rewards or reward input)
-        let contributor_rewards_exists = self
-            .check_contributor_rewards_record(fetcher, epoch)
-            .await?;
+        let rewards_accountant_key = self.get_rewards_accountant(fetcher).await?;
+        let epoch_bytes = epoch.to_le_bytes();
+        let prefixes = &self.orchestrator.settings.prefixes;
 
-        let reward_input_exists = self.check_reward_input_record(fetcher, epoch).await?;
+        let records: [(&str, &[&[u8]]); 4] = [
+            (
+                "device telemetry",
+                &[prefixes.device_telemetry.as_bytes(), &epoch_bytes],
+            ),
+            (
+                "internet telemetry",
+                &[prefixes.internet_telemetry.as_bytes(), &epoch_bytes],
+            ),
+            (
+                "reward input",
+                &[prefixes.reward_input.as_bytes(), &epoch_bytes],
+            ),
+            (
+                "shapley output",
+                &[
+                    prefixes.contributor_rewards.as_bytes(),
+                    &epoch_bytes,
+                    b"shapley_output",
+                ],
+            ),
+        ];
 
-        let records_exist = contributor_rewards_exists || reward_input_exists;
+        let mut missing_records = Vec::new();
+        for (name, seeds) in records {
+            let record_key = create_record_key(&rewards_accountant_key, seeds);
+            debug!("Checking for {name} record at: {record_key}");
+
+            if !self.account_exists(fetcher, &record_key).await? {
+                missing_records.push(name);
+            }
+        }
 
         // Check if merkle root has been posted
         let merkle_root_posted = self.check_distribution_merkle_root(fetcher, epoch).await?;
 
         // All steps must be complete
-        let all_complete = records_exist && merkle_root_posted;
+        let all_complete = missing_records.is_empty() && merkle_root_posted;
 
         if all_complete {
-            debug!(
-                "All rewards steps complete for epoch {}: records_exist={}, merkle_root_posted={}",
-                epoch, records_exist, merkle_root_posted
-            );
+            debug!("All rewards steps complete for epoch {epoch}");
         } else {
             debug!(
-                "Rewards incomplete for epoch {}: records_exist={}, merkle_root_posted={}",
-                epoch, records_exist, merkle_root_posted
+                "Rewards incomplete for epoch {epoch}: missing_records={missing_records:?}, merkle_root_posted={merkle_root_posted}"
             );
         }
 
         Ok(all_complete)
-    }
-
-    /// Check if contributor rewards record exists
-    async fn check_contributor_rewards_record(
-        &self,
-        fetcher: &Fetcher,
-        epoch: u64,
-    ) -> Result<bool> {
-        // Get rewards accountant
-        let rewards_accountant = self.get_rewards_accountant(fetcher).await?;
-
-        // Compute record address
-        let prefix = self
-            .orchestrator
-            .settings
-            .prefixes
-            .contributor_rewards
-            .as_bytes();
-        let epoch_bytes = epoch.to_le_bytes();
-        let seeds: &[&[u8]] = &[prefix, &epoch_bytes, b"shapley_output"];
-        let record_key = create_record_key(&rewards_accountant, seeds);
-
-        debug!("Checking for contributor rewards at: {}", record_key);
-
-        // Check if account exists
-        let exists = self.account_exists(fetcher, &record_key).await?;
-        Ok(exists)
-    }
-
-    /// Check if reward input record exists
-    async fn check_reward_input_record(&self, fetcher: &Fetcher, epoch: u64) -> Result<bool> {
-        // Get rewards accountant
-        let rewards_accountant = self.get_rewards_accountant(fetcher).await?;
-
-        // Compute record address
-        let prefix = self.orchestrator.settings.prefixes.reward_input.as_bytes();
-        let epoch_bytes = epoch.to_le_bytes();
-        let seeds: &[&[u8]] = &[prefix, &epoch_bytes];
-        let record_key = create_record_key(&rewards_accountant, seeds);
-
-        debug!("Checking for reward input at: {}", record_key);
-
-        // Check if account exists
-        let exists = self.account_exists(fetcher, &record_key).await?;
-        Ok(exists)
     }
 
     /// Check if merkle root has been posted to Distribution account

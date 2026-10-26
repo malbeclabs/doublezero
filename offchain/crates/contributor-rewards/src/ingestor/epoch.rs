@@ -119,6 +119,24 @@ impl LeaderSchedule {
             schedule_map,
         })
     }
+
+    pub fn ensure_covers_epochs(
+        &self,
+        first_solana_epoch: u64,
+        last_solana_epoch: u64,
+    ) -> Result<()> {
+        ensure!(
+            self.solana_epochs
+                .iter()
+                .copied()
+                .eq(first_solana_epoch..=last_solana_epoch),
+            "Leader schedules cover Solana epochs {:?}, but the DZ epoch overlaps Solana epochs \
+             {first_solana_epoch} to {last_solana_epoch}",
+            self.solana_epochs
+        );
+
+        Ok(())
+    }
 }
 
 impl Exportable for LeaderSchedule {
@@ -992,6 +1010,38 @@ mod tests {
         .unwrap_err();
 
         assert!(err.to_string().contains("include one epoch twice"));
+    }
+
+    #[test]
+    fn test_ensure_covers_epochs_accepts_the_exact_range() {
+        let schedule = LeaderSchedule::try_sum(vec![
+            leader_schedule(1047, &[("alpha", 4)]),
+            leader_schedule(1048, &[("alpha", 4)]),
+        ])
+        .unwrap();
+
+        schedule.ensure_covers_epochs(1047, 1048).unwrap();
+    }
+
+    #[test]
+    fn test_ensure_covers_epochs_rejects_a_missing_epoch() {
+        let schedule =
+            LeaderSchedule::try_sum(vec![leader_schedule(1047, &[("alpha", 4)])]).unwrap();
+
+        let err = schedule.ensure_covers_epochs(1047, 1048).unwrap_err();
+
+        assert!(err.to_string().contains("1047 to 1048"));
+    }
+
+    #[test]
+    fn test_ensure_covers_epochs_rejects_an_extra_epoch() {
+        let schedule = LeaderSchedule::try_sum(vec![
+            leader_schedule(1047, &[("alpha", 4)]),
+            leader_schedule(1048, &[("alpha", 4)]),
+        ])
+        .unwrap();
+
+        assert!(schedule.ensure_covers_epochs(1047, 1047).is_err());
     }
 
     #[test]

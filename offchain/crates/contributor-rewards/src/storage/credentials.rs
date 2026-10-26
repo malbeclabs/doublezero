@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use aws_config::BehaviorVersion;
 use aws_sdk_s3::config::{Credentials, Region};
 use tracing::info;
@@ -31,7 +31,12 @@ impl CredentialLoader {
             config_builder = config_builder.force_path_style(true);
         }
 
-        if self.config.access_key_id.is_empty() && self.config.secret_access_key.is_empty() {
+        ensure!(
+            self.config.access_key_id.is_empty() == self.config.secret_access_key.is_empty(),
+            "Set both aws.access_key_id and aws.secret_access_key, or neither"
+        );
+
+        if self.config.access_key_id.is_empty() {
             info!("Using AWS credentials from the default credential chain");
         } else {
             info!("Using AWS credentials from configuration");

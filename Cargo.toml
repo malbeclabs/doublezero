@@ -258,6 +258,9 @@ path = "solana/crates/program-tools"
 [workspace.dependencies.doublezero-revenue-distribution]
 path = "solana/programs/revenue-distribution"
 
+[workspace.dependencies.doublezero-builder-bond]
+path = "solana/programs/builder-bond"
+
 ### Outside this repository
 
 [workspace.dependencies.network-shapley]

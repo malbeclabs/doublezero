@@ -1,3 +1,4 @@
+pub mod builder_bond;
 pub mod feed_subscription;
 pub mod passport;
 pub mod revenue_distribution;

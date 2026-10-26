@@ -758,8 +758,8 @@ async fn test_feed_create_covered_by_bond_tier() {
     assert_eq!(feed.spec_id, expected.spec_id);
     assert_eq!(feed.sla_hash, expected.sla_hash);
     assert_eq!(feed.committed_rate_bits_per_sec, 5_000_000_000);
-    // Pending, not Active: the bond is checked at create, but conformance is not.
-    assert_eq!(feed.status, FeedStatus::Pending);
+    // Active at once: the bond checked at create is the admission.
+    assert_eq!(feed.status, FeedStatus::Active);
 
     // The bond is now spent on this feed.
     let mirror = get_account_data(&mut banks_client, mirror_pubkey)
@@ -1303,7 +1303,7 @@ async fn test_a_builder_with_no_permission_deploys_against_its_own_bond() {
     assert_eq!(feed.builder, builder.pubkey());
     // The builder paid, so the builder owns the feed and can halt it without an admin.
     assert_eq!(feed.owner, builder.pubkey());
-    assert_eq!(feed.status, FeedStatus::Pending);
+    assert_eq!(feed.status, FeedStatus::Active);
 }
 
 /// `builder` is a caller-supplied argument, so the bond has to authorize the key that posted it

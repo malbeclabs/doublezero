@@ -11,6 +11,10 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+  - `doublezero-solana bond` gives a builder its own bond commands on the `builder-bond` program: `init` (with `--committed-rate`, e.g. `1Gbps`), `post` and `withdraw` (amounts in 2Z as decimals, parsed exactly), and `show` (also `--json`), which prints the bond's address, tier coverage, hold expiry and what can be withdrawn now. The 2Z mint follows the network the connection reaches. The admin commands stay out: a builder never runs them.
+- SDK
+  - `doublezero-solana-sdk` re-exports the `builder-bond` program as `builder_bond`. `builder-bond`'s instruction builders add `initialize_builder_bond_with_mint`, for a client that picks the 2Z mint at run time; `initialize_builder_bond` calls it with the mint the crate was built for. The program builds the same: both checksum sets verify unchanged.
 - Serviceability
   - The feed authority's access-pass rules now also apply to a signer whose own Permission account carries `feed-authority`, not only to `feed_authority_pk`. `SetAccessPass`, `SetAccessPassFlags`, the `Close*AccessPass` instructions and `AddMulticastGroupSubAllowlist` keep it to passes it owns. `AddMulticastGroupSubAllowlist` and `RemoveMulticastGroupSubAllowlist` let it name a `user_payer` other than the pass's. Keyed on `feed_authority_pk` alone, the ownership checks would have stopped applying, without error, once the shred oracle signs only through its Permission account and that field names another key, so it could have cleared `dzf_locked` on or closed any pass. Its subscriber allowlist calls with another `user_payer` would have started failing. A foundation member, on `foundation_allowlist` or holding an activated `foundation` flag, is not kept to its own passes when its Permission account carries `feed-authority`: the rollout grants that flag to every foundation member for the feed instructions, and they were never limited before. `feed_authority_pk` itself stays limited, even when it is also a foundation member. Signers with `access-pass-admin` but not `feed-authority` are unaffected. (#4092)
 - Scheduler

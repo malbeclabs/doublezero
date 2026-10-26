@@ -45,7 +45,7 @@ use crate::{
     },
     cli::snapshot::{CompleteSnapshot, SnapshotMetadata},
     ingestor::{epoch::EpochFinder, fetcher::Fetcher},
-    scheduler::state::SchedulerState,
+    scheduler::{initialize_distribution, state::SchedulerState},
     settings::{aws::StorageBackend, network::Network},
     storage::SnapshotStorage,
 };
@@ -107,8 +107,8 @@ impl ScheduleWorker {
             .enable_monthly_distribution;
         info!("  Monthly distribution: {enable_monthly_distribution}");
 
-        // Every monthly step writes, so a dry run skips them all.
-        let monthly_wallet = if enable_monthly_distribution && !self.dry_run {
+        // Every step below writes, so a dry run skips them all.
+        let wallet = if !self.dry_run {
             Some(Wallet {
                 connection: SolanaConnection::new(
                     self.orchestrator.settings.rpc.solana_write_url.clone(),
@@ -159,6 +159,21 @@ impl ScheduleWorker {
             // Mark that we're checking
             state.mark_check();
 
+            if let Some(wallet) = &wallet {
+                let dz_connection =
+                    DoubleZeroLedgerConnection::new(self.orchestrator.settings.rpc.dz_url.clone());
+                if let Err(e) =
+                    initialize_distribution::try_initialize_distribution(wallet, &dz_connection)
+                        .await
+                {
+                    error!("Failed to initialize distribution: {e:#}");
+                    metrics::counter!(
+                        "doublezero_contributor_rewards_initialize_distribution_failure"
+                    )
+                    .increment(1);
+                }
+            }
+
             // Process rewards
             match self.process_rewards(&mut state).await {
                 Ok(processed) => {
@@ -190,7 +205,7 @@ impl ScheduleWorker {
                 }
             }
 
-            if let Some(wallet) = &monthly_wallet {
+            if let Some(wallet) = wallet.as_ref().filter(|_| enable_monthly_distribution) {
                 self.try_process_monthly(&mut state, wallet, &warned_skips)
                     .await?;
             }

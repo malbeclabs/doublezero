@@ -12,7 +12,6 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - CLI
-  - `doublezero feed create --bond-ref` no longer needs `--sla-hash`. Left out, the feed declares no service level.
   - `doublezero-solana bond` gives a builder its own bond commands on the `builder-bond` program: `init` (with `--committed-rate`, e.g. `1Gbps`), `post` and `withdraw` (amounts in 2Z as decimals, parsed exactly), and `show` (also `--json`), which prints the bond's address, tier coverage, hold expiry and what can be withdrawn now. The 2Z mint follows the network the connection reaches. The admin commands stay out: a builder never runs them.
 - SDK
   - `doublezero-solana-sdk` re-exports the `builder-bond` program as `builder_bond`. `builder-bond`'s instruction builders add `initialize_builder_bond_with_mint`, for a client that picks the 2Z mint at run time; `initialize_builder_bond` calls it with the mint the crate was built for. The program builds the same: both checksum sets verify unchanged.
@@ -22,9 +21,9 @@ All notable changes to this project will be documented in this file.
 - Scheduler
   - `plug_crypto` 2.2.1 (from 2.1.1, through `plug_cowboy`), which fixes EEF-CVE-2026-105963: on a wrong-typed argument, earlier versions could put the secret key base into a logged stack trace.
 - CLI
-  - `doublezero feed create` creates a bonded feed with `--bond-ref <BuilderBond>`, which needs `--spec-id`, `--sla-hash` (64 hex characters) and `--committed-rate` (e.g. `1Gbps`) with it and takes no `--chain`. `--builder` defaults to the payer, and names another key only for an admin creating the feed on a builder's behalf. Before, the command always sent a zero `bond_ref`, so it could only create a catalog feed.
+  - `doublezero feed create` creates a bonded feed with `--bond-ref <BuilderBond>`, which needs `--spec-id` and `--committed-rate` (e.g. `1Gbps`) with it and takes no `--chain`. `--sla-hash` (64 hex characters) declares a service level; left out, the feed declares none. `--builder` defaults to the payer, and names another key only for an admin creating the feed on a builder's behalf. Before, the command always sent a zero `bond_ref`, so it could only create a catalog feed.
 - SDK
-  - `CreateFeedCommand` takes `bond: Option<FeedBondTerms>`: the builder, `bond_ref`, `spec_id`, `sla_hash` and committed rate, which the program requires together. `None` creates a catalog feed, as before.
+  - `CreateFeedCommand` takes `bond: Option<FeedBondTerms>`: the builder, `bond_ref`, `spec_id`, `sla_hash` and committed rate. The program requires them together, except `sla_hash`, where all zeros declares no service level. `None` creates a catalog feed, as before.
 
 ## [v0.45.0](https://github.com/malbeclabs/doublezero/compare/client/v0.44.0...client/v0.45.0) - 2026-10-22
 

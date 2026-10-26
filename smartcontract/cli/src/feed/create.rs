@@ -370,6 +370,16 @@ mod tests {
     /// The bond terms reach the command, and the builder defaults to the payer.
     #[test]
     fn test_cli_feed_create_bonded() {
+        create_bonded(Some([0xab; 32]), [0xab; 32]);
+    }
+
+    /// With no --sla-hash, the command carries all zeros: the feed declares no service level.
+    #[test]
+    fn test_cli_feed_create_bonded_without_a_service_level() {
+        create_bonded(None, [0u8; 32]);
+    }
+
+    fn create_bonded(sla_hash: Option<[u8; 32]>, expected: [u8; 32]) {
         let mut client = create_test_client();
         client.expect_check_requirements().returning(|_| Ok(()));
         let payer = client.get_payer();
@@ -397,7 +407,7 @@ mod tests {
                     builder: payer,
                     bond_ref,
                     spec_id: "top-of-book@v1.0.0".to_string(),
-                    sla_hash: [0xab; 32],
+                    sla_hash: expected,
                     committed_rate_bits_per_sec: 1_000_000_000,
                 }),
             }))
@@ -414,7 +424,7 @@ mod tests {
                 chain: FeedChain::Unspecified,
                 bond_ref: Some(bond_ref),
                 spec_id: Some("top-of-book@v1.0.0".to_string()),
-                sla_hash: Some([0xab; 32]),
+                sla_hash,
                 committed_rate: Some(1_000_000_000),
                 builder: None,
             }
@@ -471,7 +481,11 @@ mod tests {
         assert_eq!(create.committed_rate, Some(1_000_000_000));
         assert_eq!(create.sla_hash, Some([0xab; 32]));
 
-        assert!(parse(&all[..4]).is_err(), "a bond without its rate");
+        assert_eq!(
+            parse(&all[..4]).err().map(|err| err.kind()),
+            Some(clap::error::ErrorKind::MissingRequiredArgument),
+            "a bond without its rate"
+        );
         let no_sla = [&all[..4], &all[6..]].concat();
         assert_eq!(
             parse(&no_sla)

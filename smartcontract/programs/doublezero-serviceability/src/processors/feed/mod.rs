@@ -15,12 +15,72 @@ use crate::{
         bond_mirror::BondMirror,
         feed::{Feed, FeedStatus},
         globalstate::GlobalState,
+        multicastgroup::MulticastGroup,
     },
 };
 use solana_program::{
     account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
     pubkey::Pubkey,
 };
+
+/// Split the accounts that name one of `groups` from the rest of an instruction's tail, by
+/// address. A builder passes its groups' accounts so the program can read who owns them, and the
+/// rest is the authorization tail, which [`authorize`] reads from its first account.
+pub(crate) fn split_group_accounts<'a, 'b>(
+    groups: &[Pubkey],
+    tail: Vec<&'a AccountInfo<'b>>,
+) -> (Vec<&'a AccountInfo<'b>>, Vec<&'a AccountInfo<'b>>) {
+    tail.into_iter()
+        .partition(|account| groups.contains(account.key))
+}
+
+/// Check that every group a bonded feed lists is its builder's own: created on the feed's bond, or
+/// assigned to the builder by an admin with no bond.
+///
+/// A seat on a feed lets its holder join every group the feed lists ([`check_feed_metro_coverage`]),
+/// so a feed the builder admits with its own bond may list only its own groups. A group with no bond
+/// can only have been given to the builder by an admin, since a builder creates groups on a bond. A
+/// group on another of the builder's bonds is refused, because each bond backs one feed. Each
+/// group's account must be among `group_accounts`, in any order.
+pub(crate) fn check_groups_on_bond(
+    program_id: &Pubkey,
+    builder: &Pubkey,
+    bond_ref: &Pubkey,
+    groups: &[Pubkey],
+    group_accounts: &[&AccountInfo],
+) -> ProgramResult {
+    for group_key in groups {
+        let Some(account) = group_accounts.iter().find(|a| a.key == group_key) else {
+            msg!(
+                "Multicast group {} has no account in the instruction",
+                group_key
+            );
+            return Err(DoubleZeroError::GroupNotOnBond.into());
+        };
+        if account.owner != program_id {
+            msg!(
+                "Multicast group {} is not a serviceability account",
+                group_key
+            );
+            return Err(DoubleZeroError::GroupNotOnBond.into());
+        }
+        let group =
+            MulticastGroup::try_from(*account).map_err(|_| DoubleZeroError::GroupNotOnBond)?;
+        let on_this_bond = group.bond_ref == *bond_ref || group.bond_ref == Pubkey::default();
+        if group.owner != *builder || !on_this_bond {
+            msg!(
+                "Multicast group {} is owned by {} on bond {}, not by {} on bond {}",
+                group_key,
+                group.owner,
+                group.bond_ref,
+                builder,
+                bond_ref
+            );
+            return Err(DoubleZeroError::GroupNotOnBond.into());
+        }
+    }
+    Ok(())
+}
 
 /// Validate the EdgeSeat feed metro gate without mutating the pass.
 ///

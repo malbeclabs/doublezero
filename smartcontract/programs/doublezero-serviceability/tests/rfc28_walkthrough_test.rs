@@ -188,7 +188,11 @@ async fn test_a_builder_deploys_a_feed_that_sells_seats_at_once() {
             AccountMeta::new(globalstate, false),
         ],
         &builder,
-        &[AccountMeta::new(mirror, false)],
+        // The mirror, and the group's account: the program checks the builder owns each group.
+        &[
+            AccountMeta::new(mirror, false),
+            AccountMeta::new_readonly(group, false),
+        ],
     )
     .await;
 

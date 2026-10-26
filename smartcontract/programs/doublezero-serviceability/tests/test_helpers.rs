@@ -1112,3 +1112,28 @@ pub fn assert_custom_error(err: &BanksClientError, expected: DoubleZeroError) {
         "expected Custom({want}), got {err:?}"
     );
 }
+
+/// A multicast group account's data, owned by `owner` on `bond_ref`, as `CreateMulticastGroup`
+/// leaves it. For seeding a group at start-up with `init_test_with_accounts`.
+#[allow(dead_code)]
+pub fn multicast_group(owner: Pubkey, bond_ref: Pubkey) -> Vec<u8> {
+    use doublezero_serviceability::state::{
+        accounttype::AccountType,
+        multicastgroup::{MulticastGroup, MulticastGroupStatus},
+    };
+    borsh::to_vec(&MulticastGroup {
+        account_type: AccountType::MulticastGroup,
+        owner,
+        index: 1,
+        bump_seed: 255,
+        tenant_pk: Pubkey::default(),
+        multicast_ip: std::net::Ipv4Addr::new(233, 84, 178, 1),
+        max_bandwidth: 1_000_000_000,
+        status: MulticastGroupStatus::Activated,
+        code: "seeded-group".to_string(),
+        publisher_count: 0,
+        subscriber_count: 0,
+        bond_ref,
+    })
+    .unwrap()
+}

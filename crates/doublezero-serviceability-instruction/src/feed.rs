@@ -39,6 +39,15 @@ pub fn create_feed(program_id: &Pubkey, payer: &Pubkey, args: FeedCreateArgs) ->
     // for it would only create a way to get it wrong. Writable: creating the feed claims it.
     let bond_mirror = (args.builder != Pubkey::default())
         .then(|| get_bond_mirror_pda(program_id, &args.bond_ref).0);
+    // A bonded feed carries its groups' accounts, so the program can check that each is one the
+    // builder created on its bond. A catalog feed passes none.
+    let mut after_system: Vec<AccountMeta> = bond_mirror
+        .map(|bond_mirror| AccountMeta::new(bond_mirror, false))
+        .into_iter()
+        .collect();
+    if args.builder != Pubkey::default() {
+        after_system.extend(group_accounts(&args.groups));
+    }
 
     common::build_with_permission_after_system(
         program_id,
@@ -47,15 +56,14 @@ pub fn create_feed(program_id: &Pubkey, payer: &Pubkey, args: FeedCreateArgs) ->
             AccountMeta::new(feed, false),
             AccountMeta::new(globalstate, false),
         ],
-        bond_mirror
-            .map(|bond_mirror| AccountMeta::new(bond_mirror, false))
-            .into_iter()
-            .collect(),
+        after_system,
         payer,
     )
 }
 
-/// `UpdateFeed` (variant 113). Accounts: `[feed, globalstate]`.
+/// `UpdateFeed` (variant 113). Accounts: `[feed, globalstate]`, then each new group's account
+/// when the update sets groups. A bonded feed's builder needs them, since the program checks that
+/// each group is one the builder created on the feed's bond. An admin's update ignores them.
 pub fn update_feed(
     program_id: &Pubkey,
     payer: &Pubkey,
@@ -63,15 +71,29 @@ pub fn update_feed(
     args: FeedUpdateArgs,
 ) -> Instruction {
     let (globalstate, _) = get_globalstate_pda(program_id);
-    common::build_with_permission(
+    let after_system = args
+        .groups
+        .as_deref()
+        .map(group_accounts)
+        .unwrap_or_default();
+    common::build_with_permission_after_system(
         program_id,
         DoubleZeroInstruction::UpdateFeed(args),
         vec![
             AccountMeta::new(*feed, false),
             AccountMeta::new(globalstate, false),
         ],
+        after_system,
         payer,
     )
+}
+
+// Read-only: the program reads who owns each group and on which bond, and writes nothing to it.
+fn group_accounts(groups: &[Pubkey]) -> Vec<AccountMeta> {
+    groups
+        .iter()
+        .map(|group| AccountMeta::new_readonly(*group, false))
+        .collect()
 }
 
 /// `DeleteFeed` (variant 114). Accounts: `[feed, globalstate]`.
@@ -225,6 +247,7 @@ mod tests {
         let builder = Pubkey::new_unique();
         let bond_ref = Pubkey::new_unique();
 
+        let group = Pubkey::new_unique();
         let bonded = create_feed(
             &pid,
             &payer,
@@ -232,7 +255,7 @@ mod tests {
                 code: "bonded".to_string(),
                 name: "Bonded".to_string(),
                 exchange,
-                groups: vec![Pubkey::new_unique()],
+                groups: vec![group],
                 builder,
                 bond_ref,
                 spec_id: "top-of-book@v1.0.0".to_string(),
@@ -243,14 +266,19 @@ mod tests {
         );
         let (mirror, _) = get_bond_mirror_pda(&pid, &bond_ref);
         assert_eq!(
-            bonded.accounts[bonded.accounts.len() - 2],
+            bonded.accounts[bonded.accounts.len() - 3],
             AccountMeta::new(mirror, false),
             "the mirror is writable: creating the feed claims the bond"
         );
         assert_eq!(
+            bonded.accounts[bonded.accounts.len() - 2],
+            AccountMeta::new_readonly(group, false),
+            "each group rides read-only, so the program can read its owner"
+        );
+        assert_eq!(
             bonded.accounts.last().unwrap(),
             &common::permission_meta(&pid, &payer),
-            "the Permission account stays last, after the mirror"
+            "the Permission account stays last, after the mirror and the groups"
         );
 
         let catalog = create_feed(

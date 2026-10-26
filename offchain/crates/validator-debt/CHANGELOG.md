@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `initialize-distribution` and its worker are removed. The contributor rewards scheduler now creates each epoch's distribution, finalizes its zero debt and finalizes its rewards, and it no longer sweeps tokens. It finalizes the epoch that is `minimum_epoch_duration_to_finalize_rewards` epochs old, where this command finalized the epoch that the swap journal named
 - refactor(validator-debt): delete the two dead timestamp to Solana epoch code paths that hardcoded a 0.4s slot duration, both `SLOT_TIME_DURATION_SECONDS` constants, and the two `ValidatorRewards` trait methods only they reached. Nothing called them: `rpc.rs` already maps DZ epochs to Solana epochs from real block times for the production path, and the worker calls `get_total_rewards` with an explicit epoch. Also removes an unsigned subtraction that panicked in debug and wrapped silently in release. Note that `estimate_block_time_for_skipped_slot` in `rpc.rs` still assumes 0.4s per slot implicitly (malbeclabs/infra#2317)
 - migrate to Solana 3.0: workspace `solana-*` crates and `solana-sdk` move to the 3.0 line, `solana-program-test` to 3.0.12, and the doublezero SDK git-deps repin from `client/v0.27.1` to the malbeclabs/doublezero#3830 merge revision (malbeclabs/infra#1853)
 - release artifact now builds as a static `x86_64-unknown-linux-musl` binary (malbeclabs/infra#1853)

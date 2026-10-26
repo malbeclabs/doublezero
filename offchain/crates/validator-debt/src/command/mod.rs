@@ -1,6 +1,5 @@
 mod calculate;
 mod export_validators;
-mod initialize;
 mod verify;
 
 //
@@ -41,21 +40,11 @@ pub enum ValidatorDebtCommand {
         #[arg(long, value_name = "FORCE")]
         force: bool,
     },
-
-    // Initialize a new distribution on Solana.
-    //
-    // TODO: Consider only allowing localnet for this command since the
-    // scheduler handles initialization.
-    #[command(hide = true)]
-    InitializeDistribution(initialize::InitializeDistributionCommand),
 }
 
 impl ValidatorDebtCommand {
     pub async fn try_into_execute(self) -> Result<()> {
         match self {
-            ValidatorDebtCommand::InitializeDistribution(command) => {
-                command.try_into_execute().await
-            }
             ValidatorDebtCommand::CalculateValidatorDebt(command) => {
                 command.try_into_execute().await
             }

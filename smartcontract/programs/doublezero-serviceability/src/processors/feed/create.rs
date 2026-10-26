@@ -53,7 +53,7 @@ pub struct FeedCreateArgs {
     /// The `edge-feed-spec` wire format, as `<spec>@<version>`.
     #[incremental(default = String::new())]
     pub spec_id: String,
-    /// SHA-256 of the declared service level.
+    /// SHA-256 of the declared service level. All zeros declares none, which a bonded feed may.
     #[incremental(default = [0u8; 32])]
     pub sla_hash: [u8; 32],
     /// Committed rate in bits per second, `u64::MAX` for the unmetered tier.
@@ -320,10 +320,7 @@ pub(crate) fn validate_feed_bond_terms(
         msg!("Bonded feed must name the edge-feed-spec it conforms to");
         return Err(DoubleZeroError::InvalidArgument);
     }
-    if value.sla_hash == [0u8; 32] {
-        msg!("Bonded feed must declare a service level");
-        return Err(DoubleZeroError::InvalidArgument);
-    }
+    // `sla_hash` may stay zero: a builder with no service-level document declares none.
     if value.committed_rate_bits_per_sec == 0 {
         msg!("Bonded feed must commit to a rate");
         return Err(DoubleZeroError::InvalidArgument);

@@ -181,10 +181,8 @@ impl ScheduleWorker {
             }
 
             // Process rewards
-            let mut rewards_processed = false;
             match self.process_rewards(&mut state).await {
                 Ok(processed) => {
-                    rewards_processed = true;
                     if processed {
                         info!("Successfully processed rewards");
                         metrics::counter!("doublezero_contributor_rewards_scheduler_success")
@@ -214,10 +212,10 @@ impl ScheduleWorker {
                 }
             }
 
-            // Lock the root of the epoch that this tick processed, which has its root posted by now.
-            if rewards_processed
-                && let Some(wallet) = &wallet
-                && let Some(dz_epoch) = state.last_processed_epoch
+            // Finalize the epoch before the processed epoch. This gives each root one more epoch
+            // after its post before the finalize locks it.
+            if let Some(wallet) = &wallet
+                && let Some(dz_epoch) = state.epoch_to_finalize()
                 && let Err(e) =
                     finalize_distribution::try_finalize_distribution(wallet, dz_epoch).await
             {

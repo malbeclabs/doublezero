@@ -157,6 +157,11 @@ impl SchedulerState {
         }
     }
 
+    /// The epoch to finalize, which is the epoch before the last processed epoch
+    pub fn epoch_to_finalize(&self) -> Option<u64> {
+        self.last_processed_epoch?.checked_sub(1)
+    }
+
     /// Check if we're in a failure state that should halt processing
     pub fn is_in_failure_state(&self, max_failures: u32) -> bool {
         self.consecutive_failures >= max_failures
@@ -176,6 +181,18 @@ impl SchedulerState {
 #[cfg(test)]
 mod tests {
     use super::SchedulerState;
+
+    #[test]
+    fn test_the_epoch_to_finalize_is_the_one_before_the_last_processed_epoch() {
+        let mut state = SchedulerState::default();
+        assert_eq!(state.epoch_to_finalize(), None);
+
+        state.last_processed_epoch = Some(0);
+        assert_eq!(state.epoch_to_finalize(), None);
+
+        state.last_processed_epoch = Some(240);
+        assert_eq!(state.epoch_to_finalize(), Some(239));
+    }
 
     #[test]
     fn test_backward_compat_missing_monthly_fields() {

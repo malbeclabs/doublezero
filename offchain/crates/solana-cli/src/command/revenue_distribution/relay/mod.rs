@@ -1,7 +1,3 @@
-mod distribute_rewards;
-mod finalize_distribution_rewards;
-mod sweep_distribution_tokens;
-
 // The relay verbs keep their pre-RFC-20 `SolanaPayerOptions` because the
 // `Schedulable` trait's `execute_once(&self)` cannot take a `CliContext`;
 // `patch_payer_opts` merges only the global `--solana-url`/`--keypair` into
@@ -15,7 +11,6 @@ use anyhow::Result;
 use chrono::Utc;
 use clap::{Args, Subcommand, ValueEnum};
 use doublezero_cli_core::CliContext;
-use doublezero_scheduled_command::Schedulable;
 use doublezero_solana_client_tools::{
     payer::{SolanaPayerOptions, Wallet},
     rpc::DoubleZeroLedgerConnection,
@@ -51,12 +46,6 @@ pub enum RevenueDistributionRelaySubcommand {
         #[command(flatten)]
         solana_payer_options: SolanaPayerOptions,
     },
-
-    SweepDistributionTokens(sweep_distribution_tokens::SweepDistributionTokens),
-
-    FinalizeDistributionRewards(finalize_distribution_rewards::FinalizeDistributionRewards),
-
-    DistributeRewards(distribute_rewards::DistributeRewards),
 }
 
 /// Inject `CliContext` defaults into a `SolanaPayerOptions` that may have been
@@ -83,18 +72,6 @@ impl RevenueDistributionRelaySubcommand {
             } => {
                 patch_payer_opts(ctx, &mut solana_payer_options);
                 execute_pay_solana_validator_debt(dz_epoch, solana_payer_options, export).await
-            }
-            Self::SweepDistributionTokens(mut command) => {
-                patch_payer_opts(ctx, &mut command.solana_payer_options);
-                command.execute().await
-            }
-            Self::FinalizeDistributionRewards(mut command) => {
-                patch_payer_opts(ctx, &mut command.solana_payer_options);
-                command.execute().await
-            }
-            Self::DistributeRewards(mut command) => {
-                patch_payer_opts(ctx, &mut command.solana_payer_options);
-                command.execute().await
             }
         }
     }

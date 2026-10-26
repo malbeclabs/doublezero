@@ -82,7 +82,6 @@ jobs:
             release.install-script.yml
             release.internet-latency-collector.yml
             release.monitor.yml
-            release.offchain-scheduler.yml
             release.offchain-sentinel.yml
             release.qa.agent.yml
             release.s3-uploader.yml

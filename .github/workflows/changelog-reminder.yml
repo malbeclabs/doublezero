@@ -65,7 +65,6 @@ jobs:
             "offchain/crates/solana-fork"
             "offchain/crates/solana-interface/sol-conversion"
             "offchain/crates/validator-debt"
-            "offchain/scheduler"
           )
 
           missing=()

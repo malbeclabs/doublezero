@@ -31,13 +31,14 @@ pub struct CreateFeedCliCommand {
     #[arg(long, default_value_t = FeedChain::Unspecified)]
     pub chain: FeedChain,
     /// The BuilderBond on Solana behind this feed. Makes it a bonded feed, which also needs
-    /// --spec-id, --sla-hash and --committed-rate, and takes no --chain
-    #[arg(long, requires_all = ["spec_id", "sla_hash", "committed_rate"], conflicts_with = "chain")]
+    /// --spec-id and --committed-rate, and takes no --chain
+    #[arg(long, requires_all = ["spec_id", "committed_rate"], conflicts_with = "chain")]
     pub bond_ref: Option<Pubkey>,
     /// The edge-feed-spec wire format this feed conforms to, as <spec>@<version>
     #[arg(long, requires = "bond_ref")]
     pub spec_id: Option<String>,
-    /// SHA-256 of the declared service level, as 64 hex characters
+    /// SHA-256 of the declared service level, as 64 hex characters. Left out, the feed declares
+    /// none
     #[arg(long, requires = "bond_ref", value_parser = parse_sla_hash)]
     pub sla_hash: Option<[u8; 32]>,
     /// The rate the feed commits to (e.g. 1Gbps). The bond's tier must cover it
@@ -77,8 +78,8 @@ impl CreateFeedCliCommand {
             .map(|g| resolve_multicastgroup_pk(client, g))
             .collect::<eyre::Result<Vec<_>>>()?;
 
-        // clap requires the other three terms with --bond-ref; this only turns that into the
-        // command's shape, where the terms travel together.
+        // clap requires --spec-id and --committed-rate with --bond-ref; this only turns that into
+        // the command's shape, where the terms travel together. --sla-hash may be left out.
         let bond = match self.bond_ref {
             None => None,
             Some(bond_ref) => Some(FeedBondTerms {
@@ -87,9 +88,7 @@ impl CreateFeedCliCommand {
                 spec_id: self
                     .spec_id
                     .ok_or_else(|| eyre::eyre!("--spec-id is required"))?,
-                sla_hash: self
-                    .sla_hash
-                    .ok_or_else(|| eyre::eyre!("--sla-hash is required"))?,
+                sla_hash: self.sla_hash.unwrap_or_default(),
                 committed_rate_bits_per_sec: self
                     .committed_rate
                     .ok_or_else(|| eyre::eyre!("--committed-rate is required"))?,
@@ -371,6 +370,16 @@ mod tests {
     /// The bond terms reach the command, and the builder defaults to the payer.
     #[test]
     fn test_cli_feed_create_bonded() {
+        create_bonded(Some([0xab; 32]), [0xab; 32]);
+    }
+
+    /// With no --sla-hash, the command carries all zeros: the feed declares no service level.
+    #[test]
+    fn test_cli_feed_create_bonded_without_a_service_level() {
+        create_bonded(None, [0u8; 32]);
+    }
+
+    fn create_bonded(sla_hash: Option<[u8; 32]>, expected: [u8; 32]) {
         let mut client = create_test_client();
         client.expect_check_requirements().returning(|_| Ok(()));
         let payer = client.get_payer();
@@ -398,7 +407,7 @@ mod tests {
                     builder: payer,
                     bond_ref,
                     spec_id: "top-of-book@v1.0.0".to_string(),
-                    sla_hash: [0xab; 32],
+                    sla_hash: expected,
                     committed_rate_bits_per_sec: 1_000_000_000,
                 }),
             }))
@@ -415,7 +424,7 @@ mod tests {
                 chain: FeedChain::Unspecified,
                 bond_ref: Some(bond_ref),
                 spec_id: Some("top-of-book@v1.0.0".to_string()),
-                sla_hash: Some([0xab; 32]),
+                sla_hash,
                 committed_rate: Some(1_000_000_000),
                 builder: None,
             }
@@ -431,7 +440,8 @@ mod tests {
         assert!(parse_sla_hash(&"zz".repeat(32)).is_err(), "not hex");
     }
 
-    /// clap holds the terms together: all of them with --bond-ref, none without, and no --chain.
+    /// clap holds the terms together: the spec and rate with --bond-ref, none without, and no
+    /// --chain. The hash alone may be left out.
     #[test]
     fn test_cli_feed_create_bond_flags_travel_together() {
         #[derive(clap::Parser)]
@@ -471,9 +481,17 @@ mod tests {
         assert_eq!(create.committed_rate, Some(1_000_000_000));
         assert_eq!(create.sla_hash, Some([0xab; 32]));
 
-        assert!(
-            parse(&all[..4]).is_err(),
-            "a bond without its hash and rate"
+        assert_eq!(
+            parse(&all[..4]).err().map(|err| err.kind()),
+            Some(clap::error::ErrorKind::MissingRequiredArgument),
+            "a bond without its rate"
+        );
+        let no_sla = [&all[..4], &all[6..]].concat();
+        assert_eq!(
+            parse(&no_sla)
+                .expect("a bond with no service level")
+                .sla_hash,
+            None
         );
         assert!(
             parse(&["--spec-id", "top-of-book@v1.0.0"]).is_err(),

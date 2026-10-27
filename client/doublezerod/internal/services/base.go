@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
+	"os"
+	"path/filepath"
 	"slices"
 	"syscall"
 	"time"
@@ -60,6 +62,16 @@ func IsUnicastUser(u api.UserType) bool {
 
 func IsMulticastUser(u api.UserType) bool {
 	return u == api.UserTypeMulticast
+}
+
+// procSysIPv4Conf holds the kernel's per-interface IPv4 settings. Tests point it at a temporary
+// directory.
+var procSysIPv4Conf = "/proc/sys/net/ipv4/conf"
+
+// setLooseRPFilter sets reverse-path filtering on iface to loose (2): a packet passes when the host
+// has a route to its source through any interface.
+func setLooseRPFilter(iface string) error {
+	return os.WriteFile(filepath.Join(procSysIPv4Conf, iface, "rp_filter"), []byte("2"), 0o644)
 }
 
 // createBaseTunnel creates a tunnel interface, adds overlay addressing and brings up the interface.

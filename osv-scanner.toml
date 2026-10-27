@@ -62,6 +62,11 @@ ignoreUntil = 2027-01-17
 reason = "rustls: rustls 0.21 comes in through the AWS SDK (aws-smithy-http-client) and the Solana crates. It moves when they move to rustls 0.23."
 
 [[IgnoredVulns]]
+id = "GHSA-h2v8-394m-p7vv"
+ignoreUntil = 2027-01-25
+reason = "rustls: rustls 0.21 comes in through the AWS SDK (aws-smithy-http-client) and the Solana crates. The fix is 0.23.46, which the 0.23 copies already use. 0.21 has no certificate compression, so the Brotli path does not exist there. It moves when they move to rustls 0.23."
+
+[[IgnoredVulns]]
 id = "RUSTSEC-2026-0098"
 ignoreUntil = 2027-01-17
 reason = "rustls-webpki: rustls-webpki 0.101 comes in with rustls 0.21 through the AWS SDK and the Solana crates. It moves when they move."

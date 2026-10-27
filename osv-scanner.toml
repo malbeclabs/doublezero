@@ -101,3 +101,8 @@ id = "GHSA-w5hq-g745-h8pq"
 ignoreUntil = 2027-01-17
 reason = "uuid: uuid 8 comes in through jayson and rpc-websockets in @solana/web3.js, used by the TypeScript SDKs. The fix is a major release they have not taken."
 
+
+[[IgnoredVulns]]
+id = "GHSA-qwgh-2vcv-g2f7"
+ignoreUntil = 2027-01-25
+reason = "block-buffer: block-buffer 0.9.0 and 0.10.4 come in with sha2 0.9 and 0.10 through the Solana crates, and neither line has a fixed release. The bug needs a hash compress step that panics and a caller that catches the panic and reuses the buffer. 0.12 is on the fixed 0.12.1. It moves when Solana moves."

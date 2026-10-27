@@ -13,6 +13,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Release
+  - `doublezero-solana` 0.6.0, the first release of the Solana CLI from this repository. It carries the builder's bond commands, and two commands validators on 0.5.12 do not have: `feeds validator-client-rewards claim`, and the Squads vault path for `shreds validator-client-rewards claim`.
 - Serviceability
   - A bonded feed's builder can sign `UpdateFeed` to rename the feed or add groups, under the same group rule as `CreateFeed`, with no permission. Before, only the feed authority or the foundation could update a feed, so a builder could not add a group to its own feed. The builder cannot remove a group, because a subscriber's leave drops only the groups the feed lists then; cannot set the feed's chain; and cannot change a retiring or retired feed. The new `update_feed_as_builder` in the instruction crate sends the account of each group the update adds; `update_feed`, for an admin, sends none and stays the size it was.
 - CLI

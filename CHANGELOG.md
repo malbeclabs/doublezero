@@ -30,6 +30,9 @@ All notable changes to this project will be documented in this file.
   - `doublezero feed create` creates a bonded feed with `--bond-ref <BuilderBond>`, which needs `--spec-id` and `--committed-rate` (e.g. `1Gbps`) with it and takes no `--chain`. `--sla-hash` (64 hex characters) declares a service level; left out, the feed declares none. `--builder` defaults to the payer, and names another key only for an admin creating the feed on a builder's behalf. Before, the command always sent a zero `bond_ref`, so it could only create a catalog feed.
 - SDK
   - `CreateFeedCommand` takes `bond: Option<FeedBondTerms>`: the builder, `bond_ref`, `spec_id`, `sla_hash` and committed rate. The program requires them together, except `sla_hash`, where all zeros declares no service level. `None` creates a catalog feed, as before.
+- Dependencies
+  - `block-buffer` 0.12.1 in the workspace and the telemetry fixture lockfile, the first release that fixes GHSA-qwgh-2vcv-g2f7. `block-buffer` 0.9.0 and 0.10.4 come in through the Solana crates and have no fixed release, so `osv-scanner.toml` accepts the advisory until 2027-01-25. The bug needs a hash compress step that panics, and the `sha2` compress functions do not.
+  - `osv-scanner.toml` also accepts GHSA-h2v8-394m-p7vv until 2027-01-25, for the `rustls` 0.21.12 that comes in through the AWS SDK and the Solana crates. The fix is 0.23.46, which the 0.23 copies already use, and 0.21 has no certificate compression.
 
 ## [v0.45.0](https://github.com/malbeclabs/doublezero/compare/client/v0.44.0...client/v0.45.0) - 2026-10-22
 

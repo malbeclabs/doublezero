@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+### Changes
+
+## [v0.46.0](https://github.com/malbeclabs/doublezero/compare/client/v0.45.0...client/v0.46.0) - 2026-10-27
+
+### Breaking
+
 - Serviceability
   - `CreateFeed` holds a bonded feed its builder creates to the builder's own multicast groups: groups the builder created on the feed's bond, or groups an admin assigned to the builder with no bond. The instruction carries each group's account after the bond mirror, read-only, so the program can read who owns it; `create_feed` in the instruction crate adds them when the builder is the payer, and an admin's create stays the size it was. A builder's `CreateFeed` that leaves them out, or lists another owner's group or a group on another bond, fails with the new `GroupNotOnBond` (custom error 133). An admin creating a feed on a builder's behalf is not held to this.
 - Serviceability
@@ -33,6 +39,8 @@ All notable changes to this project will be documented in this file.
 - Dependencies
   - `block-buffer` 0.12.1 in the workspace and the telemetry fixture lockfile, the first release that fixes GHSA-qwgh-2vcv-g2f7. `block-buffer` 0.9.0 and 0.10.4 come in through the Solana crates and have no fixed release, so `osv-scanner.toml` accepts the advisory until 2027-01-25. The bug needs a hash compress step that panics, and the `sha2` compress functions do not.
   - `osv-scanner.toml` also accepts GHSA-h2v8-394m-p7vv until 2027-01-25, for the `rustls` 0.21.12 that comes in through the AWS SDK and the Solana crates. The fix is 0.23.46, which the 0.23 copies already use, and 0.21 has no certificate compression.
+- Config
+  - The testnet internet latency collector key moves from the retired `HWGQSTmXWMB85NY2vFLhM1nGpXA8f4VCARRyeGNbqDF1` to `DtkyktXDfywXqEupfdsPtGZnFK6zCjJmpHjGq9X6uzCa`. The monitor, telemetry data-api, data CLI and funder (`-env testnet`) find or fund the collector by this key. (#4403)
 
 ## [v0.45.0](https://github.com/malbeclabs/doublezero/compare/client/v0.44.0...client/v0.45.0) - 2026-10-22
 
@@ -60,7 +68,6 @@ All notable changes to this project will be documented in this file.
   - `permission audit` no longer reports that the CLI does not attach Permission accounts, and `permission set` no longer warns that a grant is inert through the CLI.
 - Config
   - The mainnet-beta internet latency collector key moves from the retired `8xHn4r7oQuqNZ5cLYwL5YZcDy1JjDQcpVkyoA8Dw5uXH` to `3Fs61T6u4etthEkFSy2cBwEA5i2ZqxQ5AEMd36mBkWsn`. The monitor, telemetry data-api, data CLI and funder (`-env mainnet-beta`) find or fund the collector by this key.
-  - The testnet internet latency collector key moves from the retired `HWGQSTmXWMB85NY2vFLhM1nGpXA8f4VCARRyeGNbqDF1` to `DtkyktXDfywXqEupfdsPtGZnFK6zCjJmpHjGq9X6uzCa`. The monitor, telemetry data-api, data CLI and funder (`-env testnet`) find or fund the collector by this key.
 - Dependencies
   - Lockfile bumps to the first fixed releases for published advisories: `rustls` 0.23.46 and `quinn-proto` 0.11.18 in the workspace, `rustls` 0.23.46 and `time` 0.3.47 in `solana/`, `anyio` 4.14.2 in the three Python SDKs, and `ws` 7.5.11 and 8.21.0 in the TypeScript SDKs. No onchain program depends on any of them.
 - E2E/QA

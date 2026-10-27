@@ -95,6 +95,7 @@ pub async fn try_finalize_distribution(wallet: &Wallet, dz_epoch_value: u64) -> 
     instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(
         compute_unit_limit,
     ));
+    instructions.push(ComputeBudgetInstruction::set_compute_unit_price(100_000));
 
     let transaction = wallet.new_transaction(&instructions).await?;
     let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
@@ -210,6 +210,12 @@ pub async fn create_snapshot(
     let fetch_epoch = prep_data.epoch;
 
     info!("Processed data for DZ epoch {}", fetch_epoch);
+
+    let current_epoch = fetcher.dz_rpc_client.get_epoch_info().await?.epoch;
+    ensure!(
+        fetch_epoch < current_epoch,
+        "DZ epoch {fetch_epoch} is not complete, because the ledger is at epoch {current_epoch}"
+    );
 
     // Get the fetch_data by re-fetching and applying same internet accumulator logic
     let (_, mut fetch_data) = fetcher.fetch(Some(fetch_epoch)).await?;

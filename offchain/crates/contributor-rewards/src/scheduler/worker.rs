@@ -212,17 +212,21 @@ impl ScheduleWorker {
                 }
             }
 
-            // Finalize the epoch before the processed epoch. This gives each root one more epoch
-            // after its post before the finalize locks it.
-            if let Some(wallet) = &wallet
-                && let Some(dz_epoch) = state.epoch_to_finalize()
-                && let Err(e) =
-                    finalize_distribution::try_finalize_distribution(wallet, dz_epoch).await
-            {
-                error!("Failed to finalize distribution for epoch {dz_epoch}: {e:#}");
-                has_failed = true;
-                metrics::counter!("doublezero_contributor_rewards_finalize_distribution_failure")
-                    .increment(1);
+            // Finalize the epochs before the processed epoch. This gives each root one more epoch
+            // after its post before the finalize locks it, and the older epochs catch up a skip.
+            if let Some(wallet) = &wallet {
+                for dz_epoch in state.epochs_to_finalize() {
+                    if let Err(e) =
+                        finalize_distribution::try_finalize_distribution(wallet, dz_epoch).await
+                    {
+                        error!("Failed to finalize distribution for epoch {dz_epoch}: {e:#}");
+                        has_failed = true;
+                        metrics::counter!(
+                            "doublezero_contributor_rewards_finalize_distribution_failure"
+                        )
+                        .increment(1);
+                    }
+                }
             }
 
             if let Some(wallet) = wallet.as_ref().filter(|_| enable_monthly_distribution) {
@@ -746,6 +750,24 @@ impl ScheduleWorker {
                 snapshot.dz_epoch
             );
             snapshot.validate()?;
+
+            let fetcher = Fetcher::from_settings(&self.orchestrator.settings)?;
+            let mut epoch_finder = EpochFinder::new(
+                fetcher.dz_rpc_client.clone(),
+                fetcher.solana_read_client.clone(),
+            );
+            let first_solana_epoch = epoch_finder
+                .find_epoch_at_timestamp(snapshot.fetch_data.start_us)
+                .await?;
+            let last_solana_epoch = epoch_finder
+                .find_epoch_at_timestamp(snapshot.fetch_data.end_us.saturating_sub(1))
+                .await?;
+            snapshot
+                .leader_schedule
+                .as_ref()
+                .context("Saved snapshot has no leader schedule")?
+                .ensure_covers_epochs(first_solana_epoch, last_solana_epoch)
+                .with_context(|| format!("Saved snapshot {filename} does not fit epoch {epoch}"))?;
             (snapshot, self.storage.location(&filename))
         } else {
             // Fetch all data for the epoch

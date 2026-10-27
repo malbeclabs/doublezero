@@ -5,6 +5,8 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, info, warn};
 
+const FINALIZE_LOOKBACK_EPOCHS: u64 = 5;
+
 /// Worker state persisted to disk
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SchedulerState {
@@ -157,9 +159,20 @@ impl SchedulerState {
         }
     }
 
-    /// The epoch to finalize, which is the epoch before the last processed epoch
-    pub fn epoch_to_finalize(&self) -> Option<u64> {
-        self.last_processed_epoch?.checked_sub(1)
+    /// The epochs to finalize, oldest first. They end at the epoch before the last processed
+    /// epoch, and the older ones catch up an epoch that an earlier tick skipped.
+    pub fn epochs_to_finalize(&self) -> Vec<u64> {
+        let Some(last_epoch_to_finalize) = self
+            .last_processed_epoch
+            .and_then(|epoch| epoch.checked_sub(1))
+        else {
+            return vec![];
+        };
+
+        let first_epoch_to_finalize =
+            last_epoch_to_finalize.saturating_sub(FINALIZE_LOOKBACK_EPOCHS - 1);
+
+        (first_epoch_to_finalize..=last_epoch_to_finalize).collect()
     }
 
     /// Check if we're in a failure state that should halt processing
@@ -183,15 +196,18 @@ mod tests {
     use super::SchedulerState;
 
     #[test]
-    fn test_the_epoch_to_finalize_is_the_one_before_the_last_processed_epoch() {
+    fn test_the_epochs_to_finalize_are_the_five_before_the_last_processed_epoch() {
         let mut state = SchedulerState::default();
-        assert_eq!(state.epoch_to_finalize(), None);
+        assert_eq!(state.epochs_to_finalize(), Vec::<u64>::new());
 
         state.last_processed_epoch = Some(0);
-        assert_eq!(state.epoch_to_finalize(), None);
+        assert_eq!(state.epochs_to_finalize(), Vec::<u64>::new());
+
+        state.last_processed_epoch = Some(3);
+        assert_eq!(state.epochs_to_finalize(), vec![0, 1, 2]);
 
         state.last_processed_epoch = Some(240);
-        assert_eq!(state.epoch_to_finalize(), Some(239));
+        assert_eq!(state.epochs_to_finalize(), vec![235, 236, 237, 238, 239]);
     }
 
     #[test]

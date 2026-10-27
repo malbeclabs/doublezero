@@ -9,7 +9,7 @@ use crate::{
     serializer::try_acc_write,
     state::{
         feature_flags::{is_feature_enabled, FeatureFlag},
-        feed::{Feed, FeedChain},
+        feed::{Feed, FeedChain, FeedStatus},
         globalstate::GlobalState,
     },
 };
@@ -64,9 +64,10 @@ pub fn process_update_feed(
         accounts_iter.collect(),
     );
 
-    // A bonded feed's own builder may rename it and change its groups, held to the same rule as
-    // at create: every group it lists must be the builder's own. Anyone else needs the catalog
-    // permission, as before.
+    // A bonded feed's own builder may rename it and add groups, held to the same rule as at
+    // create: every group it adds must be the builder's own. It may not remove one: a subscriber's
+    // leave drops only the groups the feed lists then, so a removed group would stay with every
+    // subscriber who leaves after it. Anyone else needs the catalog permission, as before.
     let builder_signs = feed.builder != Pubkey::default()
         && &feed.builder == payer_account.key
         && is_feature_enabled(globalstate.feature_flags, FeatureFlag::AllowBondedFeeds);
@@ -75,12 +76,26 @@ pub fn process_update_feed(
             msg!("A feed's builder cannot set its chain");
             return Err(DoubleZeroError::NotAllowed.into());
         }
+        if matches!(feed.status, FeedStatus::Retiring | FeedStatus::Retired) {
+            msg!("A retiring or retired feed's groups cannot change");
+            return Err(DoubleZeroError::NotAllowed.into());
+        }
         if let Some(ref groups) = value.groups {
+            if !feed.groups.iter().all(|group| groups.contains(group)) {
+                msg!("A feed's builder can add groups but not remove them");
+                return Err(DoubleZeroError::NotAllowed.into());
+            }
+            // The groups already listed passed this check when they were added.
+            let added = groups
+                .iter()
+                .filter(|group| !feed.groups.contains(group))
+                .copied()
+                .collect::<Vec<_>>();
             check_groups_on_bond(
                 program_id,
                 &feed.builder,
                 &feed.bond_ref,
-                groups,
+                &added,
                 &group_accounts,
             )?;
         }

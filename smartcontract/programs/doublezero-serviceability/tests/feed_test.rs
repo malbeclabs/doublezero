@@ -8,7 +8,10 @@ use doublezero_serviceability::{
     },
     processors::{
         bond_mirror::write::BondMirrorWriteArgs,
-        feed::{create::FeedCreateArgs, delete::FeedDeleteArgs, update::FeedUpdateArgs},
+        feed::{
+            create::FeedCreateArgs, delete::FeedDeleteArgs, retire::FeedRetireArgs,
+            update::FeedUpdateArgs,
+        },
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
         multicastgroup::{
             allowlist::publisher::add::AddMulticastGroupPubAllowlistArgs,
@@ -666,6 +669,9 @@ fn strangers_group(program_id: &Pubkey) -> Pubkey {
 fn other_bond_group(program_id: &Pubkey) -> Pubkey {
     get_multicastgroup_pda(program_id, 9_997).0
 }
+fn second_builder_group(program_id: &Pubkey) -> Pubkey {
+    get_multicastgroup_pda(program_id, 9_996).0
+}
 
 /// Start a cluster with `allow-bonded-feeds` set and one bond already mirrored for `builder`.
 /// The returned payer is the foundation key, which is authorized; `builder` is whoever the caller
@@ -699,6 +705,10 @@ async fn init_bonded_for(
             (
                 other_bond_group(&program_id),
                 multicast_group(builder, Pubkey::new_unique()),
+            ),
+            (
+                second_builder_group(&program_id),
+                multicast_group(builder, bond_ref),
             ),
         ],
     )
@@ -1597,23 +1607,63 @@ async fn test_a_builder_changes_its_feeds_groups_within_its_own() {
         "Renamed"
     );
 
-    // A stranger's group is refused, as at create.
-    let result = try_execute_and_get_error(
+    // The builder adds a second group of its own, passing only the added group's account.
+    let both = vec![
+        builder_group(&program_id),
+        second_builder_group(&program_id),
+    ];
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
+        recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
-            groups: Some(vec![strangers_group(&program_id)]),
+            groups: Some(both.clone()),
             ..Default::default()
         }),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &builder,
         &[AccountMeta::new_readonly(
-            strangers_group(&program_id),
+            second_builder_group(&program_id),
             false,
         )],
     )
     .await;
-    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::GroupNotOnBond));
+    assert_eq!(get_feed(&mut banks_client, feed_pubkey).await.groups, both);
+
+    // The builder cannot drop a group: its subscribers would keep it after they leave the feed.
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
+            groups: Some(vec![builder_group(&program_id)]),
+            ..Default::default()
+        }),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &builder,
+        &[],
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+
+    // A stranger's group, or the builder's own on another bond, is refused, as at create.
+    for refused in [strangers_group(&program_id), other_bond_group(&program_id)] {
+        let mut groups = both.clone();
+        groups.push(refused);
+        let result = try_execute_and_get_error(
+            &mut banks_client,
+            program_id,
+            DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
+                groups: Some(groups),
+                ..Default::default()
+            }),
+            feed_accounts(feed_pubkey, globalstate_pubkey),
+            &builder,
+            &[AccountMeta::new_readonly(refused, false)],
+        )
+        .await;
+        assert_custom_at_ix0(&result, custom_code(DoubleZeroError::GroupNotOnBond));
+    }
 
     // The builder may not set a chain.
     let result = try_execute_and_get_error(
@@ -1648,6 +1698,31 @@ async fn test_a_builder_changes_its_feeds_groups_within_its_own() {
         }),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &stranger,
+        &[],
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+
+    // Once the builder retires the feed, its groups are fixed.
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RetireFeed(FeedRetireArgs {}),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &builder,
+    )
+    .await;
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
+            name: Some("Late".to_string()),
+            ..Default::default()
+        }),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &builder,
         &[],
     )
     .await;

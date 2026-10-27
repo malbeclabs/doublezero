@@ -20,6 +20,19 @@ import (
 	"golang.org/x/sys/unix"
 )
 
+// TestMain points every Setup at an empty directory, so a test run as root on a host with a live
+// doublezero1 never changes that tunnel's rp_filter. A test that checks the write sets its own.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "proc-sys-ipv4-conf")
+	if err != nil {
+		panic(err)
+	}
+	*services.ProcSysIPv4Conf = dir
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
+}
+
 // Provisioner mirrors the manager.Provisioner interface so we can test
 // services without importing the manager package (which calls
 // NewMulticastService with the old arity while Task 5 is pending).

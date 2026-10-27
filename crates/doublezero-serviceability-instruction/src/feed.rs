@@ -29,6 +29,10 @@ use solana_program::{
 /// `CreateFeed` (variant 112). Accounts: `[feed, globalstate]`.
 ///
 /// The feed PDA is derived from `args.code` and `args.exchange`.
+///
+/// A builder's create carries each group twice, once in the data and once as an account, so it fits
+/// in one transaction with at most nine groups. A builder with more creates the feed with nine and
+/// adds the rest with `update_feed_as_builder`.
 pub fn create_feed(program_id: &Pubkey, payer: &Pubkey, args: FeedCreateArgs) -> Instruction {
     let (feed, _) = get_feed_pda(program_id, &args.code, &args.exchange);
     let (globalstate, _) = get_globalstate_pda(program_id);
@@ -263,8 +267,6 @@ mod tests {
     use super::*;
     use solana_system_interface::program as system_program;
 
-    /// A bonded feed carries its mirror; a catalog feed must not, or a caller that sends neither
-    /// stops working.
     #[test]
     fn test_a_builders_update_sends_only_the_groups_it_adds() {
         let pid = Pubkey::new_unique();
@@ -297,6 +299,8 @@ mod tests {
             .any(|a| a.pubkey == kept || a.pubkey == added));
     }
 
+    /// A bonded feed carries its mirror; a catalog feed must not, or a caller that sends neither
+    /// stops working.
     #[test]
     fn test_create_feed_appends_the_bond_mirror_only_when_bonded() {
         let pid = Pubkey::new_unique();

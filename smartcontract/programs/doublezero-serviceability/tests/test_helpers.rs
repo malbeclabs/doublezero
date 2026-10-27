@@ -99,18 +99,32 @@ pub async fn init_test_with_accounts(
     program_id: Pubkey,
     accounts: &[(Pubkey, Vec<u8>)],
 ) -> (BanksClient, Keypair, solana_program::hash::Hash) {
+    let owned = accounts
+        .iter()
+        .map(|(pubkey, data)| (*pubkey, data.clone(), program_id))
+        .collect::<Vec<_>>();
+    init_test_with_owned_accounts(program_id, &owned).await
+}
+
+/// Like `init_test_with_accounts`, with each account's owner named, so a test can seed an account
+/// another program owns.
+#[allow(dead_code)]
+pub async fn init_test_with_owned_accounts(
+    program_id: Pubkey,
+    accounts: &[(Pubkey, Vec<u8>, Pubkey)],
+) -> (BanksClient, Keypair, solana_program::hash::Hash) {
     let mut program_test = ProgramTest::new(
         "doublezero_serviceability",
         program_id,
         processor!(process_instruction),
     );
-    for (pubkey, data) in accounts {
+    for (pubkey, data, owner) in accounts {
         program_test.add_account(
             *pubkey,
             solana_sdk::account::Account {
                 lamports: solana_sdk::rent::Rent::default().minimum_balance(data.len()),
                 data: data.clone(),
-                owner: program_id,
+                owner: *owner,
                 executable: false,
                 rent_epoch: 0,
             },

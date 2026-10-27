@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Contributor rewards
+  - A Dockerfile at `offchain/crates/contributor-rewards/Dockerfile` builds the worker into a `linux/amd64` image for the Kubernetes CronJob. A person builds it by hand and pushes it to ECR.
+
 ## [v0.46.0](https://github.com/malbeclabs/doublezero/compare/client/v0.45.0...client/v0.46.0) - 2026-10-27
 
 ### Breaking

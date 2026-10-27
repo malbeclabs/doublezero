@@ -99,18 +99,32 @@ pub async fn init_test_with_accounts(
     program_id: Pubkey,
     accounts: &[(Pubkey, Vec<u8>)],
 ) -> (BanksClient, Keypair, solana_program::hash::Hash) {
+    let owned = accounts
+        .iter()
+        .map(|(pubkey, data)| (*pubkey, data.clone(), program_id))
+        .collect::<Vec<_>>();
+    init_test_with_owned_accounts(program_id, &owned).await
+}
+
+/// Like `init_test_with_accounts`, with each account's owner named, so a test can seed an account
+/// another program owns.
+#[allow(dead_code)]
+pub async fn init_test_with_owned_accounts(
+    program_id: Pubkey,
+    accounts: &[(Pubkey, Vec<u8>, Pubkey)],
+) -> (BanksClient, Keypair, solana_program::hash::Hash) {
     let mut program_test = ProgramTest::new(
         "doublezero_serviceability",
         program_id,
         processor!(process_instruction),
     );
-    for (pubkey, data) in accounts {
+    for (pubkey, data, owner) in accounts {
         program_test.add_account(
             *pubkey,
             solana_sdk::account::Account {
                 lamports: solana_sdk::rent::Rent::default().minimum_balance(data.len()),
                 data: data.clone(),
-                owner: program_id,
+                owner: *owner,
                 executable: false,
                 rent_epoch: 0,
             },
@@ -1111,4 +1125,29 @@ pub fn assert_custom_error(err: &BanksClientError, expected: DoubleZeroError) {
         Some(want),
         "expected Custom({want}), got {err:?}"
     );
+}
+
+/// A multicast group account's data, owned by `owner` on `bond_ref`, as `CreateMulticastGroup`
+/// leaves it. For seeding a group at start-up with `init_test_with_accounts`.
+#[allow(dead_code)]
+pub fn multicast_group(owner: Pubkey, bond_ref: Pubkey) -> Vec<u8> {
+    use doublezero_serviceability::state::{
+        accounttype::AccountType,
+        multicastgroup::{MulticastGroup, MulticastGroupStatus},
+    };
+    borsh::to_vec(&MulticastGroup {
+        account_type: AccountType::MulticastGroup,
+        owner,
+        index: 1,
+        bump_seed: 255,
+        tenant_pk: Pubkey::default(),
+        multicast_ip: std::net::Ipv4Addr::new(233, 84, 178, 1),
+        max_bandwidth: 1_000_000_000,
+        status: MulticastGroupStatus::Activated,
+        code: "seeded-group".to_string(),
+        publisher_count: 0,
+        subscriber_count: 0,
+        bond_ref,
+    })
+    .unwrap()
 }

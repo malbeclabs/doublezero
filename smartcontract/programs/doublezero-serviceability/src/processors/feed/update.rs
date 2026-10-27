@@ -1,10 +1,15 @@
 use crate::{
     authorize::{authorize, FEED_ADMIN_FLAGS},
     error::DoubleZeroError,
-    processors::feed::create::{validate_feed_groups, validate_feed_name},
+    processors::feed::{
+        check_groups_on_bond,
+        create::{validate_feed_groups, validate_feed_name},
+        split_group_accounts,
+    },
     serializer::try_acc_write,
     state::{
-        feed::{Feed, FeedChain},
+        feature_flags::{is_feature_enabled, FeatureFlag},
+        feed::{Feed, FeedChain, FeedStatus},
         globalstate::GlobalState,
     },
 };
@@ -53,13 +58,56 @@ pub fn process_update_feed(
     assert!(feed_account.is_writable, "PDA Account is not writable");
 
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    authorize(
-        program_id,
-        accounts_iter,
-        payer_account.key,
-        &globalstate,
-        FEED_ADMIN_FLAGS,
-    )?;
+    let mut feed = Feed::try_from(feed_account)?;
+    let (group_accounts, authorize_candidates) = split_group_accounts(
+        value.groups.as_deref().unwrap_or_default(),
+        accounts_iter.collect(),
+    );
+
+    // A bonded feed's own builder may rename it and add groups, held to the same rule as at
+    // create: every group it adds must be the builder's own. It may not remove one: a subscriber's
+    // leave drops only the groups the feed lists then, so a removed group would stay with every
+    // subscriber who leaves after it. Anyone else needs the catalog permission, as before.
+    let builder_signs = feed.builder != Pubkey::default()
+        && &feed.builder == payer_account.key
+        && is_feature_enabled(globalstate.feature_flags, FeatureFlag::AllowBondedFeeds);
+    if builder_signs {
+        if value.feed_chain.is_some() {
+            msg!("A feed's builder cannot set its chain");
+            return Err(DoubleZeroError::NotAllowed.into());
+        }
+        if matches!(feed.status, FeedStatus::Retiring | FeedStatus::Retired) {
+            msg!("A retiring or retired feed's groups cannot change");
+            return Err(DoubleZeroError::NotAllowed.into());
+        }
+        if let Some(ref groups) = value.groups {
+            if !feed.groups.iter().all(|group| groups.contains(group)) {
+                msg!("A feed's builder can add groups but not remove them");
+                return Err(DoubleZeroError::NotAllowed.into());
+            }
+            // The groups already listed passed this check when they were added.
+            let added = groups
+                .iter()
+                .filter(|group| !feed.groups.contains(group))
+                .copied()
+                .collect::<Vec<_>>();
+            check_groups_on_bond(
+                program_id,
+                &feed.builder,
+                &feed.bond_ref,
+                &added,
+                &group_accounts,
+            )?;
+        }
+    } else {
+        authorize(
+            program_id,
+            &mut authorize_candidates.into_iter(),
+            payer_account.key,
+            &globalstate,
+            FEED_ADMIN_FLAGS,
+        )?;
+    }
 
     if let Some(ref name) = value.name {
         validate_feed_name(name)?;
@@ -68,7 +116,6 @@ pub fn process_update_feed(
         validate_feed_groups(groups)?;
     }
 
-    let mut feed = Feed::try_from(feed_account)?;
     if let Some(ref name) = value.name {
         feed.name = name.clone();
     }

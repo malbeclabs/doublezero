@@ -8,7 +8,10 @@ use doublezero_serviceability::{
     },
     processors::{
         bond_mirror::write::BondMirrorWriteArgs,
-        feed::{create::FeedCreateArgs, delete::FeedDeleteArgs, update::FeedUpdateArgs},
+        feed::{
+            create::FeedCreateArgs, delete::FeedDeleteArgs, retire::FeedRetireArgs,
+            update::FeedUpdateArgs,
+        },
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
         multicastgroup::{
             allowlist::publisher::add::AddMulticastGroupPubAllowlistArgs,
@@ -654,6 +657,26 @@ fn bond_mirror(bond_ref: Pubkey, builder: Pubkey, tier: BondTier, bump_seed: u8)
     .unwrap()
 }
 
+/// The groups [`init_bonded_for`] seeds, at fixed addresses so a test can name them: the
+/// builder's own group on its bond, a group someone else owns, and a group the builder owns on
+/// another bond.
+fn builder_group(program_id: &Pubkey) -> Pubkey {
+    get_multicastgroup_pda(program_id, 9_999).0
+}
+fn strangers_group(program_id: &Pubkey) -> Pubkey {
+    get_multicastgroup_pda(program_id, 9_998).0
+}
+fn other_bond_group(program_id: &Pubkey) -> Pubkey {
+    get_multicastgroup_pda(program_id, 9_997).0
+}
+fn second_builder_group(program_id: &Pubkey) -> Pubkey {
+    get_multicastgroup_pda(program_id, 9_996).0
+}
+// A group the builder owns on its bond, by its data, in an account another program owns.
+fn foreign_group(program_id: &Pubkey) -> Pubkey {
+    get_multicastgroup_pda(program_id, 9_994).0
+}
+
 /// Start a cluster with `allow-bonded-feeds` set and one bond already mirrored for `builder`.
 /// The returned payer is the foundation key, which is authorized; `builder` is whoever the caller
 /// named and holds nothing.
@@ -671,9 +694,40 @@ async fn init_bonded_for(
     let bond_ref = Pubkey::new_unique();
     let (mirror_pubkey, bump) = get_bond_mirror_pda(&program_id, &bond_ref);
 
-    let (mut banks_client, payer, recent_blockhash) = init_test_with_accounts(
+    let (mut banks_client, payer, recent_blockhash) = init_test_with_owned_accounts(
         program_id,
-        &[(mirror_pubkey, bond_mirror(bond_ref, builder, tier, bump))],
+        &[
+            (
+                mirror_pubkey,
+                bond_mirror(bond_ref, builder, tier, bump),
+                program_id,
+            ),
+            (
+                builder_group(&program_id),
+                multicast_group(builder, bond_ref),
+                program_id,
+            ),
+            (
+                strangers_group(&program_id),
+                multicast_group(Pubkey::new_unique(), bond_ref),
+                program_id,
+            ),
+            (
+                other_bond_group(&program_id),
+                multicast_group(builder, Pubkey::new_unique()),
+                program_id,
+            ),
+            (
+                second_builder_group(&program_id),
+                multicast_group(builder, bond_ref),
+                program_id,
+            ),
+            (
+                foreign_group(&program_id),
+                multicast_group(builder, bond_ref),
+                Pubkey::new_unique(),
+            ),
+        ],
     )
     .await;
 
@@ -1286,6 +1340,7 @@ async fn test_a_builder_with_no_permission_deploys_against_its_own_bond() {
     args.builder = builder.pubkey();
     args.bond_ref = bond_ref;
     args.committed_rate_bits_per_sec = 5_000_000_000;
+    args.groups = vec![builder_group(&program_id)];
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     execute_transaction_with_extra_accounts(
@@ -1295,7 +1350,10 @@ async fn test_a_builder_with_no_permission_deploys_against_its_own_bond() {
         DoubleZeroInstruction::CreateFeed(args),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &builder,
-        &[AccountMeta::new(mirror_pubkey, false)],
+        &[
+            AccountMeta::new(mirror_pubkey, false),
+            AccountMeta::new_readonly(builder_group(&program_id), false),
+        ],
     )
     .await;
 
@@ -1386,6 +1444,7 @@ async fn test_a_builder_whose_tier_falls_short_is_told_which() {
     args.builder = builder.pubkey();
     args.bond_ref = bond_ref;
     args.committed_rate_bits_per_sec = 5_000_000_000;
+    args.groups = vec![builder_group(&program_id)];
 
     let result = try_execute_and_get_error(
         &mut banks_client,
@@ -1393,7 +1452,10 @@ async fn test_a_builder_whose_tier_falls_short_is_told_which() {
         DoubleZeroInstruction::CreateFeed(args),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &builder,
-        &[AccountMeta::new(mirror_pubkey, false)],
+        &[
+            AccountMeta::new(mirror_pubkey, false),
+            AccountMeta::new_readonly(builder_group(&program_id), false),
+        ],
     )
     .await;
 
@@ -1468,5 +1530,255 @@ async fn test_another_builders_mirror_does_not_authorize_the_payer() {
     )
     .await;
 
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+}
+
+/// A seat on a feed joins every group the feed lists, so a builder's own feed may list only its
+/// own groups. Each case is refused at create, whichever way the group fails.
+#[tokio::test]
+async fn test_a_builder_may_list_only_its_own_groups() {
+    let builder = test_payer();
+    let (mut banks_client, program_id, _foundation, globalstate_pubkey, bond_ref) =
+        init_bonded_for(builder.pubkey(), BondTier::UpTo5Gbps).await;
+    let (mirror_pubkey, _) = get_bond_mirror_pda(&program_id, &bond_ref);
+
+    for (code, group, pass_its_account) in [
+        ("strangers", strangers_group(&program_id), true),
+        ("otherbond", other_bond_group(&program_id), true),
+        ("noaccount", builder_group(&program_id), false),
+    ] {
+        let exchange = Pubkey::new_unique();
+        let (feed_pubkey, _) = get_feed_pda(&program_id, code, &exchange);
+        let mut args = bonded_args(code, exchange);
+        args.builder = builder.pubkey();
+        args.bond_ref = bond_ref;
+        args.groups = vec![group];
+        let mut extra = vec![AccountMeta::new(mirror_pubkey, false)];
+        if pass_its_account {
+            extra.push(AccountMeta::new_readonly(group, false));
+        }
+
+        let result = try_execute_and_get_error(
+            &mut banks_client,
+            program_id,
+            DoubleZeroInstruction::CreateFeed(args),
+            feed_accounts(feed_pubkey, globalstate_pubkey),
+            &builder,
+            &extra,
+        )
+        .await;
+
+        assert_custom_at_ix0(&result, custom_code(DoubleZeroError::GroupNotOnBond));
+    }
+}
+
+/// A bonded feed's builder may change its groups, held to the same rule as at create, and may not
+/// set a chain. Anyone else still needs the catalog permission.
+#[tokio::test]
+async fn test_a_builder_changes_its_feeds_groups_within_its_own() {
+    let builder = test_payer();
+    let (mut banks_client, program_id, _foundation, globalstate_pubkey, bond_ref) =
+        init_bonded_for(builder.pubkey(), BondTier::UpTo5Gbps).await;
+    let (mirror_pubkey, _) = get_bond_mirror_pda(&program_id, &bond_ref);
+
+    // The builder creates the feed with a group it created on its bond.
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "mine", &exchange);
+    let mut args = bonded_args("mine", exchange);
+    args.builder = builder.pubkey();
+    args.bond_ref = bond_ref;
+    args.groups = vec![builder_group(&program_id)];
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(args),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &builder,
+        &[
+            AccountMeta::new(mirror_pubkey, false),
+            AccountMeta::new_readonly(builder_group(&program_id), false),
+        ],
+    )
+    .await;
+
+    // The builder renames the feed and keeps its own group: allowed, no permission needed.
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
+            name: Some("Renamed".to_string()),
+            groups: Some(vec![builder_group(&program_id)]),
+            feed_chain: None,
+        }),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &builder,
+        &[AccountMeta::new_readonly(builder_group(&program_id), false)],
+    )
+    .await;
+    assert_eq!(
+        get_feed(&mut banks_client, feed_pubkey).await.name,
+        "Renamed"
+    );
+
+    // The builder adds a second group of its own, passing only the added group's account.
+    let both = vec![
+        builder_group(&program_id),
+        second_builder_group(&program_id),
+    ];
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
+            groups: Some(both.clone()),
+            ..Default::default()
+        }),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &builder,
+        &[AccountMeta::new_readonly(
+            second_builder_group(&program_id),
+            false,
+        )],
+    )
+    .await;
+    assert_eq!(get_feed(&mut banks_client, feed_pubkey).await.groups, both);
+
+    // The builder cannot drop a group: its subscribers would keep it after they leave the feed.
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
+            groups: Some(vec![builder_group(&program_id)]),
+            ..Default::default()
+        }),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &builder,
+        &[],
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+
+    // A stranger's group, the builder's own on another bond, or one whose account another program
+    // owns, is refused, as at create.
+    for refused in [
+        strangers_group(&program_id),
+        other_bond_group(&program_id),
+        foreign_group(&program_id),
+    ] {
+        let mut groups = both.clone();
+        groups.push(refused);
+        let result = try_execute_and_get_error(
+            &mut banks_client,
+            program_id,
+            DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
+                groups: Some(groups),
+                ..Default::default()
+            }),
+            feed_accounts(feed_pubkey, globalstate_pubkey),
+            &builder,
+            &[AccountMeta::new_readonly(refused, false)],
+        )
+        .await;
+        assert_custom_at_ix0(&result, custom_code(DoubleZeroError::GroupNotOnBond));
+    }
+
+    // The builder may not set a chain.
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
+            feed_chain: Some(FeedChain::Unspecified),
+            ..Default::default()
+        }),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &builder,
+        &[],
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+
+    // Someone who is neither the builder nor an admin is refused.
+    let stranger = solana_sdk::signature::Keypair::new();
+    transfer(
+        &mut banks_client,
+        &_foundation,
+        &stranger.pubkey(),
+        100_000_000,
+    )
+    .await;
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
+            name: Some("Hijacked".to_string()),
+            ..Default::default()
+        }),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &stranger,
+        &[],
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+
+    // With allow-bonded-feeds clear, the builder is held to the catalog permission like anyone.
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs { feature_flags: 0 }),
+        vec![AccountMeta::new(globalstate_pubkey, false)],
+        &_foundation,
+    )
+    .await;
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
+            name: Some("Flagless".to_string()),
+            ..Default::default()
+        }),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &builder,
+        &[],
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+    enable_bonded_feeds(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &_foundation,
+    )
+    .await;
+
+    // Once the builder retires the feed, its groups are fixed.
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::RetireFeed(FeedRetireArgs {}),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &builder,
+    )
+    .await;
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
+            name: Some("Late".to_string()),
+            ..Default::default()
+        }),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &builder,
+        &[],
+    )
+    .await;
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
 }

@@ -7,7 +7,10 @@
 
 use doublezero_serviceability::{
     instructions::DoubleZeroInstruction,
-    pda::{get_bond_mirror_pda, get_feed_pda, get_globalstate_pda, get_permission_pda},
+    pda::{
+        get_bond_mirror_pda, get_feed_pda, get_globalstate_pda, get_multicastgroup_pda,
+        get_permission_pda,
+    },
     processors::{
         bond_mirror::write::BondMirrorWriteArgs, feed::create::FeedCreateArgs,
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
@@ -52,8 +55,13 @@ async fn deploy_bonded_feed(sla_hash: [u8; 32]) {
     let relayer = Keypair::new();
     let bond_ref = Pubkey::new_unique();
 
-    let (mut banks_client, foundation, recent_blockhash) =
-        init_test_with_accounts(program_id, &[]).await;
+    // The builder's own group on the bond, which the feed lists.
+    let (group, _) = get_multicastgroup_pda(&program_id, 9_999);
+    let (mut banks_client, foundation, recent_blockhash) = init_test_with_accounts(
+        program_id,
+        &[(group, multicast_group(builder.pubkey(), bond_ref))],
+    )
+    .await;
     init_globalstate_and_config(&mut banks_client, program_id, &foundation, recent_blockhash).await;
     let (globalstate, _) = get_globalstate_pda(&program_id);
     transfer(
@@ -125,7 +133,7 @@ async fn deploy_bonded_feed(sla_hash: [u8; 32]) {
             code: "tokyo1".to_string(),
             name: "Tokyo".to_string(),
             exchange,
-            groups: vec![Pubkey::new_unique()],
+            groups: vec![group],
             builder: builder.pubkey(),
             bond_ref,
             spec_id: "top-of-book@v1.0.0".to_string(),

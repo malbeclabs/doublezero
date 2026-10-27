@@ -275,6 +275,10 @@ pub enum DoubleZeroError {
     InvalidAccessPassType, // variant 131
     #[error("This bond has created as many multicast groups as one bond may")]
     BondGroupLimitReached, // variant 132
+    #[error(
+        "A bonded feed may list only its builder's own multicast groups, on its bond or with none"
+    )]
+    GroupNotOnBond, // variant 133
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -413,6 +417,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::FeedNotActivatable => ProgramError::Custom(130),
             DoubleZeroError::InvalidAccessPassType => ProgramError::Custom(131),
             DoubleZeroError::BondGroupLimitReached => ProgramError::Custom(132),
+            DoubleZeroError::GroupNotOnBond => ProgramError::Custom(133),
         }
     }
 }
@@ -552,6 +557,7 @@ impl From<u32> for DoubleZeroError {
             130 => DoubleZeroError::FeedNotActivatable,
             131 => DoubleZeroError::InvalidAccessPassType,
             132 => DoubleZeroError::BondGroupLimitReached,
+            133 => DoubleZeroError::GroupNotOnBond,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -597,7 +603,7 @@ mod tests {
         }
 
         // EnumIter generates Custom(0) by default, so we explicitly test values
-        // outside the known variant range (currently 0-132) to ensure the conversion
+        // outside the known variant range (currently 0-133) to ensure the conversion
         // logic handles arbitrary custom codes correctly.
         for code in [1000u32, 100_000, u32::MAX] {
             let err = DoubleZeroError::Custom(code);

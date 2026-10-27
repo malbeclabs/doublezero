@@ -2,7 +2,10 @@ use crate::{
     authorize::{authorize, FEED_ADMIN_FLAGS},
     error::{DoubleZeroError, Validate},
     pda::get_feed_pda,
-    processors::bond_mirror::split_bond_mirror,
+    processors::{
+        bond_mirror::split_bond_mirror,
+        feed::{check_groups_on_bond, split_group_accounts},
+    },
     seeds::{SEED_FEED, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
     state::{
@@ -82,7 +85,6 @@ pub fn process_create_feed(
         (value.builder != Pubkey::default()).then_some(&value.bond_ref),
         accounts_iter,
     );
-    let mut authorize_iter = authorize_candidates.into_iter();
 
     assert!(payer_account.is_signer, "Payer must be a signer");
     assert_eq!(
@@ -96,19 +98,32 @@ pub fn process_create_feed(
     // deploy. The catalog path below is untouched, so an admin creating a feed on a builder's
     // behalf works exactly as it did.
     let globalstate = GlobalState::try_from(globalstate_account)?;
-    if !bond_authorizes(
+    let (group_accounts, authorize_candidates) =
+        split_group_accounts(&value.groups, authorize_candidates);
+    if bond_authorizes(
         program_id,
         payer_account.key,
         value,
         bond_mirror_account,
         globalstate.feature_flags,
     ) {
+        // The bond admits a builder's own feed, and a seat on it joins every group it lists, so
+        // the builder may list only its own groups. An admin creating a feed on a builder's
+        // behalf takes the catalog path below and is not held to this.
+        check_groups_on_bond(
+            program_id,
+            payer_account.key,
+            &value.bond_ref,
+            &value.groups,
+            &group_accounts,
+        )?;
+    } else {
         // Authorize before any input validation or existence probing so an unauthorized caller gets
         // NotAllowed rather than being able to trip validation errors or probe whether a feed exists.
         // Catalog admin: FEED_AUTHORITY (Permission PDA) or FOUNDATION.
         authorize(
             program_id,
-            &mut authorize_iter,
+            &mut authorize_candidates.into_iter(),
             payer_account.key,
             &globalstate,
             FEED_ADMIN_FLAGS,

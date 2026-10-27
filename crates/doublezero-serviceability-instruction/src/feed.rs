@@ -29,6 +29,10 @@ use solana_program::{
 /// `CreateFeed` (variant 112). Accounts: `[feed, globalstate]`.
 ///
 /// The feed PDA is derived from `args.code` and `args.exchange`.
+///
+/// A builder's create carries each group twice, once in the data and once as an account, so it fits
+/// in one transaction with at most nine groups. A builder with more creates the feed with nine and
+/// adds the rest with `update_feed_as_builder`.
 pub fn create_feed(program_id: &Pubkey, payer: &Pubkey, args: FeedCreateArgs) -> Instruction {
     let (feed, _) = get_feed_pda(program_id, &args.code, &args.exchange);
     let (globalstate, _) = get_globalstate_pda(program_id);
@@ -39,6 +43,17 @@ pub fn create_feed(program_id: &Pubkey, payer: &Pubkey, args: FeedCreateArgs) ->
     // for it would only create a way to get it wrong. Writable: creating the feed claims it.
     let bond_mirror = (args.builder != Pubkey::default())
         .then(|| get_bond_mirror_pda(program_id, &args.bond_ref).0);
+    // A bonded feed its builder creates carries its groups' accounts, so the program can check
+    // that each is one the builder created on its bond. An admin's create and a catalog feed pass
+    // none: the program does not read them there, and at the group limit they would not fit in a
+    // transaction.
+    let mut after_system: Vec<AccountMeta> = bond_mirror
+        .map(|bond_mirror| AccountMeta::new(bond_mirror, false))
+        .into_iter()
+        .collect();
+    if args.builder != Pubkey::default() && args.builder == *payer {
+        after_system.extend(group_accounts(&args.groups));
+    }
 
     common::build_with_permission_after_system(
         program_id,
@@ -47,31 +62,68 @@ pub fn create_feed(program_id: &Pubkey, payer: &Pubkey, args: FeedCreateArgs) ->
             AccountMeta::new(feed, false),
             AccountMeta::new(globalstate, false),
         ],
-        bond_mirror
-            .map(|bond_mirror| AccountMeta::new(bond_mirror, false))
-            .into_iter()
-            .collect(),
+        after_system,
         payer,
     )
 }
 
-/// `UpdateFeed` (variant 113). Accounts: `[feed, globalstate]`.
+/// `UpdateFeed` (variant 113), as an admin sends it. Accounts: `[feed, globalstate]`.
 pub fn update_feed(
     program_id: &Pubkey,
     payer: &Pubkey,
     feed: &Pubkey,
     args: FeedUpdateArgs,
 ) -> Instruction {
+    update_feed_with_groups(program_id, payer, feed, args, Vec::new())
+}
+
+/// `UpdateFeed` (variant 113), as a bonded feed's builder sends it. Accounts: `[feed,
+/// globalstate]`, then the account of each group `args` adds to `current_groups`, the feed's
+/// groups now. The program checks that each added group is the builder's own, on the feed's bond,
+/// and refuses an update that removes one.
+pub fn update_feed_as_builder(
+    program_id: &Pubkey,
+    builder: &Pubkey,
+    feed: &Pubkey,
+    current_groups: &[Pubkey],
+    args: FeedUpdateArgs,
+) -> Instruction {
+    let added = args
+        .groups
+        .iter()
+        .flatten()
+        .filter(|group| !current_groups.contains(group))
+        .copied()
+        .collect::<Vec<_>>();
+    update_feed_with_groups(program_id, builder, feed, args, group_accounts(&added))
+}
+
+fn update_feed_with_groups(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    feed: &Pubkey,
+    args: FeedUpdateArgs,
+    after_system: Vec<AccountMeta>,
+) -> Instruction {
     let (globalstate, _) = get_globalstate_pda(program_id);
-    common::build_with_permission(
+    common::build_with_permission_after_system(
         program_id,
         DoubleZeroInstruction::UpdateFeed(args),
         vec![
             AccountMeta::new(*feed, false),
             AccountMeta::new(globalstate, false),
         ],
+        after_system,
         payer,
     )
+}
+
+// Read-only: the program reads who owns each group and on which bond, and writes nothing to it.
+fn group_accounts(groups: &[Pubkey]) -> Vec<AccountMeta> {
+    groups
+        .iter()
+        .map(|group| AccountMeta::new_readonly(*group, false))
+        .collect()
 }
 
 /// `DeleteFeed` (variant 114). Accounts: `[feed, globalstate]`.
@@ -215,6 +267,38 @@ mod tests {
     use super::*;
     use solana_system_interface::program as system_program;
 
+    #[test]
+    fn test_a_builders_update_sends_only_the_groups_it_adds() {
+        let pid = Pubkey::new_unique();
+        let builder = Pubkey::new_unique();
+        let feed = Pubkey::new_unique();
+        let kept = Pubkey::new_unique();
+        let added = Pubkey::new_unique();
+        let args = FeedUpdateArgs {
+            groups: Some(vec![kept, added]),
+            ..Default::default()
+        };
+
+        let update = update_feed_as_builder(&pid, &builder, &feed, &[kept], args.clone());
+        let n = update.accounts.len();
+        assert_eq!(
+            update.accounts[n - 2],
+            AccountMeta::new_readonly(added, false)
+        );
+        assert!(!update.accounts.iter().any(|a| a.pubkey == kept));
+        assert_eq!(
+            update.accounts[n - 1],
+            common::permission_meta(&pid, &builder)
+        );
+
+        // An admin's update sends no group accounts at all.
+        let admin = update_feed(&pid, &builder, &feed, args);
+        assert!(!admin
+            .accounts
+            .iter()
+            .any(|a| a.pubkey == kept || a.pubkey == added));
+    }
+
     /// A bonded feed carries its mirror; a catalog feed must not, or a caller that sends neither
     /// stops working.
     #[test]
@@ -225,33 +309,45 @@ mod tests {
         let builder = Pubkey::new_unique();
         let bond_ref = Pubkey::new_unique();
 
-        let bonded = create_feed(
-            &pid,
-            &payer,
-            FeedCreateArgs {
-                code: "bonded".to_string(),
-                name: "Bonded".to_string(),
-                exchange,
-                groups: vec![Pubkey::new_unique()],
-                builder,
-                bond_ref,
-                spec_id: "top-of-book@v1.0.0".to_string(),
-                sla_hash: [9u8; 32],
-                committed_rate_bits_per_sec: 1_000_000_000,
-                ..Default::default()
-            },
-        );
+        let group = Pubkey::new_unique();
+        let bonded_args = FeedCreateArgs {
+            code: "bonded".to_string(),
+            name: "Bonded".to_string(),
+            exchange,
+            groups: vec![group],
+            builder,
+            bond_ref,
+            spec_id: "top-of-book@v1.0.0".to_string(),
+            sla_hash: [9u8; 32],
+            committed_rate_bits_per_sec: 1_000_000_000,
+            ..Default::default()
+        };
+        let bonded = create_feed(&pid, &builder, bonded_args.clone());
         let (mirror, _) = get_bond_mirror_pda(&pid, &bond_ref);
         assert_eq!(
-            bonded.accounts[bonded.accounts.len() - 2],
+            bonded.accounts[bonded.accounts.len() - 3],
             AccountMeta::new(mirror, false),
             "the mirror is writable: creating the feed claims the bond"
         );
         assert_eq!(
-            bonded.accounts.last().unwrap(),
-            &common::permission_meta(&pid, &payer),
-            "the Permission account stays last, after the mirror"
+            bonded.accounts[bonded.accounts.len() - 2],
+            AccountMeta::new_readonly(group, false),
+            "each group rides read-only, so the program can read its owner"
         );
+        assert_eq!(
+            bonded.accounts.last().unwrap(),
+            &common::permission_meta(&pid, &builder),
+            "the Permission account stays last, after the mirror and the groups"
+        );
+
+        // An admin creating a bonded feed sends the mirror but no groups: the program does not
+        // read them, and at the group limit they would not fit.
+        let by_admin = create_feed(&pid, &payer, bonded_args);
+        assert_eq!(
+            by_admin.accounts[by_admin.accounts.len() - 2],
+            AccountMeta::new(mirror, false)
+        );
+        assert!(!by_admin.accounts.iter().any(|a| a.pubkey == group));
 
         let catalog = create_feed(
             &pid,

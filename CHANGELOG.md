@@ -12,7 +12,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - Release
-  - `doublezero-solana` 0.6.0, the first release of the Solana CLI from this repository. It carries the builder's bond commands.
+  - `doublezero-solana` 0.6.0, the first release of the Solana CLI from this repository. It carries the builder's bond commands, and two commands validators on 0.5.12 do not have: `feeds validator-client-rewards claim`, and the Squads vault path for `shreds validator-client-rewards claim`.
 - CLI
   - `doublezero-solana bond` gives a builder its own bond commands on the `builder-bond` program: `init` (with `--committed-rate`, e.g. `1Gbps`), `post` and `withdraw` (amounts in 2Z as decimals, parsed exactly), and `show` (also `--json`), which prints the bond's address, tier coverage, hold expiry and what can be withdrawn now. The 2Z mint follows the network the connection reaches. The admin commands stay out: a builder never runs them.
 - SDK

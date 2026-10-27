@@ -70,14 +70,73 @@ const MAX_BOUNDARY_SKIP_SLOTS: u64 = 432;
 // seed rather than loop forever.
 const MAX_EPOCH_SEARCH_STEPS: usize = 16;
 
+// A DZ epoch runs about two days and a Solana epoch about one, so a DZ epoch overlaps two or
+// three Solana epochs. This cap only stops a bad timestamp from fetching a long run of schedules.
+const MAX_SOLANA_EPOCHS_PER_DZ_EPOCH: u64 = 16;
+
 // key: validator_pk, val: slot count
 pub type LeaderScheduleMap = BTreeMap<String, usize>;
 
-// Wrapper struct for leader scheduler
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LeaderSchedule {
     pub solana_epoch: u64,
+    #[serde(default)]
+    pub solana_epochs: Vec<u64>,
     pub schedule_map: LeaderScheduleMap,
+}
+
+impl LeaderSchedule {
+    /// Adds the slot counts of leader schedules for different Solana epochs into one schedule
+    pub fn try_sum(schedules: Vec<LeaderSchedule>) -> Result<Self> {
+        ensure!(!schedules.is_empty(), "No leader schedules to add up");
+
+        let mut solana_epochs = schedules
+            .iter()
+            .flat_map(|schedule| {
+                if schedule.solana_epochs.is_empty() {
+                    vec![schedule.solana_epoch]
+                } else {
+                    schedule.solana_epochs.clone()
+                }
+            })
+            .collect::<Vec<_>>();
+        solana_epochs.sort_unstable();
+        ensure!(
+            solana_epochs.windows(2).all(|pair| pair[0] != pair[1]),
+            "Leader schedules for Solana epochs {solana_epochs:?} include one epoch twice"
+        );
+
+        let mut schedule_map = LeaderScheduleMap::new();
+        for schedule in schedules {
+            for (validator, slot_count) in schedule.schedule_map {
+                *schedule_map.entry(validator).or_default() += slot_count;
+            }
+        }
+
+        Ok(Self {
+            solana_epoch: solana_epochs[0],
+            solana_epochs,
+            schedule_map,
+        })
+    }
+
+    pub fn ensure_covers_epochs(
+        &self,
+        first_solana_epoch: u64,
+        last_solana_epoch: u64,
+    ) -> Result<()> {
+        ensure!(
+            self.solana_epochs
+                .iter()
+                .copied()
+                .eq(first_solana_epoch..=last_solana_epoch),
+            "Leader schedules cover Solana epochs {:?}, but the DZ epoch overlaps Solana epochs \
+             {first_solana_epoch} to {last_solana_epoch}",
+            self.solana_epochs
+        );
+
+        Ok(())
+    }
 }
 
 impl Exportable for LeaderSchedule {
@@ -583,71 +642,91 @@ impl EpochFinder {
     /// Fetch leader schedule for a DZ epoch
     ///
     /// This method:
-    /// 1. Takes a DZ epoch and timestamp as input
-    /// 2. Maps it to a Solana epoch
-    /// 3. Gets the first slot of that Solana epoch
-    /// 4. Fetches the leader schedule using the slot number
+    /// 1. Takes a DZ epoch and the first and last timestamps of its data as input
+    /// 2. Maps both timestamps to Solana epochs
+    /// 3. Gets the first slot of every Solana epoch from the first to the last
+    /// 4. Fetches the leader schedule of each of them using the slot number
     ///
-    /// Returns the leader schedule as a map of validator pubkey to slot count
+    /// Returns the leader schedule as a map of validator pubkey to slot count, added up over
+    /// every Solana epoch that the DZ epoch overlaps
     pub async fn fetch_leader_schedule(
         &mut self,
         dz_epoch: u64,
-        timestamp_us: u64,
+        start_us: u64,
+        end_us: u64,
     ) -> Result<LeaderSchedule> {
         info!("Fetching leader schedule for DZ epoch {}", dz_epoch);
 
-        // Find the corresponding Solana epoch for this timestamp
-        let solana_epoch = self.find_epoch_at_timestamp(timestamp_us).await?;
+        // Find the corresponding Solana epochs for these timestamps
+        let first_solana_epoch = self.find_epoch_at_timestamp(start_us).await?;
+        // end_us is exclusive, so a window that ends on a Solana epoch boundary stops before it.
+        let last_solana_epoch = self
+            .find_epoch_at_timestamp(end_us.saturating_sub(1))
+            .await?;
+        ensure!(
+            last_solana_epoch >= first_solana_epoch
+                && last_solana_epoch - first_solana_epoch < MAX_SOLANA_EPOCHS_PER_DZ_EPOCH,
+            "DZ epoch {dz_epoch} starts in Solana epoch {first_solana_epoch} and ends in Solana \
+             epoch {last_solana_epoch}"
+        );
 
         info!(
-            "DZ epoch {} corresponds to Solana epoch {} (based on timestamp {})",
-            dz_epoch, solana_epoch, timestamp_us
+            "DZ epoch {} corresponds to Solana epochs {} to {} (based on timestamps {} to {})",
+            dz_epoch, first_solana_epoch, last_solana_epoch, start_us, end_us
         );
 
-        // Get Solana epoch schedule
-        let solana_schedule = self.get_solana_schedule().await?;
+        // Copied rather than borrowed: the borrow is tied to the &mut self that the loop's
+        // RPC calls also need.
+        let solana_schedule = self.get_solana_schedule().await?.clone();
 
-        // Get the first slot of the Solana epoch
-        let first_slot_of_epoch = solana_schedule.get_first_slot_in_epoch(solana_epoch);
+        let mut schedules = Vec::new();
+        for solana_epoch in first_solana_epoch..=last_solana_epoch {
+            // Get the first slot of the Solana epoch
+            let first_slot_of_epoch = solana_schedule.get_first_slot_in_epoch(solana_epoch);
 
-        debug!(
-            "Fetching leader schedule for Solana epoch {} using slot {}",
-            solana_epoch, first_slot_of_epoch
-        );
+            debug!(
+                "Fetching leader schedule for Solana epoch {} using slot {}",
+                solana_epoch, first_slot_of_epoch
+            );
 
-        // Get leader schedule using slot number (not epoch number)
-        let leader_schedule = (|| async {
-            self.solana_read_client
-                .get_leader_schedule(Some(first_slot_of_epoch))
-                .await
-        })
-        .retry(&ExponentialBuilder::default().with_jitter())
-        .notify(|err: &SolanaClientError, dur: Duration| {
+            // Get leader schedule using slot number (not epoch number)
+            let leader_schedule = (|| async {
+                self.solana_read_client
+                    .get_leader_schedule(Some(first_slot_of_epoch))
+                    .await
+            })
+            .retry(&ExponentialBuilder::default().with_jitter())
+            .notify(|err: &SolanaClientError, dur: Duration| {
+                info!(
+                    "retrying get_leader_schedule error: {} with sleeping {:?}",
+                    redacted(err),
+                    dur
+                )
+            })
+            .await
+            .map_err(redacted_error)?
+            .ok_or_else(|| anyhow!("No leader schedule found for Solana epoch {solana_epoch}"))?;
+
+            // Convert leader schedule to map of validator -> slot count
+            let schedule_map: LeaderScheduleMap = leader_schedule
+                .into_iter()
+                .map(|(pk, schedule)| (pk, schedule.len()))
+                .collect();
+
             info!(
-                "retrying get_leader_schedule error: {} with sleeping {:?}",
-                redacted(err),
-                dur
-            )
-        })
-        .await
-        .map_err(redacted_error)?
-        .ok_or_else(|| anyhow!("No leader schedule found for Solana epoch {solana_epoch}"))?;
+                "Retrieved leader schedule for Solana epoch {} with {} validators",
+                solana_epoch,
+                schedule_map.len()
+            );
 
-        // Convert leader schedule to map of validator -> slot count
-        let schedule_map: LeaderScheduleMap = leader_schedule
-            .into_iter()
-            .map(|(pk, schedule)| (pk, schedule.len()))
-            .collect();
+            schedules.push(LeaderSchedule {
+                solana_epoch,
+                solana_epochs: vec![solana_epoch],
+                schedule_map,
+            });
+        }
 
-        info!(
-            "Retrieved leader schedule with {} validators",
-            schedule_map.len()
-        );
-
-        Ok(LeaderSchedule {
-            solana_epoch,
-            schedule_map,
-        })
+        LeaderSchedule::try_sum(schedules)
     }
 }
 
@@ -875,5 +954,113 @@ mod tests {
             next_epoch_first_slot,
             next_epoch_first_slot
         ));
+    }
+
+    fn leader_schedule(solana_epoch: u64, slot_counts: &[(&str, usize)]) -> LeaderSchedule {
+        LeaderSchedule {
+            solana_epoch,
+            solana_epochs: vec![solana_epoch],
+            schedule_map: slot_counts
+                .iter()
+                .map(|(validator, slot_count)| (validator.to_string(), *slot_count))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn test_try_sum_adds_slot_counts_over_epochs() {
+        let schedule = LeaderSchedule::try_sum(vec![
+            leader_schedule(1049, &[("alpha", 8), ("beta", 4)]),
+            leader_schedule(1047, &[("alpha", 4), ("gamma", 12)]),
+        ])
+        .unwrap();
+
+        assert_eq!(schedule.solana_epoch, 1047);
+        assert_eq!(schedule.solana_epochs, vec![1047, 1049]);
+        assert_eq!(
+            schedule.schedule_map,
+            LeaderScheduleMap::from([
+                ("alpha".to_string(), 12),
+                ("beta".to_string(), 4),
+                ("gamma".to_string(), 12),
+            ])
+        );
+    }
+
+    #[test]
+    fn test_try_sum_keeps_the_epochs_of_a_schedule_that_covers_several() {
+        let mut covering_two_epochs = leader_schedule(1047, &[("alpha", 4)]);
+        covering_two_epochs.solana_epochs = vec![1047, 1048];
+
+        let schedule = LeaderSchedule::try_sum(vec![
+            covering_two_epochs,
+            leader_schedule(1049, &[("alpha", 4)]),
+        ])
+        .unwrap();
+
+        assert_eq!(schedule.solana_epochs, vec![1047, 1048, 1049]);
+    }
+
+    #[test]
+    fn test_try_sum_rejects_one_epoch_twice() {
+        let err = LeaderSchedule::try_sum(vec![
+            leader_schedule(1047, &[("alpha", 4)]),
+            leader_schedule(1047, &[("alpha", 4)]),
+        ])
+        .unwrap_err();
+
+        assert!(err.to_string().contains("include one epoch twice"));
+    }
+
+    #[test]
+    fn test_ensure_covers_epochs_accepts_the_exact_range() {
+        let schedule = LeaderSchedule::try_sum(vec![
+            leader_schedule(1047, &[("alpha", 4)]),
+            leader_schedule(1048, &[("alpha", 4)]),
+        ])
+        .unwrap();
+
+        schedule.ensure_covers_epochs(1047, 1048).unwrap();
+    }
+
+    #[test]
+    fn test_ensure_covers_epochs_rejects_a_missing_epoch() {
+        let schedule =
+            LeaderSchedule::try_sum(vec![leader_schedule(1047, &[("alpha", 4)])]).unwrap();
+
+        let err = schedule.ensure_covers_epochs(1047, 1048).unwrap_err();
+
+        assert!(err.to_string().contains("1047 to 1048"));
+    }
+
+    #[test]
+    fn test_ensure_covers_epochs_rejects_an_extra_epoch() {
+        let schedule = LeaderSchedule::try_sum(vec![
+            leader_schedule(1047, &[("alpha", 4)]),
+            leader_schedule(1048, &[("alpha", 4)]),
+        ])
+        .unwrap();
+
+        assert!(schedule.ensure_covers_epochs(1047, 1047).is_err());
+    }
+
+    #[test]
+    fn test_try_sum_rejects_no_schedules() {
+        assert!(LeaderSchedule::try_sum(Vec::new()).is_err());
+    }
+
+    #[test]
+    fn test_leader_schedule_file_without_solana_epochs_reads_as_one_epoch() {
+        let schedule: LeaderSchedule =
+            serde_json::from_str(r#"{"solana_epoch": 1047, "schedule_map": {"alpha": 4}}"#)
+                .unwrap();
+
+        assert!(schedule.solana_epochs.is_empty());
+        assert_eq!(
+            LeaderSchedule::try_sum(vec![schedule])
+                .unwrap()
+                .solana_epochs,
+            vec![1047]
+        );
     }
 }

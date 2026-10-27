@@ -240,7 +240,12 @@ impl Orchestrator {
                 }
 
                 // Post merkle root to revenue distribution program
-                if !write_config.should_skip_merkle_root() {
+                if !summary.all_successful() {
+                    warn!(
+                        "[SKIP] Merkle root posting for epoch {} because a record write failed",
+                        fetch_epoch
+                    );
+                } else if !write_config.should_skip_merkle_root() {
                     info!(
                         "Posting merkle root for epoch {}: {:?}",
                         fetch_epoch, merkle_root

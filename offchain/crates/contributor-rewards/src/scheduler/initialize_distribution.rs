@@ -1,4 +1,4 @@
-use anyhow::{Context, Result, ensure};
+use anyhow::{Result, ensure};
 use doublezero_solana_client_tools::{
     payer::{TransactionOutcome, Wallet},
     rpc::DoubleZeroLedgerConnection,
@@ -8,14 +8,9 @@ use doublezero_solana_sdk::{
     revenue_distribution::{
         ID,
         instruction::{
-            RevenueDistributionInstructionData,
-            account::{
-                FinalizeDistributionDebtAccounts, FinalizeDistributionRewardsAccounts,
-                InitializeDistributionAccounts,
-            },
+            RevenueDistributionInstructionData, account::InitializeDistributionAccounts,
         },
         state::{self, Distribution, ProgramConfig},
-        types::DoubleZeroEpoch,
     },
     try_build_instruction,
 };
@@ -69,21 +64,6 @@ pub async fn try_initialize_distribution(
         return Ok(());
     }
 
-    let minimum_epoch_duration_to_finalize_rewards = config
-        .checked_minimum_epoch_duration_to_finalize_rewards()
-        .context("Minimum epoch duration to finalize rewards not set")?;
-    let rewards_dz_epoch = DoubleZeroEpoch::new(
-        next_dz_epoch
-            .value()
-            .saturating_sub(minimum_epoch_duration_to_finalize_rewards.into())
-            .saturating_add(1),
-    );
-
-    let rewards_distribution = wallet
-        .connection
-        .try_fetch_zero_copy_data::<Distribution>(&Distribution::find_address(rewards_dz_epoch).0)
-        .await?;
-
     let wallet_key = wallet.pubkey();
     let dz_mint_key = environment_2z_token_mint_key(network_env);
 
@@ -102,44 +82,12 @@ pub async fn try_initialize_distribution(
     let (_, bump) = state::find_2z_token_pda_address(&distribution_key);
     compute_unit_limit += Wallet::compute_units_for_bump_seed(bump);
 
-    let mut instructions = vec![initialize_distribution_ix];
-
-    let has_zero_debt = has_zero_distribution_debt(&rewards_distribution);
-
-    if rewards_distribution.is_debt_calculation_finalized() || has_zero_debt {
-        // The debt calculation may not have been finalized yet if there was no
-        // debt calculated. Finalizing must be done before rewards can be
-        // distributed.
-        if has_zero_debt {
-            tracing::warn!(
-                "Finalizing debt calculation for epoch {rewards_dz_epoch} with zero debt"
-            );
-            let finalize_debt_ix = try_build_instruction(
-                &ID,
-                FinalizeDistributionDebtAccounts::new(&wallet_key, rewards_dz_epoch, &wallet_key),
-                &RevenueDistributionInstructionData::FinalizeDistributionDebt,
-            )?;
-            instructions.push(finalize_debt_ix);
-            compute_unit_limit += 5_000;
-        }
-
-        if !rewards_distribution.is_rewards_calculation_finalized() {
-            let finalize_rewards_ix = try_build_instruction(
-                &ID,
-                FinalizeDistributionRewardsAccounts::new(&wallet_key, rewards_dz_epoch),
-                &RevenueDistributionInstructionData::FinalizeDistributionRewards,
-            )?;
-            instructions.push(finalize_rewards_ix);
-            compute_unit_limit += 7_500;
-        }
-    }
-
-    instructions.push(ComputeBudgetInstruction::set_compute_unit_limit(
-        compute_unit_limit,
-    ));
-
-    // The price is fixed, so that we land the distribution initialization.
-    instructions.push(ComputeBudgetInstruction::set_compute_unit_price(100_000));
+    let instructions = [
+        initialize_distribution_ix,
+        ComputeBudgetInstruction::set_compute_unit_limit(compute_unit_limit),
+        // The price is fixed, so that we land the distribution initialization.
+        ComputeBudgetInstruction::set_compute_unit_price(100_000),
+    ];
 
     let transaction = wallet.new_transaction(&instructions).await?;
     let tx_sig = wallet.send_or_simulate_transaction(&transaction).await?;
@@ -151,9 +99,4 @@ pub async fn try_initialize_distribution(
     }
 
     Ok(())
-}
-
-#[inline(always)]
-fn has_zero_distribution_debt(rewards_distribution: &Distribution) -> bool {
-    rewards_distribution.solana_validator_debt_merkle_root == Default::default()
 }

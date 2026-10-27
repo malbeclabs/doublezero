@@ -62,7 +62,7 @@ async fn wait_for_grace_period(
     .with_context(|| {
         format!(
             "Distribution account for epoch {} does not exist at {}. \
-                    It needs to be initialized by validator-debt crate first.",
+                    It needs to be initialized first.",
             epoch, distribution_key
         )
     })?;

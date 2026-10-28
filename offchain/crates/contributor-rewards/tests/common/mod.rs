@@ -18,8 +18,7 @@ pub fn create_test_settings(
         input: settings::InputSettings::default(),
         rpc: settings::RpcSettings {
             dz_url: "https://test.com".to_string(),
-            solana_read_url: "https://test.com".to_string(),
-            solana_write_url: "https://test.com".to_string(),
+            solana_url: "https://test.com".to_string(),
             commitment: "confirmed".to_string(),
             rps_limit: 10,
         },

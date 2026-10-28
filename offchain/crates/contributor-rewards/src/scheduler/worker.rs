@@ -115,7 +115,7 @@ impl ScheduleWorker {
         let wallet = if !self.dry_run {
             Some(Wallet {
                 connection: SolanaConnection::new(
-                    self.orchestrator.settings.rpc.solana_write_url.clone(),
+                    self.orchestrator.settings.rpc.solana_url.clone(),
                 ),
                 signer: load_keypair(&self.keypair_path)?,
                 compute_unit_price_ix: None,

@@ -473,6 +473,7 @@ impl ScheduleWorker {
                     Some(snapshot_path),
                     false,
                     WriteConfig::default(),
+                    false,
                 )
                 .await?;
 

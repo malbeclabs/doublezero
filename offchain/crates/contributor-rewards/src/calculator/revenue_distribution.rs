@@ -42,7 +42,7 @@ async fn check_calculation_allowed(
 async fn wait_for_grace_period(
     rpc_client: &RpcClient,
     epoch: u64,
-    max_wait_seconds: u64,
+    deadline: Instant,
 ) -> Result<Distribution> {
     let dz_epoch = DoubleZeroEpoch::new(epoch);
     let (distribution_key, _) = Distribution::find_address(dz_epoch);
@@ -68,7 +68,6 @@ async fn wait_for_grace_period(
     })?;
 
     // Poll until grace period is satisfied
-    let max_wait = Duration::from_secs(max_wait_seconds);
     let poll_interval = Duration::from_secs(60);
     let start = Instant::now();
 
@@ -82,11 +81,11 @@ async fn wait_for_grace_period(
             return Ok(*distribution);
         }
 
-        if start.elapsed() >= max_wait {
+        if Instant::now() >= deadline {
             bail!(
-                "Exceeded max wait time ({:?}) for grace period on epoch {}",
-                max_wait,
-                epoch
+                "Exceeded max wait time for grace period on epoch {} (waited {:?})",
+                epoch,
+                start.elapsed()
             );
         }
 
@@ -115,7 +114,7 @@ pub async fn post_rewards_merkle_root(
     epoch: u64,
     total_contributors: u32,
     merkle_root: Hash,
-    max_wait_seconds: u64,
+    grace_period_deadline: Instant,
 ) -> Result<Signature> {
     info!(
         "Posting merkle root for epoch {} with {} contributors to program {}",
@@ -123,7 +122,7 @@ pub async fn post_rewards_merkle_root(
     );
 
     // Wait for grace period and get Distribution account (validates existence and grace period)
-    let _distribution = wait_for_grace_period(rpc_client, epoch, max_wait_seconds).await?;
+    let _distribution = wait_for_grace_period(rpc_client, epoch, grace_period_deadline).await?;
 
     let dz_epoch = DoubleZeroEpoch::new(epoch);
 

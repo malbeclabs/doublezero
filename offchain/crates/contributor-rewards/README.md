@@ -125,13 +125,9 @@ log_level = "info"
 # DoubleZero ledger RPC endpoint
 dz_url = "https://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab"
 
-# Solana read client - for reading chain data (leader schedules, epoch info)
-# Typically points to mainnet for production data
-solana_read_url = "https://api.mainnet-beta.solana.com"
-
-# Solana write client - for writing rewards data (merkle roots)
-# Can point to testnet for testing or mainnet for production
-solana_write_url = "https://api.mainnet-beta.solana.com"
+# Solana RPC - for reading chain data (leader schedules, epoch info) and writing rewards data (merkle roots)
+# It must point to the cluster of the DoubleZero network: mainnet-beta for production
+solana_url = "https://api.mainnet-beta.solana.com"
 
 # Transaction commitment level
 # Options: processed, confirmed, finalized

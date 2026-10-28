@@ -29,11 +29,11 @@ impl Fetcher {
             CommitmentConfig::finalized(),
         );
         let solana_read_client = RpcClient::new_with_commitment(
-            settings.rpc.solana_read_url.to_string(),
+            settings.rpc.solana_url.to_string(),
             CommitmentConfig::finalized(),
         );
         let solana_write_client = RpcClient::new_with_commitment(
-            settings.rpc.solana_write_url.to_string(),
+            settings.rpc.solana_url.to_string(),
             CommitmentConfig::finalized(),
         );
         Ok(Self {

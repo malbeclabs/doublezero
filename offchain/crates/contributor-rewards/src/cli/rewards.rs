@@ -48,7 +48,7 @@ pub enum RewardsCommands {
     calculate-rewards --snapshot mn-epoch-27-snapshot.json -k keypair.json --skip-device-telemetry --skip-internet-telemetry --skip-reward-input --skip-shapley-output
 
     # Repost the merkle root from the shapley output already on the DZ Ledger (skips the Shapley calculation)
-    calculate-rewards --snapshot mn-epoch-27-snapshot.json -k keypair.json --shapley-from-ledger --skip-device-telemetry --skip-internet-telemetry --skip-reward-input
+    calculate-rewards --snapshot mn-epoch-27-snapshot.json -k keypair.json --shapley-from-ledger
 
     # Create a snapshot first using the snapshot command
     snapshot all --epoch 27 --output-file mn-epoch-27-snapshot.json"#
@@ -96,7 +96,7 @@ pub enum RewardsCommands {
         #[arg(long)]
         skip_merkle_root: bool,
 
-        /// Read the shapley output from the DZ Ledger instead of calculating it (never rewrites it)
+        /// Read the shapley output from the DZ Ledger instead of calculating it, and write no record to the DZ Ledger
         #[arg(long)]
         shapley_from_ledger: bool,
 

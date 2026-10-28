@@ -56,6 +56,19 @@ impl Orchestrator {
     ) -> Result<ledger_operations::WriteSummary> {
         let epoch_start = Instant::now();
 
+        // The records on the ledger belong to the calculation that the posted root comes from
+        let write_config = if shapley_from_ledger {
+            WriteConfig {
+                skip_device_telemetry: true,
+                skip_internet_telemetry: true,
+                skip_reward_input: true,
+                skip_shapley_output: true,
+                ..write_config
+            }
+        } else {
+            write_config
+        };
+
         // Create write summary to track all operations
         let mut summary = ledger_operations::WriteSummary::default();
 
@@ -256,7 +269,7 @@ impl Orchestrator {
                 }
 
                 // Write shapley output storage instead of individual proofs
-                if !write_config.should_skip_shapley_output() && !shapley_from_ledger {
+                if !write_config.should_skip_shapley_output() {
                     let prefix = &self.settings.get_contributor_rewards_prefix();
                     ledger_operations::write_serialized_and_track(
                         &fetcher.dz_rpc_client,

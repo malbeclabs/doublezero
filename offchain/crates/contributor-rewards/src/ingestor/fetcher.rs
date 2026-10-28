@@ -3,13 +3,12 @@ use std::sync::Arc;
 use anyhow::Result;
 use chrono::Utc;
 use doublezero_solana_client_tools::rpc::DoubleZeroLedgerConnection;
-use doublezero_solana_sdk::shred_subscription::ID as SHRED_SUBSCRIPTION_PROGRAM_ID;
 use solana_client::nonblocking::rpc_client::RpcClient;
 use solana_commitment_config::CommitmentConfig;
 use tracing::info;
 
 use crate::{
-    ingestor::{internet, serviceability, shred_subscription, telemetry, types::FetchData},
+    ingestor::{internet, metro_prices, serviceability, telemetry, types::FetchData},
     settings::Settings,
 };
 
@@ -78,19 +77,17 @@ impl Fetcher {
             "Using telemetry program: {}",
             self.settings.programs.telemetry_program_id
         );
-        info!(
-            "Using shred subscription program: {}",
-            *SHRED_SUBSCRIPTION_PROGRAM_ID
-        );
 
         // Fetch all data in parallel
         let fetch_start = std::time::Instant::now();
-        let (serviceability_data, telemetry_data, internet_data, metro_prices) = tokio::try_join!(
+        let (serviceability_data, telemetry_data, internet_data) = tokio::try_join!(
             serviceability::fetch(&self.dz_rpc_client, &self.settings),
             telemetry::fetch(&self.dz_rpc_client, &self.settings, epoch),
             internet::fetch(&self.dz_rpc_client, &self.settings, epoch),
-            shred_subscription::fetch_metro_prices(&self.solana_read_client),
         )?;
+
+        let metro_prices =
+            metro_prices::from_settings(&self.settings, &serviceability_data.exchanges);
 
         metrics::histogram!("doublezero_contributor_rewards_data_fetch_duration", "epoch" => epoch.to_string())
             .record(fetch_start.elapsed().as_secs_f64());

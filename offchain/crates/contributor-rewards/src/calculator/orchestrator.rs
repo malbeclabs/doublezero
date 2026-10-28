@@ -1,6 +1,11 @@
-use std::{collections::HashMap, path::PathBuf, time::Instant};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 
 use anyhow::{Result, bail};
+use backon::{ConstantBuilder, Retryable};
 use doublezero_solana_client_tools::rpc::DoubleZeroLedgerConnection;
 use solana_sdk::pubkey::Pubkey;
 use tracing::{info, warn};
@@ -15,6 +20,9 @@ use crate::{
     ingestor::fetcher::Fetcher,
     settings::Settings,
 };
+
+const MERKLE_ROOT_RETRIES: usize = 3;
+const MERKLE_ROOT_RETRY_DELAY: Duration = Duration::from_secs(60);
 
 #[derive(Debug, Clone)]
 pub struct Orchestrator {
@@ -251,14 +259,31 @@ impl Orchestrator {
                         fetch_epoch, merkle_root
                     );
 
-                    match post_rewards_merkle_root(
-                        &fetcher.solana_write_client,
-                        &payer_signer,
-                        fetch_epoch,
-                        shapley_storage.total_contributors() as u32,
-                        merkle_root,
-                        self.settings.scheduler.grace_period_max_wait_seconds,
+                    let grace_period_deadline = Instant::now()
+                        + Duration::from_secs(
+                            self.settings.scheduler.grace_period_max_wait_seconds,
+                        );
+                    match (|| {
+                        post_rewards_merkle_root(
+                            &fetcher.solana_write_client,
+                            &payer_signer,
+                            fetch_epoch,
+                            shapley_storage.total_contributors() as u32,
+                            merkle_root,
+                            grace_period_deadline,
+                        )
+                    })
+                    .retry(
+                        ConstantBuilder::default()
+                            .with_delay(MERKLE_ROOT_RETRY_DELAY)
+                            .with_max_times(MERKLE_ROOT_RETRIES),
                     )
+                    .notify(|err: &anyhow::Error, delay: Duration| {
+                        warn!(
+                            "Failed to post merkle root: {}. Retrying in {:?}",
+                            err, delay
+                        )
+                    })
                     .await
                     {
                         Ok(signature) => {

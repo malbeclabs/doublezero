@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-28
+
 - feat(contributor-rewards): the worker retries a failed merkle root posting 3 more times, one minute apart, before it reports the failure. The 3 retries share one grace-period wait, so `grace_period_max_wait_seconds` still limits the total wait
 - feat(contributor-rewards): the metro prices, which set the priority of the multicast demands, come from the new `metro_prices` settings and no longer from the `MetroHistory` accounts of the shred subscription program. The defaults are 100 for FRA and AMS, 60 for NYC, LON, SIN and TYO, and 30 for every other city, and the snapshot stores the prices of its epoch. Every city that is not in the table gets the default price, so a city whose price on chain was not 30 changes its Shapley share (malbeclabs/infra#3302)
 - feat(contributor-rewards): the settings `rpc.solana_read_url` and `rpc.solana_write_url` become one setting, `rpc.solana_url` (`DZ__RPC__SOLANA_URL`), which the worker uses for reads and writes. Replace the two old settings with it. Use a Solana testnet URL when `network` is `testnet`, and a mainnet-beta URL when `network` is `mainnet-beta`

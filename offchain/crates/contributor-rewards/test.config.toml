@@ -12,7 +12,7 @@ log_level = "info"
 # ========== RPC Configuration ==========
 [rpc]
 dz_url = "https://api.doublezero.com"
-solana_url = "https://api.devnet.solana.com"
+solana_url = "https://api.testnet.solana.com"
 commitment = "confirmed"
 rps_limit = 10
 

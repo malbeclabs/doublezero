@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Client
+  - `doublezerod` sets loose reverse-path filtering (`rp_filter=2`) on the multicast tunnel each time it creates it. A publisher sends from its DoubleZero IP, which a subscriber host routes out its main interface, so on a host with strict filtering, such as a Google Cloud image, the kernel dropped every datagram that arrived on `doublezero1`. The change affects only the tunnel: the kernel uses the larger of the `all` and per-interface values. ([#4457](https://github.com/malbeclabs/doublezero/issues/4457))
+
 ## [v0.46.0](https://github.com/malbeclabs/doublezero/compare/client/v0.45.0...client/v0.46.0) - 2026-10-27
 
 ### Breaking

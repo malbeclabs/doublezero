@@ -137,6 +137,16 @@ func (s *MulticastService) Setup(p *api.ProvisionRequest) error {
 		}
 	}
 
+	// A publisher sends from its DoubleZero IP, and a host routes that address out its main
+	// interface, so strict reverse-path filtering drops every datagram that arrives on the tunnel.
+	// The kernel uses the larger of the "all" and per-interface values, so loose mode here changes
+	// only the tunnel. The tunnel is created again on each reconnect, which resets the value, so set
+	// it on every Setup. A publisher's tunnel gets it too, because UpdateGroups can add subscriber
+	// groups to it. A host that refuses the write still connects, as it did before.
+	if err := setLooseRPFilter(tun.Name); err != nil {
+		slog.Warn("tunnel: could not set loose rp_filter, so strict filtering may drop multicast", "tunnel", tun.Name, "error", err)
+	}
+
 	s.Tunnel = tun
 	s.provisionReq = p
 

@@ -3,6 +3,8 @@ package services_test
 import (
 	"fmt"
 	"net"
+	"os"
+	"path/filepath"
 	"syscall"
 	"testing"
 	"time"
@@ -17,6 +19,19 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/services"
 	"golang.org/x/sys/unix"
 )
+
+// TestMain points every Setup at an empty directory, so a test run as root on a host with a live
+// doublezero1 never changes that tunnel's rp_filter. A test that checks the write sets its own.
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "proc-sys-ipv4-conf")
+	if err != nil {
+		panic(err)
+	}
+	*services.ProcSysIPv4Conf = dir
+	code := m.Run()
+	os.RemoveAll(dir)
+	os.Exit(code)
+}
 
 // Provisioner mirrors the manager.Provisioner interface so we can test
 // services without importing the manager package (which calls
@@ -1018,5 +1033,41 @@ func TestMulticastSetupStartsRegisterForPublisher(t *testing.T) {
 		if !reg.groups[i].Equal(p.MulticastPubGroups[i]) {
 			t.Fatalf("register group[%d] = %v, want %v", i, reg.groups[i], p.MulticastPubGroups[i])
 		}
+	}
+}
+
+func TestMulticastSetupSetsLooseRPFilter(t *testing.T) {
+	for name, pr := range map[string]*api.ProvisionRequest{
+		"subscriber": {MulticastSubGroups: []net.IP{{239, 0, 0, 1}}},
+		"publisher":  {MulticastPubGroups: []net.IP{{239, 0, 0, 2}}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.Mkdir(filepath.Join(dir, "doublezero1"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			old := *services.ProcSysIPv4Conf
+			*services.ProcSysIPv4Conf = dir
+			t.Cleanup(func() { *services.ProcSysIPv4Conf = old })
+
+			pr.UserType = api.UserTypeMulticast
+			pr.TunnelSrc = net.IPv4(1, 1, 1, 1)
+			pr.TunnelDst = net.IPv4(2, 2, 2, 2)
+			pr.TunnelNet = &net.IPNet{IP: net.IPv4(169, 254, 0, 0), Mask: net.IPMask{255, 255, 255, 254}}
+			pr.DoubleZeroIP = net.IPv4(7, 7, 7, 7)
+			pr.BgpLocalAsn = 65000
+			pr.BgpRemoteAsn = 65001
+			svc := services.NewMulticastService(&MockBgpServer{}, &MockNetlink{}, &MockPIMServer{}, &MockHeartbeatSender{}, &mockRegister{})
+			if err := svc.Setup(pr); err != nil {
+				t.Fatalf("Setup: %v", err)
+			}
+			got, err := os.ReadFile(filepath.Join(dir, "doublezero1", "rp_filter"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(got) != "2" {
+				t.Fatalf("rp_filter = %q, want 2", got)
+			}
+		})
 	}
 }

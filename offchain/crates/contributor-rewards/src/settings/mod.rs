@@ -108,7 +108,7 @@ pub struct MetroPriceSettings {
 impl Default for MetroPriceSettings {
     fn default() -> Self {
         Self {
-            default_price: 40,
+            default_price: 30,
             prices: [
                 ("FRA", 100),
                 ("AMS", 100),
@@ -583,7 +583,7 @@ public_latency_multiplier = 1.0
         assert_eq!(settings.metro_prices, MetroPriceSettings::default());
         assert_eq!(settings.metro_prices.price("FRA"), 100);
         assert_eq!(settings.metro_prices.price("tyo"), 60);
-        assert_eq!(settings.metro_prices.price("CHI"), 40);
+        assert_eq!(settings.metro_prices.price("CHI"), 30);
     }
 
     #[test]

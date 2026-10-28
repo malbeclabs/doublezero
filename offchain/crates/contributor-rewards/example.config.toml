@@ -89,7 +89,7 @@ telemetry_program_id = "DZTelem111111111111111111111111111111111111"
 [metro_prices]
 # Price in whole USDC dollars of a city that is not listed in prices.
 # The price sets the priority of the multicast demands of the city.
-default_price = 40
+default_price = 30
 
 # Setting prices replaces the whole table, so list every city that is not at the default.
 [metro_prices.prices]

@@ -176,7 +176,7 @@ shred_multicast_enabled = true
 # ========== Metro Prices ==========
 [metro_prices]
 # Price in whole USDC dollars of a city that is not listed in prices
-default_price = 40
+default_price = 30
 
 # Setting prices replaces the whole table
 [metro_prices.prices]

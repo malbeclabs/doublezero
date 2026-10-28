@@ -21,8 +21,8 @@ log_level = "info"
 dz_url = "https://api.doublezero.com"
 
 # Solana RPC - for reading chain data (leader schedules, epoch info) and writing rewards data (merkle roots)
-# It must point to the Solana cluster of the DoubleZero network: devnet for testnet, mainnet-beta for mainnet-beta
-solana_url = "https://api.devnet.solana.com"
+# It must point to the Solana cluster of the DoubleZero network: testnet for testnet, mainnet-beta for mainnet-beta
+solana_url = "https://api.testnet.solana.com"
 
 # Transaction commitment level
 # Options: processed, confirmed, finalized

@@ -216,6 +216,7 @@ mod tests {
                 demand_multiplier: 1.2,
             },
             demand: DemandSettings::default(),
+            metro_prices: Default::default(),
             input: InputSettings::default(),
             rpc: RpcSettings {
                 dz_url: "https://api.mainnet-beta.solana.com".to_string(),

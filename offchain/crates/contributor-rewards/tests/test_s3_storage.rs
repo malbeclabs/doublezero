@@ -48,6 +48,7 @@ fn create_test_settings(
             demand_multiplier: 1.2,
         },
         demand: DemandSettings::default(),
+        metro_prices: Default::default(),
         input: InputSettings::default(),
         rpc: doublezero_contributor_rewards::settings::RpcSettings {
             dz_url: "https://test.com".to_string(),

@@ -32,7 +32,7 @@ pub struct FetchData {
     pub dz_serviceability: DZServiceabilityData,
     pub dz_telemetry: DZDTelemetryData,
     pub dz_internet: DZInternetData,
-    /// Metro (city) prices from shred subscription program.
+    /// Metro (city) prices from the settings, taken when the snapshot is made.
     /// Key: exchange pubkey, Value: price in whole USDC dollars.
     #[serde(
         default,

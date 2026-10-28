@@ -85,8 +85,20 @@ serviceability_program_id = "DZServ1111111111111111111111111111111111111"
 # DZ Telemetry program ID
 telemetry_program_id = "DZTelem111111111111111111111111111111111111"
 
-# Shred subscription program ID is sourced from the doublezero-solana-sdk crate.
-# To override it (e.g. in dev), set the SHRED_SUBSCRIPTION_PROGRAM_ID env var.
+# ========== Metro Prices ==========
+[metro_prices]
+# Price in whole USDC dollars of a city that is not listed in prices.
+# The price sets the priority of the multicast demands of the city.
+default_price = 40
+
+# Setting prices replaces the whole table, so list every city that is not at the default.
+[metro_prices.prices]
+FRA = 100
+AMS = 100
+NYC = 60
+LON = 60
+SIN = 60
+TYO = 60
 
 # ========== Record Prefixes ==========
 [prefixes]

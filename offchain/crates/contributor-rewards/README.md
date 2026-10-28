@@ -26,7 +26,7 @@ The rewarder prepares the following inputs:
 There are two demand classes:
 
 1. **Validator-to-validator IBRL traffic.** IBRL demands are generated between validator metros, excluding same-city pairs. The receiver count is the destination city's validator count, traffic per receiver comes from `demand.traffic`, and the priority/value input is `demand.priority`. In production this priority is set to **$20**. This gives validator-to-validator traffic non-zero value even though it generates no immediate revenue, unlike multicast shreds, which generate roughly $30-100 per seat. The value reflects non-monetary protocol benefits such as validator acquisition and a foundation for future business models.
-2. **Multicast shred traffic.** Shred demands are generated from validator metros to metros with multicast subscribers and non-zero metro prices. The receiver count is the subscriber count, traffic per receiver comes from `demand.traffic`, and priority comes from the destination metro price.
+2. **Multicast shred traffic.** Shred demands are generated from validator metros to metros with multicast subscribers. The receiver count is the subscriber count, traffic per receiver comes from `demand.traffic`, and priority comes from the destination metro price, which the `metro_prices` settings define.
 
 For each source city, the rewarder runs `network-shapley` with the full network topology and that city's demands. `network-shapley` validates and consolidates the inputs, adds public-internet nodes and crossovers between private and public paths, builds a flow optimization problem, and solves that problem for every coalition of contributors. Each contributor's Shapley value is its average marginal improvement across coalitions. The rewarder then aggregates per-city values using the city weights, normalizes them into final proportions, converts those proportions into fixed-point reward shares, stores the Shapley output, and posts a Merkle root for distribution.
 
@@ -162,7 +162,7 @@ public_latency_multiplier = 1.25
 traffic = 0.15
 
 # Priority for IBRL validator-to-validator demands
-# Shred demand priority remains derived from metro price
+# Shred demand priority comes from the metro_prices settings
 priority = 20.0
 
 # Demand kind/type values written into Shapley demand rows
@@ -172,6 +172,20 @@ shred_kind = 2
 # Multicast flags for IBRL and shred demands
 multicast_enabled = false
 shred_multicast_enabled = true
+
+# ========== Metro Prices ==========
+[metro_prices]
+# Price in whole USDC dollars of a city that is not listed in prices
+default_price = 40
+
+# Setting prices replaces the whole table
+[metro_prices.prices]
+FRA = 100
+AMS = 100
+NYC = 60
+LON = 60
+SIN = 60
+TYO = 60
 
 # ========== Program IDs ==========
 [programs]

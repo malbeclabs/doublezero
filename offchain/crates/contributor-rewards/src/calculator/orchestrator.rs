@@ -259,6 +259,10 @@ impl Orchestrator {
                         fetch_epoch, merkle_root
                     );
 
+                    let grace_period_deadline = Instant::now()
+                        + Duration::from_secs(
+                            self.settings.scheduler.grace_period_max_wait_seconds,
+                        );
                     match (|| {
                         post_rewards_merkle_root(
                             &fetcher.solana_write_client,
@@ -266,7 +270,7 @@ impl Orchestrator {
                             fetch_epoch,
                             shapley_storage.total_contributors() as u32,
                             merkle_root,
-                            self.settings.scheduler.grace_period_max_wait_seconds,
+                            grace_period_deadline,
                         )
                     })
                     .retry(

@@ -337,7 +337,10 @@ mod tests {
 
         // Test empty Solana URL
         config.rpc.solana_url = "".to_string();
-        assert!(validate_config(&config).is_err());
+        assert_eq!(
+            validate_config(&config).unwrap_err().to_string(),
+            "Solana RPC URL cannot be empty"
+        );
         config.rpc.solana_url = "https://api.mainnet-beta.solana.com".to_string();
 
         // Test invalid DZ URL
@@ -347,7 +350,10 @@ mod tests {
 
         // Test invalid Solana URL
         config.rpc.solana_url = "not-a-url".to_string();
-        assert!(validate_config(&config).is_err());
+        assert_eq!(
+            validate_config(&config).unwrap_err().to_string(),
+            "Solana RPC URL must start with http:// or https://"
+        );
     }
 
     #[test]

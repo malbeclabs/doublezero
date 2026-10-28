@@ -47,6 +47,9 @@ pub enum RewardsCommands {
     # Repost only merkle root (skip all DZ Ledger writes)
     calculate-rewards --snapshot mn-epoch-27-snapshot.json -k keypair.json --skip-device-telemetry --skip-internet-telemetry --skip-reward-input --skip-shapley-output
 
+    # Repost the merkle root from the shapley output already on the DZ Ledger (skips the Shapley calculation)
+    calculate-rewards --snapshot mn-epoch-27-snapshot.json -k keypair.json --shapley-from-ledger --skip-device-telemetry --skip-internet-telemetry --skip-reward-input
+
     # Create a snapshot first using the snapshot command
     snapshot all --epoch 27 --output-file mn-epoch-27-snapshot.json"#
     )]
@@ -92,6 +95,10 @@ pub enum RewardsCommands {
         /// Skip posting merkle root to Solana
         #[arg(long)]
         skip_merkle_root: bool,
+
+        /// Read the shapley output from the DZ Ledger instead of calculating it (never rewrites it)
+        #[arg(long)]
+        shapley_from_ledger: bool,
 
         /// Send Slack notification after completion (requires Slack settings in config)
         #[arg(long)]
@@ -368,6 +375,7 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
             skip_reward_input,
             skip_shapley_output,
             skip_merkle_root,
+            shapley_from_ledger,
             slack_notify,
         } => {
             // Construct WriteConfig from CLI flags
@@ -402,7 +410,14 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
             }
 
             let write_summary = orchestrator
-                .calculate_rewards(None, keypair, Some(snapshot.clone()), dry_run, write_config)
+                .calculate_rewards(
+                    None,
+                    keypair,
+                    Some(snapshot.clone()),
+                    dry_run,
+                    write_config,
+                    shapley_from_ledger,
+                )
                 .await?;
 
             // Send Slack notification if requested

@@ -7,9 +7,14 @@ use tracing::{info, warn};
 
 use crate::{
     calculator::{
-        WriteConfig, data_prep::PreparedData, input::RewardInput, keypair_loader::load_keypair,
-        ledger_operations, proof::ShapleyOutputStorage,
-        revenue_distribution::post_rewards_merkle_root, shapley::evaluator::compute_shapley_values,
+        WriteConfig,
+        data_prep::PreparedData,
+        input::RewardInput,
+        keypair_loader::load_keypair,
+        ledger_operations::{self, get_rewards_accountant, try_fetch_shapley_output},
+        proof::ShapleyOutputStorage,
+        revenue_distribution::post_rewards_merkle_root,
+        shapley::evaluator::compute_shapley_values,
     },
     cli::snapshot::CompleteSnapshot,
     ingestor::fetcher::Fetcher,
@@ -39,6 +44,7 @@ impl Orchestrator {
         snapshot_path: Option<PathBuf>,
         dry_run: bool,
         write_config: WriteConfig,
+        shapley_from_ledger: bool,
     ) -> Result<ledger_operations::WriteSummary> {
         let epoch_start = Instant::now();
 
@@ -103,23 +109,37 @@ impl Orchestrator {
             .map(|(k, v)| (k.to_string(), v.clone()))
             .collect();
 
-        // Compute Shapley values using shared function
-        let start_time = Instant::now();
-        let compute_result =
-            compute_shapley_values(&shapley_inputs, &self.settings.shapley, &string_labels)?;
-        let elapsed = start_time.elapsed();
+        let shapley_storage = if shapley_from_ledger {
+            let accountant = get_rewards_accountant(&fetcher.solana_write_client, None).await?;
+            let prefix = self.settings.get_contributor_rewards_prefix();
+            info!("Reading shapley output for epoch {fetch_epoch} from the ledger");
+            Some(
+                try_fetch_shapley_output(&fetcher.dz_rpc_client, &prefix, &accountant, fetch_epoch)
+                    .await?,
+            )
+        } else {
+            let start_time = Instant::now();
+            let compute_result =
+                compute_shapley_values(&shapley_inputs, &self.settings.shapley, &string_labels)?;
+            let elapsed = start_time.elapsed();
 
-        // Track total Shapley computation time
-        metrics::histogram!("doublezero_contributor_rewards_shapley_total_duration")
-            .record(elapsed.as_secs_f64());
+            // Track total Shapley computation time
+            metrics::histogram!("doublezero_contributor_rewards_shapley_total_duration")
+                .record(elapsed.as_secs_f64());
 
-        info!("Shapley computation completed in {:.2?}", elapsed);
+            info!("Shapley computation completed in {:.2?}", elapsed);
+
+            let shapley_output = compute_result.aggregated_output;
+            if shapley_output.is_empty() {
+                None
+            } else {
+                Some(ShapleyOutputStorage::new(fetch_epoch, &shapley_output)?)
+            }
+        };
 
         // Process results if we have any
-        let shapley_output = compute_result.aggregated_output;
-        if !shapley_output.is_empty() {
-            // Construct merkle tree from shapley output
-            let shapley_storage = ShapleyOutputStorage::new(fetch_epoch, &shapley_output)?;
+        if let Some(shapley_storage) = shapley_storage {
+            // Construct merkle root from shapley output
             let merkle_root = shapley_storage.compute_merkle_root()?;
             info!("merkle_root: {:#?}", merkle_root);
 
@@ -223,7 +243,7 @@ impl Orchestrator {
                 }
 
                 // Write shapley output storage instead of individual proofs
-                if !write_config.should_skip_shapley_output() {
+                if !write_config.should_skip_shapley_output() && !shapley_from_ledger {
                     let prefix = &self.settings.get_contributor_rewards_prefix();
                     ledger_operations::write_serialized_and_track(
                         &fetcher.dz_rpc_client,

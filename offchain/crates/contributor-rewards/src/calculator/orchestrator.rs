@@ -110,12 +110,17 @@ impl Orchestrator {
             .collect();
 
         let shapley_storage = if shapley_from_ledger {
-            let accountant = get_rewards_accountant(&fetcher.solana_write_client, None).await?;
+            let accountant_key = get_rewards_accountant(&fetcher.solana_write_client, None).await?;
             let prefix = self.settings.get_contributor_rewards_prefix();
             info!("Reading shapley output for epoch {fetch_epoch} from the ledger");
             Some(
-                try_fetch_shapley_output(&fetcher.dz_rpc_client, &prefix, &accountant, fetch_epoch)
-                    .await?,
+                try_fetch_shapley_output(
+                    &fetcher.dz_rpc_client,
+                    &prefix,
+                    &accountant_key,
+                    fetch_epoch,
+                )
+                .await?,
             )
         } else {
             let start_time = Instant::now();

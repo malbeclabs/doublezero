@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Release
+  - `doublezero-solana` 0.6.1. It adds `feeds publisher-rewards status --node-id <ID>`, which shows a validator what the feed program paid it in each of the last three calendar months. (#4473)
 - Serviceability
   - User creation accepts only the per-IP user address.
 

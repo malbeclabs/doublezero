@@ -10,6 +10,10 @@ All notable changes to this project will be documented in this file.
 
 - Serviceability
   - User creation accepts only the per-IP user address.
+  - Every instruction reads the global state only from the program's global state account. An account another program owns fails with `InvalidAccountOwner` (custom error 52), and an account at another address fails with `InvalidSeeds`.
+  - `DeleteDevice` closes only the device's own resource accounts: its `TunnelIds` account, then its `DzPrefixBlock` accounts.
+- Geolocation
+  - The foundation check reads the program config and the serviceability global state only from their PDAs. An account at another address fails with `InvalidSeeds`.
 
 ## [v0.46.0](https://github.com/malbeclabs/doublezero/compare/client/v0.45.0...client/v0.46.0) - 2026-10-27
 

@@ -56,7 +56,7 @@ pub fn process_remove_administrator_tenant(
     );
 
     // Parse accounts
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     let mut tenant = Tenant::try_from(tenant_account)?;
 
     // Check authorization: only foundation allowlist members can remove administrators

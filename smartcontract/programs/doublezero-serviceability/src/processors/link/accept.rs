@@ -91,7 +91,7 @@ pub fn process_accept_link(
 
     // Validate Contributor Owner
     let contributor = Contributor::try_from(contributor_account)?;
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     // Authorization: the contributor owner, or NETWORK_ADMIN (Permission account) /
     // foundation (legacy) as an additional bypass.
     if contributor.owner != *payer_account.key

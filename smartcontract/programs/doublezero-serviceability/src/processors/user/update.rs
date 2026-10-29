@@ -139,7 +139,7 @@ pub fn process_update_user(
 
     // Authorization: USER_ADMIN (Permission account) or foundation (legacy). This is
     // an administrative operation — the User owner does not update via this path.
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     authorize(
         program_id,
         &mut permission_account.into_iter(),

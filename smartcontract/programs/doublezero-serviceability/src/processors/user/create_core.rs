@@ -108,7 +108,7 @@ pub fn create_user_core(
         }
     }
 
-    let globalstate = GlobalState::try_from(core.globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, core.globalstate_account)?;
 
     // Determine effective owner: the sentinel authority or a USER_ADMIN holder can set a custom
     // owner. authorize() reads the optional trailing Permission account and also honors the legacy

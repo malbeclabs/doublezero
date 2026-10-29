@@ -39,7 +39,7 @@ pub fn process_delete_feed(
     );
     assert!(feed_account.is_writable, "PDA Account is not writable");
 
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     authorize(
         program_id,
         accounts_iter,

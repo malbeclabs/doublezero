@@ -62,7 +62,7 @@ pub fn process_suspend_multicastgroup(
     );
 
     // Parse the global state account & check if the payer is in the allowlist
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     // Authorization: MULTICAST_ADMIN (Permission account) or foundation/sentinel (legacy).
     authorize(
         program_id,

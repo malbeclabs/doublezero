@@ -57,7 +57,7 @@ pub fn process_update_feed(
     );
     assert!(feed_account.is_writable, "PDA Account is not writable");
 
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     let mut feed = Feed::try_from(feed_account)?;
     let (group_accounts, authorize_candidates) = split_group_accounts(
         value.groups.as_deref().unwrap_or_default(),

@@ -77,7 +77,7 @@ pub fn process_write_bond_mirror(
         "BondMirror Account is not writable"
     );
 
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     authorize(
         program_id,
         accounts_iter,

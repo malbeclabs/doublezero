@@ -118,7 +118,7 @@ pub fn process_create_link(
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
-    let mut globalstate = GlobalState::try_from(globalstate_account)?;
+    let mut globalstate = GlobalState::load(program_id, globalstate_account)?;
     globalstate.account_index += 1;
 
     let mut contributor = Contributor::try_from(contributor_account)?;

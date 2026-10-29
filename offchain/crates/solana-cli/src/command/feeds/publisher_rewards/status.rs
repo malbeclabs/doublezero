@@ -25,6 +25,7 @@ use doublezero_solana_sdk::{
     },
 };
 use futures::stream::{self, StreamExt, TryStreamExt};
+use serde::Serialize;
 use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::{
     rpc_client::GetConfirmedSignaturesForAddress2Config,
@@ -33,7 +34,9 @@ use solana_client::{
 };
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{clock::Clock, pubkey::Pubkey, signature::Signature};
-use solana_transaction_status_client_types::UiTransactionEncoding;
+use solana_transaction_status_client_types::{
+    EncodedTransaction, UiInstruction, UiMessage, UiParsedInstruction, UiTransactionEncoding,
+};
 use tabled::{
     Table, Tabled,
     settings::{Alignment, Style, object::Columns},
@@ -62,8 +65,12 @@ pub struct StatusCommand {
     node_id: Pubkey,
 
     /// How many calendar months before the current one to report.
-    #[arg(long, default_value_t = 3)]
+    #[arg(long, default_value_t = 3, value_parser = clap::value_parser!(u32).range(1..))]
     num_months: u32,
+
+    /// Print the report as JSON.
+    #[arg(long)]
+    json: bool,
 
     #[command(flatten)]
     connection_options: SolanaConnectionOptions,
@@ -74,8 +81,32 @@ struct MonthRewards {
     collected_feed_distribution_keys: Vec<Pubkey>,
     routed_feed_distribution_keys: HashSet<Pubkey>,
     paid_feed_distribution_keys: HashSet<Pubkey>,
-    // The raw amount and the mint's decimals.
-    paid_by_mint: BTreeMap<Pubkey, (u128, u8)>,
+    // The amount in base units and the mint's decimals.
+    paid_by_mint: BTreeMap<Pubkey, (u64, u8)>,
+}
+
+#[derive(Serialize)]
+struct StatusView {
+    node_id: String,
+    rewards_token_owner: Option<String>,
+    rewards_token_mint: Option<String>,
+    months: Vec<MonthView>,
+}
+
+#[derive(Serialize)]
+struct MonthView {
+    month: String,
+    status: &'static str,
+    paid: Vec<PaidView>,
+}
+
+#[derive(Serialize)]
+struct PaidView {
+    mint: String,
+    #[serde(skip)]
+    mint_symbol: String,
+    amount: u64,
+    decimals: u8,
 }
 
 #[derive(Tabled)]
@@ -127,30 +158,6 @@ impl StatusCommand {
                 .map_or_else(|| mint_key.to_string(), ToString::to_string)
         };
 
-        writeln!(out, "Node ID:        {}", self.node_id)?;
-        match &feed_publisher_rewards {
-            Some(feed_publisher_rewards) => {
-                writeln!(
-                    out,
-                    "Rewards owner:  {}",
-                    feed_publisher_rewards.rewards_token_owner_key
-                )?;
-                writeln!(
-                    out,
-                    "Rewards mint:   {}",
-                    mint_symbol(&feed_publisher_rewards.rewards_token_mint_key)
-                )?;
-            }
-            None => {
-                writeln!(out, "Rewards owner:  not configured")?;
-                writeln!(
-                    out,
-                    "\nThe oracle cannot pay this validator until it sets a rewards wallet. Run \
-                     `doublezero-solana feeds publisher-rewards configure` to set one."
-                )?;
-            }
-        }
-
         let unix_timestamp = connection
             .try_fetch_sysvar::<Clock>()
             .await
@@ -167,9 +174,9 @@ impl StatusCommand {
                     .context("computing a reported month")
             })
             .collect::<Result<Vec<_>>>()?;
-        let Some(oldest_month_start) = month_starts.last() else {
-            return Ok(());
-        };
+        let oldest_month_start = month_starts
+            .last()
+            .context("--num-months must be at least 1")?;
         let window_start = oldest_month_start
             .and_time(Default::default())
             .and_utc()
@@ -299,9 +306,9 @@ impl StatusCommand {
         }
 
         let transaction_config = RpcTransactionConfig {
-            encoding: Some(UiTransactionEncoding::Base64),
+            encoding: Some(UiTransactionEncoding::JsonParsed),
             commitment: Some(CommitmentConfig::confirmed()),
-            max_supported_transaction_version: Some(0),
+            max_supported_transaction_version: Some(1),
         };
         let transactions = stream::iter(signatures)
             .map(|signature| {
@@ -317,23 +324,37 @@ impl StatusCommand {
             .try_collect::<Vec<_>>()
             .await?;
 
-        for response in transactions {
-            let Some(transaction) = response.transaction.transaction.decode() else {
+        let program_id = ID.to_string();
+        for response in &transactions {
+            let EncodedTransaction::Json(transaction) = &response.transaction.transaction else {
                 continue;
             };
-            let account_keys = transaction.message.static_account_keys();
-            let token_balances = response.transaction.meta.map(|meta| {
-                (
-                    Option::<Vec<_>>::from(meta.pre_token_balances).unwrap_or_default(),
-                    Option::<Vec<_>>::from(meta.post_token_balances).unwrap_or_default(),
-                )
-            });
+            let UiMessage::Parsed(message) = &transaction.message else {
+                continue;
+            };
+            let Some(meta) = &response.transaction.meta else {
+                continue;
+            };
+            let inner_instructions = Option::<&Vec<_>>::from(meta.inner_instructions.as_ref())
+                .map(Vec::as_slice)
+                .unwrap_or_default();
+            let post_token_balances = Option::<&Vec<_>>::from(meta.post_token_balances.as_ref())
+                .map(Vec::as_slice)
+                .unwrap_or_default();
 
-            for instruction in transaction.message.instructions() {
-                if account_keys.get(usize::from(instruction.program_id_index)) != Some(&ID) {
+            for (instruction_index, instruction) in message.instructions.iter().enumerate() {
+                let UiInstruction::Parsed(UiParsedInstruction::PartiallyDecoded(instruction)) =
+                    instruction
+                else {
+                    continue;
+                };
+                if instruction.program_id != program_id {
                     continue;
                 }
-                let mut data = instruction.data.as_slice();
+                let Ok(data) = bs58::decode(&instruction.data).into_vec() else {
+                    continue;
+                };
+                let mut data = data.as_slice();
                 let Ok(discriminator) = Discriminator::<DISCRIMINATOR_LEN>::deserialize(&mut data)
                 else {
                     continue;
@@ -341,17 +362,15 @@ impl StatusCommand {
                 if Pubkey::deserialize(&mut data).ok() != Some(self.node_id) {
                     continue;
                 }
-                let account_key_at = |position: usize| {
-                    instruction
-                        .accounts
-                        .get(position)
-                        .and_then(|index| account_keys.get(usize::from(*index)))
-                };
-                let Some(feed_distribution_key) = account_key_at(1) else {
+                let Some(feed_distribution_key) = instruction
+                    .accounts
+                    .get(1)
+                    .and_then(|key| key.parse::<Pubkey>().ok())
+                else {
                     continue;
                 };
                 let Some(month_rewards) = month_by_feed_distribution_key
-                    .get(feed_distribution_key)
+                    .get(&feed_distribution_key)
                     .and_then(|year_month| months.get_mut(year_month))
                 else {
                     continue;
@@ -361,55 +380,74 @@ impl StatusCommand {
                     FeedSubscriptionInstructionData::ROUTE_PUBLISHER_REWARDS => {
                         month_rewards
                             .routed_feed_distribution_keys
-                            .insert(*feed_distribution_key);
+                            .insert(feed_distribution_key);
                     }
                     FeedSubscriptionInstructionData::DISTRIBUTE_SOLANA_PUBLISHER_REWARDS => {
                         month_rewards
                             .paid_feed_distribution_keys
-                            .insert(*feed_distribution_key);
-                        let Some((pre_balances, post_balances)) = &token_balances else {
-                            continue;
-                        };
-                        let Some(destination_index) = instruction
+                            .insert(feed_distribution_key);
+                        let Some(destination_key) = instruction
                             .accounts
                             .get(DISTRIBUTE_DESTINATION_ACCOUNT_INDEX)
                         else {
                             continue;
                         };
-                        let Some(post_balance) = post_balances
+                        let Some(destination_balance) = message
+                            .account_keys
                             .iter()
-                            .find(|balance| balance.account_index == *destination_index)
+                            .position(|account| &account.pubkey == destination_key)
+                            .and_then(|destination_index| {
+                                post_token_balances.iter().find(|balance| {
+                                    usize::from(balance.account_index) == destination_index
+                                })
+                            })
                         else {
                             continue;
                         };
-                        let post_amount = post_balance
-                            .ui_token_amount
-                            .amount
-                            .parse::<u128>()
-                            .context("parsing a payout balance")?;
-                        let pre_amount = pre_balances
+
+                        // A zero share makes no transfer. The payout's own transfer is read,
+                        // so another transfer to the same account in the transaction is not
+                        // counted.
+                        let mut amount = 0;
+                        let transfers = inner_instructions
                             .iter()
-                            .find(|balance| balance.account_index == *destination_index)
-                            .map(|balance| balance.ui_token_amount.amount.parse::<u128>())
-                            .transpose()
-                            .context("parsing a payout balance")?
-                            .unwrap_or_default();
-                        let mint_key = post_balance
+                            .filter(|inner| usize::from(inner.index) == instruction_index)
+                            .flat_map(|inner| &inner.instructions);
+                        for transfer in transfers {
+                            let UiInstruction::Parsed(UiParsedInstruction::Parsed(transfer)) =
+                                transfer
+                            else {
+                                continue;
+                            };
+                            let info = &transfer.parsed["info"];
+                            if transfer.parsed["type"] != "transfer"
+                                || info["destination"] != destination_key.as_str()
+                            {
+                                continue;
+                            }
+                            let transfer_amount = info["amount"]
+                                .as_str()
+                                .and_then(|amount| amount.parse::<u64>().ok())
+                                .context("parsing a payout transfer amount")?;
+                            amount += transfer_amount;
+                        }
+
+                        let mint_key = destination_balance
                             .mint
                             .parse::<Pubkey>()
                             .context("parsing a payout mint")?;
                         let paid = month_rewards
                             .paid_by_mint
                             .entry(mint_key)
-                            .or_insert((0, post_balance.ui_token_amount.decimals));
-                        paid.0 += post_amount.saturating_sub(pre_amount);
+                            .or_insert((0, destination_balance.ui_token_amount.decimals));
+                        paid.0 += amount;
                     }
                     _ => {}
                 }
             }
         }
 
-        let rows = months
+        let month_views = months
             .iter()
             .rev()
             .map(|((year, month), month_rewards)| {
@@ -433,29 +471,89 @@ impl StatusCommand {
                 } else {
                     "paid"
                 };
-                let paid = if month_rewards.paid_by_mint.is_empty() {
-                    "-".to_string()
-                } else {
-                    month_rewards
-                        .paid_by_mint
-                        .iter()
-                        .map(|(mint_key, (amount, decimals))| {
-                            format!(
-                                "{} {}",
-                                format_token_amount(*amount, *decimals),
-                                mint_symbol(mint_key)
-                            )
-                        })
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                };
-                StatusRow {
+                MonthView {
                     month: format!("{year}-{month:02}"),
                     status,
-                    paid,
+                    paid: month_rewards
+                        .paid_by_mint
+                        .iter()
+                        .map(|(mint_key, (amount, decimals))| PaidView {
+                            mint: mint_key.to_string(),
+                            mint_symbol: mint_symbol(mint_key),
+                            amount: *amount,
+                            decimals: *decimals,
+                        })
+                        .collect(),
                 }
             })
-            .collect::<Vec<_>>();
+            .collect();
+
+        let view = StatusView {
+            node_id: self.node_id.to_string(),
+            rewards_token_owner: feed_publisher_rewards
+                .as_ref()
+                .map(|feed_publisher_rewards| {
+                    feed_publisher_rewards.rewards_token_owner_key.to_string()
+                }),
+            rewards_token_mint: feed_publisher_rewards
+                .as_ref()
+                .map(|feed_publisher_rewards| {
+                    feed_publisher_rewards.rewards_token_mint_key.to_string()
+                }),
+            months: month_views,
+        };
+        if self.json {
+            writeln!(out, "{}", serde_json::to_string_pretty(&view)?)?;
+            return Ok(());
+        }
+
+        writeln!(out, "Node ID:        {}", self.node_id)?;
+        match &feed_publisher_rewards {
+            Some(feed_publisher_rewards) => {
+                writeln!(
+                    out,
+                    "Rewards owner:  {}",
+                    feed_publisher_rewards.rewards_token_owner_key
+                )?;
+                writeln!(
+                    out,
+                    "Rewards mint:   {}",
+                    mint_symbol(&feed_publisher_rewards.rewards_token_mint_key)
+                )?;
+            }
+            None => {
+                writeln!(out, "Rewards owner:  not configured")?;
+                writeln!(
+                    out,
+                    "\nThe oracle cannot pay this validator until it sets a rewards wallet. Run \
+                     `doublezero-solana feeds publisher-rewards configure` to set one."
+                )?;
+            }
+        }
+
+        let rows = view.months.into_iter().map(|month_view| {
+            let paid = if month_view.paid.is_empty() {
+                "-".to_string()
+            } else {
+                month_view
+                    .paid
+                    .iter()
+                    .map(|paid| {
+                        format!(
+                            "{} {}",
+                            format_token_amount(paid.amount, paid.decimals),
+                            paid.mint_symbol
+                        )
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            StatusRow {
+                month: month_view.month,
+                status: month_view.status,
+                paid,
+            }
+        });
 
         let mut table = Table::new(rows);
         table.with(Style::markdown());
@@ -475,7 +573,8 @@ impl StatusCommand {
 }
 
 // Truncates to three decimal places and drops trailing zeros.
-fn format_token_amount(amount: u128, decimals: u8) -> String {
+fn format_token_amount(amount: u64, decimals: u8) -> String {
+    let amount = u128::from(amount);
     let scale = 10_u128.pow(u32::from(decimals));
     let whole = amount / scale;
     let thousandths = amount % scale * 1_000 / scale;

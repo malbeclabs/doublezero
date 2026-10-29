@@ -2,7 +2,11 @@ pub mod geo_probe;
 pub mod geolocation_user;
 pub mod program_config;
 
-use crate::{error::GeolocationError, state::program_config::GeolocationProgramConfig};
+use crate::{
+    error::GeolocationError, pda::get_program_config_pda,
+    state::program_config::GeolocationProgramConfig,
+};
+use doublezero_serviceability::{pda::get_globalstate_pda, state::globalstate::GlobalState};
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 
 pub fn check_foundation_allowlist(
@@ -14,6 +18,10 @@ pub fn check_foundation_allowlist(
     if program_config_account.owner != program_id {
         msg!("Invalid ProgramConfig Account Owner");
         return Err(ProgramError::IllegalOwner);
+    }
+    if program_config_account.key != &get_program_config_pda(program_id).0 {
+        msg!("Invalid ProgramConfig PDA");
+        return Err(ProgramError::InvalidSeeds);
     }
 
     let program_config = GeolocationProgramConfig::try_from(program_config_account)?;
@@ -27,10 +35,13 @@ pub fn check_foundation_allowlist(
         );
         return Err(ProgramError::IncorrectProgramId);
     }
+    if serviceability_globalstate_account.key != &get_globalstate_pda(serviceability_program_id).0 {
+        msg!("Invalid serviceability GlobalState PDA");
+        return Err(ProgramError::InvalidSeeds);
+    }
 
-    let globalstate = doublezero_serviceability::state::globalstate::GlobalState::try_from(
-        serviceability_globalstate_account,
-    )?;
+    let globalstate =
+        GlobalState::try_from(&serviceability_globalstate_account.try_borrow_data()?[..])?;
 
     if !globalstate.foundation_allowlist.contains(payer_account.key) {
         return Err(GeolocationError::NotAllowed.into());

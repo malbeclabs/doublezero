@@ -140,9 +140,8 @@ class TestCompatGlobalState:
         assert gs.account_type == 1
 
         # Sanity checks.
-        assert gs.activator_authority_pk != Pubkey.default(), "ActivatorAuthorityPK is zero"
         assert gs.sentinel_authority_pk != Pubkey.default(), "SentinelAuthorityPK is zero"
-        # health_oracle_pk may be zero on mainnet
+        # activator_authority_pk and health_oracle_pk may be zero on mainnet
 
 
 class TestCompatGetProgramData:

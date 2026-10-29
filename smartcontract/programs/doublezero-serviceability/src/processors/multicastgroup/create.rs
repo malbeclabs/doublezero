@@ -104,7 +104,7 @@ pub fn process_create_multicastgroup(
     assert!(mgroup_account.is_writable, "PDA Account is not writable");
 
     // Parse the global state account & check if the payer is in the allowlist
-    let mut globalstate = GlobalState::try_from(globalstate_account)?;
+    let mut globalstate = GlobalState::load(program_id, globalstate_account)?;
     globalstate.account_index += 1;
 
     // Get the PDA pubkey and bump seed for the account multicastgroup & check if it matches the account

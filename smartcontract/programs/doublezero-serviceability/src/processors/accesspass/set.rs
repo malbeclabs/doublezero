@@ -129,7 +129,7 @@ pub fn process_set_access_pass(
     //   - they pass the ACCESS_PASS_ADMIN permission check (foundation allowlist, sentinel
     //     authority, feed authority, or a Permission account granting ACCESS_PASS_ADMIN), or
     //   - they are an administrator of the tenant being added (tenant_add_account).
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
 
     // Pre-deserialize the tenant_add account when present so we can both authorize the caller
     // and later increment its reference_count without double-reading it.

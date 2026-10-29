@@ -50,7 +50,7 @@ pub fn process_retire_feed(
     assert!(feed_account.is_writable, "PDA Account is not writable");
 
     let mut feed = Feed::try_from(feed_account)?;
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     require_feed_writer(
         program_id,
         accounts_iter,

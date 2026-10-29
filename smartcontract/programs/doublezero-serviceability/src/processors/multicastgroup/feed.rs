@@ -76,7 +76,7 @@ pub fn load_context<'a, 'b>(
         gs_account.key, &expected_globalstate_pda,
         "Invalid GlobalState PDA"
     );
-    let globalstate = GlobalState::try_from(gs_account)?;
+    let globalstate = GlobalState::load(program_id, gs_account)?;
 
     if accesspass_account.data_is_empty() {
         return Err(DoubleZeroError::AccessPassNotFound.into());

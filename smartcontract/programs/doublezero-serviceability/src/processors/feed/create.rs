@@ -97,7 +97,7 @@ pub fn process_create_feed(
     // first, because RFC-28's claim is that a bond rather than an admin is what lets a builder
     // deploy. The catalog path below is untouched, so an admin creating a feed on a builder's
     // behalf works exactly as it did.
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     let (group_accounts, authorize_candidates) =
         split_group_accounts(&value.groups, authorize_candidates);
     if bond_authorizes(

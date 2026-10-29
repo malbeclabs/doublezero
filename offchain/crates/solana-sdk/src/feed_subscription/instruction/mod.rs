@@ -39,6 +39,10 @@ impl FeedSubscriptionInstructionData {
         Discriminator::new_sha2(b"dz::ix::claim_feed_validator_client_rewards");
     pub const CONFIGURE_FEED_PUBLISHER_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
         Discriminator::new_sha2(b"dz::ix::configure_feed_publisher_rewards");
+    pub const ROUTE_PUBLISHER_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::route_publisher_rewards");
+    pub const DISTRIBUTE_SOLANA_PUBLISHER_REWARDS: Discriminator<DISCRIMINATOR_LEN> =
+        Discriminator::new_sha2(b"dz::ix::distribute_solana_publisher_rewards");
 }
 
 impl BorshSerialize for FeedSubscriptionInstructionData {

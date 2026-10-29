@@ -10,8 +10,6 @@ All notable changes to this project will be documented in this file.
 
 - Serviceability
   - User creation accepts only the per-IP user address.
-- Solana CLI
-  - New `doublezero-solana feeds publisher-rewards status`, which prints the wallet and mint a validator is paid in, and what the feed program paid it in each of the last three calendar months. A month shows `unpaid` when the oracle routed a reward it could not pay, such as to a validator that never ran `configure`. (malbeclabs/infra#3436)
 
 ## [v0.46.0](https://github.com/malbeclabs/doublezero/compare/client/v0.45.0...client/v0.46.0) - 2026-10-27
 

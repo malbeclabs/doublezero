@@ -6,6 +6,7 @@ use doublezero_serviceability::{
     pda::{
         get_contributor_pda, get_exchange_pda, get_globalconfig_pda, get_globalstate_pda,
         get_location_pda, get_program_config_pda, get_resource_extension_pda, get_topology_pda,
+        get_user_old_pda,
     },
     processors::{
         contributor::create::ContributorCreateArgs, exchange::create::ExchangeCreateArgs,
@@ -16,11 +17,12 @@ use doublezero_serviceability::{
     state::{
         accountdata::AccountData, accounttype::AccountType, device::Device,
         globalstate::GlobalState, resource_extension::ResourceExtensionOwned,
-        topology::TopologyConstraint,
+        topology::TopologyConstraint, user::User,
     },
 };
 use solana_program_test::*;
 use solana_sdk::{
+    account::AccountSharedData,
     instruction::{AccountMeta, Instruction, InstructionError},
     program_error::ProgramError,
     pubkey::Pubkey,
@@ -696,6 +698,31 @@ pub async fn setup_program_with_globalconfig_context(
     let (globalconfig_pubkey, _) = get_globalconfig_pda(&program_id);
 
     (context, program_id, globalstate_pubkey, globalconfig_pubkey)
+}
+
+/// Moves a user to `get_user_old_pda(index)`, the counter-based address no instruction creates,
+/// and empties its per-IP address. Returns the counter-based address.
+#[allow(dead_code)]
+pub async fn move_user_to_old_pda(
+    context: &mut ProgramTestContext,
+    program_id: Pubkey,
+    user_pubkey: Pubkey,
+    index: u128,
+) -> Pubkey {
+    let mut account = context
+        .banks_client
+        .get_account(user_pubkey)
+        .await
+        .unwrap()
+        .expect("user must exist");
+    let mut user = User::try_from(&account.data[..]).unwrap();
+    let (old_pubkey, bump_seed) = get_user_old_pda(&program_id, index);
+    user.index = index;
+    user.bump_seed = bump_seed;
+    account.data = to_vec(&user).unwrap();
+    context.set_account(&old_pubkey, &AccountSharedData::from(account));
+    context.set_account(&user_pubkey, &AccountSharedData::default());
+    old_pubkey
 }
 
 #[allow(dead_code)]

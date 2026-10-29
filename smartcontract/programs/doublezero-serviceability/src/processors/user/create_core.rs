@@ -2,7 +2,7 @@ use crate::{
     authorize::authorize,
     error::DoubleZeroError,
     ip_proof::validate_ip_ownership_proof,
-    pda::{get_accesspass_pda, get_user_old_pda, get_user_pda},
+    pda::{get_accesspass_pda, get_user_pda},
     state::{
         accesspass::{AccessPass, AccessPassStatus, AccessPassType},
         accounttype::AccountType,
@@ -22,12 +22,6 @@ use solana_program::{
 use std::net::Ipv4Addr;
 
 use crate::{processors::validation::validate_program_account, serializer::try_acc_write};
-
-#[derive(PartialEq)]
-pub enum PDAVersion {
-    V1,
-    V2,
-}
 
 /// Accounts needed by `create_user_core`.
 pub struct CreateUserCoreAccounts<'a, 'b> {
@@ -52,9 +46,6 @@ pub struct CreateUserCoreResult {
     pub user: Box<User>,
     pub device: Device,
     pub accesspass: AccessPass,
-    pub globalstate: GlobalState,
-    pub pda_ver: PDAVersion,
-    pub bump_old_seed: u8,
     pub bump_seed: u8,
 }
 
@@ -117,7 +108,7 @@ pub fn create_user_core(
         }
     }
 
-    let mut globalstate = GlobalState::try_from(core.globalstate_account)?;
+    let globalstate = GlobalState::try_from(core.globalstate_account)?;
 
     // Determine effective owner: the sentinel authority or a USER_ADMIN holder can set a custom
     // owner. authorize() reads the optional trailing Permission account and also honors the legacy
@@ -150,25 +141,16 @@ pub fn create_user_core(
         }
         _ => *core.payer_account.key,
     };
-    globalstate.account_index += 1;
 
-    let (expected_old_pda_account, bump_old_seed) =
-        get_user_old_pda(program_id, globalstate.account_index);
     let (expected_pda_account, bump_seed) = get_user_pda(program_id, &client_ip, user_type);
-
-    let pda_ver = if core.user_account.key == &expected_pda_account {
-        PDAVersion::V2
-    } else if core.user_account.key == &expected_old_pda_account {
-        PDAVersion::V1
-    } else {
+    if core.user_account.key != &expected_pda_account {
         msg!(
-            "Invalid User PDA. expected: {} or {}, found: {}",
+            "Invalid User PDA. expected: {}, found: {}",
             expected_pda_account,
-            expected_old_pda_account,
             core.user_account.key
         );
         return Err(DoubleZeroError::InvalidUserPubkey.into());
-    };
+    }
 
     // Read once and reuse for the epoch gate further down; Clock::get() is a syscall.
     let clock = Clock::get()?;
@@ -217,13 +199,12 @@ pub fn create_user_core(
         return Err(DoubleZeroError::Unauthorized.into());
     }
 
-    // RFC-27. The PDA check further up established that user_account.key is a legitimate User PDA
-    // — under either derivation — so the (client_ip, user_type) pair the proof binds is the pair
-    // this account is derived from. Placed after the access-pass checks directly above, because
-    // whether a proof is *required* depends on the pass: an authority that pinned this exact
-    // address has already attested it, and the checks above are what establish that this pass
-    // names this address and this owner. Still before the already_exists return below, so a rerun
-    // is covered too.
+    // RFC-27. The PDA check further up established that user_account.key is derived from the
+    // (client_ip, user_type) pair the proof binds. Placed after the access-pass checks directly
+    // above, because whether a proof is *required* depends on the pass: an authority that pinned
+    // this exact address has already attested it, and the checks above are what establish that
+    // this pass names this address and this owner. Still before the already_exists return below,
+    // so a rerun is covered too.
     //
     // Bound to `effective_owner`, not the transaction payer: the owner-override path lets the
     // sentinel or a USER_ADMIN holder create a user owned by somebody else, and it is that owner
@@ -450,16 +431,8 @@ pub fn create_user_core(
     let user = User {
         account_type: AccountType::User,
         owner: effective_owner,
-        bump_seed: if pda_ver == PDAVersion::V1 {
-            bump_old_seed
-        } else {
-            bump_seed
-        },
-        index: if pda_ver == PDAVersion::V1 {
-            globalstate.account_index
-        } else {
-            0
-        },
+        bump_seed,
+        index: 0,
         tenant_pk,
         user_type,
         device_pk: *core.device_account.key,
@@ -491,9 +464,6 @@ pub fn create_user_core(
         user: Box::new(user),
         device,
         accesspass,
-        globalstate,
-        pda_ver,
-        bump_old_seed,
         bump_seed,
     }))
 }

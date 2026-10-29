@@ -14,7 +14,6 @@ use doublezero_serviceability::{
         user::{UserCYOA, UserStatus, UserType},
     },
 };
-use globalconfig::set::SetGlobalConfigArgs;
 use solana_program_test::*;
 use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signer::Signer};
 use std::net::Ipv4Addr;
@@ -24,72 +23,19 @@ use test_helpers::*;
 
 #[tokio::test]
 async fn test_user_migration() {
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let (mut context, program_id, globalstate_pubkey, config_pubkey) =
+        setup_program_with_globalconfig_context().await;
+    let mut banks_client = context.banks_client.clone();
+    let payer = context.payer.insecure_clone();
+    let recent_blockhash = context.last_blockhash;
 
     /***********************************************************************************************************************************/
     println!("🟢  Start test_user");
 
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
-    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-
-    println!("🟢 1. Global Initialization...");
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        &payer,
-    )
-    .await;
-
-    let (config_pubkey, _) = get_globalconfig_pda(&program_id);
-    let (device_tunnel_block_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::DeviceTunnelBlock);
     let (user_tunnel_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock);
-    let (multicastgroup_block_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
-    let (link_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::LinkIds);
-    let (segment_routing_ids_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
     let (multicast_publisher_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
-    let (vrf_ids_pda, _, _) = get_resource_extension_pda(&program_id, ResourceType::VrfIds);
-    let (admin_group_bits_pda, _, _) =
-        get_resource_extension_pda(&program_id, ResourceType::AdminGroupBits);
-
-    execute_transaction(
-        &mut banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::SetGlobalConfig(SetGlobalConfigArgs {
-            local_asn: 65000,
-            remote_asn: 65001,
-            device_tunnel_block: "10.0.0.0/24".parse().unwrap(),
-            user_tunnel_block: "169.254.0.0/24".parse().unwrap(),
-            multicastgroup_block: "224.0.0.0/16".parse().unwrap(),
-            multicast_publisher_block: "148.51.120.0/21".parse().unwrap(),
-            next_bgp_community: None,
-        }),
-        vec![
-            AccountMeta::new(config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-            AccountMeta::new(device_tunnel_block_pda, false),
-            AccountMeta::new(user_tunnel_block_pda, false),
-            AccountMeta::new(multicastgroup_block_pda, false),
-            AccountMeta::new(link_ids_pda, false),
-            AccountMeta::new(segment_routing_ids_pda, false),
-            AccountMeta::new(multicast_publisher_block_pda, false),
-            AccountMeta::new(vrf_ids_pda, false),
-            AccountMeta::new(admin_group_bits_pda, false),
-        ],
-        &payer,
-    )
-    .await;
 
     /***********************************************************************************************************************************/
     println!("🟢 2. Create Location...");
@@ -312,7 +258,7 @@ async fn test_user_migration() {
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
     assert_eq!(globalstate_account.account_index, 4);
 
-    let (user_old_pubkey, _) = get_user_old_pda(&program_id, globalstate_account.account_index + 1);
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::IBRL);
 
     execute_transaction(
         &mut banks_client,
@@ -327,7 +273,7 @@ async fn test_user_migration() {
             ip_proof: None,
         }),
         vec![
-            AccountMeta::new(user_old_pubkey, false),
+            AccountMeta::new(user_pubkey, false),
             AccountMeta::new(device_pubkey, false),
             AccountMeta::new(accesspass_pubkey, false),
             AccountMeta::new(globalstate_pubkey, false),
@@ -339,6 +285,8 @@ async fn test_user_migration() {
         &payer,
     )
     .await;
+
+    let user_old_pubkey = move_user_to_old_pda(&mut context, program_id, user_pubkey, 5).await;
 
     let old_user = get_account_data(&mut banks_client, user_old_pubkey)
         .await
@@ -355,9 +303,7 @@ async fn test_user_migration() {
     // Device _la
     println!("🟢 9. Testing User migration...");
     let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
-    assert_eq!(globalstate_account.account_index, 5);
-
-    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::IBRL);
+    assert_eq!(globalstate_account.account_index, 4);
 
     execute_transaction(
         &mut banks_client,

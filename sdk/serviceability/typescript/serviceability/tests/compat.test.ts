@@ -156,9 +156,8 @@ describe("compat: GlobalState", () => {
     expect(gs.accountType).toBe(1);
 
     // Sanity checks.
-    expect(gs.activatorAuthorityPk.equals(PublicKey.default)).toBe(false);
     expect(gs.sentinelAuthorityPk.equals(PublicKey.default)).toBe(false);
-    // healthOraclePk may be zero on mainnet
+    // activatorAuthorityPk and healthOraclePk may be zero on mainnet
   });
 });
 

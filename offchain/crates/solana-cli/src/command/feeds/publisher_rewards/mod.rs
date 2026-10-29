@@ -1,6 +1,7 @@
 mod configure;
 mod prepare_offchain_message;
 mod rewards_mint_arg;
+mod status;
 
 use std::io::Write;
 
@@ -33,6 +34,8 @@ pub enum PublisherRewardsSubcommand {
     PrepareOffchainMessage(prepare_offchain_message::PrepareOffchainMessageCommand),
     /// Set the wallet and mint a publisher is paid in, creating its account when missing.
     Configure(configure::ConfigureCommand),
+    /// Print where a publisher is paid and what it was paid in recent months.
+    Status(status::StatusCommand),
 }
 
 impl PublisherRewardsSubcommand {
@@ -40,6 +43,7 @@ impl PublisherRewardsSubcommand {
         match self {
             Self::PrepareOffchainMessage(command) => command.execute(ctx, out).await,
             Self::Configure(command) => command.execute(ctx, out).await,
+            Self::Status(command) => command.execute(ctx, out).await,
         }
     }
 }

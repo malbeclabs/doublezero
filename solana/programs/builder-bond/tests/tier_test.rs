@@ -236,8 +236,8 @@ async fn test_an_unfunded_bond_pays_the_current_price() {
     assert!(t.read_builder_bond(&bond_key).await.is_funded());
 }
 
-/// Repricing a tier does not move what an already funded bond owes. RFC-29 fixes the bond at the
-/// price prevailing when the tier is set, so a funded bond stays funded.
+/// Repricing a tier does not move what an already funded bond owes. RFC-29 keeps a funded bond
+/// at the requirement it was funded at.
 #[tokio::test]
 async fn test_repricing_a_tier_leaves_existing_bonds_alone() {
     let mut t = common::start_test().await;

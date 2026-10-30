@@ -32,8 +32,8 @@ pub struct BuilderBond {
     /// Follows the tier table while the bond is short, and stops moving once the bond is funded.
     /// Both halves matter. Freezing it at creation would let a builder pre-create bonds for the
     /// cost of rent and fund them after a repricing at the old price. Never freezing it would let
-    /// a repricing make a builder short after it had already paid in full, which RFC-29's "fixed
-    /// at the price prevailing when the tier is set" rules out.
+    /// a repricing make a builder short after it had already paid in full, which RFC-29 rules
+    /// out.
     pub required_2z_amount: u64,
 
     /// The rate the feed backed by this bond may commit to, in bits per second. `u64::MAX` is the

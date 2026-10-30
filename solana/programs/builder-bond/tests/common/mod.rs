@@ -28,7 +28,7 @@ use spl_token_interface::state::{
 /// Enough 2Z to cover any tier in the tests without thinking about it.
 pub const TEST_2Z_SUPPLY: u64 = 1_000_000_000_000_000;
 
-/// Small, ordered stand-ins for RFC-29's $100k/$200k/$500k, so a test can assert on exact numbers.
+/// Small, ordered illustrative amounts, so a test can assert on exact numbers.
 pub const TIER_1GBPS: u64 = 100_000;
 pub const TIER_5GBPS: u64 = 200_000;
 pub const TIER_UNMETERED: u64 = 500_000;

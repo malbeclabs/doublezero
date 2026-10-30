@@ -340,7 +340,7 @@ async fn create_feed(
     feed_pubkey
 }
 
-/// Create a bonded RFC-28 feed against the fixture's pre-mirrored bond. It lands `Active`.
+/// Create a bonded RFC-29 feed against the fixture's pre-mirrored bond. It lands `Active`.
 async fn create_bonded_feed(
     f: &mut FeedFixture,
     code: &str,
@@ -864,7 +864,7 @@ async fn test_non_active_feed_admits_no_subscriber() {
     assert_eq!(pass.feed_seats()[0].current_users, 0);
 }
 
-/// A retiring feed still admits its subscribers, which is the whole point of the notice. RFC-28
+/// A retiring feed still admits its subscribers, which is the whole point of the notice. RFC-29
 /// gives seat holders thirty days before publication stops; refusing them here would end the
 /// service on the day the notice starts and leave the notice protecting nobody who can reconnect.
 ///

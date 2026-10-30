@@ -45,7 +45,7 @@ pub struct MulticastGroupCreateArgs {
     #[incremental(default = false)]
     pub use_onchain_allocation: bool,
     /// The `BuilderBond` PDA on Solana whose mirror admits this create in place of
-    /// `MULTICAST_ADMIN`. Zero is the admin path, unchanged from before RFC-28.
+    /// `MULTICAST_ADMIN`. Zero is the admin path, unchanged from before RFC-29.
     #[incremental(default = Pubkey::default())]
     pub bond_ref: Pubkey,
 }

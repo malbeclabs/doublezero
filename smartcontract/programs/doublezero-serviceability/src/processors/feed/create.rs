@@ -44,9 +44,9 @@ pub struct FeedCreateArgs {
     /// Multicast groups joinable in this metro.
     pub groups: Vec<Pubkey>,
 
-    // RFC-28 tail. A client built before RFC-28 sends nothing past `groups` and still creates a
+    // RFC-29 tail. A client built before RFC-29 sends nothing past `groups` and still creates a
     // catalog feed, which is what the defaults below describe.
-    /// The builder deploying this feed. Zero creates a catalog feed with no builder, the pre-RFC-28
+    /// The builder deploying this feed. Zero creates a catalog feed with no builder, the pre-RFC-29
     /// behavior. Any other value makes this a bonded feed.
     #[incremental(default = Pubkey::default())]
     pub builder: Pubkey,
@@ -94,7 +94,7 @@ pub fn process_create_feed(
     assert!(feed_account.is_writable, "PDA Account is not writable");
 
     // Two things admit this call: a builder's own bond, or the catalog permission. The bond goes
-    // first, because RFC-28's claim is that a bond rather than an admin is what lets a builder
+    // first, because RFC-29's claim is that a bond rather than an admin is what lets a builder
     // deploy. The catalog path below is untouched, so an admin creating a feed on a builder's
     // behalf works exactly as it did.
     let globalstate = GlobalState::load(program_id, globalstate_account)?;
@@ -288,7 +288,7 @@ pub(crate) fn validate_feed_groups(groups: &[Pubkey]) -> Result<(), DoubleZeroEr
     Ok(())
 }
 
-/// Validate the RFC-28 bond terms on create. The terms travel together: a bonded feed names a
+/// Validate the RFC-29 bond terms on create. The terms travel together: a bonded feed names a
 /// builder, the bond behind it, the spec it conforms to, and the rate it commits to. A feed with
 /// some of those and not the others is a half-declared feed that nothing downstream can measure.
 ///
@@ -387,7 +387,7 @@ fn verify_bond_covers_rate(
         return Err(DoubleZeroError::InvalidArgument);
     }
 
-    // RFC-28: one feed per bond, so slashing one feed never reaches another.
+    // RFC-29: one feed per bond, so slashing one feed never reaches another.
     if mirror.feed_key != Pubkey::default() {
         msg!("Bond already backs feed {}", mirror.feed_key);
         return Err(DoubleZeroError::BondAlreadyBacksFeed);

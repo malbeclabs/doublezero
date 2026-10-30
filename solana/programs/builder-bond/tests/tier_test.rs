@@ -88,7 +88,7 @@ async fn test_bond_is_funded_once_it_holds_the_requirement() {
     assert!(bond.is_funded());
     assert_eq!(bond.bonded_2z_amount, common::TIER_1GBPS);
 
-    // Over-funding is allowed. RFC-28 lets a builder withdraw the excess after the hold.
+    // Over-funding is allowed. RFC-29 lets a builder withdraw the excess after the hold.
     t.send(
         common::post_bond(&builder_key, 0, &source_token_account, common::TIER_1GBPS),
         &[&builder],
@@ -236,8 +236,8 @@ async fn test_an_unfunded_bond_pays_the_current_price() {
     assert!(t.read_builder_bond(&bond_key).await.is_funded());
 }
 
-/// Repricing a tier does not move what an already funded bond owes. RFC-28 fixes the bond at the
-/// price prevailing when the tier is set, so a funded bond stays funded.
+/// Repricing a tier does not move what an already funded bond owes. RFC-29 keeps a funded bond
+/// at the requirement it was funded at.
 #[tokio::test]
 async fn test_repricing_a_tier_leaves_existing_bonds_alone() {
     let mut t = common::start_test().await;

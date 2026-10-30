@@ -668,7 +668,7 @@ describe("Feed fixture", () => {
     expect(feed.retiresAt).toBe(-1764547200n);
   });
 
-  // A feed written before RFC-28 ends after groups. The bond fields default, and the status reads
+  // A feed written before RFC-29 ends after groups. The bond fields default, and the status reads
   // active: reading it as pending would show every live catalog feed as out of service.
   test("legacy deserialize", () => {
     const [data, meta] = loadFixture("feed_legacy");

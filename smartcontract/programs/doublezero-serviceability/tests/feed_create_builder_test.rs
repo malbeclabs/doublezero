@@ -1,7 +1,7 @@
 //! A bonded `CreateFeed` built by `doublezero-serviceability-instruction`'s `create_feed`, the
 //! builder the SDK's `CreateFeedCommand` and `doublezero feed create --bond-ref` use.
 //!
-//! `rfc28_walkthrough_test` builds the same create by hand. This proves the account list the
+//! `rfc29_walkthrough_test` builds the same create by hand. This proves the account list the
 //! public builder emits is one the program accepts: the bond mirror after the system program, and
 //! the payer's Permission PDA last, never created.
 

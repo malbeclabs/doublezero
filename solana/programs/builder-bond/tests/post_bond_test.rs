@@ -136,7 +136,7 @@ async fn test_post_bond_moves_2z_into_the_bond() {
     );
 }
 
-/// RFC-28 collateralizes each feed on its own bond, so a builder holds one bond per feed and
+/// RFC-29 collateralizes each feed on its own bond, so a builder holds one bond per feed and
 /// the bonds are distinct accounts with distinct vaults.
 #[tokio::test]
 async fn test_a_builder_holds_one_bond_per_feed() {

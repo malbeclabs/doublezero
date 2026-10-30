@@ -1501,7 +1501,7 @@ fn generate_access_pass_edge_seat(dir: &Path) {
 }
 
 /// Borsh-encoded `Feed` account. Field order: account_type, owner, bump_seed, code, name,
-/// exchange (Pubkey), groups (Vec<Pubkey>), then the RFC-28 tail: builder, bond_ref, spec_id,
+/// exchange (Pubkey), groups (Vec<Pubkey>), then the RFC-29 tail: builder, bond_ref, spec_id,
 /// sla_hash, committed_rate_bits_per_sec, status. Two groups, so the vec decoding is exercised.
 fn generate_feed(dir: &Path) {
     let owner = pubkey_from_byte(0xE0);
@@ -1563,8 +1563,8 @@ fn generate_feed(dir: &Path) {
     write_fixture(dir, "feed", &data, &meta);
 }
 
-/// A `Feed` account as written before RFC-28: everything through `groups` and nothing after.
-/// SDK decoders must read it, default the RFC-28 fields, and report it Active rather than Pending,
+/// A `Feed` account as written before RFC-29: everything through `groups` and nothing after.
+/// SDK decoders must read it, default the RFC-29 fields, and report it Active rather than Pending,
 /// which is the shape of every feed live on the ledger today.
 fn generate_feed_legacy(dir: &Path) {
     let owner = pubkey_from_byte(0xF0);

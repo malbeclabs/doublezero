@@ -55,7 +55,7 @@ pub fn process_delete_feed(
     let feed = Feed::try_from(feed_account)?;
 
     // A bonded feed is not a catalog entry an admin can drop. Its bond mirror records this feed
-    // in `feed_key` to enforce RFC-28's one feed per bond, and closing the feed here would leave
+    // in `feed_key` to enforce RFC-29's one feed per bond, and closing the feed here would leave
     // that pointing at an account that no longer exists: the builder's bond would back nothing
     // and still refuse to back anything else. Retirement is the path out, and it releases the
     // bond with it. Both land in the feed lifecycle work (D2).

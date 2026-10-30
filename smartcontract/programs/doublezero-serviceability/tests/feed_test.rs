@@ -34,7 +34,7 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signer};
 mod test_helpers;
 use test_helpers::*;
 
-/// Plausible RFC-28 bond terms: a builder, the bond behind it, the spec it conforms to, the SLA
+/// Plausible RFC-29 bond terms: a builder, the bond behind it, the spec it conforms to, the SLA
 /// it declared, and a 1 Gbps commitment.
 fn bonded_args(code: &str, exchange: Pubkey) -> FeedCreateArgs {
     FeedCreateArgs {
@@ -454,7 +454,7 @@ async fn test_feed_create_unauthorized_caller_rejected() {
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
 }
 
-/// Enable `allow-bonded-feeds` so the RFC-28 create path is reachable.
+/// Enable `allow-bonded-feeds` so the RFC-29 create path is reachable.
 async fn enable_bonded_feeds(
     banks_client: &mut BanksClient,
     program_id: Pubkey,
@@ -475,7 +475,7 @@ async fn enable_bonded_feeds(
     .await;
 }
 
-/// The RFC-28 fields ship dormant. Until an operator sets `allow-bonded-feeds` on the cluster, a
+/// The RFC-29 fields ship dormant. Until an operator sets `allow-bonded-feeds` on the cluster, a
 /// create carrying a builder is refused outright rather than silently dropping the bond terms.
 #[tokio::test]
 async fn test_feed_create_bonded_rejected_while_flag_clear() {
@@ -502,7 +502,7 @@ async fn test_feed_create_bonded_rejected_while_flag_clear() {
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
 }
 
-/// A pre-RFC-28 create still works with the flag clear, and the feed it makes is Active: a catalog
+/// A pre-RFC-29 create still works with the flag clear, and the feed it makes is Active: a catalog
 /// feed has no builder to attest, so nothing gates it.
 #[tokio::test]
 async fn test_feed_create_catalog_stays_active_with_flag_clear() {
@@ -945,7 +945,7 @@ async fn test_feed_create_without_bond_mirror_rejected() {
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::BondDoesNotCoverRate));
 }
 
-/// RFC-28 is one feed per bond: a second feed needs a second bond, and each feed is
+/// RFC-29 is one feed per bond: a second feed needs a second bond, and each feed is
 /// collateralized on its own, so slashing one never reaches another. The first feed spends the
 /// bond, and a second feed pointed at the same one is refused even though the tier still covers
 /// its rate.
@@ -1070,7 +1070,7 @@ async fn test_feed_create_omitting_bond_mirror_rejected() {
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::BondMirrorMissing));
 }
 
-/// RFC-28 grants a builder publish rights to its own feed's groups. No instruction does that as
+/// RFC-29 grants a builder publish rights to its own feed's groups. No instruction does that as
 /// part of `CreateFeed`, and none needs to: the groups are created with `owner` set to the builder,
 /// and `AddMulticastGroupPubAllowlist` authorizes on `mgroup.owner == payer`. So the builder grants
 /// its own rights, without the catalog admin who created the feed.
@@ -1202,7 +1202,7 @@ async fn test_builder_grants_its_own_publish_rights() {
 /// A relayer updating a mirror must not wipe the feed that claimed the bond.
 ///
 /// The cross-instruction invariant between A3 and A6, and the one a relayer could break by
-/// accident. `CreateFeed` writes `feed_key` to spend the bond, which is what makes RFC-28's one
+/// accident. `CreateFeed` writes `feed_key` to spend the bond, which is what makes RFC-29's one
 /// feed per bond true. A relayer rebuilding the mirror from Solana alone would zero it and the
 /// bond would back two feeds, so `WriteBondMirror` carries the value forward and never takes it
 /// from the caller.
@@ -1323,7 +1323,7 @@ async fn test_a_mirror_update_keeps_the_claiming_feed() {
     );
 }
 
-/// RFC-28's claim, in one test. A builder holding no permission deploys a feed because it posted a
+/// RFC-29's claim, in one test. A builder holding no permission deploys a feed because it posted a
 /// bond, and nothing grants it anything. Before A7 this failed with `NotAllowed`, because the bond
 /// bought tier coverage on top of a permission an admin still had to hand over.
 #[tokio::test]

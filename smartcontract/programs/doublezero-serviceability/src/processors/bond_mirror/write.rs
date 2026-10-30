@@ -52,7 +52,7 @@ impl fmt::Debug for BondMirrorWriteArgs {
 /// This is an assertion, not a proof. A DZ ledger program cannot read a Solana account, so the
 /// caller is a relayer reporting what it saw, and the mirror is worth exactly as much as the key
 /// that signed it. `BOND_ORACLE` is that key, revocable through the `Permission` account. See the
-/// trust anchors section of the RFC-28 architecture notes.
+/// trust anchors section of the RFC-29 architecture notes.
 ///
 /// Accounts: `[bond_mirror, globalstate, payer, system_program, (permission)]`.
 pub fn process_write_bond_mirror(
@@ -86,7 +86,7 @@ pub fn process_write_bond_mirror(
         permission_flags::BOND_ORACLE,
     )?;
 
-    // Ships dormant with the rest of RFC-28. A cluster that cannot create a bonded feed has no
+    // Ships dormant with the rest of RFC-29. A cluster that cannot create a bonded feed has no
     // use for a mirror, and this keeps the whole feature behind one switch.
     if !is_feature_enabled(globalstate.feature_flags, FeatureFlag::AllowBondedFeeds) {
         msg!("Bonded feeds are not enabled on this cluster");

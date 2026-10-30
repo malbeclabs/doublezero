@@ -6,7 +6,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use std::{fmt, str::FromStr};
 
-/// Where a feed sits in the RFC-28 deployment lifecycle.
+/// Where a feed sits in the RFC-29 deployment lifecycle.
 ///
 /// Every feed is `Active` on creation. A catalog feed has no builder to attest, and a bonded feed
 /// is admitted by the bond `CreateFeed` checks. `Pending` remains for bonded feeds created before
@@ -109,7 +109,7 @@ pub struct Feed {
     pub exchange: Pubkey,          // 32 (PDA seed, immutable) - the metro this feed serves
     pub groups: Vec<Pubkey>,       // 4 + 32*len - multicast groups joinable in this metro
 
-    // RFC-28 fields. Everything below is absent from feeds created before RFC-28, so every one of
+    // RFC-29 fields. Everything below is absent from feeds created before RFC-29, so every one of
     // them decodes to a default on a short account and is written back on the next update.
     /// The builder that deployed this feed and posted its bond, zero for a catalog feed with no
     /// builder. The `BondMirror` is keyed on `bond_ref`, not on this, so that one bond backs
@@ -217,7 +217,7 @@ impl TryFrom<&[u8]> for Feed {
             sla_hash: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             committed_rate_bits_per_sec: BorshDeserialize::deserialize(&mut data)
                 .unwrap_or_default(),
-            // Not `Pending`: a feed account written before RFC-28 has no status byte, and reading
+            // Not `Pending`: a feed account written before RFC-29 has no status byte, and reading
             // one as Pending would pull every live catalog feed out of service.
             status: BorshDeserialize::deserialize(&mut data).unwrap_or(FeedStatus::Active),
             // Zero on a feed written before this field existed, which reads as "not halted by
@@ -303,22 +303,22 @@ mod tests {
         assert_eq!(feed.groups_for(&Pubkey::new_unique()), &[] as &[Pubkey]);
     }
 
-    /// A feed account written before RFC-28 has no tail. It must still decode, and it must decode
+    /// A feed account written before RFC-29 has no tail. It must still decode, and it must decode
     /// as Active: reading it as Pending would pull every live catalog feed out of service.
     #[test]
-    fn test_pre_rfc28_feed_decodes_active_with_defaults() {
+    fn test_pre_rfc29_feed_decodes_active_with_defaults() {
         let exchange = Pubkey::new_unique();
         let group = Pubkey::new_unique();
-        let mut pre_rfc28 = Vec::new();
-        AccountType::Feed.serialize(&mut pre_rfc28).unwrap();
-        Pubkey::new_unique().serialize(&mut pre_rfc28).unwrap();
-        1u8.serialize(&mut pre_rfc28).unwrap();
-        "shreds".to_string().serialize(&mut pre_rfc28).unwrap();
-        "Shreds".to_string().serialize(&mut pre_rfc28).unwrap();
-        exchange.serialize(&mut pre_rfc28).unwrap();
-        vec![group].serialize(&mut pre_rfc28).unwrap();
+        let mut pre_rfc29 = Vec::new();
+        AccountType::Feed.serialize(&mut pre_rfc29).unwrap();
+        Pubkey::new_unique().serialize(&mut pre_rfc29).unwrap();
+        1u8.serialize(&mut pre_rfc29).unwrap();
+        "shreds".to_string().serialize(&mut pre_rfc29).unwrap();
+        "Shreds".to_string().serialize(&mut pre_rfc29).unwrap();
+        exchange.serialize(&mut pre_rfc29).unwrap();
+        vec![group].serialize(&mut pre_rfc29).unwrap();
 
-        let feed = Feed::try_from(&pre_rfc28[..]).unwrap();
+        let feed = Feed::try_from(&pre_rfc29[..]).unwrap();
         assert_eq!(feed.groups_for(&exchange), &[group]);
         assert_eq!(feed.status, FeedStatus::Active);
         assert_eq!(feed.builder, Pubkey::default());
@@ -329,7 +329,7 @@ mod tests {
         assert_eq!(feed.feed_chain, FeedChain::Unspecified);
     }
 
-    /// The RFC-28 tail round-trips, and a bonded feed keeps a `Pending` status. A bonded feed
+    /// The RFC-29 tail round-trips, and a bonded feed keeps a `Pending` status. A bonded feed
     /// created before `CreateFeed` started every feed `Active` still holds one.
     #[test]
     fn test_bonded_feed_roundtrip_keeps_pending() {

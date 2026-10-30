@@ -516,7 +516,7 @@ func DeserializeFeed(reader *ByteReader, feed *Feed) {
 	// groups.
 	feed.Exchange = reader.ReadPubkey()
 	feed.Groups = reader.ReadPubkeySlice()
-	hasRfc28Tail := reader.Remaining() > 0
+	hasRfc29Tail := reader.Remaining() > 0
 	feed.Builder = reader.ReadPubkey()
 	feed.BondRef = reader.ReadPubkey()
 	feed.SpecId = reader.ReadString()
@@ -524,7 +524,7 @@ func DeserializeFeed(reader *ByteReader, feed *Feed) {
 		copy(feed.SlaHash[:], slaHash)
 	}
 	feed.CommittedRateBitsPerSec = reader.ReadU64()
-	if hasRfc28Tail {
+	if hasRfc29Tail {
 		feed.Status = FeedStatus(reader.ReadU8())
 	} else {
 		feed.Status = FeedStatusActive

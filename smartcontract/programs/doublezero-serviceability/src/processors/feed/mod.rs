@@ -174,7 +174,7 @@ pub fn enforce_feed_metro_gate(
 /// status changes, so retirement and slashing need no sweep over the access passes that already
 /// carry a seat for it.
 ///
-/// `Retiring` admits, and that is the point of the state. RFC-28 gives seat holders thirty days
+/// `Retiring` admits, and that is the point of the state. RFC-29 gives seat holders thirty days
 /// notice *before publication stops*, so a feed serves its existing holders throughout. Refusing
 /// here would lock out anyone who reconnects on the first day of the notice, which would leave the
 /// notice protecting only the population that cannot come back. A new seat is refused instead
@@ -197,7 +197,7 @@ pub fn require_feed_admits(feed_key: &Pubkey, feed: &Feed) -> Result<(), DoubleZ
 
 /// Whether `payer` may change this feed's lifecycle.
 ///
-/// Two ways in, for different reasons. The feed's own builder, because RFC-28 makes halt the
+/// Two ways in, for different reasons. The feed's own builder, because RFC-29 makes halt the
 /// builder's lever and a builder that cannot halt its own feed cannot rotate its upstream source.
 /// A `FEED_AUTHORITY` or `FOUNDATION` key, because a feed whose builder has gone quiet must still
 /// be stoppable, and every other feed instruction already authorizes that way.

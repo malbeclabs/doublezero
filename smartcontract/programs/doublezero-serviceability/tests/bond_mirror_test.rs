@@ -1,4 +1,4 @@
-//! Integration tests for `WriteBondMirror` (RFC-28 A6).
+//! Integration tests for `WriteBondMirror` (RFC-29 A6).
 //!
 //! The instruction that gives the relayer something to call. Everything here is about what the
 //! program refuses, because the mirror is an assertion and these checks are all that bound it.
@@ -287,7 +287,7 @@ async fn test_only_a_bond_oracle_can_write() {
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
 }
 
-/// The mirror ships dormant with the rest of RFC-28: with the flag clear, even a `BOND_ORACLE`
+/// The mirror ships dormant with the rest of RFC-29: with the flag clear, even a `BOND_ORACLE`
 /// holder is refused.
 #[tokio::test]
 async fn test_writing_is_refused_while_the_flag_is_clear() {

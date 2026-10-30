@@ -80,8 +80,8 @@ frontend for builder-deployed feeds.
 2. **One feed per bond.** A builder running a second feed posts a second bond. Each
    feed has its own collateral, so losing one bond never touches another.
 
-3. **Minimum hold.** A builder can't withdraw for 180 days after posting its first
-   bond. Later bonds don't restart the clock, so a top-up after a requirement change
+3. **Minimum hold.** A builder can't withdraw from a bond for 180 days after first
+   funding it. Later deposits to that bond don't restart the clock, so a top-up after a requirement change
    can't push the withdrawal date out. After 180 days, a builder can withdraw
    anything above the current requirement.
 
@@ -135,7 +135,12 @@ Real-time data other than market data needs a wire spec that doesn't exist yet.
 market-by-price, order intent, perp stats, and the reference data they share.
 Nothing there carries arbitrary payloads.
 
-Builder-Deployed Edge launches on the market data specs that exist. To carry
+Builder-Deployed Edge launches on the market data specs that exist. The
+[conformance suite](https://github.com/malbeclabs/edge-feed-spec/tree/main/tools/conformance)
+does not yet check order intent or perp stats, so feeds on those specs wait for
+their checkers.
+
+To carry
 anything else, [edge-feed-spec](https://github.com/malbeclabs/edge-feed-spec) needs a generic envelope: the standard DoubleZero
 Edge datagram header, followed by a payload the publisher defines and the transport
 does not inspect. The header is what makes [conformance](https://github.com/malbeclabs/edge-feed-spec/tree/main/tools/conformance) testable, so a feed of
@@ -148,8 +153,9 @@ A feed is deployed, runs, and eventually retires.
 
 A builder can halt a feed and resume it later, for example to switch upstream
 sources without redeploying. Retiring is permanent: subscribers get thirty days'
-notice, then publishing stops. The builder's bond is released once it has no
-active feed left.
+notice, then publishing stops. Releasing the bond at retirement is not built
+yet. Until it is, the builder can withdraw only what exceeds the requirement,
+after the hold.
 
 ## Data integrity
 
@@ -237,8 +243,9 @@ For each feed, the builder picks one of two paths.
 **Its own entitlement system.** The builder applies whatever criteria it needs and
 admits subscribers itself. The only requirement is that admission goes through the
 protocol's onchain primitives: a seat is an `AccessPass` entry, created by the same
-instruction no matter who calls it. Their code is public and documented, so
-a builder needs nothing from us to build against them.
+instruction no matter who calls it. Today that instruction needs the
+`ACCESS_PASS_ADMIN` permission, so a builder's entitlement service needs it
+granted before it can admit anyone.
 
 **DoubleZero purchasing and guided access.** The subscriber signs up at
 doublezero.xyz, pays, and receives a seat. Anyone who completes the process is

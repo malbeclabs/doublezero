@@ -27,7 +27,7 @@ def compat_client() -> Client:
     from revdist.config import PROGRAM_ID, LEDGER_RPC_URLS
     from revdist.rpc import new_rpc_client
 
-    rpc_url = os.environ.get("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
+    rpc_url = os.environ.get("SOLANA_RPC_URL") or "https://api.mainnet-beta.solana.com"
     return Client(
         new_rpc_client(rpc_url),
         new_rpc_client(LEDGER_RPC_URLS["mainnet-beta"]),
@@ -36,7 +36,7 @@ def compat_client() -> Client:
 
 
 def _rpc_url() -> str:
-    return os.environ.get("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
+    return os.environ.get("SOLANA_RPC_URL") or "https://api.mainnet-beta.solana.com"
 
 
 async def fetch_raw_account(addr: Pubkey) -> bytes:

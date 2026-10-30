@@ -72,6 +72,11 @@ jobs:
         run: make check-fixtures
 
   sdk-compat-test:
+    # Needs secrets.SOLANA_RPC_URL, which GitHub withholds from fork and Dependabot PRs.
+    if: >-
+      github.event_name != 'pull_request' ||
+      (github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -86,3 +91,5 @@ jobs:
       - run: make sdk-compat-test
         env:
           REVDIST_COMPAT_TEST: "1"
+          # The public Solana RPC refuses GitHub runners' addresses.
+          SOLANA_RPC_URL: ${{ secrets.SOLANA_RPC_URL }}

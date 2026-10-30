@@ -36,7 +36,7 @@ function skipUnlessCompat(): void {
 }
 
 function rpcUrl(): string {
-  return process.env.SOLANA_RPC_URL || LEDGER_RPC_URLS["mainnet-beta"];
+  return process.env.LEDGER_RPC_URL || LEDGER_RPC_URLS["mainnet-beta"];
 }
 
 function programId(): PublicKey {

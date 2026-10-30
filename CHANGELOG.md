@@ -16,6 +16,8 @@ All notable changes to this project will be documented in this file.
   - `DeleteDevice` closes only the device's own resource accounts: its `TunnelIds` account, then its `DzPrefixBlock` accounts.
 - Geolocation
   - The foundation check reads the program config and the serviceability global state only from their PDAs. An account at another address fails with `InvalidSeeds`.
+- SDK
+  - The compat tests read the Solana mainnet RPC from `SOLANA_RPC_URL`, which CI sets from a secret because the public endpoint refuses GitHub runners. The serviceability compat tests read the ledger from `LEDGER_RPC_URL`, not `SOLANA_RPC_URL`.
 
 ## [v0.46.0](https://github.com/malbeclabs/doublezero/compare/client/v0.45.0...client/v0.46.0) - 2026-10-27
 

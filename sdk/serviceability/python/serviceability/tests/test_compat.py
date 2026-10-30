@@ -30,7 +30,7 @@ def skip_unless_compat() -> None:
 
 
 def _rpc_url() -> str:
-    return os.environ.get("SOLANA_RPC_URL", LEDGER_RPC_URLS["mainnet-beta"])
+    return os.environ.get("LEDGER_RPC_URL") or LEDGER_RPC_URLS["mainnet-beta"]
 
 
 def _program_id() -> Pubkey:

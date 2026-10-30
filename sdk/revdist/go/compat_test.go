@@ -51,10 +51,19 @@ func compatNetworkConfig(t *testing.T) *config.NetworkConfig {
 	return cfg
 }
 
+// compatSolanaRPCURL is the Solana mainnet RPC the compat tests read. SOLANA_RPC_URL
+// overrides the public endpoint, which refuses requests from CI runners' addresses.
+func compatSolanaRPCURL(cfg *config.NetworkConfig) string {
+	if url := os.Getenv("SOLANA_RPC_URL"); url != "" {
+		return url
+	}
+	return cfg.SolanaRPCURL
+}
+
 func compatClient(t *testing.T) (*Client, solana.PublicKey) {
 	t.Helper()
 	cfg := compatNetworkConfig(t)
-	rpcClient := NewRPCClient(cfg.SolanaRPCURL)
+	rpcClient := NewRPCClient(compatSolanaRPCURL(cfg))
 	ledger := &rpcLedgerClient{rpc: NewRPCClient(cfg.LedgerPublicRPCURL)}
 	return NewWithLedger(rpcClient, cfg.RevenueDistributionProgramID, ledger), cfg.RevenueDistributionProgramID
 }
@@ -62,7 +71,7 @@ func compatClient(t *testing.T) (*Client, solana.PublicKey) {
 func compatRPCClient(t *testing.T) *solanarpc.Client {
 	t.Helper()
 	cfg := compatNetworkConfig(t)
-	return NewRPCClient(cfg.SolanaRPCURL)
+	return NewRPCClient(compatSolanaRPCURL(cfg))
 }
 
 func fetchRawAccount(t *testing.T, rpcClient *solanarpc.Client, addr solana.PublicKey) []byte {

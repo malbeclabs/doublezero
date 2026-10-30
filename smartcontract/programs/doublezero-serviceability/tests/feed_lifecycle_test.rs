@@ -1,4 +1,4 @@
-//! Halt and resume, and every transition they refuse (RFC-28 D1).
+//! Halt and resume, and every transition they refuse (RFC-29 D1).
 //!
 //! The status field and the gate that reads it landed in A5. What was missing was any way to move
 //! the status, so a bonded feed sat in `Pending` for life and no feed could stop publishing.
@@ -506,7 +506,7 @@ async fn test_a_builder_cannot_lift_an_operator_halt() {
     );
 }
 
-/// A builder's own halt is the builder's to lift, which is the source rotation RFC-28 asks for.
+/// A builder's own halt is the builder's to lift, which is the source rotation RFC-29 asks for.
 #[tokio::test]
 async fn test_a_builder_lifts_its_own_halt() {
     let builder = test_payer();

@@ -16,7 +16,7 @@ pub struct CreateFeedCommand {
     /// Multicast groups joinable in this metro.
     pub groups: Vec<Pubkey>,
     pub feed_chain: FeedChain,
-    /// The RFC-28 terms that make this a bonded feed. `None` creates a catalog feed.
+    /// The RFC-29 terms that make this a bonded feed. `None` creates a catalog feed.
     pub bond: Option<FeedBondTerms>,
 }
 

@@ -1,8 +1,8 @@
 use bytemuck::{Pod, Zeroable};
 
-/// What a bond costs at each RFC-28 rate tier, in the 2Z mint's smallest unit.
+/// What a bond costs at each RFC-29 rate tier, in the 2Z mint's smallest unit.
 ///
-/// RFC-28 quotes the tiers in dollars (about $100k, $200k and $500k) but fixes the bond "in 2Z,
+/// RFC-29 quotes the tiers in dollars (about $100k, $200k and $500k) but fixes the bond "in 2Z,
 /// at the price prevailing when the tier is set". So these are 2Z amounts an admin sets, not a
 /// price feed this program reads.
 ///

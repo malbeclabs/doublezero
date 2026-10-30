@@ -251,7 +251,7 @@ pub enum DoubleZeroError {
     BondMirrorMissing, // variant 119
     #[error("The builder's bond does not cover the rate this feed commits to")]
     BondDoesNotCoverRate, // variant 120
-    #[error("This bond already backs a feed; RFC-28 is one feed per bond")]
+    #[error("This bond already backs a feed; RFC-29 is one feed per bond")]
     BondAlreadyBacksFeed, // variant 121
     #[error("A bonded feed must be retired, not deleted; deleting it would strand its bond")]
     BondedFeedCannotBeDeleted, // variant 122
@@ -583,7 +583,7 @@ mod tests {
 
     /// Pins the wire code. `test_error_enum_conversions` below round-trips every variant, so it
     /// would still pass if this one were renumbered; an offchain reader matching on 131 would
-    /// not. Rebasing this work over the RFC-28 feed lifecycle already moved it once.
+    /// not. Rebasing this work over the RFC-29 feed lifecycle already moved it once.
     #[test]
     fn test_invalid_access_pass_type_code() {
         assert_eq!(

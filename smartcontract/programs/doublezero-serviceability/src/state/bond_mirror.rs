@@ -6,7 +6,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
 use std::fmt;
 
-/// A bond tier from RFC-28. The bond is sized against the rate a builder commits to, so the
+/// A bond tier from RFC-29. The bond is sized against the rate a builder commits to, so the
 /// tier is what a bond buys: the highest rate a feed backed by it may commit to.
 #[repr(u8)]
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Eq, Default, Copy, Clone)]
@@ -59,7 +59,7 @@ impl fmt::Display for BondTier {
 /// much as the key that signed it, which is recorded in `relayer`. A relayer can lie in both
 /// directions, so who is allowed to sign one is a trust decision, not an implementation detail.
 ///
-/// One mirror per bond. `bond_ref` is the PDA seed, so it is immutable. RFC-28 collateralizes
+/// One mirror per bond. `bond_ref` is the PDA seed, so it is immutable. RFC-29 collateralizes
 /// each feed on its own bond, so the mirror is keyed on the bond and not on the builder, and
 /// `feed_key` records the one feed that bond has been spent on.
 #[derive(BorshSerialize, BorshDeserialize, Debug, PartialEq, Clone, Default)]
@@ -121,7 +121,7 @@ pub struct BondMirror {
         )
     )]
     /// The feed this bond has been spent on, default until a feed claims it. `CreateFeed` sets it
-    /// and refuses a bond that already carries one, which is what makes RFC-28's one feed per
+    /// and refuses a bond that already carries one, which is what makes RFC-29's one feed per
     /// bond true. A relayer updating the mirror must carry this value forward, not zero it.
     pub feed_key: Pubkey, // 32
     /// How many multicast groups this bond has created. `CreateMulticastGroup` refuses a bond

@@ -32,7 +32,7 @@ pub struct FeedActivateArgs {}
 /// payload here before anything consumes it would fix its shape at the point we know least about
 /// it. What the caller's signature asserts is the whole of the verdict for now.
 ///
-/// The builder cannot sign this, unlike halt and resume, which RFC-28 makes its own levers. A feed
+/// The builder cannot sign this, unlike halt and resume, which RFC-29 makes its own levers. A feed
 /// created `Pending` was created to wait on someone other than its builder, so a builder that
 /// admitted it would be attesting to its own conformance. A feed created now is admitted by its
 /// bond at `CreateFeed` instead. The builder is refused by name before the permission check rather

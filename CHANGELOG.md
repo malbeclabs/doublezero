@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Go
+  - Every Go binary in the main module, `doublezerod` included, opens plain TCP listeners instead of MPTCP listeners. Go 1.24 and later turn MPTCP on for listeners by default, and the module now turns it off with `godebug multipathtcp=0`.
 - Release
   - `doublezero-solana` 0.6.1. It adds `feeds publisher-rewards status --node-id <ID>`, which shows a validator what the feed program paid it in each of the last three calendar months. (#4473)
 - Serviceability

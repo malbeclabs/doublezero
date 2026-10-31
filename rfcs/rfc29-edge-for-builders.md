@@ -1,4 +1,4 @@
-# RFC-29: Builder-Deployed Edge
+# RFC-29: DoubleZero Edge for Builders
 
 **Status:** Implemented
 **Author:** Andrew McConnell
@@ -6,7 +6,7 @@
 ## Summary
 
 DoubleZero Edge distributes real-time, machine-generated data around the world
-through a dedicated fiber network. This RFC proposes Builder-Deployed Edge: a way for anyone to deploy a real-time
+through a dedicated fiber network. This RFC proposes DoubleZero Edge for Builders: a way for anyone to deploy a real-time
 data feed on DoubleZero Edge by posting a 2Z bond. It starts with market data, but
 it can be adapted to carry any kind of real-time feed.
 
@@ -135,7 +135,7 @@ Real-time data other than market data needs a wire spec that doesn't exist yet.
 market-by-price, order intent, perp stats, and the reference data they share.
 Nothing there carries arbitrary payloads.
 
-Builder-Deployed Edge launches on the market data specs that exist. The
+Edge for Builders launches on the market data specs that exist. The
 [conformance suite](https://github.com/malbeclabs/edge-feed-spec/tree/main/tools/conformance)
 does not yet check order intent or perp stats, so feeds on those specs wait for
 their checkers.

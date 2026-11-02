@@ -34,7 +34,7 @@ use solana_commitment_config::CommitmentConfig;
 use solana_compute_budget_interface::ComputeBudgetInstruction;
 use solana_sdk::{
     account::Account, instruction::Instruction, message::Message, program_pack::Pack,
-    pubkey::Pubkey,
+    pubkey::Pubkey, signature::Signer,
 };
 use spl_associated_token_account_interface::{
     address::get_associated_token_address, instruction::create_associated_token_account_idempotent,
@@ -218,10 +218,20 @@ impl ClaimCommand {
                     actor.label(),
                     actor.label()
                 );
+                // The fee payer already signs every transaction, so it funds the rent when
+                // the operator sets one, and a manager key with no SOL can still claim.
+                let funding_key = match &actor {
+                    Actor::Wallet(wallet) => wallet
+                        .fee_payer
+                        .as_ref()
+                        .map(Signer::pubkey)
+                        .unwrap_or(actor_key),
+                    Actor::Vault(_) => actor_key,
+                };
                 (
                     actor_key,
                     Some(create_associated_token_account_idempotent(
-                        &actor_key,
+                        &funding_key,
                         &actor_key,
                         &doublezero_mint_key,
                         &spl_token_interface::ID,
@@ -834,12 +844,37 @@ mod tests {
         assert!(pack_holdings(&[], |_| Ok(true)).unwrap().is_empty());
     }
 
-    fn direct_batches(wallet: &Wallet, holdings: &[HoldingToClaim]) -> usize {
+    // The create instruction a wallet manager's claim carries, funded by the fee payer when
+    // the wallet has one, with the compute units that create costs.
+    fn create_destination(wallet: &Wallet) -> (Instruction, u32) {
+        let mint_key = Pubkey::new_unique();
+        let funding_key = wallet
+            .fee_payer
+            .as_ref()
+            .map(Signer::pubkey)
+            .unwrap_or(wallet.pubkey());
+        let create_destination_ix = create_associated_token_account_idempotent(
+            &funding_key,
+            &wallet.pubkey(),
+            &mint_key,
+            &spl_token_interface::ID,
+        );
+        let units = Wallet::ata_address_and_create_compute_units(&wallet.pubkey(), &mint_key).1;
+        (create_destination_ix, units)
+    }
+
+    fn direct_batches(
+        wallet: &Wallet,
+        holdings: &[HoldingToClaim],
+        create_destination: Option<&(Instruction, u32)>,
+    ) -> usize {
+        let create_destination_ix = create_destination.map(|(ix, _)| ix);
+        let create_destination_units = create_destination.map_or(0, |(_, units)| *units);
         let price_ix = ComputeBudgetInstruction::set_compute_unit_price(1_000);
         let batches = pack_holdings(holdings, |batch| {
             Ok(wallet.try_transaction_size(&build_claim_transaction(
-                None,
-                0,
+                create_destination_ix,
+                create_destination_units,
                 batch,
                 Some(&price_ix),
             ))? <= MAX_TRANSACTION_SIZE)
@@ -852,8 +887,8 @@ mod tests {
             for compute_unit_price_ix in [None, Some(&price_ix)] {
                 let size = wallet
                     .try_transaction_size(&build_claim_transaction(
-                        None,
-                        0,
+                        create_destination_ix,
+                        create_destination_units,
                         batch,
                         compute_unit_price_ix,
                     ))
@@ -864,7 +899,12 @@ mod tests {
         let overfull = &holdings[..batches[0].len() + 1];
         assert!(
             wallet
-                .try_transaction_size(&build_claim_transaction(None, 0, overfull, Some(&price_ix)))
+                .try_transaction_size(&build_claim_transaction(
+                    create_destination_ix,
+                    create_destination_units,
+                    overfull,
+                    Some(&price_ix),
+                ))
                 .unwrap()
                 > MAX_TRANSACTION_SIZE
         );
@@ -876,14 +916,20 @@ mod tests {
     fn test_direct_transaction_takes_7_holdings_with_one_signer() {
         let wallet = wallet(None);
         let holdings = holdings(&wallet.pubkey(), &Pubkey::new_unique(), &[3; 30]);
-        assert_eq!(direct_batches(&wallet, &holdings), 7);
+        assert_eq!(direct_batches(&wallet, &holdings, None), 7);
+
+        let create_destination = create_destination(&wallet);
+        assert!(direct_batches(&wallet, &holdings, Some(&create_destination)) < 7);
     }
 
     #[test]
     fn test_direct_transaction_takes_6_holdings_with_a_distinct_fee_payer() {
         let wallet = wallet(Some(Keypair::new()));
         let holdings = holdings(&wallet.pubkey(), &Pubkey::new_unique(), &[3; 30]);
-        assert_eq!(direct_batches(&wallet, &holdings), 6);
+        assert_eq!(direct_batches(&wallet, &holdings, None), 6);
+
+        let create_destination = create_destination(&wallet);
+        assert!(direct_batches(&wallet, &holdings, Some(&create_destination)) < 6);
     }
 
     #[test]
@@ -903,6 +949,36 @@ mod tests {
             ]
         );
         assert_eq!(build_claim_transaction(None, 0, &holdings, None).len(), 3);
+    }
+
+    #[test]
+    fn test_build_claim_transaction_creates_the_destination_before_the_claims() {
+        let wallet = wallet(Some(Keypair::new()));
+        let holdings = holdings(&wallet.pubkey(), &Pubkey::new_unique(), &[3, 4]);
+        let (create_destination_ix, create_destination_units) = create_destination(&wallet);
+
+        let instructions = build_claim_transaction(
+            Some(&create_destination_ix),
+            create_destination_units,
+            &holdings,
+            None,
+        );
+        assert_eq!(
+            instructions,
+            vec![
+                create_destination_ix.clone(),
+                holdings[0].claim_ix.clone(),
+                holdings[1].claim_ix.clone(),
+                ComputeBudgetInstruction::set_compute_unit_limit(
+                    2 * CLAIM_COMPUTE_UNITS + create_destination_units
+                ),
+            ]
+        );
+        assert_eq!(
+            create_destination_ix.accounts[0].pubkey,
+            wallet.fee_payer.as_ref().unwrap().pubkey()
+        );
+        assert_eq!(create_destination_ix.accounts[2].pubkey, wallet.pubkey());
     }
 
     fn vault_batches(

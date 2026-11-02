@@ -52,7 +52,7 @@ func compatNetworkConfig(t *testing.T) *config.NetworkConfig {
 }
 
 func compatSolanaRPCURL(cfg *config.NetworkConfig) string {
-	if url := os.Getenv("SOLANA_RPC_URL"); url != "" {
+	if url := os.Getenv("SOLANA_MAINNET_RPC_URL"); url != "" {
 		return url
 	}
 	return cfg.SolanaRPCURL

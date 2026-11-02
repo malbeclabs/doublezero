@@ -86,4 +86,4 @@ jobs:
       - run: make sdk-compat-test
         env:
           REVDIST_COMPAT_TEST: "1"
-          SOLANA_RPC_URL: ${{ secrets.SOLANA_MAINNET_RPC_URL }}
+          SOLANA_MAINNET_RPC_URL: ${{ secrets.SOLANA_MAINNET_RPC_URL }}

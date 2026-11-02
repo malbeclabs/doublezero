@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CI
+  - The SDK compatibility test reads mainnet through the `SOLANA_MAINNET_RPC_URL` repository secret, because the public Solana RPC blocks GitHub runner addresses.
 - Go
   - Every Go binary in the main module, `doublezerod` included, opens plain TCP listeners instead of MPTCP listeners. Go 1.24 and later turn MPTCP on for listeners by default, and the module now turns it off with `godebug multipathtcp=0`.
 - Release

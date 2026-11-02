@@ -19,7 +19,7 @@ All notable changes to this project will be documented in this file.
 - Geolocation
   - The foundation check reads the program config and the serviceability global state only from their PDAs. An account at another address fails with `InvalidSeeds`.
 - RFCs
-  - Add RFC-29, Builder-Deployed Edge.
+  - Add RFC-29, DoubleZero Edge for Builders.
 
 ## [v0.46.0](https://github.com/malbeclabs/doublezero/compare/client/v0.45.0...client/v0.46.0) - 2026-10-27
 

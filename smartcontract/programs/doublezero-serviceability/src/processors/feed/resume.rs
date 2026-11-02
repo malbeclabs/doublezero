@@ -49,7 +49,7 @@ pub fn process_resume_feed(
     assert!(feed_account.is_writable, "PDA Account is not writable");
 
     let mut feed = Feed::try_from(feed_account)?;
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
 
     // The bond mirror rides after the fixed accounts, found by its address rather than its
     // position, so a catalog feed's caller is not forced to send one.

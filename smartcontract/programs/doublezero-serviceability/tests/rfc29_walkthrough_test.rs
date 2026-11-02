@@ -1,4 +1,4 @@
-//! The RFC-28 sequence, driven end to end through real instructions.
+//! The RFC-29 sequence, driven end to end through real instructions.
 //!
 //! What is new here is the reach: a real `CreateFeed` against a mirror a real `WriteBondMirror`
 //! produced, ending on a feed that sells seats. The relayer mirrors a bond, a builder holding no
@@ -80,7 +80,7 @@ async fn test_a_builder_deploys_a_feed_that_sells_seats_at_once() {
     )
     .await;
 
-    // ---- Operator: turn the RFC-28 path on. -------------------------------------------------
+    // ---- Operator: turn the RFC-29 path on. -------------------------------------------------
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     execute_transaction(
         &mut banks_client,

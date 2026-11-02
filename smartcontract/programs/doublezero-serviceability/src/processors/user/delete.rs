@@ -130,7 +130,7 @@ pub fn process_delete_user(
 
     let user: User = User::try_from(user_account)?;
 
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     // The user owner can always delete their own account without a Permission account.
     if user.owner != *payer_account.key {
         authorize(

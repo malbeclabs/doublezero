@@ -86,7 +86,7 @@ pub fn process_add_multicastgroup_sub_allowlist(
 
     // Parse the global state account
     let mgroup = MulticastGroup::try_from(mgroup_account)?;
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
 
     // Authorization: the multicast group owner, or ACCESS_PASS_ADMIN (Permission
     // account) / foundation-sentinel-feed (legacy).

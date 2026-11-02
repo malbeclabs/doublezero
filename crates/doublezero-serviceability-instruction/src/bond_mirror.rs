@@ -31,7 +31,7 @@ use crate::common;
 /// and writes nothing, so marking it writable would take a lock it does not need.
 ///
 /// The mirror PDA derives from `args.bond_ref`, the `builder-bond` account being mirrored, not
-/// from the builder: RFC-28 collateralizes each feed on its own bond, and a builder-keyed address
+/// from the builder: RFC-29 collateralizes each feed on its own bond, and a builder-keyed address
 /// would let one bond back two feeds.
 pub fn write_bond_mirror(
     program_id: &Pubkey,
@@ -96,7 +96,7 @@ mod tests {
     }
 
     /// Keyed on the bond, not the builder. Two bonds held by one builder mirror to two accounts,
-    /// which is what makes RFC-28's one feed per bond enforceable.
+    /// which is what makes RFC-29's one feed per bond enforceable.
     #[test]
     fn test_the_mirror_derives_from_the_bond_not_the_builder() {
         let program_id = Pubkey::new_unique();

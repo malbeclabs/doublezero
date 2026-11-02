@@ -65,7 +65,7 @@ pub fn process_suspend_exchange(
     );
 
     // Parse accounts
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     let mut exchange: Exchange = Exchange::try_from(exchange_account)?;
 
     // Authorization:

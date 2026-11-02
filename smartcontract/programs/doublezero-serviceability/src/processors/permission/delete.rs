@@ -69,7 +69,7 @@ pub fn process_delete_permission(
         return Err(DoubleZeroError::InvalidArgument.into());
     }
 
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     authorize(
         program_id,
         accounts_iter,

@@ -6,7 +6,7 @@ use solana_pubkey::Pubkey;
 ///
 /// A bond, not a deposit: it is returnable after the hold and forfeitable by slashing.
 ///
-/// RFC-28 collateralizes each feed on its own bond: "A builder running a second feed posts a
+/// RFC-29 collateralizes each feed on its own bond: "A builder running a second feed posts a
 /// second bond. Each feed is collateralized on its own, so slashing one never reaches another."
 /// So the address carries `bond_index` as well as the builder, and a builder holds as many of
 /// these as it runs feeds.
@@ -32,8 +32,8 @@ pub struct BuilderBond {
     /// Follows the tier table while the bond is short, and stops moving once the bond is funded.
     /// Both halves matter. Freezing it at creation would let a builder pre-create bonds for the
     /// cost of rent and fund them after a repricing at the old price. Never freezing it would let
-    /// a repricing make a builder short after it had already paid in full, which RFC-28's "fixed
-    /// at the price prevailing when the tier is set" rules out.
+    /// a repricing make a builder short after it had already paid in full, which RFC-29 rules
+    /// out.
     pub required_2z_amount: u64,
 
     /// The rate the feed backed by this bond may commit to, in bits per second. `u64::MAX` is the
@@ -66,7 +66,7 @@ impl PrecomputedDiscriminator for BuilderBond {
 impl BuilderBond {
     pub const SEED_PREFIX: &'static [u8] = b"builder_bond";
 
-    /// RFC-28's six-month minimum hold, as 180 days.
+    /// RFC-29's six-month minimum hold, as 180 days.
     ///
     /// Days rather than calendar months: a month has no fixed length, and the alternative is
     /// calendar arithmetic onchain to move a boundary by at most three days. `AccessPass` does

@@ -73,7 +73,7 @@ pub fn process_suspend_permission(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     authorize(
         program_id,
         accounts_iter,

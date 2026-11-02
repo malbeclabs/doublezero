@@ -535,11 +535,13 @@ fn assert_rejected(result: Result<(), BanksClientError>, expected: DoubleZeroErr
 /// skip the check as redundant.
 async fn setup() -> Fixture {
     let program_id = Pubkey::new_unique();
-    let program_test = ProgramTest::new(
+    let mut program_test = ProgramTest::new(
         "doublezero_serviceability",
         program_id,
         processor!(process_instruction),
     );
+    // SetGlobalConfig's PDA derivations can exceed the default budget for some program ids.
+    program_test.set_compute_max_units(1_400_000);
     let mut context = program_test.start_with_context().await;
     let payer = context.payer.insecure_clone();
     let recent_blockhash = context.last_blockhash;

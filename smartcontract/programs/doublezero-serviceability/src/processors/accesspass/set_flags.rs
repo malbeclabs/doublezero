@@ -81,7 +81,7 @@ pub fn process_set_access_pass_flags(
 
     // All flag changes gate on ACCESS_PASS_ADMIN (Permission PDA or legacy fallback: foundation
     // allowlist, sentinel, or feed authority), matching the sibling SetAccessPass path.
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     // Read before authorize() consumes it from the iterator.
     let feed_role = feed_authority_role(
         program_id,

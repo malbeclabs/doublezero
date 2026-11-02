@@ -4,6 +4,10 @@ go 1.26.0
 
 toolchain go1.26.10
 
+// Go 1.24+ enables MPTCP on TCP listeners by default. Turn it off for
+// every binary in this module so no listener exposes the kernel MPTCP code.
+godebug multipathtcp=0
+
 require (
 	github.com/ClickHouse/clickhouse-go/v2 v2.48.0
 	github.com/InfluxCommunity/influxdb3-go/v2 v2.17.0

@@ -1279,7 +1279,7 @@ class Feed:
     name: str = ""
     exchange: Pubkey = Pubkey.default()
     groups: list[Pubkey] = field(default_factory=list)
-    # RFC-28. Absent from feeds written before RFC-28, which decode with these defaulted and
+    # RFC-29. Absent from feeds written before RFC-29, which decode with these defaulted and
     # status FEED_STATUS_ACTIVE.
     builder: Pubkey = Pubkey.default()
     bond_ref: Pubkey = Pubkey.default()
@@ -1308,18 +1308,18 @@ class Feed:
         # A feed serves one metro: an exchange pubkey followed by a Vec<Pubkey> of joinable groups.
         f.exchange = _read_pubkey(r)
         f.groups = _read_pubkey_vec(r)
-        # RFC-28 tail. DefensiveReader returns zeros past EOF, so a feed written before RFC-28
+        # RFC-29 tail. DefensiveReader returns zeros past EOF, so a feed written before RFC-29
         # lands here with every field defaulted. Read the flag before the tail, not after: the
         # tail reads themselves leave `remaining` at zero either way.
-        has_rfc28_tail = r.remaining > 0
+        has_rfc29_tail = r.remaining > 0
         f.builder = _read_pubkey(r)
         f.bond_ref = _read_pubkey(r)
         f.spec_id = r.read_string()
         f.sla_hash = r.read_bytes(32)
         f.committed_rate_bits_per_sec = r.read_u64()
-        # Not pending: a feed written before RFC-28 has no status byte, and reading one as pending
+        # Not pending: a feed written before RFC-29 has no status byte, and reading one as pending
         # would show every live catalog feed as out of service.
-        f.status = r.read_u8() if has_rfc28_tail else FEED_STATUS_ACTIVE
+        f.status = r.read_u8() if has_rfc29_tail else FEED_STATUS_ACTIVE
         f.halted_by = _read_pubkey(r)
         f.retires_at = _read_i64(r)
         f.feed_chain = r.read_u8()

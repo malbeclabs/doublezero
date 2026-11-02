@@ -115,7 +115,7 @@ pub fn get_feed_pda(program_id: &Pubkey, code: &str, exchange: &Pubkey) -> (Pubk
 
 /// One bond mirror per bond, seeded by the `builder-bond` account it mirrors.
 ///
-/// Not seeded by the builder. RFC-28 is one feed per bond, and a second feed needs a second
+/// Not seeded by the builder. RFC-29 is one feed per bond, and a second feed needs a second
 /// bond, so a builder key would give one mirror per builder and let two feeds pass the coverage
 /// check against a single bond.
 pub fn get_bond_mirror_pda(program_id: &Pubkey, bond_ref: &Pubkey) -> (Pubkey, u8) {

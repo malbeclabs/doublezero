@@ -75,7 +75,7 @@ pub fn process_update_contributor(
     );
 
     let mut contributor = Contributor::try_from(contributor_account)?;
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
 
     let only_ops_manager_update =
         value.code.is_none() && value.owner.is_none() && value.ops_manager_pk.is_some();

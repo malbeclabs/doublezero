@@ -69,7 +69,7 @@ pub fn process_create_permission(
         return Err(ProgramError::AccountAlreadyInitialized);
     }
 
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
 
     // The SDK appends the caller's own Permission PDA as the trailing account
     // unconditionally (an uninitialized one counts as no Permission account). Capture it

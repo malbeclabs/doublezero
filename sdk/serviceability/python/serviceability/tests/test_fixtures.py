@@ -648,7 +648,7 @@ class TestFixtureFeed:
         assert feed.retires_at == -1_764_547_200
 
     def test_legacy_deserialize(self):
-        # A feed written before RFC-28 ends after groups. The bond fields default, and the status
+        # A feed written before RFC-29 ends after groups. The bond fields default, and the status
         # reads Active: reading it as Pending would show every live catalog feed as out of service.
         data, meta = _load_fixture("feed_legacy")
         feed = Feed.from_bytes(data)

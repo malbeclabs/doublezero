@@ -8,10 +8,18 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Go
+  - Every Go binary in the main module, `doublezerod` included, opens plain TCP listeners instead of MPTCP listeners. Go 1.24 and later turn MPTCP on for listeners by default, and the module now turns it off with `godebug multipathtcp=0`.
 - Release
   - `doublezero-solana` 0.6.1. It adds `feeds publisher-rewards status --node-id <ID>`, which shows a validator what the feed program paid it in each of the last three calendar months. (#4473)
 - Serviceability
   - User creation accepts only the per-IP user address.
+  - Every instruction reads the global state only from the program's global state account. An account another program owns fails with `InvalidAccountOwner` (custom error 52), and an account at another address fails with `InvalidSeeds`.
+  - `DeleteDevice` closes only the device's own resource accounts: its `TunnelIds` account, then its `DzPrefixBlock` accounts.
+- Geolocation
+  - The foundation check reads the program config and the serviceability global state only from their PDAs. An account at another address fails with `InvalidSeeds`.
+- RFCs
+  - Add RFC-29, DoubleZero Edge for Builders.
 
 ## [v0.46.0](https://github.com/malbeclabs/doublezero/compare/client/v0.45.0...client/v0.46.0) - 2026-10-27
 

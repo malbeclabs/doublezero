@@ -1,4 +1,4 @@
-//! Custody for the 2Z bond a builder posts before deploying a feed, per RFC-28.
+//! Custody for the 2Z bond a builder posts before deploying a feed, per RFC-29.
 //!
 //! This program holds user bonds and will hold burn authority over them once slashing exists.
 //! That blast radius is why it is a separate deployable from `revenue-distribution` rather than a

@@ -29,6 +29,7 @@ pub struct TenantDisplay {
     pub metro_routing: bool,
     pub route_liveness: bool,
     pub include_topologies: String,
+    pub administrators: String,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
 }
@@ -57,6 +58,12 @@ impl ListTenantCliCommand {
                     &tenant.include_topologies,
                     &topology_map,
                 ),
+                administrators: tenant
+                    .administrators
+                    .iter()
+                    .map(|pk| pk.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "),
                 owner: tenant.owner,
             })
             .collect();
@@ -97,7 +104,9 @@ mod tests {
             code: "tenant-a".to_string(),
             vrf_id: 100,
             reference_count: 0,
-            administrators: vec![],
+            administrators: vec![Pubkey::from_str_const(
+                "DZfLKFDgLShjY34WqXdVVzHUvVtrYXb7UtdrALnGa8jw",
+            )],
             token_account: Pubkey::default(),
             payment_status: TenantPaymentStatus::Paid,
             metro_routing: true,
@@ -127,7 +136,7 @@ mod tests {
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
             output_str,
-            " account                                   | code     | vrf_id | metro_routing | route_liveness | include_topologies | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | tenant-a | 100    | true          | false          | default            | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n"
+            " account                                   | code     | vrf_id | metro_routing | route_liveness | include_topologies | administrators                               | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | tenant-a | 100    | true          | false          | default            | DZfLKFDgLShjY34WqXdVVzHUvVtrYXb7UtdrALnGa8jw | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n"
         );
 
         let mut output = Vec::new();
@@ -142,7 +151,7 @@ mod tests {
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
             output_str,
-            "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"code\":\"tenant-a\",\"vrf_id\":100,\"metro_routing\":true,\"route_liveness\":false,\"include_topologies\":\"default\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n"
+            "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"code\":\"tenant-a\",\"vrf_id\":100,\"metro_routing\":true,\"route_liveness\":false,\"include_topologies\":\"default\",\"administrators\":\"DZfLKFDgLShjY34WqXdVVzHUvVtrYXb7UtdrALnGa8jw\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n"
         );
     }
 
@@ -190,7 +199,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             String::from_utf8(output).unwrap(),
-            " account                                   | code     | vrf_id | metro_routing | route_liveness | include_topologies | owner              \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | tenant-a | 100    | true          | false          | default            | Jared (DZfL..a8jw) \n"
+            " account                                   | code     | vrf_id | metro_routing | route_liveness | include_topologies | administrators | owner              \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | tenant-a | 100    | true          | false          | default            |                | Jared (DZfL..a8jw) \n"
         );
 
         let mut output = Vec::new();

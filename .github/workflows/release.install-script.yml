@@ -1,7 +1,7 @@
 name: release.install-script
 
 # Publishes client/install.sh to the CDN behind https://get.doublezero.xyz/install.
-# Uploads to the doublezero-install S3 bucket and invalidates the CloudFront
+# Uploads to the doublezero-install-967501763874 S3 bucket and invalidates the CloudFront
 # distribution. Auth is GitHub OIDC into a main-only deploy role (no static keys).
 # Infra is documented in the infra repo runbook: install-script-hosting.md.
 on:
@@ -20,9 +20,9 @@ permissions:
 
 env:
   AWS_REGION: us-east-1
-  DEPLOY_ROLE: arn:aws:iam::879381273509:role/github-doublezero-install-deploy
-  BUCKET: doublezero-install
-  DISTRIBUTION_ID: E393SM6O109RQ3
+  DEPLOY_ROLE: arn:aws:iam::967501763874:role/github-get-doublezero-install
+  BUCKET: doublezero-install-967501763874
+  DISTRIBUTION_ID: E3RHVENYEH05TJ
 
 jobs:
   publish:

@@ -79,7 +79,6 @@ jobs:
             release.geoprobe-agent.yml
             release.geoprobe-target.yml
             release.global-monitor.yml
-            release.install-script.yml
             release.internet-latency-collector.yml
             release.monitor.yml
             release.offchain-sentinel.yml

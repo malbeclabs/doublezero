@@ -14,9 +14,7 @@ on:
       - ".github/workflows/release.install-script.yml"
   workflow_dispatch:
 
-permissions:
-  id-token: write # assume the AWS deploy role via OIDC
-  contents: read
+permissions: {}
 
 env:
   AWS_REGION: us-east-1
@@ -27,10 +25,15 @@ env:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write # assume the AWS deploy role via OIDC
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@7474bc4690e29a8392af63c5b98e7449536d5c3a # v4.3.1
         with:
           role-to-assume: ${{ env.DEPLOY_ROLE }}
           aws-region: ${{ env.AWS_REGION }}

@@ -19,7 +19,7 @@ All notable changes to this project will be documented in this file.
   - Every instruction reads the global state only from the program's global state account. An account another program owns fails with `InvalidAccountOwner` (custom error 52), and an account at another address fails with `InvalidSeeds`.
   - `DeleteDevice` closes only the device's own resource accounts: its `TunnelIds` account, then its `DzPrefixBlock` accounts.
 - CLI
-  - `doublezero tenant list` shows an `administrators` column next to `owner`. `owner` is the key that created the tenant. The administrators are the keys that may set access passes for it, so the old output pointed operators at a key the program rejects.
+  - `doublezero tenant list` shows an `administrators` column next to `owner`. `owner` is the key that created the tenant. The administrators are the keys that may set access passes for it, so the old output pointed operators at a key the program rejects. `--json` and `--json-compact` output gain an `administrators` string key that holds the keys joined by `, `, and `owner` is unchanged.
 - Geolocation
   - The foundation check reads the program config and the serviceability global state only from their PDAs. An account at another address fails with `InvalidSeeds`.
 - RFCs

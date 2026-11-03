@@ -160,6 +160,7 @@ mod tests {
         let mut client = create_test_client();
 
         let owner = Pubkey::from_str_const("DZfLKFDgLShjY34WqXdVVzHUvVtrYXb7UtdrALnGa8jw");
+        let other_admin = Pubkey::from_str_const("DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3jo");
         let tenant_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
         let tenant = Tenant {
             account_type: AccountType::Tenant,
@@ -168,7 +169,7 @@ mod tests {
             code: "tenant-a".to_string(),
             vrf_id: 100,
             reference_count: 0,
-            administrators: vec![],
+            administrators: vec![owner, other_admin],
             token_account: Pubkey::default(),
             payment_status: TenantPaymentStatus::Paid,
             metro_routing: true,
@@ -199,7 +200,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             String::from_utf8(output).unwrap(),
-            " account                                   | code     | vrf_id | metro_routing | route_liveness | include_topologies | administrators | owner              \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | tenant-a | 100    | true          | false          | default            |                | Jared (DZfL..a8jw) \n"
+            " account                                   | code     | vrf_id | metro_routing | route_liveness | include_topologies | administrators                                                   | owner              \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | tenant-a | 100    | true          | false          | default            | Jared (DZfL..a8jw), DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3jo | Jared (DZfL..a8jw) \n"
         );
 
         let mut output = Vec::new();
@@ -213,5 +214,6 @@ mod tests {
         .unwrap();
         let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
         assert_eq!(json[0]["owner"], owner.to_string());
+        assert_eq!(json[0]["administrators"], format!("{owner}, {other_admin}"));
     }
 }

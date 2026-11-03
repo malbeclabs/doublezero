@@ -17,7 +17,10 @@
 use doublezero_serviceability::{
     entrypoint::process_instruction,
     error::DoubleZeroError,
-    pda::{get_device_pda, get_globalconfig_pda, get_globalstate_pda},
+    pda::{
+        get_device_pda, get_globalconfig_pda, get_globalstate_pda, get_resource_extension_pda,
+        get_topology_pda,
+    },
     processors::{
         device::{
             create::DeviceCreateArgs,
@@ -25,10 +28,16 @@ use doublezero_serviceability::{
             update::DeviceUpdateArgs,
         },
         globalconfig::set::SetGlobalConfigArgs,
+        topology::{
+            assign_node_segments::AssignTopologyNodeSegmentsArgs, create::TopologyCreateArgs,
+        },
     },
+    resource::ResourceType,
     state::{
         device::{DeviceDesiredStatus, DeviceType, MAX_DEVICE_ACCOUNT_SIZE},
         interface::{InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode},
+        resource_extension::ResourceExtensionOwned,
+        topology::TopologyConstraint,
     },
 };
 use doublezero_serviceability_instruction as dzi;
@@ -82,6 +91,24 @@ fn create_interface_ix(
     contributor: &Pubkey,
     name: String,
 ) -> Instruction {
+    interface_ix(
+        program_id,
+        payer,
+        device,
+        contributor,
+        name,
+        LoopbackType::None,
+    )
+}
+
+fn interface_ix(
+    program_id: &Pubkey,
+    payer: &Keypair,
+    device: &Pubkey,
+    contributor: &Pubkey,
+    name: String,
+    loopback_type: LoopbackType,
+) -> Instruction {
     dzi::device::create_device_interface(
         program_id,
         &payer.pubkey(),
@@ -91,7 +118,7 @@ fn create_interface_ix(
         DeviceInterfaceCreateArgs {
             name,
             interface_dia: InterfaceDIA::None,
-            loopback_type: LoopbackType::None,
+            loopback_type,
             interface_cyoa: InterfaceCYOA::None,
             bandwidth: 0,
             ip_net: None,
@@ -146,32 +173,61 @@ async fn setup_device() -> (BanksClient, Keypair, Pubkey, Pubkey, Pubkey) {
     )
     .await;
 
-    let device_index = get_globalstate(&mut banks_client, globalstate_pubkey)
-        .await
-        .account_index
-        + 1;
-    let (device, _) = get_device_pda(&program_id, device_index);
-    let ix = dzi::device::create_device(
+    let device = create_device(
+        &mut banks_client,
+        &payer,
         &program_id,
-        &payer.pubkey(),
         &contributor,
         &location,
         &exchange,
+        "heap",
+        [8, 8, 8, 8],
+        "110.1.0.0/23",
+    )
+    .await;
+
+    (banks_client, payer, program_id, device, contributor)
+}
+
+/// Creates an activated Hybrid device and returns its pubkey.
+#[allow(clippy::too_many_arguments)]
+async fn create_device(
+    banks_client: &mut BanksClient,
+    payer: &Keypair,
+    program_id: &Pubkey,
+    contributor: &Pubkey,
+    location: &Pubkey,
+    exchange: &Pubkey,
+    code: &str,
+    public_ip: [u8; 4],
+    dz_prefixes: &str,
+) -> Pubkey {
+    let (globalstate_pubkey, _) = get_globalstate_pda(program_id);
+    let device_index = get_globalstate(banks_client, globalstate_pubkey)
+        .await
+        .account_index
+        + 1;
+    let (device, _) = get_device_pda(program_id, device_index);
+    let ix = dzi::device::create_device(
+        program_id,
+        &payer.pubkey(),
+        contributor,
+        location,
+        exchange,
         device_index,
         DeviceCreateArgs {
-            code: "heap".to_string(),
+            code: code.to_string(),
             device_type: DeviceType::Hybrid,
-            public_ip: [8, 8, 8, 8].into(),
-            dz_prefixes: "110.1.0.0/23".parse().unwrap(),
+            public_ip: public_ip.into(),
+            dz_prefixes: dz_prefixes.parse().unwrap(),
             metrics_publisher_pk: Pubkey::default(),
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
             resource_count: 0,
         },
     );
-    submit(&mut banks_client, &payer, ix, true).await.unwrap();
-
-    (banks_client, payer, program_id, device, contributor)
+    submit(banks_client, payer, ix, true).await.unwrap();
+    device
 }
 
 /// A transaction that requests no heap frame gets the default 32 KiB. The allocator grows upward
@@ -445,4 +501,106 @@ async fn test_device_at_size_cap_can_be_updated_and_shrunk() {
             .len(),
         count - 1
     );
+}
+
+/// `AssignTopologyNodeSegments` skips a device that its new segments would grow past the cap,
+/// before allocating any ids for it, so the rest of the batch is still backfilled.
+#[tokio::test]
+async fn test_assign_node_segments_skips_device_at_size_cap() {
+    let (mut banks_client, payer, program_id, full, contributor) = setup_device().await;
+    let stored = get_device(&mut banks_client, full).await.unwrap();
+    let (location, exchange) = (stored.location_pk, stored.exchange_pk);
+
+    // Four Vpnv4 loopbacks need four 34-byte segments (136 bytes), more than the room left once
+    // the device is filled with short-name interfaces (under 120 bytes, see above).
+    const LOOPBACKS: usize = 4;
+    for i in 0..LOOPBACKS {
+        let ix = interface_ix(
+            &program_id,
+            &payer,
+            &full,
+            &contributor,
+            format!("Loopback{i}"),
+            LoopbackType::Vpnv4,
+        );
+        submit(&mut banks_client, &payer, ix, true).await.unwrap();
+    }
+    fill_device_to_cap(
+        &mut banks_client,
+        &payer,
+        &program_id,
+        &full,
+        &contributor,
+        short_name,
+    )
+    .await;
+    assert!(device_len(&mut banks_client, full).await + LOOPBACKS * 34 > MAX_DEVICE_ACCOUNT_SIZE);
+
+    let other = create_device(
+        &mut banks_client,
+        &payer,
+        &program_id,
+        &contributor,
+        &location,
+        &exchange,
+        "other",
+        [8, 8, 4, 4],
+        "110.2.0.0/23",
+    )
+    .await;
+    let ix = interface_ix(
+        &program_id,
+        &payer,
+        &other,
+        &contributor,
+        "Loopback0".to_string(),
+        LoopbackType::Vpnv4,
+    );
+    submit(&mut banks_client, &payer, ix, true).await.unwrap();
+
+    let name = "unicast-default".to_string();
+    let ix = dzi::topology::create_topology(
+        &program_id,
+        &payer.pubkey(),
+        TopologyCreateArgs {
+            name: name.clone(),
+            constraint: TopologyConstraint::IncludeAny,
+        },
+    );
+    submit(&mut banks_client, &payer, ix, true).await.unwrap();
+    let (topology, _) = get_topology_pda(&program_id, &name);
+
+    let (sr_ids, _, _) = get_resource_extension_pda(&program_id, ResourceType::SegmentRoutingIds);
+    let allocated = |r: Option<ResourceExtensionOwned>| r.unwrap().iter_allocated().len();
+    let ids_before = allocated(get_resource_extension_data(&mut banks_client, sr_ids).await);
+    let full_before = banks_client.get_account(full).await.unwrap().unwrap().data;
+
+    // The full device first, so a failure on it would also stop the one after it.
+    let ixs = dzi::topology::assign_topology_node_segments_batched(
+        &program_id,
+        &payer.pubkey(),
+        &[full, other],
+        AssignTopologyNodeSegmentsArgs { name },
+    );
+    assert_eq!(ixs.len(), 1);
+    submit(&mut banks_client, &payer, ixs[0].clone(), true)
+        .await
+        .unwrap();
+
+    // The full device is unchanged and used no ids; the other one got its segment.
+    assert_eq!(
+        banks_client.get_account(full).await.unwrap().unwrap().data,
+        full_before
+    );
+    assert_eq!(
+        allocated(get_resource_extension_data(&mut banks_client, sr_ids).await),
+        ids_before + 1
+    );
+    let segments = &get_device(&mut banks_client, other)
+        .await
+        .unwrap()
+        .interfaces[0]
+        .flex_algo_node_segments;
+    assert_eq!(segments.len(), 1);
+    assert_eq!(segments[0].topology, topology);
 }

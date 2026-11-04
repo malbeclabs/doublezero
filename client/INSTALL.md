@@ -99,7 +99,7 @@ sudo systemctl status doublezerod
 
 ### Network requirements
 
-When running `doublezerod` with route liveness enabled, clients must be able to exchange liveness control traffic over UDP port `44880`. Ensure that host firewalls and any intervening network devices allow bidirectional UDP reachability on port `44880` between participating DoubleZero clients; otherwise, liveness sessions will be treated as down and associated routes may be withdrawn.
+`doublezerod` runs route liveness in active mode by default, so clients must be able to exchange liveness control traffic over UDP port `44880` on `doublezero0`. Ensure that host firewalls and any intervening network devices allow bidirectional UDP reachability on port `44880` between participating DoubleZero clients; otherwise, liveness sessions will be treated as down, routes to those peers are withdrawn, and traffic to them uses the public internet. Run `doublezerod -route-liveness-enable-active=false` to opt out.
 
 ### Starting DoubleZero Client
 ```

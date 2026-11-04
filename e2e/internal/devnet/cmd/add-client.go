@@ -52,7 +52,7 @@ func (c *AddClientCmd) Command() *cobra.Command {
 
 	cmd.Flags().StringVar(&keypairPath, "keypair-path", "", "Path to the keypair file (optional)")
 	cmd.Flags().BoolVar(&routeLivenessEnablePassive, "route-liveness-enable-passive", false, "Enable route liveness in passive mode (experimental)")
-	cmd.Flags().BoolVar(&routeLivenessEnableActive, "route-liveness-enable-active", false, "Enable route liveness in active mode (experimental)")
+	cmd.Flags().BoolVar(&routeLivenessEnableActive, "route-liveness-enable-active", false, "Enable route liveness in active mode")
 	cmd.Flags().BoolVar(&routeLivenessPeerMetrics, "route-liveness-peer-metrics", false, "Enable per peer metrics for route liveness (high cardinality)")
 	cmd.Flags().BoolVar(&routeLivenessDebug, "route-liveness-debug", false, "Enable debug logging for route liveness")
 

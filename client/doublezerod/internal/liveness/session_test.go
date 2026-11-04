@@ -532,3 +532,23 @@ func TestClient_Liveness_Session_HandleRx_TracksCurrentPeerAdvertisedPassive(t *
 	snap = s.Snapshot()
 	require.Equal(t, cvActive, snap.PeerClientVersion, "snapshot should reflect latest advertised client version")
 }
+
+func TestClient_Liveness_Session_HoldDownGrowsAndDecays(t *testing.T) {
+	t.Parallel()
+
+	base, max := 30*time.Second, 5*time.Minute
+	s := &Session{}
+	now := time.Now()
+
+	s.recordFlap(now, max) // Down without a prior Up is not a flap
+	for i, want := range []time.Duration{0, 0, base, 2 * base, 4 * base, 8 * base, max, max} {
+		hold, _ := s.holdDown(now, base, max)
+		require.Equalf(t, want, hold, "Up %d", i)
+		now = now.Add(time.Second)
+		s.recordFlap(now, max)
+	}
+
+	hold, flaps := s.holdDown(now.Add(2*max+time.Second), base, max)
+	require.Zero(t, hold, "hold-down should decay after 2*max without a flap")
+	require.Zero(t, flaps)
+}

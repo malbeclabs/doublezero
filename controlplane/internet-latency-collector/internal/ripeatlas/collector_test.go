@@ -2716,28 +2716,62 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LateUploads(t 
 		}
 	})
 
-	t.Run("a state file written before LastExportedAt gates on LastResponseAt", func(t *testing.T) {
+	t.Run("a failed write retries for a probe with no export mark behind a cursor", func(t *testing.T) {
 		t.Parallel()
 
-		c, ms, _ := newCollector(t, nil, [][]any{
-			{answered(100, t1.Add(-time.Minute)), answered(100, t2)},
+		// A probe newly enlisted in a measurement that already has a cursor. The failed
+		// pass advances LastResponseAt and saves it, and the retry must not gate on that.
+		c, ms, _ := newCollector(t, &failOnceExporter{}, [][]any{
+			{answered(100, t2)},
+			{answered(100, t2)},
 		})
 		ms.SetMetadata(1, MeasurementMeta{
 			TargetLocation: "cmh",
 			TargetProbeID:  12651,
-			Sources:        []SourceProbeMeta{{LocationCode: "nyc", ProbeID: 100, LastResponseAt: t1.Unix()}},
+			Sources:        []SourceProbeMeta{{LocationCode: "nyc", ProbeID: 100}},
 			CreatedAt:      time.Now().Add(-2 * time.Hour).Unix(),
 			LastExportAt:   t1.Unix(),
 		})
 
+		_, _, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.EqualError(t, err, "failed to write records: write failed")
+		meta, ok := ms.GetMetadata(1)
+		require.True(t, ok)
+		require.Equal(t, t2.Unix(), meta.Sources[0].LastResponseAt)
+
 		_, records, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
 		require.NoError(t, err)
-		require.Equal(t, []sample{{"nyc", t2.Unix()}}, samples(records),
-			"the legacy mark excludes what the old rule had already exported")
+		require.Equal(t, []sample{{"nyc", t2.Unix()}}, samples(records), "the retry must export the batch")
+	})
+
+	t.Run("a state file written before LastExportedAt excludes what it already exported", func(t *testing.T) {
+		t.Parallel()
+
+		c, _, _ := newCollector(t, nil, [][]any{
+			{answered(100, t1.Add(-time.Minute)), answered(100, t2)},
+		})
+		ms := loadStateWithoutExportMarks(t, t1.Unix(), t1.Unix())
+
+		_, records, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.NoError(t, err)
+		require.Equal(t, []sample{{"nyc", t2.Unix()}}, samples(records))
 
 		meta, ok := ms.GetMetadata(1)
 		require.True(t, ok)
 		require.Equal(t, t2.Unix(), meta.Sources[0].LastExportedAt, "the export mark takes over from here")
+	})
+
+	t.Run("a write that failed on the previous build is retried after the upgrade", func(t *testing.T) {
+		t.Parallel()
+
+		// That build advanced LastResponseAt to t2 and left the cursor at t1 when the
+		// write failed, then relied on the cursor to fetch t2 again.
+		c, _, _ := newCollector(t, nil, [][]any{{answered(100, t2)}})
+		ms := loadStateWithoutExportMarks(t, t2.Unix(), t1.Unix())
+
+		_, records, err := c.exportSingleMeasurementResults(t.Context(), Measurement{ID: 1}, ms)
+		require.NoError(t, err)
+		require.Equal(t, []sample{{"nyc", t2.Unix()}}, samples(records))
 	})
 
 	t.Run("a future-dated result touches nothing", func(t *testing.T) {
@@ -2762,6 +2796,25 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LateUploads(t 
 		_, cursorSet := ms.GetLastTimestamp(1)
 		require.False(t, cursorSet)
 	})
+}
+
+// loadStateWithoutExportMarks loads a state file as a build from before LastExportedAt
+// wrote it, holding measurement 1 with one source, probe 100.
+func loadStateWithoutExportMarks(t *testing.T, lastResponseAt, lastExportAt int64) *MeasurementState {
+	t.Helper()
+	filename := filepath.Join(t.TempDir(), TimestampFileName)
+	contents := fmt.Sprintf(`{"metadata": {"1": {
+		"target_location": "cmh",
+		"target_probe_id": 12651,
+		"sources": [{"location_code": "nyc", "probe_id": 100, "last_response_at": %d}],
+		"created_at": %d,
+		"last_export_at": %d
+	}}}`, lastResponseAt, time.Now().Add(-2*time.Hour).Unix(), lastExportAt)
+	require.NoError(t, os.WriteFile(filename, []byte(contents), 0o600))
+
+	ms := NewMeasurementState(filename)
+	require.NoError(t, ms.Load())
+	return ms
 }
 
 func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_RecordsTargetLoss(t *testing.T) {
@@ -3041,11 +3094,9 @@ func TestInternetLatency_RIPEAtlas_ConfigureMeasurements_LossyTargetIsRotated(t 
 	c.measurementState.SetMetadata(1001, MeasurementMeta{
 		TargetLocation: "cmh",
 		TargetProbeID:  lossyTargetProbe,
-		// The marks sit behind the seeded results, which span the last 40 minutes, since
-		// the export path excludes against them; still recent enough for Step 4b.
 		Sources: []SourceProbeMeta{
-			{LocationCode: "nyc", ProbeID: 100, LastResponseAt: time.Now().Add(-45 * time.Minute).Unix()},
-			{LocationCode: "sea", ProbeID: 101, LastResponseAt: time.Now().Add(-45 * time.Minute).Unix()},
+			{LocationCode: "nyc", ProbeID: 100, LastResponseAt: time.Now().Unix()},
+			{LocationCode: "sea", ProbeID: 101, LastResponseAt: time.Now().Unix()},
 		},
 		CreatedAt:    createdAt,
 		LastExportAt: time.Now().Unix(),

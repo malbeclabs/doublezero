@@ -103,6 +103,10 @@ type MetadataTracker struct {
 	// UnresponsiveMarksMigrated records that the one-time reclassification in Load has
 	// run against this file, so a source failure marked later is not moved by it.
 	UnresponsiveMarksMigrated bool `json:"unresponsive_marks_migrated,omitempty"`
+
+	// ExportMarksSeeded records that the one-time seeding in Load has run against this
+	// file, or that the file never needed it because this build created it.
+	ExportMarksSeeded bool `json:"export_marks_seeded,omitempty"`
 }
 
 type UnresponsiveProbeEntry struct {
@@ -147,7 +151,8 @@ func NewMeasurementState(filename string) *MeasurementState {
 	return &MeasurementState{
 		filename: filename,
 		tracker: &MetadataTracker{
-			Metadata: make(map[int]MeasurementMeta),
+			Metadata:          make(map[int]MeasurementMeta),
+			ExportMarksSeeded: true,
 		},
 	}
 }
@@ -182,6 +187,7 @@ func (ms *MeasurementState) Load() error {
 		UnresponsiveProbes        json.RawMessage          `json:"unresponsive_probes,omitempty"`
 		UnresponsiveTargets       []UnresponsiveProbeEntry `json:"unresponsive_targets,omitempty"`
 		UnresponsiveMarksMigrated bool                     `json:"unresponsive_marks_migrated,omitempty"`
+		ExportMarksSeeded         bool                     `json:"export_marks_seeded,omitempty"`
 	}
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&intermediate); err != nil {
@@ -192,6 +198,7 @@ func (ms *MeasurementState) Load() error {
 	tracker.Metadata = intermediate.Metadata
 	tracker.UnresponsiveTargets = intermediate.UnresponsiveTargets
 	tracker.UnresponsiveMarksMigrated = intermediate.UnresponsiveMarksMigrated
+	tracker.ExportMarksSeeded = intermediate.ExportMarksSeeded
 
 	// Try new format first: [{probe_id: N, marked_at: T}, ...]
 	if len(intermediate.UnresponsiveProbes) > 0 {
@@ -218,6 +225,11 @@ func (ms *MeasurementState) Load() error {
 	if !tracker.UnresponsiveMarksMigrated {
 		ms.migratedTargetMarks = migrateTargetMarks(&tracker)
 		tracker.UnresponsiveMarksMigrated = true
+	}
+
+	if !tracker.ExportMarksSeeded {
+		seedExportMarks(&tracker)
+		tracker.ExportMarksSeeded = true
 	}
 
 	ms.tracker = &tracker
@@ -269,6 +281,27 @@ func migrateTargetMarks(tracker *MetadataTracker) int {
 	}
 	tracker.UnresponsiveProbes = keptSources
 	return moved
+}
+
+// seedExportMarks gives each source the export mark a file from before LastExportedAt
+// could not record, so the first lookback does not re-export what that build wrote.
+//
+// That build advanced LastResponseAt for every fetched result and the cursor only past a
+// durable write, so a success is known to be written only at or behind both: a probe ahead
+// of the cursor had its write fail and relied on the cursor to fetch those results again.
+// Bounding by the cursor can tally a timeout past it a second time, once, which beats
+// losing a sample. A measurement with no cursor has written nothing. The timestamps are
+// probe-reported and that build did not screen them, so wall clock bounds the mark.
+//
+// Load runs this once and records that in the file. Afterwards LastResponseAt moves ahead
+// of a failed write, and seeding from it again would exclude that write's retry.
+func seedExportMarks(tracker *MetadataTracker) {
+	now := time.Now().Unix()
+	for _, meta := range tracker.Metadata {
+		for i, source := range meta.Sources {
+			meta.Sources[i].LastExportedAt = min(source.LastResponseAt, meta.LastExportAt, now)
+		}
+	}
 }
 
 // MigratedTargetMarks reports how many marks the last Load reclassified from the source

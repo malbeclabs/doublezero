@@ -679,25 +679,15 @@ func (c *Collector) exportSingleMeasurementResults(ctx context.Context, measurem
 
 		// Exclude per probe, not per measurement. The measurement cursor is the newest
 		// timestamp any probe reached, so gating on it permanently discards a slow
-		// probe's result for an interval its peers already reported.
-		//
-		// LastResponseAt is the fallback for a state file written before LastExportedAt
-		// existed: until then every fetched result advanced it and every fetched
-		// success was exported. That only holds once the measurement has exported at
-		// all, hence the cursor condition — without it, a first pass whose write failed
-		// would have advanced LastResponseAt and excluded its own retry.
+		// probe's result for an interval its peers already reported. An unlisted probe
+		// has no mark to keep, so the cursor is all it has.
 		//
 		// The comparison is inclusive: a result sharing the mark's second is skipped,
 		// which undercounts rather than risks blacklisting a usable target.
 		gate := lastTimestampUnix
 		mark, listed := sourceMarks[probeID]
 		if listed {
-			switch {
-			case mark.LastExportedAt > 0:
-				gate = mark.LastExportedAt
-			case exists:
-				gate = mark.LastResponseAt
-			}
+			gate = mark.LastExportedAt
 		}
 		if resultAt <= gate {
 			continue

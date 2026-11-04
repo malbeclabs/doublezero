@@ -59,7 +59,7 @@ var (
 	// They will be superceded by a single `route-liveness-enable` flag, where false means
 	// passive-mode and true means active-mode.
 	routeLivenessEnablePassive = flag.Bool("route-liveness-enable-passive", true, "enables route liveness in passive mode")
-	routeLivenessEnableActive  = flag.Bool("route-liveness-enable-active", false, "enables route liveness in active mode (experimental)")
+	routeLivenessEnableActive  = flag.Bool("route-liveness-enable-active", true, "enables route liveness in active mode")
 
 	// set by LDFLAGS
 	version = "0.0.0-dev"

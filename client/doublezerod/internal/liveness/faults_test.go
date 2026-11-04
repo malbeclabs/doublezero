@@ -491,6 +491,61 @@ func TestClient_Liveness_Faults_HardLoss_NoFlapAfterRecovery(t *testing.T) {
 	require.True(t, bothUp(), "both sessions must still be Up at the end of the stability window")
 }
 
+// Characterizes active mode under a peer that flaps on a ~24s cycle: nothing damps it, so
+// the route is withdrawn and reinstalled on every cycle. Backoff does not hold it down:
+// it resets on every Down, and within a 24s cycle it never reaches backoffMax.
+func TestClient_Liveness_Faults_PeriodicFlap_ChurnsRouteEveryCycle(t *testing.T) {
+	t.Parallel()
+
+	if testing.Short() {
+		t.Skip("Skipping periodic flap churn test in short mode")
+	}
+
+	// Production timing (1s/3/60s backoffMax, 24s cycle) scaled down 10x.
+	cfg := livenessTestConfig{
+		clientCount: 2,
+		txMin:       100 * time.Millisecond,
+		rxMin:       100 * time.Millisecond,
+		detectMult:  3,
+		backoffMax:  6 * time.Second,
+	}
+	const (
+		cycles  = 5
+		outage  = 1000 * time.Millisecond
+		healthy = 1400 * time.Millisecond
+	)
+
+	clients, sw, cfg := setupLivenessClientsWithConfig(t, 26000, cfg)
+	registerFullMeshRoutes(t, clients, net.IPv4(10, 5, 0, 1))
+	requireFullMeshUp(t, clients, cfg.clientCount-1, 10*time.Second)
+
+	cA, cB := clients[0], clients[1]
+	ipA, ipB := cA.mgr.LocalAddr().IP, cB.mgr.LocalAddr().IP
+
+	installs := func(c *testClient) float64 {
+		return metricValueWithLabels(t, c.metrics, "doublezero_liveness_route_installs_total", map[string]string{LabelIface: c.iface})
+	}
+	withdraws := func(c *testClient) float64 {
+		return metricValueWithLabels(t, c.metrics, "doublezero_liveness_route_withdraws_total", map[string]string{LabelIface: c.iface})
+	}
+
+	for cycle := range cycles {
+		w := map[*testClient]float64{cA: withdraws(cA), cB: withdraws(cB)}
+		sw.SetHardLoss(ipA, ipB)
+		time.Sleep(outage)
+		for c, v := range w {
+			require.Equalf(t, v+1, withdraws(c), "cycle %d: client %d should withdraw the route once", cycle, c.id)
+		}
+
+		i := map[*testClient]float64{cA: installs(cA), cB: installs(cB)}
+		sw.SetNoFault(ipA, ipB)
+		time.Sleep(healthy)
+		for c, v := range i {
+			require.Equalf(t, v+1, installs(c), "cycle %d: client %d should reinstall the route once", cycle, c.id)
+		}
+	}
+}
+
 func TestClient_Liveness_Faults_SoftLoss_TimeoutAtHighLoss(t *testing.T) {
 	t.Parallel()
 

@@ -5,16 +5,21 @@
 //! latency, IPv4)." This module is the home for those helpers. It also
 //! hosts the cross-verb rendering helpers used by every list/get verb
 //! (`render_collection`, `render_record`) and the write-verb tail helpers
-//! (`print_signature`, `print_signature_and_then`).
+//! (`print_signature`, `print_signature_and_then`), and the address-label
+//! helpers (`format_labeled_address`, `label_addresses`, `labeled_table`).
 
 use std::{
+    collections::HashMap,
     fmt::{self, Display},
     io::Write,
 };
 
 use serde::Serialize;
 use solana_sdk::signature::Signature;
-use tabled::{settings::Style, Table, Tabled};
+use tabled::{
+    settings::{object::Rows, Format, Style},
+    Table, Tabled,
+};
 
 use crate::context::OutputFormat;
 
@@ -43,12 +48,77 @@ pub fn stringify_vec<T: Display>(v: &Vec<T>) -> String {
     format!("{}", DisplayVec(v))
 }
 
+/// Format an address for display, naming it by its label when it has one.
+///
+/// Matches the Solana CLI's `format_labeled_address`: a labeled address reads
+/// `label (ABCD..WXYZ)`, with the label cut to 31 characters and the address
+/// shortened to its first and last four characters. An unlabeled address is
+/// returned unchanged.
+pub fn format_labeled_address(pubkey: &str, address_labels: &HashMap<String, String>) -> String {
+    match address_labels.get(pubkey) {
+        Some(label) => {
+            let tail = pubkey.char_indices().rev().nth(3).map_or(0, |(i, _)| i);
+            format!("{label:.31} ({pubkey:.4}..{})", &pubkey[tail..])
+        }
+        None => pubkey.to_string(),
+    }
+}
+
+/// Replace every labeled address in `text` with [`format_labeled_address`].
+///
+/// An address is a whole run of ASCII alphanumeric characters (base58 uses
+/// no others), so a cell holding one pubkey, a comma-separated list of them,
+/// or a pubkey inside other text (`solana_validator: <pubkey>`) is labeled,
+/// while a label key never matches part of a longer token.
+pub fn label_addresses(text: &str, address_labels: &HashMap<String, String>) -> String {
+    if address_labels.is_empty() {
+        return text.to_string();
+    }
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find(|c: char| c.is_ascii_alphanumeric()) {
+        out.push_str(&rest[..start]);
+        let token = &rest[start..];
+        let end = token
+            .find(|c: char| !c.is_ascii_alphanumeric())
+            .unwrap_or(token.len());
+        out.push_str(&format_labeled_address(&token[..end], address_labels));
+        rest = &token[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// Build a table from `rows` with every labeled address in its body cells
+/// shown by [`label_addresses`]; the header row is left alone. The labels are
+/// applied before the table is styled or rendered, so column widths fit them.
+pub fn labeled_table<I, T>(rows: I, address_labels: &HashMap<String, String>) -> Table
+where
+    I: IntoIterator<Item = T>,
+    T: Tabled,
+{
+    let mut table = Table::new(rows);
+    if !address_labels.is_empty() {
+        table.modify(
+            Rows::new(1..),
+            Format::content(|s| label_addresses(s, address_labels)),
+        );
+    }
+    table
+}
+
 /// Render a collection of records using the resolved [`OutputFormat`].
 ///
 /// Used by every list verb. The shape is the pre-refactor block:
 /// pretty JSON for `--json`, single-line JSON for `--json-compact`, and a
-/// `psql`-styled table without horizontal separators otherwise.
-pub fn render_collection<T, W>(out: &mut W, rows: Vec<T>, format: OutputFormat) -> eyre::Result<()>
+/// `psql`-styled table without horizontal separators otherwise. Table output
+/// shows labeled addresses by their label; JSON keeps the raw pubkeys.
+pub fn render_collection<T, W>(
+    out: &mut W,
+    rows: Vec<T>,
+    format: OutputFormat,
+    address_labels: &HashMap<String, String>,
+) -> eyre::Result<()>
 where
     T: Tabled + Serialize,
     W: Write,
@@ -56,7 +126,7 @@ where
     let rendered = match format {
         OutputFormat::Json => serde_json::to_string_pretty(&rows)?,
         OutputFormat::JsonCompact => serde_json::to_string(&rows)?,
-        OutputFormat::Table => Table::new(rows)
+        OutputFormat::Table => labeled_table(rows, address_labels)
             .with(Style::psql().remove_horizontals())
             .to_string(),
     };
@@ -68,7 +138,14 @@ where
 ///
 /// Used by every get verb. Table output emits `header | value` rows aligned
 /// to the longest header, matching the pre-refactor `location/get` layout.
-pub fn render_record<T, W>(out: &mut W, record: &T, format: OutputFormat) -> eyre::Result<()>
+/// Table output shows labeled addresses by their label; JSON keeps the raw
+/// pubkeys.
+pub fn render_record<T, W>(
+    out: &mut W,
+    record: &T,
+    format: OutputFormat,
+    address_labels: &HashMap<String, String>,
+) -> eyre::Result<()>
 where
     T: Tabled + Serialize,
     W: Write,
@@ -87,6 +164,7 @@ where
             let fields = record.fields();
             let max_len = headers.iter().map(|h| h.len()).max().unwrap_or(0);
             for (header, value) in headers.iter().zip(fields.iter()) {
+                let value = label_addresses(value, address_labels);
                 writeln!(out, " {header:<max_len$} | {value}")?;
             }
         }
@@ -156,7 +234,7 @@ mod tests {
             value: 1,
         }];
         let mut out = Vec::new();
-        render_collection(&mut out, rows, OutputFormat::Table).unwrap();
+        render_collection(&mut out, rows, OutputFormat::Table, &HashMap::new()).unwrap();
         let s = String::from_utf8(out).unwrap();
         assert_eq!(s, " code | value \n a    | 1     \n");
     }
@@ -168,7 +246,7 @@ mod tests {
             value: 1,
         }];
         let mut out = Vec::new();
-        render_collection(&mut out, rows, OutputFormat::Json).unwrap();
+        render_collection(&mut out, rows, OutputFormat::Json, &HashMap::new()).unwrap();
         let s = String::from_utf8(out).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(s.trim()).unwrap();
         assert_eq!(parsed[0]["code"], "a");
@@ -183,7 +261,7 @@ mod tests {
             value: 1,
         }];
         let mut out = Vec::new();
-        render_collection(&mut out, rows, OutputFormat::JsonCompact).unwrap();
+        render_collection(&mut out, rows, OutputFormat::JsonCompact, &HashMap::new()).unwrap();
         let s = String::from_utf8(out).unwrap();
         assert_eq!(s, "[{\"code\":\"a\",\"value\":1}]\n");
     }
@@ -195,7 +273,7 @@ mod tests {
             value: 42,
         };
         let mut out = Vec::new();
-        render_record(&mut out, &row, OutputFormat::Table).unwrap();
+        render_record(&mut out, &row, OutputFormat::Table, &HashMap::new()).unwrap();
         let s = String::from_utf8(out).unwrap();
         assert_eq!(s, " code  | abc\n value | 42\n");
     }
@@ -207,11 +285,109 @@ mod tests {
             value: 42,
         };
         let mut out = Vec::new();
-        render_record(&mut out, &row, OutputFormat::Json).unwrap();
+        render_record(&mut out, &row, OutputFormat::Json, &HashMap::new()).unwrap();
         let s = String::from_utf8(out).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(s.trim()).unwrap();
         assert_eq!(parsed["code"], "abc");
         assert_eq!(parsed["value"], 42);
+    }
+
+    const LABELED: &str = "DZfLKFDgLShjY34WqXdVVzHUvVtrYXb7UtdrALnGa8jw";
+
+    fn labels(label: &str) -> HashMap<String, String> {
+        HashMap::from([(LABELED.to_string(), label.to_string())])
+    }
+
+    #[test]
+    fn format_labeled_address_shows_label_and_short_key() {
+        assert_eq!(
+            format_labeled_address(LABELED, &labels("Jared")),
+            "Jared (DZfL..a8jw)"
+        );
+    }
+
+    #[test]
+    fn format_labeled_address_leaves_unlabeled_key() {
+        let other = "11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo";
+        assert_eq!(format_labeled_address(other, &labels("Jared")), other);
+        assert_eq!(format_labeled_address(LABELED, &HashMap::new()), LABELED);
+    }
+
+    #[test]
+    fn format_labeled_address_truncates_label_to_31_chars() {
+        let long = "a-label-that-is-much-longer-than-thirty-one-characters";
+        assert_eq!(
+            format_labeled_address(LABELED, &labels(long)),
+            "a-label-that-is-much-longer-tha (DZfL..a8jw)"
+        );
+    }
+
+    #[test]
+    fn format_labeled_address_handles_short_keys() {
+        let labels = HashMap::from([("ab".to_string(), "short".to_string())]);
+        assert_eq!(format_labeled_address("ab", &labels), "short (ab..ab)");
+    }
+
+    #[test]
+    fn label_addresses_replaces_whole_tokens_only() {
+        let labels = labels("Jared");
+        assert_eq!(
+            label_addresses(&format!("solana_validator: {LABELED}"), &labels),
+            "solana_validator: Jared (DZfL..a8jw)"
+        );
+        assert_eq!(
+            label_addresses(&format!("{LABELED}, {LABELED}"), &labels),
+            "Jared (DZfL..a8jw), Jared (DZfL..a8jw)"
+        );
+        let longer = format!("{LABELED}x");
+        assert_eq!(label_addresses(&longer, &labels), longer);
+        assert_eq!(label_addresses("", &labels), "");
+    }
+
+    #[derive(Tabled, Serialize)]
+    struct OwnerRow {
+        code: String,
+        owner: String,
+    }
+
+    #[test]
+    fn render_collection_labels_table_but_not_json() {
+        let rows = || {
+            vec![OwnerRow {
+                code: "a".to_string(),
+                owner: LABELED.to_string(),
+            }]
+        };
+        let mut out = Vec::new();
+        render_collection(&mut out, rows(), OutputFormat::Table, &labels("Jared")).unwrap();
+        let s = String::from_utf8(out).unwrap();
+        assert_eq!(
+            s,
+            " code | owner              \n a    | Jared (DZfL..a8jw) \n"
+        );
+
+        let mut out = Vec::new();
+        render_collection(
+            &mut out,
+            rows(),
+            OutputFormat::JsonCompact,
+            &labels("Jared"),
+        )
+        .unwrap();
+        let s = String::from_utf8(out).unwrap();
+        assert_eq!(s, format!("[{{\"code\":\"a\",\"owner\":\"{LABELED}\"}}]\n"));
+    }
+
+    #[test]
+    fn render_record_labels_table_values() {
+        let row = OwnerRow {
+            code: "a".to_string(),
+            owner: LABELED.to_string(),
+        };
+        let mut out = Vec::new();
+        render_record(&mut out, &row, OutputFormat::Table, &labels("Jared")).unwrap();
+        let s = String::from_utf8(out).unwrap();
+        assert_eq!(s, " code  | a\n owner | Jared (DZfL..a8jw)\n");
     }
 
     #[test]

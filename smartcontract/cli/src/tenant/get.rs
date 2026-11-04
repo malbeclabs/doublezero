@@ -42,7 +42,7 @@ struct TenantDisplay {
 impl GetTenantCliCommand {
     pub async fn execute<C: CliCommand, W: Write>(
         self,
-        _ctx: &CliContext,
+        ctx: &CliContext,
         client: &C,
         out: &mut W,
     ) -> eyre::Result<()> {
@@ -74,7 +74,12 @@ impl GetTenantCliCommand {
             owner: tenant.owner,
         };
 
-        render_record(out, &display, OutputFormat::from_flags(self.json, false))
+        render_record(
+            out,
+            &display,
+            OutputFormat::from_flags(self.json, false),
+            &ctx.address_labels,
+        )
     }
 }
 

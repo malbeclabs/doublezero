@@ -39,7 +39,7 @@ RUN --mount=type=cache,id=doublezero-verified-build-cargo-registry,target=/usr/l
     set -e; \
     mkdir "artifacts-${NETWORK}"; \
     NETWORK=${NETWORK} make build-sbf; \
-    cp target/deploy/doublezero_builder_stake.so \
+    cp target/deploy/doublezero_builder_bond.so \
         target/deploy/doublezero_passport.so \
         target/deploy/doublezero_revenue_distribution.so \
         "artifacts-${NETWORK}/"

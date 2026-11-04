@@ -26,7 +26,7 @@ pub enum AccountType {
     Index = 16,
     Topology = 17,
     Feed = 18,
-    StakeMirror = 19,
+    BondMirror = 19,
 }
 
 pub trait AccountTypeInfo {
@@ -57,7 +57,7 @@ impl From<u8> for AccountType {
             16 => AccountType::Index,
             17 => AccountType::Topology,
             18 => AccountType::Feed,
-            19 => AccountType::StakeMirror,
+            19 => AccountType::BondMirror,
             _ => AccountType::None,
         }
     }
@@ -84,7 +84,7 @@ impl fmt::Display for AccountType {
             AccountType::Index => write!(f, "index"),
             AccountType::Topology => write!(f, "topology"),
             AccountType::Feed => write!(f, "feed"),
-            AccountType::StakeMirror => write!(f, "stakemirror"),
+            AccountType::BondMirror => write!(f, "bondmirror"),
         }
     }
 }

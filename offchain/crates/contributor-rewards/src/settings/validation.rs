@@ -65,27 +65,18 @@ pub fn validate_config(settings: &Settings) -> Result<()> {
     if settings.rpc.dz_url.is_empty() {
         bail!("DZ RPC URL cannot be empty");
     }
-    if settings.rpc.solana_read_url.is_empty() {
-        bail!("Solana Read RPC URL cannot be empty");
-    }
-    if settings.rpc.solana_write_url.is_empty() {
-        bail!("Solana Write RPC URL cannot be empty");
+    if settings.rpc.solana_url.is_empty() {
+        bail!("Solana RPC URL cannot be empty");
     }
 
     if !settings.rpc.dz_url.starts_with("http://") && !settings.rpc.dz_url.starts_with("https://") {
         bail!("DZ RPC URL must start with http:// or https://");
     }
 
-    if !settings.rpc.solana_read_url.starts_with("http://")
-        && !settings.rpc.solana_read_url.starts_with("https://")
+    if !settings.rpc.solana_url.starts_with("http://")
+        && !settings.rpc.solana_url.starts_with("https://")
     {
-        bail!("Solana Read RPC URL must start with http:// or https://");
-    }
-
-    if !settings.rpc.solana_write_url.starts_with("http://")
-        && !settings.rpc.solana_write_url.starts_with("https://")
-    {
-        bail!("Solana Write RPC URL must start with http:// or https://");
+        bail!("Solana RPC URL must start with http:// or https://");
     }
 
     if settings.rpc.rps_limit == 0 {
@@ -225,11 +216,11 @@ mod tests {
                 demand_multiplier: 1.2,
             },
             demand: DemandSettings::default(),
+            metro_prices: Default::default(),
             input: InputSettings::default(),
             rpc: RpcSettings {
                 dz_url: "https://api.mainnet-beta.solana.com".to_string(),
-                solana_read_url: "https://api.mainnet-beta.solana.com".to_string(),
-                solana_write_url: "https://api.testnet.solana.com".to_string(),
+                solana_url: "https://api.mainnet-beta.solana.com".to_string(),
                 commitment: "finalized".to_string(),
                 rps_limit: 10,
             },
@@ -262,6 +253,7 @@ mod tests {
                 enable_dry_run: false,
                 storage_backend: StorageBackend::LocalFile,
                 grace_period_max_wait_seconds: 21600,
+                enable_monthly_distribution: false,
             },
             metrics: Some(MetricsSettings {
                 addr: SocketAddr::from_str("127.0.0.1:9090").unwrap(),
@@ -344,29 +336,25 @@ mod tests {
         assert!(validate_config(&config).is_err());
         config.rpc.dz_url = "https://api.mainnet-beta.solana.com".to_string();
 
-        // Test empty Solana Read URL
-        config.rpc.solana_read_url = "".to_string();
-        assert!(validate_config(&config).is_err());
-        config.rpc.solana_read_url = "https://api.mainnet-beta.solana.com".to_string();
-
-        // Test empty Solana Write URL
-        config.rpc.solana_write_url = "".to_string();
-        assert!(validate_config(&config).is_err());
-        config.rpc.solana_write_url = "https://api.testnet.solana.com".to_string();
+        // Test empty Solana URL
+        config.rpc.solana_url = "".to_string();
+        assert_eq!(
+            validate_config(&config).unwrap_err().to_string(),
+            "Solana RPC URL cannot be empty"
+        );
+        config.rpc.solana_url = "https://api.mainnet-beta.solana.com".to_string();
 
         // Test invalid DZ URL
         config.rpc.dz_url = "not-a-url".to_string();
         assert!(validate_config(&config).is_err());
         config.rpc.dz_url = "https://api.mainnet-beta.solana.com".to_string();
 
-        // Test invalid Solana Read URL
-        config.rpc.solana_read_url = "not-a-url".to_string();
-        assert!(validate_config(&config).is_err());
-        config.rpc.solana_read_url = "https://api.mainnet-beta.solana.com".to_string();
-
-        // Test invalid Solana Write URL
-        config.rpc.solana_write_url = "not-a-url".to_string();
-        assert!(validate_config(&config).is_err());
+        // Test invalid Solana URL
+        config.rpc.solana_url = "not-a-url".to_string();
+        assert_eq!(
+            validate_config(&config).unwrap_err().to_string(),
+            "Solana RPC URL must start with http:// or https://"
+        );
     }
 
     #[test]

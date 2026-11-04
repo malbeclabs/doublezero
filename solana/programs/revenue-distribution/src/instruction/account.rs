@@ -1298,6 +1298,8 @@ impl From<FinalizeMonthlyContributorDistributionRewardsAccounts> for Vec<Account
     }
 }
 
+/// Accounts for collecting a month's contributor 2Z from the feed-subscription program. The bucket,
+/// its 2Z token account and the program config are the feed-subscription program's accounts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CollectMonthlyContributorRewardsAccounts {
     pub program_config_key: Pubkey,
@@ -1306,6 +1308,7 @@ pub struct CollectMonthlyContributorRewardsAccounts {
     pub integration_2z_token_account_key: Pubkey,
     pub destination_token_account_key: Pubkey,
     pub monthly_contributor_rewards_program_key: Pubkey,
+    pub integration_program_config_key: Pubkey,
     pub token_program_key: Pubkey,
 }
 
@@ -1316,6 +1319,7 @@ impl CollectMonthlyContributorRewardsAccounts {
         monthly_contributor_rewards_program_id: &Pubkey,
         integration_rewards_bucket_key: &Pubkey,
         integration_2z_token_account_key: &Pubkey,
+        integration_program_config_key: &Pubkey,
     ) -> Self {
         let monthly_distribution_key = MonthlyContributorDistribution::find_address(year, month).0;
 
@@ -1326,6 +1330,7 @@ impl CollectMonthlyContributorRewardsAccounts {
             integration_2z_token_account_key: *integration_2z_token_account_key,
             destination_token_account_key: find_2z_token_pda_address(&monthly_distribution_key).0,
             monthly_contributor_rewards_program_key: *monthly_contributor_rewards_program_id,
+            integration_program_config_key: *integration_program_config_key,
             token_program_key: spl_token_interface::ID,
         }
     }
@@ -1340,6 +1345,7 @@ impl From<CollectMonthlyContributorRewardsAccounts> for Vec<AccountMeta> {
             integration_2z_token_account_key,
             destination_token_account_key,
             monthly_contributor_rewards_program_key,
+            integration_program_config_key,
             token_program_key,
         } = accounts;
 
@@ -1350,6 +1356,7 @@ impl From<CollectMonthlyContributorRewardsAccounts> for Vec<AccountMeta> {
             AccountMeta::new(integration_2z_token_account_key, false),
             AccountMeta::new(destination_token_account_key, false),
             AccountMeta::new_readonly(monthly_contributor_rewards_program_key, false),
+            AccountMeta::new_readonly(integration_program_config_key, false),
             AccountMeta::new_readonly(token_program_key, false),
         ]
     }

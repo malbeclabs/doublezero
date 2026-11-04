@@ -64,7 +64,7 @@ pub fn process_set_feature_flags(
     // Authorization: GLOBALSTATE_ADMIN (Permission account) or foundation (legacy).
     // A foundation member may always disable RequirePermissionAccounts, whatever the
     // state of the optional trailing Permission account (which is then left unread).
-    let mut globalstate = GlobalState::try_from(globalstate_account)?;
+    let mut globalstate = GlobalState::load(program_id, globalstate_account)?;
     if !foundation_strict_mode_disable_recovery(
         &globalstate,
         payer_account.key,

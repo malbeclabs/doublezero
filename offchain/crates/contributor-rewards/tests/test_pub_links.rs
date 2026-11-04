@@ -31,11 +31,11 @@ fn test_settings() -> settings::Settings {
             demand_multiplier: 1.2,
         },
         demand: settings::DemandSettings::default(),
+        metro_prices: Default::default(),
         input: settings::InputSettings::default(),
         rpc: settings::RpcSettings {
             dz_url: "https://test.com".to_string(),
-            solana_read_url: "https://test.com".to_string(),
-            solana_write_url: "https://test.com".to_string(),
+            solana_url: "https://test.com".to_string(),
             commitment: "confirmed".to_string(),
             rps_limit: 10,
         },
@@ -68,6 +68,7 @@ fn test_settings() -> settings::Settings {
             enable_dry_run: false,
             storage_backend: settings::aws::StorageBackend::LocalFile,
             grace_period_max_wait_seconds: 21600,
+            enable_monthly_distribution: false,
         },
         metrics: Some(settings::MetricsSettings {
             addr: "127.0.0.1:9090".parse().unwrap(),

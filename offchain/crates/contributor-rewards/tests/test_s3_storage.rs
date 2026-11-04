@@ -39,6 +39,7 @@ fn create_test_settings(
             enable_dry_run: false,
             storage_backend,
             grace_period_max_wait_seconds: 21600,
+            enable_monthly_distribution: false,
         },
         aws,
         shapley: doublezero_contributor_rewards::settings::ShapleySettings {
@@ -47,11 +48,11 @@ fn create_test_settings(
             demand_multiplier: 1.2,
         },
         demand: DemandSettings::default(),
+        metro_prices: Default::default(),
         input: InputSettings::default(),
         rpc: doublezero_contributor_rewards::settings::RpcSettings {
             dz_url: "https://test.com".to_string(),
-            solana_read_url: "https://test.com".to_string(),
-            solana_write_url: "https://test.com".to_string(),
+            solana_url: "https://test.com".to_string(),
             commitment: "confirmed".to_string(),
             rps_limit: 10,
         },
@@ -138,6 +139,12 @@ async fn test_s3_upload_to_minio() {
         .await
         .expect("Failed to check existence");
     assert!(exists, "Snapshot should exist after upload");
+
+    let missing_exists = storage
+        .exists("test-snapshot-epoch-missing.json")
+        .await
+        .expect("Failed to check existence of a missing snapshot");
+    assert!(!missing_exists, "A missing snapshot should not exist");
 
     // Test load
     let loaded = storage

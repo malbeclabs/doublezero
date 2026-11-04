@@ -1,5 +1,5 @@
 use crate::{
-    authorize::authorize,
+    authorize::{authorize, feed_authority_role},
     error::DoubleZeroError,
     pda::*,
     processors::accesspass::airdrop_user_credits,
@@ -129,7 +129,7 @@ pub fn process_set_access_pass(
     //   - they pass the ACCESS_PASS_ADMIN permission check (foundation allowlist, sentinel
     //     authority, feed authority, or a Permission account granting ACCESS_PASS_ADMIN), or
     //   - they are an administrator of the tenant being added (tenant_add_account).
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
 
     // Pre-deserialize the tenant_add account when present so we can both authorize the caller
     // and later increment its reference_count without double-reading it.
@@ -150,6 +150,13 @@ pub fn process_set_access_pass(
     // (foundation allowlist, sentinel authority, feed authority, or a Permission account
     // granting ACCESS_PASS_ADMIN). Privileged callers retain unrestricted authority for the
     // tenant_remove path below; a tenant administrator is only authorized for their own tenant.
+    // Read before authorize() consumes it from the iterator.
+    let feed_role = feed_authority_role(
+        program_id,
+        accounts_iter.clone().next(),
+        payer_account.key,
+        &globalstate,
+    );
     let is_privileged = authorize(
         program_id,
         accounts_iter,
@@ -238,8 +245,7 @@ pub fn process_set_access_pass(
             let ap = AccessPass::try_from(accesspass_account)?;
 
             // Feed authority can only update access passes they own
-            if globalstate.feed_authority_pk == *payer_account.key && ap.owner != *payer_account.key
-            {
+            if feed_role.limited_to_own_passes() && ap.owner != *payer_account.key {
                 msg!("Feed authority can only update access passes they own");
                 return Err(DoubleZeroError::NotAllowed.into());
             }

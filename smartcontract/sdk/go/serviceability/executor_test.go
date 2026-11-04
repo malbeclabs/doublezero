@@ -244,18 +244,20 @@ func TestBuildSetDeviceHealthInstruction(t *testing.T) {
 	devicePubkey := solana.NewWallet().PublicKey()
 	globalStatePubkey := solana.NewWallet().PublicKey()
 
-	instruction := executor.buildSetDeviceHealthInstruction(devicePubkey, globalStatePubkey, DeviceHealthReadyForUsers)
+	instruction, err := executor.buildSetDeviceHealthInstruction(devicePubkey, globalStatePubkey, DeviceHealthReadyForUsers)
+	require.NoError(t, err)
 
 	assert.Equal(t, executor.programID, instruction.ProgramID())
 
 	accounts := instruction.Accounts()
-	require.Len(t, accounts, 4)
+	require.Len(t, accounts, 5)
 	assert.Equal(t, devicePubkey, accounts[0].PublicKey)
 	assert.True(t, accounts[0].IsWritable)
 	assert.Equal(t, globalStatePubkey, accounts[1].PublicKey)
 	assert.Equal(t, signer.PublicKey(), accounts[2].PublicKey)
 	assert.True(t, accounts[2].IsSigner)
 	assert.Equal(t, solana.SystemProgramID, accounts[3].PublicKey)
+	assertPermissionLast(t, executor, accounts)
 
 	data, err := instruction.Data()
 	require.NoError(t, err)
@@ -302,18 +304,20 @@ func TestBuildSetLinkHealthInstruction(t *testing.T) {
 	linkPubkey := solana.NewWallet().PublicKey()
 	globalStatePubkey := solana.NewWallet().PublicKey()
 
-	instruction := executor.buildSetLinkHealthInstruction(linkPubkey, globalStatePubkey, LinkHealthReadyForService)
+	instruction, err := executor.buildSetLinkHealthInstruction(linkPubkey, globalStatePubkey, LinkHealthReadyForService)
+	require.NoError(t, err)
 
 	assert.Equal(t, executor.programID, instruction.ProgramID())
 
 	accounts := instruction.Accounts()
-	require.Len(t, accounts, 4)
+	require.Len(t, accounts, 5)
 	assert.Equal(t, linkPubkey, accounts[0].PublicKey)
 	assert.True(t, accounts[0].IsWritable)
 	assert.Equal(t, globalStatePubkey, accounts[1].PublicKey)
 	assert.Equal(t, signer.PublicKey(), accounts[2].PublicKey)
 	assert.True(t, accounts[2].IsSigner)
 	assert.Equal(t, solana.SystemProgramID, accounts[3].PublicKey)
+	assertPermissionLast(t, executor, accounts)
 
 	data, err := instruction.Data()
 	require.NoError(t, err)
@@ -666,92 +670,62 @@ func TestParseFailingInstructionIndex(t *testing.T) {
 	})
 }
 
-func TestPermissionPDAInjection(t *testing.T) {
+// assertPermissionLast checks that the last account is the signer's Permission PDA,
+// read-only and not a signer, as authorize() expects.
+func assertPermissionLast(t *testing.T, e *Executor, accounts []*solana.AccountMeta) {
+	t.Helper()
+	permissionPDA, _, err := GetPermissionPDA(e.programID, e.signer.PublicKey())
+	require.NoError(t, err)
+	last := accounts[len(accounts)-1]
+	assert.Equal(t, permissionPDA, last.PublicKey)
+	assert.False(t, last.IsWritable)
+	assert.False(t, last.IsSigner)
+}
+
+func TestPermissionPDAAttachedWithoutLookup(t *testing.T) {
 	t.Parallel()
 
-	globalStatePubkey := solana.NewWallet().PublicKey()
+	signer := solana.NewWallet().PrivateKey
+	programID := solana.NewWallet().PublicKey()
+	permissionPDA, _, err := GetPermissionPDA(programID, signer.PublicKey())
+	require.NoError(t, err)
 
-	t.Run("does not append permission PDA when account does not exist", func(t *testing.T) {
-		signer := solana.NewWallet().PrivateKey
-		programID := solana.NewWallet().PublicKey()
-		permissionPDA, _, err := GetPermissionPDA(programID, signer.PublicKey())
-		require.NoError(t, err)
+	lookups := 0
+	rpc := &mockRPCClient{
+		getAccountInfoFunc: func(ctx context.Context, account solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
+			lookups++
+			return &solanarpc.GetAccountInfoResult{Value: nil}, nil
+		},
+	}
+	executor := NewExecutor(slog.Default(), rpc, &signer, programID)
 
-		rpc := &mockRPCClient{} // default: GetAccountInfo returns nil Value
-		executor := NewExecutor(slog.Default(), rpc, &signer, programID)
-
-		updates := []DeviceHealthUpdate{
-			{DevicePubkey: solana.NewWallet().PublicKey(), Health: DeviceHealthReadyForUsers},
-		}
-		_, err = executor.SetDeviceHealthBatch(context.Background(), updates, globalStatePubkey)
-		require.NoError(t, err)
-
-		require.Len(t, rpc.sentTransactions, 1)
-		tx := rpc.sentTransactions[0]
-		for _, key := range tx.Message.AccountKeys {
-			assert.False(t, key.Equals(permissionPDA), "permission PDA should not be in accounts")
-		}
+	_, err = executor.SetDeviceHealthBatch(context.Background(), []DeviceHealthUpdate{
+		{DevicePubkey: solana.NewWallet().PublicKey(), Health: DeviceHealthReadyForUsers},
+	}, solana.NewWallet().PublicKey())
+	require.NoError(t, err)
+	_, err = executor.SetLinkHealthBatch(context.Background(), []LinkHealthUpdate{
+		{LinkPubkey: solana.NewWallet().PublicKey(), Health: LinkHealthReadyForService},
+	}, solana.NewWallet().PublicKey())
+	require.NoError(t, err)
+	_, err = executor.SetUserBGPStatus(context.Background(), UserBGPStatusUpdate{
+		UserPubkey:   solana.NewWallet().PublicKey(),
+		DevicePubkey: solana.NewWallet().PublicKey(),
+		Status:       BGPStatusUp,
 	})
+	require.NoError(t, err)
 
-	t.Run("appends permission PDA when account exists", func(t *testing.T) {
-		signer := solana.NewWallet().PrivateKey
-		programID := solana.NewWallet().PublicKey()
-		permissionPDA, _, err := GetPermissionPDA(programID, signer.PublicKey())
-		require.NoError(t, err)
-
-		rpc := &mockRPCClient{
-			getAccountInfoFunc: func(ctx context.Context, account solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
-				if account.Equals(permissionPDA) {
-					return &solanarpc.GetAccountInfoResult{
-						Value: &solanarpc.Account{},
-					}, nil
-				}
-				return &solanarpc.GetAccountInfoResult{Value: nil}, nil
-			},
-		}
-		executor := NewExecutor(slog.Default(), rpc, &signer, programID)
-
-		updates := []DeviceHealthUpdate{
-			{DevicePubkey: solana.NewWallet().PublicKey(), Health: DeviceHealthReadyForUsers},
-		}
-		_, err = executor.SetDeviceHealthBatch(context.Background(), updates, globalStatePubkey)
-		require.NoError(t, err)
-
-		require.Len(t, rpc.sentTransactions, 1)
-		tx := rpc.sentTransactions[0]
+	assert.Zero(t, lookups, "the Permission PDA must be attached without an onchain lookup")
+	require.Len(t, rpc.sentTransactions, 3)
+	for i, wantPermission := range []bool{true, true, false} {
 		found := false
-		for _, key := range tx.Message.AccountKeys {
+		for _, key := range rpc.sentTransactions[i].Message.AccountKeys {
 			if key.Equals(permissionPDA) {
 				found = true
 				break
 			}
 		}
-		assert.True(t, found, "permission PDA should be present in transaction accounts")
-	})
-
-	t.Run("permission PDA is resolved only once across multiple transactions", func(t *testing.T) {
-		lookupCount := 0
-		signer := solana.NewWallet().PrivateKey
-		programID := solana.NewWallet().PublicKey()
-
-		rpc := &mockRPCClient{
-			getAccountInfoFunc: func(ctx context.Context, account solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
-				lookupCount++
-				return &solanarpc.GetAccountInfoResult{Value: nil}, nil
-			},
-		}
-		executor := NewExecutor(slog.Default(), rpc, &signer, programID)
-
-		for range 3 {
-			updates := []DeviceHealthUpdate{
-				{DevicePubkey: solana.NewWallet().PublicKey(), Health: DeviceHealthReadyForUsers},
-			}
-			_, err := executor.SetDeviceHealthBatch(context.Background(), updates, globalStatePubkey)
-			require.NoError(t, err)
-		}
-
-		assert.Equal(t, 1, lookupCount, "permission PDA should be resolved exactly once")
-	})
+		assert.Equal(t, wantPermission, found, "transaction %d", i)
+	}
 }
 
 // TestWaitForTransactionFinalizedSurfacesProgramError reproduces the

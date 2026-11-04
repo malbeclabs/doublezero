@@ -306,6 +306,16 @@ fn try_withdraw_monthly_contributor_rewards(accounts: &[AccountInfo]) -> Program
         (year, month),
     )?;
 
+    let (program_config_index, program_config_info) =
+        try_next_enumerated_account(&mut accounts_iter, Default::default())?;
+    if program_config_info.key != &crate::find_program_config_address().0 {
+        msg!(
+            "Account {} must be the integration's program config",
+            program_config_index
+        );
+        return Err(ProgramError::InvalidSeeds);
+    }
+
     let (_, monthly_rewards_bucket_info) = interface.integration_rewards_bucket_info;
     let (_, token_account_info) = interface.integration_2z_token_account_info;
     let (_, destination_token_account_info) = interface.destination_token_account_info;

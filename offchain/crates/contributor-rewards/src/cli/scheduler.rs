@@ -52,6 +52,10 @@ pub enum SchedulerCommands {
             help = "Override configured storage: save snapshots to local directory"
         )]
         local_dir: Option<PathBuf>,
+
+        /// Run one tick and exit, with a failure code if the tick failed
+        #[clap(long)]
+        once: bool,
     },
 }
 
@@ -63,6 +67,7 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: SchedulerCommands) -> Resu
             interval,
             state_file,
             local_dir,
+            once,
         } => {
             start_scheduler(
                 orchestrator,
@@ -71,6 +76,7 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: SchedulerCommands) -> Resu
                 interval,
                 state_file,
                 local_dir,
+                once,
             )
             .await
         }
@@ -84,6 +90,7 @@ async fn start_scheduler(
     interval_override: Option<u64>,
     state_file_override: Option<PathBuf>,
     local_dir_override: Option<PathBuf>,
+    once: bool,
 ) -> Result<()> {
     let settings = orchestrator.settings();
 
@@ -134,6 +141,7 @@ async fn start_scheduler(
         keypair_path,
         dry_run,
         Duration::from_secs(interval),
+        once,
     );
 
     worker.run().await

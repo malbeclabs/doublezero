@@ -213,6 +213,48 @@ pub fn create_record_seed_string(seeds: &[&[u8]]) -> String {
     seed
 }
 
+/// Write `data` to the record at `seeds`, creating it if needed, and wait for
+/// every write to reach the client's commitment, so a read that follows sees
+/// it. An existing record must already be `data.len()` bytes long.
+pub async fn try_write_record_confirmed(
+    rpc_client: &RpcClient,
+    payer_signer: &Keypair,
+    seeds: &[&[u8]],
+    data: &[u8],
+) -> Result<Pubkey> {
+    let payer_key = payer_signer.pubkey();
+    let record_key = doublezero_sdk::record::pubkey::create_record_key(&payer_key, seeds);
+
+    // Lamports sent to the address first leave a system account there, which
+    // allocate-with-seed still takes over.
+    let is_created = rpc_client
+        .get_account_with_commitment(&record_key, rpc_client.commitment())
+        .await?
+        .value
+        .is_some_and(|account| account.owner == RECORD_PROGRAM_ID);
+    if !is_created {
+        let recent_blockhash = rpc_client.get_latest_blockhash().await?;
+        doublezero_sdk::record::client::try_create_record(
+            rpc_client,
+            recent_blockhash,
+            payer_signer,
+            seeds,
+            data.len(),
+        )
+        .await?;
+    }
+
+    for chunk in doublezero_sdk::record::instruction::write_record_chunks(&payer_key, seeds, data) {
+        let transaction =
+            new_transaction(rpc_client, &[chunk.instruction], &[payer_signer]).await?;
+        rpc_client
+            .send_and_confirm_transaction(&transaction)
+            .await?;
+    }
+
+    Ok(record_key)
+}
+
 pub async fn write_serialized_to_ledger(
     rpc_client: &RpcClient,
     payer_signer: &Keypair,

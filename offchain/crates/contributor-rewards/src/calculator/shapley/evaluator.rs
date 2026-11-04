@@ -55,6 +55,11 @@ pub fn compute_shapley_values(
     let demand_groups: Vec<(String, Vec<network_shapley::types::Demand>)> =
         demands_by_city.into_iter().collect();
 
+    info!(
+        "Computing Shapley values for {} cities",
+        demand_groups.len()
+    );
+
     // Collect per-city Shapley outputs in parallel
     let per_city_shapley_outputs: BTreeMap<String, Vec<(String, f64)>> = demand_groups
         .par_iter()
@@ -123,6 +128,8 @@ pub fn compute_shapley_values(
     );
     metrics::gauge!("doublezero_contributor_rewards_shapley_cities_processed")
         .set(processed_cities as f64);
+
+    info!("Aggregating Shapley values with city weights");
 
     // Aggregate consolidated Shapley output
     let aggregated_output =

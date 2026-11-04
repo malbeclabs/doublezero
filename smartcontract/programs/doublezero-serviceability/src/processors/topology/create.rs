@@ -60,7 +60,7 @@ pub fn process_topology_create(
     );
 
     // Authorization: TOPOLOGY_ADMIN (Permission account) or foundation (legacy).
-    let globalstate = GlobalState::try_from(&globalstate_account.data.borrow()[..])?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     authorize(
         program_id,
         accounts_iter,

@@ -1,13 +1,13 @@
-//! Halt and resume, and every transition they refuse (RFC-28 D1).
+//! Halt and resume, and every transition they refuse (RFC-29 D1).
 //!
 //! The status field and the gate that reads it landed in A5. What was missing was any way to move
-//! the status, so a staked feed sat in `Pending` for life and no feed could stop publishing.
+//! the status, so a bonded feed sat in `Pending` for life and no feed could stop publishing.
 
 use doublezero_serviceability::{
     entrypoint::process_instruction,
     error::DoubleZeroError,
     instructions::DoubleZeroInstruction,
-    pda::{get_feed_pda, get_globalstate_pda, get_stake_mirror_pda},
+    pda::{get_bond_mirror_pda, get_feed_pda, get_globalstate_pda},
     processors::{
         feed::{
             activate::FeedActivateArgs,
@@ -22,10 +22,10 @@ use doublezero_serviceability::{
     },
     state::{
         accounttype::AccountType,
+        bond_mirror::{BondMirror, BondTier},
         feature_flags::FeatureFlag,
         feed::{Feed, FeedChain, FeedStatus},
         globalstate::GlobalState,
-        stake_mirror::{StakeMirror, StakeTier},
     },
 };
 use solana_program_test::*;
@@ -58,8 +58,7 @@ async fn feed_status(banks_client: &mut BanksClient, feed: Pubkey) -> FeedStatus
         .status
 }
 
-/// A catalog feed: no builder, so it is `Active` the moment it is created. That is the only way to
-/// get an `Active` feed today, because `Pending` to `Active` is G1's job and does not exist yet.
+/// A catalog feed: no builder, so it is `Active` the moment it is created.
 async fn catalog_feed(code: &str) -> (BanksClient, Pubkey, Keypair, Pubkey, Pubkey) {
     let program_id = Pubkey::new_unique();
     let (mut banks_client, payer, recent_blockhash) =
@@ -95,26 +94,28 @@ async fn catalog_feed(code: &str) -> (BanksClient, Pubkey, Keypair, Pubkey, Pubk
     (banks_client, program_id, payer, globalstate, feed)
 }
 
-/// A staked feed, whose builder is a key the test can sign with. It is created `Pending`.
-async fn staked_feed_owned_by(
+/// A bonded feed, whose builder is a key the test can sign with. It is created `Active`: the bond
+/// that admits the create is the admission.
+async fn bonded_feed_owned_by(
     builder: &Keypair,
     code: &str,
 ) -> (BanksClient, Pubkey, Keypair, Pubkey, Pubkey, Pubkey) {
     let program_id = Pubkey::new_unique();
-    let stake_ref = Pubkey::new_unique();
-    let (mirror, bump) = get_stake_mirror_pda(&program_id, &stake_ref);
+    let bond_ref = Pubkey::new_unique();
+    let (mirror, bump) = get_bond_mirror_pda(&program_id, &bond_ref);
 
-    let mirror_data = borsh::to_vec(&StakeMirror {
-        account_type: AccountType::StakeMirror,
+    let mirror_data = borsh::to_vec(&BondMirror {
+        account_type: AccountType::BondMirror,
         owner: Pubkey::new_unique(),
         bump_seed: bump,
-        stake_ref,
+        bond_ref,
         builder: builder.pubkey(),
-        tier: StakeTier::UpTo1Gbps,
+        tier: BondTier::UpTo1Gbps,
         committed_rate_bits_per_sec: ONE_GBPS,
         source_slot: 1,
         relayer: Pubkey::new_unique(),
         feed_key: Pubkey::default(),
+        groups_created: 0,
     })
     .unwrap();
 
@@ -129,7 +130,7 @@ async fn staked_feed_owned_by(
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::AllowStakedFeeds.to_mask(),
+            feature_flags: FeatureFlag::AllowBondedFeeds.to_mask(),
         }),
         vec![AccountMeta::new(get_globalstate_pda(&program_id).0, false)],
         &payer,
@@ -145,11 +146,11 @@ async fn staked_feed_owned_by(
         program_id,
         DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
             code: code.to_string(),
-            name: "Staked".to_string(),
+            name: "Bonded".to_string(),
             exchange,
             groups: vec![Pubkey::new_unique()],
             builder: builder.pubkey(),
-            stake_ref,
+            bond_ref,
             spec_id: "top-of-book@v1.0.0".to_string(),
             sla_hash: [9u8; 32],
             committed_rate_bits_per_sec: ONE_GBPS,
@@ -163,8 +164,8 @@ async fn staked_feed_owned_by(
 
     assert_eq!(
         feed_status(&mut banks_client, feed).await,
-        FeedStatus::Pending,
-        "a staked feed waits on a conformance verdict"
+        FeedStatus::Active,
+        "a bonded feed is admitted by its bond"
     );
 
     (banks_client, program_id, payer, globalstate, feed, mirror)
@@ -263,14 +264,11 @@ async fn test_resuming_an_active_feed_is_refused() {
 }
 
 /// A `Pending` feed is not publishing, so there is nothing to halt and nothing to resume.
-///
-/// This is also the guard on G1's territory: nothing here moves a feed out of `Pending`, because
-/// that step re-reads the stake mirror and belongs with the code that does.
 #[tokio::test]
 async fn test_a_pending_feed_neither_halts_nor_resumes() {
     let builder = test_payer();
     let (mut banks_client, program_id, payer, globalstate, feed, _mirror) =
-        staked_feed_owned_by(&builder, "waiting").await;
+        pending_feed_owned_by(&builder, "waiting").await;
 
     let result = try_execute_and_get_error(
         &mut banks_client,
@@ -297,25 +295,12 @@ async fn test_a_pending_feed_neither_halts_nor_resumes() {
 
 /// The builder is authorized on its own feed, and a stranger is not.
 ///
-/// Both calls fail, because a `Pending` feed cannot be halted by anyone and G1 does not exist yet
-/// to make one `Active`. The errors say which check stopped each one: the builder reaches the
-/// status check, and the stranger does not get past authorization.
+/// The stranger goes first, so its refusal is about who signed and not about the feed's status.
 #[tokio::test]
 async fn test_the_builder_is_authorized_on_its_own_feed() {
     let builder = test_payer();
     let (mut banks_client, program_id, _payer, globalstate, feed, _mirror) =
-        staked_feed_owned_by(&builder, "mine").await;
-
-    let result = try_execute_and_get_error(
-        &mut banks_client,
-        program_id,
-        DoubleZeroInstruction::HaltFeed(FeedHaltArgs {}),
-        feed_accounts(feed, globalstate),
-        &builder,
-        &[],
-    )
-    .await;
-    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::FeedNotHaltable));
+        bonded_feed_owned_by(&builder, "mine").await;
 
     let stranger = Keypair::new();
     transfer(&mut banks_client, &builder, &stranger.pubkey(), 10_000_000).await;
@@ -329,21 +314,36 @@ async fn test_the_builder_is_authorized_on_its_own_feed() {
     )
     .await;
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::HaltFeed(FeedHaltArgs {}),
+        feed_accounts(feed, globalstate),
+        &builder,
+    )
+    .await;
+    assert_eq!(
+        feed_status(&mut banks_client, feed).await,
+        FeedStatus::Halted
+    );
 }
 
-/// A halted staked feed, seeded at genesis, with the mirror that covers it.
+/// A bonded feed in `status`, seeded at genesis, with the mirror that covers it.
 ///
-/// Written rather than driven, because a staked feed cannot reach `Halted` through real
-/// instructions yet: it is created `Pending`, and `Pending` to `Active` is G1. The alternative is
-/// to leave the rule below untested until G1 lands, which is how the hole this guards against
-/// would ship.
-fn halted_feed(
+/// Written rather than driven, so a test names the one transition it exercises. `Pending` has no
+/// other way in: `CreateFeed` starts every feed `Active`, so only a feed created before that
+/// change is `Pending`, and `ActivateFeed` and the instant retirement exist for those.
+fn seeded_feed(
     program_id: Pubkey,
     code: &str,
     exchange: Pubkey,
     builder: Pubkey,
+    status: FeedStatus,
     halted_by: Pubkey,
-    stake_ref: Pubkey,
+    bond_ref: Pubkey,
 ) -> (Pubkey, Vec<u8>, Pubkey, Vec<u8>) {
     let (feed_key, bump) = get_feed_pda(&program_id, code, &exchange);
     let feed = Feed {
@@ -351,33 +351,34 @@ fn halted_feed(
         owner: Pubkey::new_unique(),
         bump_seed: bump,
         code: code.to_string(),
-        name: "Halted".to_string(),
+        name: "Seeded".to_string(),
         exchange,
         groups: vec![Pubkey::new_unique()],
         builder,
-        stake_ref,
+        bond_ref,
         spec_id: "top-of-book@v1.0.0".to_string(),
         sla_hash: [9u8; 32],
         committed_rate_bits_per_sec: ONE_GBPS,
-        status: FeedStatus::Halted,
+        status,
         halted_by,
         retires_at: 0,
         feed_chain: FeedChain::Unspecified,
     };
 
-    let (mirror_key, mirror_bump) = get_stake_mirror_pda(&program_id, &stake_ref);
-    let mirror = StakeMirror {
-        account_type: AccountType::StakeMirror,
+    let (mirror_key, mirror_bump) = get_bond_mirror_pda(&program_id, &bond_ref);
+    let mirror = BondMirror {
+        account_type: AccountType::BondMirror,
         owner: Pubkey::new_unique(),
         bump_seed: mirror_bump,
-        stake_ref,
+        bond_ref,
         builder,
-        tier: StakeTier::UpTo1Gbps,
+        tier: BondTier::UpTo1Gbps,
         committed_rate_bits_per_sec: ONE_GBPS,
         source_slot: 1,
         relayer: Pubkey::new_unique(),
         // The feed already holds the claim; this is not a creation.
         feed_key,
+        groups_created: 0,
     };
 
     (
@@ -388,19 +389,60 @@ fn halted_feed(
     )
 }
 
-/// Bring up a cluster holding one halted staked feed and its mirror.
+/// Who sends the `HaltFeed` that `cluster_with_halted_feed` drives.
+#[derive(Clone, Copy)]
+enum Halter {
+    Builder,
+    // The cluster's payer, which holds the foundation role.
+    Operator,
+}
+
+/// Bring up a cluster holding one bonded feed, created and then halted through real instructions,
+/// with the mirror that covers it. The program writes `halted_by`, so the resume rules are tested
+/// against what `HaltFeed` records rather than a value the test chose.
 async fn cluster_with_halted_feed(
     code: &str,
-    builder: Pubkey,
-    halted_by: Pubkey,
+    builder: &Keypair,
+    halter: Halter,
+) -> (BanksClient, Pubkey, Keypair, Pubkey, Pubkey, Pubkey) {
+    let (mut banks_client, program_id, payer, globalstate, feed, mirror) =
+        bonded_feed_owned_by(builder, code).await;
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::HaltFeed(FeedHaltArgs {}),
+        feed_accounts(feed, globalstate),
+        match halter {
+            Halter::Builder => builder,
+            Halter::Operator => &payer,
+        },
+    )
+    .await;
+    assert_eq!(
+        feed_status(&mut banks_client, feed).await,
+        FeedStatus::Halted
+    );
+
+    (banks_client, program_id, payer, globalstate, feed, mirror)
+}
+
+/// A bonded feed left in `Pending`, with its mirror and bonded feeds turned on, shaped like
+/// `bonded_feed_owned_by`'s answer so a test can swap one for the other.
+async fn pending_feed_owned_by(
+    builder: &Keypair,
+    code: &str,
 ) -> (BanksClient, Pubkey, Keypair, Pubkey, Pubkey, Pubkey) {
     let program_id = Pubkey::new_unique();
-    let (feed_key, feed_data, mirror_key, mirror_data) = halted_feed(
+    let (feed_key, feed_data, mirror_key, mirror_data) = seeded_feed(
         program_id,
         code,
         Pubkey::new_unique(),
-        builder,
-        halted_by,
+        builder.pubkey(),
+        FeedStatus::Pending,
+        Pubkey::default(),
         Pubkey::new_unique(),
     );
 
@@ -411,6 +453,19 @@ async fn cluster_with_halted_feed(
     .await;
     init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
     let (globalstate, _) = get_globalstate_pda(&program_id);
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
+            feature_flags: FeatureFlag::AllowBondedFeeds.to_mask(),
+        }),
+        vec![AccountMeta::new(globalstate, false)],
+        &payer,
+    )
+    .await;
 
     (
         banks_client,
@@ -425,14 +480,13 @@ async fn cluster_with_halted_feed(
 /// An operator's halt is not the builder's to lift.
 ///
 /// Without this, an operator's halt buys nothing: the builder resumes the moment it lands.
-/// `Retired` is unreachable until D2 and `DeleteFeed` refuses a staked feed, so the halt is the
+/// `Retired` is unreachable until D2 and `DeleteFeed` refuses a bonded feed, so the halt is the
 /// only lever an operator has, and a builder that can undo it leaves no lever at all.
 #[tokio::test]
 async fn test_a_builder_cannot_lift_an_operator_halt() {
     let builder = test_payer();
-    let operator = Pubkey::new_unique();
     let (mut banks_client, program_id, _payer, globalstate, feed, mirror) =
-        cluster_with_halted_feed("seized", builder.pubkey(), operator).await;
+        cluster_with_halted_feed("seized", &builder, Halter::Operator).await;
 
     let result = try_execute_and_get_error(
         &mut banks_client,
@@ -452,12 +506,12 @@ async fn test_a_builder_cannot_lift_an_operator_halt() {
     );
 }
 
-/// A builder's own halt is the builder's to lift, which is the source rotation RFC-28 asks for.
+/// A builder's own halt is the builder's to lift, which is the source rotation RFC-29 asks for.
 #[tokio::test]
 async fn test_a_builder_lifts_its_own_halt() {
     let builder = test_payer();
     let (mut banks_client, program_id, _payer, globalstate, feed, mirror) =
-        cluster_with_halted_feed("rotate", builder.pubkey(), builder.pubkey()).await;
+        cluster_with_halted_feed("rotate", &builder, Halter::Builder).await;
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     execute_transaction_with_extra_accounts(
@@ -477,35 +531,37 @@ async fn test_a_builder_lifts_its_own_halt() {
     );
 }
 
-/// Resume re-proves the cover. A stake corrected downward while the feed sat halted must not let
-/// it publish again at a rate the stake no longer backs.
+/// Resume re-proves the cover. A bond corrected downward while the feed sat halted must not let
+/// it publish again at a rate the bond no longer backs.
 #[tokio::test]
-async fn test_a_feed_cannot_resume_beyond_its_stake() {
+async fn test_a_feed_cannot_resume_beyond_its_bond() {
     let builder = test_payer();
     let program_id = Pubkey::new_unique();
-    let stake_ref = Pubkey::new_unique();
-    let (feed_key, feed_data, mirror_key, _) = halted_feed(
+    let bond_ref = Pubkey::new_unique();
+    let (feed_key, feed_data, mirror_key, _) = seeded_feed(
         program_id,
         "shrunk",
         Pubkey::new_unique(),
         builder.pubkey(),
+        FeedStatus::Halted,
         builder.pubkey(),
-        stake_ref,
+        bond_ref,
     );
 
     // The same mirror, corrected down to a tier that no longer covers the feed's rate.
-    let (_, mirror_bump) = get_stake_mirror_pda(&program_id, &stake_ref);
-    let shrunk = borsh::to_vec(&StakeMirror {
-        account_type: AccountType::StakeMirror,
+    let (_, mirror_bump) = get_bond_mirror_pda(&program_id, &bond_ref);
+    let shrunk = borsh::to_vec(&BondMirror {
+        account_type: AccountType::BondMirror,
         owner: Pubkey::new_unique(),
         bump_seed: mirror_bump,
-        stake_ref,
+        bond_ref,
         builder: builder.pubkey(),
-        tier: StakeTier::None,
+        tier: BondTier::None,
         committed_rate_bits_per_sec: 0,
         source_slot: 2,
         relayer: Pubkey::new_unique(),
         feed_key,
+        groups_created: 0,
     })
     .unwrap();
 
@@ -523,16 +579,16 @@ async fn test_a_feed_cannot_resume_beyond_its_stake() {
         &[AccountMeta::new_readonly(mirror_key, false)],
     )
     .await;
-    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::StakeDoesNotCoverRate));
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::BondDoesNotCoverRate));
 }
 
-/// A staked feed cannot resume without its mirror. Omitting the account must not read as "no
-/// stake to check".
+/// A bonded feed cannot resume without its mirror. Omitting the account must not read as "no
+/// bond to check".
 #[tokio::test]
-async fn test_a_staked_feed_cannot_resume_without_its_mirror() {
+async fn test_a_bonded_feed_cannot_resume_without_its_mirror() {
     let builder = test_payer();
     let (mut banks_client, program_id, _payer, globalstate, feed, _mirror) =
-        cluster_with_halted_feed("nomirror", builder.pubkey(), builder.pubkey()).await;
+        cluster_with_halted_feed("nomirror", &builder, Halter::Builder).await;
 
     let result = try_execute_and_get_error(
         &mut banks_client,
@@ -543,7 +599,7 @@ async fn test_a_staked_feed_cannot_resume_without_its_mirror() {
         &[],
     )
     .await;
-    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::StakeMirrorMissing));
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::BondMirrorMissing));
 }
 
 /// A feed in `Retiring`, seeded with the notice ending at `retires_at`.
@@ -568,7 +624,7 @@ fn retiring_feed(
         exchange,
         groups: vec![Pubkey::new_unique()],
         builder,
-        stake_ref: Pubkey::new_unique(),
+        bond_ref: Pubkey::new_unique(),
         spec_id: "top-of-book@v1.0.0".to_string(),
         sla_hash: [9u8; 32],
         committed_rate_bits_per_sec: ONE_GBPS,
@@ -640,13 +696,13 @@ async fn test_retiring_an_active_feed_starts_the_notice() {
 
 /// A feed that never published owes nobody notice, so its wait is zero.
 ///
-/// It still has to be retirable: `DeleteFeed` refuses a staked feed, so refusing here as well
+/// It still has to be retirable: `DeleteFeed` refuses a bonded feed, so refusing here as well
 /// would leave a feed that never went live with no way out at all.
 #[tokio::test]
 async fn test_a_pending_feed_retires_without_waiting() {
     let builder = test_payer();
     let (mut banks_client, program_id, payer, globalstate, feed, _mirror) =
-        staked_feed_owned_by(&builder, "stillborn").await;
+        pending_feed_owned_by(&builder, "stillborn").await;
 
     let before = banks_client
         .get_sysvar::<solana_sdk::clock::Clock>()
@@ -830,7 +886,7 @@ async fn test_finalizing_a_feed_that_is_not_retiring_is_refused() {
 async fn test_a_pending_feed_retires_and_finalizes_end_to_end() {
     let builder = test_payer();
     let (mut banks_client, program_id, payer, globalstate, feed, _mirror) =
-        staked_feed_owned_by(&builder, "endtoend").await;
+        pending_feed_owned_by(&builder, "endtoend").await;
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     execute_transaction(
@@ -904,9 +960,8 @@ async fn test_a_real_notice_cannot_be_finalized_early() {
 #[tokio::test]
 async fn test_a_halted_feed_retires_and_keeps_its_halter() {
     let builder = test_payer();
-    let operator = Pubkey::new_unique();
     let (mut banks_client, program_id, payer, globalstate, feed, _mirror) =
-        cluster_with_halted_feed("halted2retiring", builder.pubkey(), operator).await;
+        cluster_with_halted_feed("halted2retiring", &builder, Halter::Operator).await;
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     execute_transaction(
@@ -926,7 +981,8 @@ async fn test_a_halted_feed_retires_and_keeps_its_halter() {
         "a halted feed had seat holders, so it owes notice"
     );
     assert_eq!(
-        f.halted_by, operator,
+        f.halted_by,
+        payer.pubkey(),
         "retiring does not erase who halted; that record outlives the halt"
     );
 }
@@ -936,7 +992,7 @@ async fn test_a_halted_feed_retires_and_keeps_its_halter() {
 async fn test_a_stranger_cannot_retire_a_feed() {
     let builder = test_payer();
     let (mut banks_client, program_id, _payer, globalstate, feed, _mirror) =
-        staked_feed_owned_by(&builder, "notyours").await;
+        bonded_feed_owned_by(&builder, "notyours").await;
 
     let stranger = Keypair::new();
     transfer(&mut banks_client, &builder, &stranger.pubkey(), 10_000_000).await;
@@ -953,7 +1009,7 @@ async fn test_a_stranger_cannot_retire_a_feed() {
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
     assert_eq!(
         feed_status(&mut banks_client, feed).await,
-        FeedStatus::Pending
+        FeedStatus::Active
     );
 
     // The feed's own builder is authorized, which is what makes the refusal above about the
@@ -979,7 +1035,7 @@ async fn test_a_stranger_cannot_retire_a_feed() {
 async fn test_retired_is_terminal() {
     let builder = test_payer();
     let (mut banks_client, program_id, payer, globalstate, feed, _mirror) =
-        staked_feed_owned_by(&builder, "finished").await;
+        pending_feed_owned_by(&builder, "finished").await;
 
     for ix in [
         DoubleZeroInstruction::RetireFeed(FeedRetireArgs {}),
@@ -1046,7 +1102,7 @@ async fn test_retired_is_terminal() {
 
 /// Deleting a feed cannot shortcut its notice.
 ///
-/// `DeleteFeed` already refuses a staked feed, so this is about the catalog ones. Without the
+/// `DeleteFeed` already refuses a bonded feed, so this is about the catalog ones. Without the
 /// guard an authority retires a feed, tells its holders they have thirty days, and closes the
 /// account the same minute. The notice is the only thing `Retiring` means, so an instruction that
 /// ends it early empties the state.
@@ -1133,12 +1189,12 @@ async fn test_a_retired_feed_deletes() {
 }
 
 /// The step the demo turns on: a feed waiting on a verdict is admitted and starts selling seats.
-/// Before this instruction existed nothing left `Pending`, so a staked feed reached no subscriber.
+/// Before this instruction existed nothing left `Pending`, so a bonded feed reached no subscriber.
 #[tokio::test]
 async fn test_a_pending_feed_is_activated() {
     let builder = test_payer();
     let (mut banks_client, program_id, payer, globalstate, feed, mirror) =
-        staked_feed_owned_by(&builder, "admitted").await;
+        pending_feed_owned_by(&builder, "admitted").await;
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     execute_transaction_with_extra_accounts(
@@ -1164,7 +1220,7 @@ async fn test_a_pending_feed_is_activated() {
 async fn test_a_builder_cannot_activate_its_own_feed() {
     let builder = test_payer();
     let (mut banks_client, program_id, _payer, globalstate, feed, mirror) =
-        staked_feed_owned_by(&builder, "selfadmit").await;
+        pending_feed_owned_by(&builder, "selfadmit").await;
 
     let result = try_execute_and_get_error(
         &mut banks_client,
@@ -1182,13 +1238,13 @@ async fn test_a_builder_cannot_activate_its_own_feed() {
     );
 }
 
-/// Activation re-reads the mirror, which is the only thing that catches a stake corrected after
+/// Activation re-reads the mirror, which is the only thing that catches a bond corrected after
 /// creation accepted it. Without this the cover is checked once, at creation, and never again.
 ///
 /// Both accounts are seeded rather than driven, and that is a deliberate choice rather than a
 /// shortcut. The scenario is a sequence — create, correct the mirror downward, activate — so
 /// driving it would be more faithful than seeding its end state. What it costs is a
-/// `STAKE_ORACLE` setup for `WriteStakeMirror` and a failure that says the sequence broke rather
+/// `BOND_ORACLE` setup for `WriteBondMirror` and a failure that says the sequence broke rather
 /// than which step did, on a test whose subject is one transition.
 ///
 /// The risk seeding carries, that the fixture asserts against a shape `CreateFeed` no longer
@@ -1196,13 +1252,13 @@ async fn test_a_builder_cannot_activate_its_own_feed() {
 /// here. Driving the real sequence is still worth doing if this check ever grows past the tier,
 /// or if the relayer's write starts doing something creation does not.
 #[tokio::test]
-async fn test_a_feed_cannot_activate_beyond_its_stake() {
+async fn test_a_feed_cannot_activate_beyond_its_bond() {
     let builder = test_payer();
     let program_id = Pubkey::new_unique();
-    let stake_ref = Pubkey::new_unique();
+    let bond_ref = Pubkey::new_unique();
     let exchange = Pubkey::new_unique();
     let (feed_key, _) = get_feed_pda(&program_id, "shrunk2", &exchange);
-    let (mirror_key, mirror_bump) = get_stake_mirror_pda(&program_id, &stake_ref);
+    let (mirror_key, mirror_bump) = get_bond_mirror_pda(&program_id, &bond_ref);
 
     let feed_data = borsh::to_vec(&Feed {
         account_type: AccountType::Feed,
@@ -1213,7 +1269,7 @@ async fn test_a_feed_cannot_activate_beyond_its_stake() {
         exchange,
         groups: vec![Pubkey::new_unique()],
         builder: builder.pubkey(),
-        stake_ref,
+        bond_ref,
         spec_id: "top-of-book@v1.0.0".to_string(),
         sla_hash: [9u8; 32],
         committed_rate_bits_per_sec: ONE_GBPS,
@@ -1225,17 +1281,18 @@ async fn test_a_feed_cannot_activate_beyond_its_stake() {
     .unwrap();
 
     // The mirror the relayer wrote after creation, corrected to a tier that covers nothing.
-    let shrunk = borsh::to_vec(&StakeMirror {
-        account_type: AccountType::StakeMirror,
+    let shrunk = borsh::to_vec(&BondMirror {
+        account_type: AccountType::BondMirror,
         owner: Pubkey::new_unique(),
         bump_seed: mirror_bump,
-        stake_ref,
+        bond_ref,
         builder: builder.pubkey(),
-        tier: StakeTier::None,
+        tier: BondTier::None,
         committed_rate_bits_per_sec: 0,
         source_slot: 2,
         relayer: Pubkey::new_unique(),
         feed_key,
+        groups_created: 0,
     })
     .unwrap();
 
@@ -1253,7 +1310,7 @@ async fn test_a_feed_cannot_activate_beyond_its_stake() {
         &[AccountMeta::new_readonly(mirror_key, false)],
     )
     .await;
-    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::StakeDoesNotCoverRate));
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::BondDoesNotCoverRate));
     assert_eq!(
         feed_status(&mut banks_client, feed_key).await,
         FeedStatus::Pending
@@ -1266,7 +1323,7 @@ async fn test_a_feed_cannot_activate_beyond_its_stake() {
 async fn test_only_a_pending_feed_activates() {
     let builder = test_payer();
     let (mut banks_client, program_id, payer, globalstate, feed, mirror) =
-        staked_feed_owned_by(&builder, "twice").await;
+        pending_feed_owned_by(&builder, "twice").await;
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     execute_transaction_with_extra_accounts(
@@ -1302,10 +1359,10 @@ async fn test_only_a_pending_feed_activates() {
 async fn test_a_builder_in_the_foundation_allowlist_still_cannot_activate() {
     let builder = test_payer();
     let program_id = Pubkey::new_unique();
-    let stake_ref = Pubkey::new_unique();
+    let bond_ref = Pubkey::new_unique();
     let exchange = Pubkey::new_unique();
     let (feed_key, feed_bump) = get_feed_pda(&program_id, "bothhats", &exchange);
-    let (mirror_key, mirror_bump) = get_stake_mirror_pda(&program_id, &stake_ref);
+    let (mirror_key, mirror_bump) = get_bond_mirror_pda(&program_id, &bond_ref);
 
     let mut program_test = ProgramTest::new(
         "doublezero_serviceability",
@@ -1334,7 +1391,7 @@ async fn test_a_builder_in_the_foundation_allowlist_still_cannot_activate() {
         exchange,
         groups: vec![Pubkey::new_unique()],
         builder: builder.pubkey(),
-        stake_ref,
+        bond_ref,
         spec_id: "top-of-book@v1.0.0".to_string(),
         sla_hash: [9u8; 32],
         committed_rate_bits_per_sec: ONE_GBPS,
@@ -1348,17 +1405,18 @@ async fn test_a_builder_in_the_foundation_allowlist_still_cannot_activate() {
         serialized_account(program_id, borsh::to_vec(&feed).unwrap()),
     );
 
-    let mirror = StakeMirror {
-        account_type: AccountType::StakeMirror,
+    let mirror = BondMirror {
+        account_type: AccountType::BondMirror,
         owner: Pubkey::new_unique(),
         bump_seed: mirror_bump,
-        stake_ref,
+        bond_ref,
         builder: builder.pubkey(),
-        tier: StakeTier::UpTo1Gbps,
+        tier: BondTier::UpTo1Gbps,
         committed_rate_bits_per_sec: ONE_GBPS,
         source_slot: 1,
         relayer: Pubkey::new_unique(),
         feed_key,
+        groups_created: 0,
     };
     program_test.add_account(
         mirror_key,
@@ -1410,20 +1468,21 @@ fn serialized_account(program_id: Pubkey, data: Vec<u8>) -> Account {
 async fn test_a_seeded_feed_matches_what_create_feed_writes() {
     let builder = Pubkey::new_unique();
     let program_id = Pubkey::new_unique();
-    let stake_ref = Pubkey::new_unique();
-    let (mirror, mirror_bump) = get_stake_mirror_pda(&program_id, &stake_ref);
+    let bond_ref = Pubkey::new_unique();
+    let (mirror, mirror_bump) = get_bond_mirror_pda(&program_id, &bond_ref);
 
-    let mirror_data = borsh::to_vec(&StakeMirror {
-        account_type: AccountType::StakeMirror,
+    let mirror_data = borsh::to_vec(&BondMirror {
+        account_type: AccountType::BondMirror,
         owner: Pubkey::new_unique(),
         bump_seed: mirror_bump,
-        stake_ref,
+        bond_ref,
         builder,
-        tier: StakeTier::UpTo1Gbps,
+        tier: BondTier::UpTo1Gbps,
         committed_rate_bits_per_sec: ONE_GBPS,
         source_slot: 1,
         relayer: Pubkey::new_unique(),
         feed_key: Pubkey::default(),
+        groups_created: 0,
     })
     .unwrap();
 
@@ -1438,7 +1497,7 @@ async fn test_a_seeded_feed_matches_what_create_feed_writes() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
-            feature_flags: FeatureFlag::AllowStakedFeeds.to_mask(),
+            feature_flags: FeatureFlag::AllowBondedFeeds.to_mask(),
         }),
         vec![AccountMeta::new(globalstate, false)],
         &payer,
@@ -1462,7 +1521,7 @@ async fn test_a_seeded_feed_matches_what_create_feed_writes() {
             exchange,
             groups: vec![group],
             builder,
-            stake_ref,
+            bond_ref,
             spec_id: "top-of-book@v1.0.0".to_string(),
             sla_hash: [9u8; 32],
             committed_rate_bits_per_sec: ONE_GBPS,
@@ -1491,11 +1550,11 @@ async fn test_a_seeded_feed_matches_what_create_feed_writes() {
         exchange,
         groups: vec![group],
         builder,
-        stake_ref,
+        bond_ref,
         spec_id: "top-of-book@v1.0.0".to_string(),
         sla_hash: [9u8; 32],
         committed_rate_bits_per_sec: ONE_GBPS,
-        status: FeedStatus::Pending,
+        status: FeedStatus::Active,
         halted_by: Pubkey::default(),
         retires_at: 0,
         feed_chain: FeedChain::Unspecified,

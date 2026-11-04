@@ -88,7 +88,7 @@ pub fn process_set_globalconfig(
     );
 
     // Authorization: GLOBALSTATE_ADMIN (Permission account) or foundation (legacy).
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     authorize(
         program_id,
         accounts_iter,

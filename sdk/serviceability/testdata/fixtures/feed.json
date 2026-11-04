@@ -53,7 +53,7 @@
       "typ": "pubkey"
     },
     {
-      "name": "StakeRef",
+      "name": "BondRef",
       "value": "GQvN3RAKfUNVYQY7VYzF2CgMGEPWgZKciddMGf3u4EPy",
       "typ": "pubkey"
     },

@@ -17,6 +17,9 @@ pub mod validators;
 
 pub use context::{CliContext, CliContextBuilder, OutputFormat};
 pub use error::{render_error, render_eyre, CliError, Result};
-pub use formatters::{print_signature, print_signature_and_then, render_collection, render_record};
+pub use formatters::{
+    format_labeled_address, label_addresses, labeled_table, print_signature,
+    print_signature_and_then, render_collection, render_record,
+};
 pub use logging::{init_logging, LogLevel};
 pub use requirements::RequirementCheck;

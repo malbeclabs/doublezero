@@ -82,6 +82,23 @@ async fn simulate_collect(
     bucket_key: &Pubkey,
     bucket_2z_key: &Pubkey,
 ) -> Result<(TransactionError, Vec<String>), BanksClientError> {
+    simulate_collect_with_program_config(
+        test_setup,
+        integration_program_id,
+        bucket_key,
+        bucket_2z_key,
+        &mock_rewards_integration::find_program_config_address().0,
+    )
+    .await
+}
+
+async fn simulate_collect_with_program_config(
+    test_setup: &mut common::ProgramTestWithOwner,
+    integration_program_id: &Pubkey,
+    bucket_key: &Pubkey,
+    bucket_2z_key: &Pubkey,
+    integration_program_config_key: &Pubkey,
+) -> Result<(TransactionError, Vec<String>), BanksClientError> {
     let collect_ix = try_build_instruction(
         &ID,
         CollectMonthlyContributorRewardsAccounts::new(
@@ -90,6 +107,7 @@ async fn simulate_collect(
             integration_program_id,
             bucket_key,
             bucket_2z_key,
+            integration_program_config_key,
         ),
         &RevenueDistributionInstructionData::CollectMonthlyContributorRewards,
     )
@@ -442,6 +460,40 @@ async fn test_cannot_collect_monthly_contributor_rewards_from_another_month() {
     assert_eq!(
         program_logs.get(5).unwrap(),
         "Program log: Month mismatch: integration=2026-08, monthly distribution=2026-09"
+    );
+
+    let (_, monthly_distribution, _, _, _) = test_setup
+        .fetch_monthly_contributor_distribution(YEAR, MONTH)
+        .await;
+    assert!(!monthly_distribution.is_collected());
+}
+
+#[tokio::test]
+async fn test_cannot_collect_monthly_contributor_rewards_with_another_program_config() {
+    let CollectMonthlyRewardsSetup {
+        mut test_setup,
+        bucket_key,
+        bucket_2z_key,
+        ..
+    } = setup_for_collect_monthly_rewards().await;
+
+    // The mock refuses any program config but its own, so this shows which key reached the CPI.
+    let (tx_err, program_logs) = simulate_collect_with_program_config(
+        &mut test_setup,
+        &mock_rewards_integration::ID,
+        &bucket_key,
+        &bucket_2z_key,
+        &Pubkey::new_unique(),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        tx_err,
+        TransactionError::InstructionError(0, InstructionError::InvalidSeeds)
+    );
+    assert_eq!(
+        program_logs.get(5).unwrap(),
+        "Program log: Account 4 must be the integration's program config"
     );
 
     let (_, monthly_distribution, _, _, _) = test_setup

@@ -66,7 +66,7 @@ sufficient.
 |-----------------|---------|--------------------------------|
 | `HEALTH_ORACLE` | `1<<11` | Report device/link health      |
 | `QA`            | `1<<12` | QA operations                  |
-| `STAKE_ORACLE`  | `1<<18` | Write `StakeMirror` accounts   |
+| `BOND_ORACLE`  | `1<<18` | Write `BondMirror` accounts   |
 
 ---
 
@@ -96,7 +96,7 @@ Falls back to `GlobalState` fields:
 | `ACTIVATOR`         | `activator_authority_pk == payer`                                                  |
 | `SENTINEL`          | `sentinel_authority_pk == payer`                                                   |
 | `HEALTH_ORACLE`     | `health_oracle_pk == payer`                                                        |
-| `STAKE_ORACLE`      | none; a Permission account is the only way to hold it                              |
+| `BOND_ORACLE`      | none; a Permission account is the only way to hold it                              |
 | `FEED_AUTHORITY`    | `feed_authority_pk == payer`                                                       |
 | `USER_ADMIN`        | `foundation_allowlist`                                                             |
 | `ACCESS_PASS_ADMIN` | `foundation_allowlist` OR `sentinel_authority_pk` OR `feed_authority_pk`           |

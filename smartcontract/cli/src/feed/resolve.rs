@@ -6,7 +6,7 @@ use crate::{
 };
 use clap::{ArgGroup, Args};
 use doublezero_sdk::{commands::feed::get::GetFeedCommand, Exchange, Feed};
-use doublezero_serviceability::{pda::get_stake_mirror_pda, state::accountdata::AccountData};
+use doublezero_serviceability::{pda::get_bond_mirror_pda, state::accountdata::AccountData};
 use solana_sdk::pubkey::Pubkey;
 use std::{
     collections::{HashMap, HashSet},
@@ -89,15 +89,15 @@ fn pubkey_or_code(pubkey: Vec<String>, code: Option<String>) -> eyre::Result<Str
     }
 }
 
-/// The stake mirror a feed's lifecycle instructions re-read, or `None` for a catalog feed.
+/// The bond mirror a feed's lifecycle instructions re-read, or `None` for a catalog feed.
 ///
-/// Derived from the feed's own `stake_ref` rather than taken as a flag: the feed already records
-/// which stake backs it, so an argument would only be a way to name a different one. A catalog
-/// feed has no stake to re-read, and sending a mirror for one asks the program for an account it
+/// Derived from the feed's own `bond_ref` rather than taken as a flag: the feed already records
+/// which bond backs it, so an argument would only be a way to name a different one. A catalog
+/// feed has no bond to re-read, and sending a mirror for one asks the program for an account it
 /// refuses.
-pub(crate) fn stake_mirror_of<C: CliCommand>(client: &C, feed: &Feed) -> Option<Pubkey> {
+pub(crate) fn bond_mirror_of<C: CliCommand>(client: &C, feed: &Feed) -> Option<Pubkey> {
     (feed.builder != Pubkey::default())
-        .then(|| get_stake_mirror_pda(&client.get_program_id(), &feed.stake_ref).0)
+        .then(|| get_bond_mirror_pda(&client.get_program_id(), &feed.bond_ref).0)
 }
 
 /// Read the named feeds in one `getMultipleAccounts` call. A pass names at most a handful of feeds,

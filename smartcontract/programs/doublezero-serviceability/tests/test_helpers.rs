@@ -6,6 +6,7 @@ use doublezero_serviceability::{
     pda::{
         get_contributor_pda, get_exchange_pda, get_globalconfig_pda, get_globalstate_pda,
         get_location_pda, get_program_config_pda, get_resource_extension_pda, get_topology_pda,
+        get_user_old_pda,
     },
     processors::{
         contributor::create::ContributorCreateArgs, exchange::create::ExchangeCreateArgs,
@@ -16,11 +17,12 @@ use doublezero_serviceability::{
     state::{
         accountdata::AccountData, accounttype::AccountType, device::Device,
         globalstate::GlobalState, resource_extension::ResourceExtensionOwned,
-        topology::TopologyConstraint,
+        topology::TopologyConstraint, user::User,
     },
 };
 use solana_program_test::*;
 use solana_sdk::{
+    account::AccountSharedData,
     instruction::{AccountMeta, Instruction, InstructionError},
     program_error::ProgramError,
     pubkey::Pubkey,
@@ -91,7 +93,7 @@ pub async fn init_test() -> (BanksClient, Pubkey, Keypair, solana_program::hash:
 /// and owned by the program. The caller picks the id because seeded accounts are usually PDAs,
 /// which cannot be derived until it is known.
 ///
-/// Some accounts are written by an offchain service rather than by an instruction — `StakeMirror`
+/// Some accounts are written by an offchain service rather than by an instruction — `BondMirror`
 /// is written by the cross-chain relayer. Seeding one directly is how a test exercises the read
 /// path before the writer exists.
 #[allow(dead_code)]
@@ -99,18 +101,32 @@ pub async fn init_test_with_accounts(
     program_id: Pubkey,
     accounts: &[(Pubkey, Vec<u8>)],
 ) -> (BanksClient, Keypair, solana_program::hash::Hash) {
+    let owned = accounts
+        .iter()
+        .map(|(pubkey, data)| (*pubkey, data.clone(), program_id))
+        .collect::<Vec<_>>();
+    init_test_with_owned_accounts(program_id, &owned).await
+}
+
+/// Like `init_test_with_accounts`, with each account's owner named, so a test can seed an account
+/// another program owns.
+#[allow(dead_code)]
+pub async fn init_test_with_owned_accounts(
+    program_id: Pubkey,
+    accounts: &[(Pubkey, Vec<u8>, Pubkey)],
+) -> (BanksClient, Keypair, solana_program::hash::Hash) {
     let mut program_test = ProgramTest::new(
         "doublezero_serviceability",
         program_id,
         processor!(process_instruction),
     );
-    for (pubkey, data) in accounts {
+    for (pubkey, data, owner) in accounts {
         program_test.add_account(
             *pubkey,
             solana_sdk::account::Account {
                 lamports: solana_sdk::rent::Rent::default().minimum_balance(data.len()),
                 data: data.clone(),
-                owner: program_id,
+                owner: *owner,
                 executable: false,
                 rent_epoch: 0,
             },
@@ -684,6 +700,31 @@ pub async fn setup_program_with_globalconfig_context(
     (context, program_id, globalstate_pubkey, globalconfig_pubkey)
 }
 
+/// Moves a user to `get_user_old_pda(index)`, the counter-based address no instruction creates,
+/// and empties its per-IP address. Returns the counter-based address.
+#[allow(dead_code)]
+pub async fn move_user_to_old_pda(
+    context: &mut ProgramTestContext,
+    program_id: Pubkey,
+    user_pubkey: Pubkey,
+    index: u128,
+) -> Pubkey {
+    let mut account = context
+        .banks_client
+        .get_account(user_pubkey)
+        .await
+        .unwrap()
+        .expect("user must exist");
+    let mut user = User::try_from(&account.data[..]).unwrap();
+    let (old_pubkey, bump_seed) = get_user_old_pda(&program_id, index);
+    user.index = index;
+    user.bump_seed = bump_seed;
+    account.data = to_vec(&user).unwrap();
+    context.set_account(&old_pubkey, &AccountSharedData::from(account));
+    context.set_account(&user_pubkey, &AccountSharedData::default());
+    old_pubkey
+}
+
 #[allow(dead_code)]
 pub async fn setup_program_with_globalconfig() -> (BanksClient, Keypair, Pubkey, Pubkey, Pubkey) {
     let program_id = Pubkey::new_unique();
@@ -1111,4 +1152,29 @@ pub fn assert_custom_error(err: &BanksClientError, expected: DoubleZeroError) {
         Some(want),
         "expected Custom({want}), got {err:?}"
     );
+}
+
+/// A multicast group account's data, owned by `owner` on `bond_ref`, as `CreateMulticastGroup`
+/// leaves it. For seeding a group at start-up with `init_test_with_accounts`.
+#[allow(dead_code)]
+pub fn multicast_group(owner: Pubkey, bond_ref: Pubkey) -> Vec<u8> {
+    use doublezero_serviceability::state::{
+        accounttype::AccountType,
+        multicastgroup::{MulticastGroup, MulticastGroupStatus},
+    };
+    borsh::to_vec(&MulticastGroup {
+        account_type: AccountType::MulticastGroup,
+        owner,
+        index: 1,
+        bump_seed: 255,
+        tenant_pk: Pubkey::default(),
+        multicast_ip: std::net::Ipv4Addr::new(233, 84, 178, 1),
+        max_bandwidth: 1_000_000_000,
+        status: MulticastGroupStatus::Activated,
+        code: "seeded-group".to_string(),
+        publisher_count: 0,
+        subscriber_count: 0,
+        bond_ref,
+    })
+    .unwrap()
 }

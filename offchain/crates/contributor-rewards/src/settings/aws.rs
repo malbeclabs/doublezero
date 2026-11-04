@@ -9,12 +9,15 @@ pub struct AwsSettings {
     /// S3 bucket name
     pub bucket: String,
 
-    /// AWS access key ID
+    /// AWS access key ID. Leave it and the secret access key empty to use the
+    /// AWS default credential chain, such as an instance or pod role.
     /// Environment variable: DZ__AWS__ACCESS_KEY_ID
+    #[serde(default)]
     pub access_key_id: String,
 
     /// AWS secret access key
     /// Environment variable: DZ__AWS__SECRET_ACCESS_KEY
+    #[serde(default)]
     pub secret_access_key: String,
 
     /// Custom S3 endpoint (for MinIO or other S3-compatible services)

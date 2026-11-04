@@ -29,7 +29,7 @@ struct ContributorDisplay {
 impl GetContributorCliCommand {
     pub async fn execute<C: CliCommand, W: Write>(
         self,
-        _ctx: &CliContext,
+        ctx: &CliContext,
         client: &C,
         out: &mut W,
     ) -> eyre::Result<()> {
@@ -46,7 +46,12 @@ impl GetContributorCliCommand {
             ops_manager_key: contributor.ops_manager_pk.to_string(),
         };
 
-        render_record(out, &display, OutputFormat::from_flags(self.json, false))
+        render_record(
+            out,
+            &display,
+            OutputFormat::from_flags(self.json, false),
+            &ctx.address_labels,
+        )
     }
 }
 

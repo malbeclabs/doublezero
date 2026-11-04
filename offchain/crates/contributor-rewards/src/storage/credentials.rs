@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use aws_config::BehaviorVersion;
 use aws_sdk_s3::config::{Credentials, Region};
 use tracing::info;
@@ -17,9 +17,11 @@ impl CredentialLoader {
     pub async fn load_config(&self) -> Result<aws_sdk_s3::Config> {
         info!("Loading AWS configuration");
 
-        let mut config_builder = aws_sdk_s3::Config::builder()
+        let shared_config = aws_config::defaults(BehaviorVersion::latest())
             .region(Region::new(self.config.region.clone()))
-            .behavior_version(BehaviorVersion::latest());
+            .load()
+            .await;
+        let mut config_builder = aws_sdk_s3::config::Builder::from(&shared_config);
 
         // Set custom endpoint if provided (for minio or other S3-compatible services)
         if let Some(endpoint) = &self.config.endpoint {
@@ -29,17 +31,26 @@ impl CredentialLoader {
             config_builder = config_builder.force_path_style(true);
         }
 
-        // Use explicit credentials from config (required)
-        info!("Using AWS credentials from configuration");
-        let credentials = Credentials::new(
-            &self.config.access_key_id,
-            &self.config.secret_access_key,
-            None,
-            None,
-            "contributor-rewards-config",
+        ensure!(
+            self.config.access_key_id.is_empty() == self.config.secret_access_key.is_empty(),
+            "Set both aws.access_key_id and aws.secret_access_key, or neither"
         );
 
-        Ok(config_builder.credentials_provider(credentials).build())
+        if self.config.access_key_id.is_empty() {
+            info!("Using AWS credentials from the default credential chain");
+        } else {
+            info!("Using AWS credentials from configuration");
+            let credentials = Credentials::new(
+                &self.config.access_key_id,
+                &self.config.secret_access_key,
+                None,
+                None,
+                "contributor-rewards-config",
+            );
+            config_builder = config_builder.credentials_provider(credentials);
+        }
+
+        Ok(config_builder.build())
     }
 
     pub async fn validate(&self) -> Result<()> {

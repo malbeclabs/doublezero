@@ -1,4 +1,4 @@
-FROM golang:1.25.0
+FROM golang:1.26.10
 
 # Rust toolchain (matches rust-toolchain.toml)
 ENV RUSTUP_HOME=/usr/local/rustup \

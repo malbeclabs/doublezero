@@ -2,7 +2,7 @@ pub mod aws;
 pub mod network;
 pub mod validation;
 
-use std::{fmt, net::SocketAddr, path::Path};
+use std::{collections::BTreeMap, fmt, net::SocketAddr, path::Path};
 
 use anyhow::{Context, Result};
 use aws::{AwsSettings, StorageBackend};
@@ -24,6 +24,9 @@ pub struct Settings {
     /// Demand generation parameters
     #[serde(default)]
     pub demand: DemandSettings,
+    /// Metro prices, which set the priority of the multicast demands
+    #[serde(default)]
+    pub metro_prices: MetroPriceSettings,
     /// Shapley input preparation parameters
     #[serde(default)]
     pub input: InputSettings,
@@ -93,6 +96,43 @@ impl Default for DemandSettings {
     }
 }
 
+// Prices are in whole USDC dollars per Solana epoch of two days. A city that is not in
+// `prices` gets `default_price`. Setting `prices` replaces the whole table.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct MetroPriceSettings {
+    pub default_price: u16,
+    pub prices: BTreeMap<String, u16>,
+}
+
+impl Default for MetroPriceSettings {
+    fn default() -> Self {
+        Self {
+            default_price: 30,
+            prices: [
+                ("FRA", 100),
+                ("AMS", 100),
+                ("NYC", 60),
+                ("LON", 60),
+                ("SIN", 60),
+                ("TYO", 60),
+            ]
+            .into_iter()
+            .map(|(city_code, price)| (city_code.to_string(), price))
+            .collect(),
+        }
+    }
+}
+
+impl MetroPriceSettings {
+    pub fn price(&self, city_code: &str) -> u16 {
+        self.prices
+            .iter()
+            .find(|(code, _)| code.eq_ignore_ascii_case(city_code))
+            .map_or(self.default_price, |(_, price)| *price)
+    }
+}
+
 /// Shapley input preparation parameters
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
@@ -114,10 +154,9 @@ impl Default for InputSettings {
 pub struct RpcSettings {
     /// DoubleZero ledger RPC URL
     pub dz_url: String,
-    /// Solana read RPC endpoint (for reading chain data like leader schedules)
-    pub solana_read_url: String,
-    /// Solana write RPC endpoint (for writing rewards and merkle roots)
-    pub solana_write_url: String,
+    /// Solana RPC endpoint, for reading chain data like leader schedules and for writing
+    /// rewards and merkle roots
+    pub solana_url: String,
     /// Transaction commitment level ("confirmed", "finalized", etc.)
     pub commitment: String,
     /// Rate limit for RPC requests per second
@@ -200,6 +239,11 @@ pub struct SchedulerSettings {
     /// Maximum time to wait for grace period in seconds (default: 21600 = 6 hours)
     #[serde(default = "default_grace_period_max_wait_seconds")]
     pub grace_period_max_wait_seconds: u64,
+    /// Finalize the previous UTC month's contributor rewards and distribute the
+    /// last three months', recording DZ epoch end times to calculate a month.
+    /// Disabled by default.
+    #[serde(default)]
+    pub enable_monthly_distribution: bool,
 }
 
 fn default_grace_period_max_wait_seconds() -> u64 {
@@ -296,8 +340,7 @@ impl fmt::Display for Settings {
              \tNetwork: {:?}\n\
              \tLog Level: {}\n\
              \tDZ RPC URL: {}\n\
-             \tSolana Read RPC URL: {}\n\
-             \tSolana Write RPC URL: {}\n\
+             \tSolana RPC URL: {}\n\
              \tRPS Limit: {}\n\
              \tShapley Operator Uptime: {}\n\
              \tShapley Contiguity Bonus: {}\n\
@@ -313,8 +356,7 @@ impl fmt::Display for Settings {
             self.network,
             self.log_level,
             self.rpc.dz_url,
-            self.rpc.solana_read_url,
-            self.rpc.solana_write_url,
+            self.rpc.solana_url,
             self.rpc.rps_limit,
             self.shapley.operator_uptime,
             self.shapley.contiguity_bonus,
@@ -377,8 +419,7 @@ demand_multiplier = 1.2
 
 [rpc]
 dz_url = "https://test.com"
-solana_read_url = "https://test.com"
-solana_write_url = "https://test.com"
+solana_url = "https://test.com"
 commitment = "confirmed"
 rps_limit = 10
 
@@ -528,5 +569,53 @@ public_latency_multiplier = 1.0
         let settings = Settings::from_path(&path).unwrap();
 
         assert_eq!(settings.input.public_latency_multiplier, 1.25);
+    }
+
+    #[test]
+    fn test_metro_prices_default_when_section_missing() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_demand_env();
+        let _cleanup = DemandEnvCleanup;
+        let path = write_config(&base_config(""));
+
+        let settings = Settings::from_path(&path).unwrap();
+
+        assert_eq!(settings.metro_prices, MetroPriceSettings::default());
+        assert_eq!(settings.metro_prices.price("FRA"), 100);
+        assert_eq!(settings.metro_prices.price("tyo"), 60);
+        assert_eq!(settings.metro_prices.price("CHI"), 30);
+    }
+
+    #[test]
+    fn test_metro_prices_toml_section() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_demand_env();
+        let _cleanup = DemandEnvCleanup;
+        let path = write_config(&base_config(
+            r#"
+[metro_prices]
+default_price = 50
+
+[metro_prices.prices]
+FRA = 120
+"#,
+        ));
+
+        let settings = Settings::from_path(&path).unwrap();
+
+        assert_eq!(settings.metro_prices.price("FRA"), 120);
+        assert_eq!(settings.metro_prices.price("AMS"), 50);
+    }
+
+    #[test]
+    fn test_monthly_distribution_is_disabled_by_default() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        clear_demand_env();
+        let _cleanup = DemandEnvCleanup;
+        let path = write_config(&base_config(""));
+
+        let settings = Settings::from_path(&path).unwrap();
+
+        assert!(!settings.scheduler.enable_monthly_distribution);
     }
 }

@@ -162,6 +162,7 @@ async fn setup(client_ip: [u8; 4]) -> Fixture {
                 max_bandwidth: 1000,
                 owner: payer.pubkey(),
                 use_onchain_allocation: true,
+                bond_ref: Pubkey::default(),
             }),
             vec![
                 AccountMeta::new(mgroup_pubkey, false),
@@ -311,6 +312,7 @@ async fn create_groups(f: &mut Fixture, n: usize) -> Vec<Pubkey> {
                 max_bandwidth: 1000,
                 owner: f.payer.pubkey(),
                 use_onchain_allocation: true,
+                bond_ref: Pubkey::default(),
             }),
             vec![
                 AccountMeta::new(mgroup_pubkey, false),

@@ -1,7 +1,7 @@
 use crate::{
     authorize::{authorize, FEED_ADMIN_FLAGS},
     error::DoubleZeroError,
-    processors::feed::{require_stake_still_covers, split_stake_mirror},
+    processors::{bond_mirror::split_bond_mirror, feed::require_bond_still_covers},
     serializer::try_acc_write,
     state::{
         feed::{Feed, FeedStatus},
@@ -23,7 +23,8 @@ pub struct FeedActivateArgs {}
 
 /// Admit a feed that was waiting on a conformance verdict.
 ///
-/// Only from `Pending`. `Halted` has its own way back through `ResumeFeed`, and nothing leaves
+/// `CreateFeed` no longer writes `Pending`, so this serves only a feed created before that
+/// change. Only from `Pending`. `Halted` has its own way back through `ResumeFeed`, and nothing leaves
 /// `Retired`.
 ///
 /// The args carry no verdict. Nothing reads one: the grounds a verdict would carry are what
@@ -31,11 +32,12 @@ pub struct FeedActivateArgs {}
 /// payload here before anything consumes it would fix its shape at the point we know least about
 /// it. What the caller's signature asserts is the whole of the verdict for now.
 ///
-/// The builder cannot sign this, unlike halt and resume, which RFC-28 makes its own levers. A
-/// builder that could admit its own feed would be attesting to its own conformance, which is the
-/// one thing the Pending state exists to prevent. It is refused by name before the permission
-/// check rather than left to it, because a builder may also hold `FEED_AUTHORITY` or sit in the
-/// foundation allowlist, and `authorize` would let it through on that strength.
+/// The builder cannot sign this, unlike halt and resume, which RFC-29 makes its own levers. A feed
+/// created `Pending` was created to wait on someone other than its builder, so a builder that
+/// admitted it would be attesting to its own conformance. A feed created now is admitted by its
+/// bond at `CreateFeed` instead. The builder is refused by name before the permission check rather
+/// than left to it, because a builder may also hold `FEED_AUTHORITY` or sit in the foundation
+/// allowlist, and `authorize` would let it through on that strength.
 pub fn process_activate_feed(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
@@ -57,12 +59,15 @@ pub fn process_activate_feed(
     assert!(feed_account.is_writable, "PDA Account is not writable");
 
     let mut feed = Feed::try_from(feed_account)?;
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
 
-    // The stake mirror rides after the fixed accounts, found by its address rather than its
+    // The bond mirror rides after the fixed accounts, found by its address rather than its
     // position, so a catalog feed's caller is not forced to send one.
-    let (mirror_account, authorize_candidates) =
-        split_stake_mirror(program_id, &feed.builder, &feed.stake_ref, accounts_iter);
+    let (mirror_account, authorize_candidates) = split_bond_mirror(
+        program_id,
+        (feed.builder != Pubkey::default()).then_some(&feed.bond_ref),
+        accounts_iter,
+    );
     let mut authorize_iter = authorize_candidates.into_iter();
 
     // Refused before the roles are read, not instead of reading them. A builder can also hold
@@ -94,18 +99,18 @@ pub fn process_activate_feed(
         return Err(DoubleZeroError::FeedNotActivatable.into());
     }
 
-    // This is the only place a corrected mirror reaches a feed that a bad one already admitted.
-    // `CreateFeed` checked the cover it was shown; a relayer can write a smaller tier afterwards,
-    // and between creation and this step is the whole window in which that correction can land
-    // before the feed ever publishes.
+    // `CreateFeed` checked the cover it was shown, and a relayer can write a smaller tier
+    // afterwards. For a feed created `Pending`, this is where that correction reaches it before it
+    // publishes. A feed created `Active` has no such step: a correction reaches it only at
+    // `ResumeFeed`.
     if let Some(mirror_account) = mirror_account {
-        require_stake_still_covers(program_id, mirror_account, feed_account.key, &feed)?;
+        require_bond_still_covers(program_id, mirror_account, feed_account.key, &feed)?;
     } else if feed.builder != Pubkey::default() {
         msg!(
-            "Staked feed {} needs its stake mirror to activate",
+            "Bonded feed {} needs its bond mirror to activate",
             feed_account.key
         );
-        return Err(DoubleZeroError::StakeMirrorMissing.into());
+        return Err(DoubleZeroError::BondMirrorMissing.into());
     }
 
     feed.status = FeedStatus::Active;

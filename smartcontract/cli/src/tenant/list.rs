@@ -29,6 +29,7 @@ pub struct TenantDisplay {
     pub metro_routing: bool,
     pub route_liveness: bool,
     pub include_topologies: String,
+    pub administrators: String,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     pub owner: Pubkey,
 }
@@ -36,7 +37,7 @@ pub struct TenantDisplay {
 impl ListTenantCliCommand {
     pub async fn execute<C: CliCommand, W: Write>(
         self,
-        _ctx: &CliContext,
+        ctx: &CliContext,
         client: &C,
         out: &mut W,
     ) -> eyre::Result<()> {
@@ -57,6 +58,12 @@ impl ListTenantCliCommand {
                     &tenant.include_topologies,
                     &topology_map,
                 ),
+                administrators: tenant
+                    .administrators
+                    .iter()
+                    .map(|pk| pk.to_string())
+                    .collect::<Vec<_>>()
+                    .join(", "),
                 owner: tenant.owner,
             })
             .collect();
@@ -67,6 +74,7 @@ impl ListTenantCliCommand {
             out,
             tenant_displays,
             OutputFormat::from_flags(self.json, self.json_compact),
+            &ctx.address_labels,
         )
     }
 }
@@ -74,7 +82,9 @@ impl ListTenantCliCommand {
 #[cfg(test)]
 mod tests {
     use crate::{tenant::list::ListTenantCliCommand, tests::utils::create_test_client};
-    use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
+    use doublezero_cli_core::testing::{
+        block_on, cli_context_default_for_tests, cli_context_for_tests,
+    };
     use doublezero_sdk::AccountType;
     use doublezero_serviceability::state::tenant::{
         Tenant, TenantBillingConfig, TenantPaymentStatus,
@@ -94,7 +104,9 @@ mod tests {
             code: "tenant-a".to_string(),
             vrf_id: 100,
             reference_count: 0,
-            administrators: vec![],
+            administrators: vec![Pubkey::from_str_const(
+                "DZfLKFDgLShjY34WqXdVVzHUvVtrYXb7UtdrALnGa8jw",
+            )],
             token_account: Pubkey::default(),
             payment_status: TenantPaymentStatus::Paid,
             metro_routing: true,
@@ -124,7 +136,7 @@ mod tests {
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
             output_str,
-            " account                                   | code     | vrf_id | metro_routing | route_liveness | include_topologies | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | tenant-a | 100    | true          | false          | default            | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n"
+            " account                                   | code     | vrf_id | metro_routing | route_liveness | include_topologies | administrators                               | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | tenant-a | 100    | true          | false          | default            | DZfLKFDgLShjY34WqXdVVzHUvVtrYXb7UtdrALnGa8jw | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n"
         );
 
         let mut output = Vec::new();
@@ -139,7 +151,69 @@ mod tests {
         let output_str = String::from_utf8(output).unwrap();
         assert_eq!(
             output_str,
-            "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"code\":\"tenant-a\",\"vrf_id\":100,\"metro_routing\":true,\"route_liveness\":false,\"include_topologies\":\"default\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n"
+            "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"code\":\"tenant-a\",\"vrf_id\":100,\"metro_routing\":true,\"route_liveness\":false,\"include_topologies\":\"default\",\"administrators\":\"DZfLKFDgLShjY34WqXdVVzHUvVtrYXb7UtdrALnGa8jw\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n"
         );
+    }
+
+    #[test]
+    fn test_cli_tenant_list_address_labels() {
+        let mut client = create_test_client();
+
+        let owner = Pubkey::from_str_const("DZfLKFDgLShjY34WqXdVVzHUvVtrYXb7UtdrALnGa8jw");
+        let other_admin = Pubkey::from_str_const("DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3jo");
+        let tenant_pubkey = Pubkey::from_str_const("11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo");
+        let tenant = Tenant {
+            account_type: AccountType::Tenant,
+            owner,
+            bump_seed: 0,
+            code: "tenant-a".to_string(),
+            vrf_id: 100,
+            reference_count: 0,
+            administrators: vec![owner, other_admin],
+            token_account: Pubkey::default(),
+            payment_status: TenantPaymentStatus::Paid,
+            metro_routing: true,
+            route_liveness: false,
+            billing: TenantBillingConfig::default(),
+            include_topologies: vec![],
+        };
+        client
+            .expect_list_tenant()
+            .returning(move |_| Ok(HashMap::from([(tenant_pubkey, tenant.clone())])));
+        client
+            .expect_list_topology()
+            .returning(|_| Ok(HashMap::new()));
+
+        let ctx = cli_context_for_tests()
+            .with_address_labels(HashMap::from([(owner.to_string(), "Jared".to_string())]))
+            .build()
+            .unwrap();
+
+        let mut output = Vec::new();
+        block_on(
+            ListTenantCliCommand {
+                json: false,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        )
+        .unwrap();
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            " account                                   | code     | vrf_id | metro_routing | route_liveness | include_topologies | administrators                                                   | owner              \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | tenant-a | 100    | true          | false          | default            | Jared (DZfL..a8jw), DZKy4E6QNZSGowGoek4VX352QpHnRAWvqrd76vjbB3jo | Jared (DZfL..a8jw) \n"
+        );
+
+        let mut output = Vec::new();
+        block_on(
+            ListTenantCliCommand {
+                json: true,
+                json_compact: false,
+            }
+            .execute(&ctx, &client, &mut output),
+        )
+        .unwrap();
+        let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(json[0]["owner"], owner.to_string());
+        assert_eq!(json[0]["administrators"], format!("{owner}, {other_admin}"));
     }
 }

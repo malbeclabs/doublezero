@@ -42,6 +42,7 @@ mod common;
 
 pub mod accesspass;
 pub mod allowlist;
+pub mod bond_mirror;
 pub mod contributor;
 pub mod device;
 pub mod exchange;
@@ -56,7 +57,6 @@ pub mod migrate;
 pub mod multicastgroup;
 pub mod permission;
 pub mod resource;
-pub mod stake_mirror;
 pub mod tenant;
 pub mod topology;
 pub mod user;

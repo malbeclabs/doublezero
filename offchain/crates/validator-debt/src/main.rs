@@ -11,6 +11,8 @@ use metrics_exporter_prometheus::PrometheusBuilder;
 use tracing::{debug, warn};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
+// TODO: Remove this crate, because validators no longer pay debt to DoubleZero.
+// First, `doublezero-solana` must stop reading debt records through it.
 #[derive(Debug, Parser)]
 #[command(term_width = 0)]
 #[command(version = option_env!("BUILD_VERSION").unwrap_or(env!("CARGO_PKG_VERSION")))]

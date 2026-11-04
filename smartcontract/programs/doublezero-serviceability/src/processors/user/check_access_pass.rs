@@ -74,7 +74,7 @@ pub fn process_check_access_pass_user(
     );
 
     // Authorization: ACTIVATOR (Permission account) or activator authority (legacy).
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     authorize(
         program_id,
         accounts_iter,

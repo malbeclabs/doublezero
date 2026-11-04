@@ -1,7 +1,7 @@
 use crate::doublezerocommand::CliCommand;
 use clap::{Args, ValueEnum};
 use console::style;
-use doublezero_cli_core::CliContext;
+use doublezero_cli_core::{labeled_table, CliContext};
 use doublezero_program_common::serializer;
 use doublezero_sdk::{
     commands::{accesspass::list::ListAccessPassCommand, user::list::ListUserCommand},
@@ -18,7 +18,7 @@ use std::{
 
 use tabled::{
     settings::{object::Columns, Alignment, Modify, Style},
-    Table, Tabled,
+    Tabled,
 };
 
 // Size of an user account
@@ -102,7 +102,7 @@ pub struct UserBalanceDisplay {
 impl UserBalancesAccessPassCliCommand {
     pub async fn execute<C: CliCommand, W: Write>(
         self,
-        _ctx: &CliContext,
+        ctx: &CliContext,
         client: &C,
         out: &mut W,
     ) -> eyre::Result<()> {
@@ -261,7 +261,7 @@ impl UserBalancesAccessPassCliCommand {
             let json = serde_json::to_string_pretty(&display_rows)?;
             writeln!(out, "{json}")?;
         } else {
-            let table = Table::new(display_rows)
+            let table = labeled_table(display_rows, &ctx.address_labels)
                 .with(Style::psql().remove_horizontals())
                 .with(Modify::new(Columns::new(0..=0)).with(Alignment::right()))
                 .with(Modify::new(Columns::new(2..=2)).with(Alignment::right()))

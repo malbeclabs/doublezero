@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"sync"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
@@ -72,9 +71,6 @@ type Executor struct {
 	signer                *solana.PrivateKey
 	programID             solana.PublicKey
 	waitForVisibleTimeout time.Duration
-
-	permissionOnce sync.Once
-	permissionPDA  *solana.PublicKey // nil if no Permission account exists for this signer
 }
 
 type ExecutorRPCClient interface {
@@ -128,7 +124,11 @@ func (e *Executor) SetDeviceHealthBatch(ctx context.Context, updates []DeviceHea
 	for len(remaining) > 0 {
 		instructions := make([]solana.Instruction, len(remaining))
 		for i, update := range remaining {
-			instructions[i] = e.buildSetDeviceHealthInstruction(update.DevicePubkey, globalStatePubkey, update.Health)
+			instr, err := e.buildSetDeviceHealthInstruction(update.DevicePubkey, globalStatePubkey, update.Health)
+			if err != nil {
+				return lastSig, fmt.Errorf("build SetDeviceHealth instruction: %w", err)
+			}
+			instructions[i] = instr
 		}
 
 		sig, _, err := e.executeTransaction(ctx, instructions)
@@ -171,7 +171,11 @@ func (e *Executor) SetLinkHealthBatch(ctx context.Context, updates []LinkHealthU
 	for len(remaining) > 0 {
 		instructions := make([]solana.Instruction, len(remaining))
 		for i, update := range remaining {
-			instructions[i] = e.buildSetLinkHealthInstruction(update.LinkPubkey, globalStatePubkey, update.Health)
+			instr, err := e.buildSetLinkHealthInstruction(update.LinkPubkey, globalStatePubkey, update.Health)
+			if err != nil {
+				return lastSig, fmt.Errorf("build SetLinkHealth instruction: %w", err)
+			}
+			instructions[i] = instr
 		}
 
 		sig, _, err := e.executeTransaction(ctx, instructions)
@@ -381,11 +385,12 @@ func (e *Executor) buildCreateUserInstruction(args UserCreateArgs) (solana.Instr
 		solana.Meta(solana.SystemProgramID),
 	)
 
+	// CreateUser never calls authorize() and detects the optional tenant from
+	// accounts.len(), so it must not carry the Permission PDA.
 	return &genericInstruction{
-		programID:            e.programID,
-		accounts:             accounts,
-		data:                 data,
-		skipPermissionInject: true,
+		programID: e.programID,
+		accounts:  accounts,
+		data:      data,
 	}, userPDA, nil
 }
 
@@ -395,7 +400,7 @@ func (e *Executor) buildCreateUserInstruction(args UserCreateArgs) (solana.Instr
 //
 //	[user, accesspass, globalstate, device,
 //	 user_tunnel_block, multicast_publisher_block, device_tunnel_ids,
-//	 dz_prefix_block[0..N], optional_tenant, owner, payer, system]
+//	 dz_prefix_block[0..N], optional_tenant, owner, payer, system, permission]
 //
 // kind is the caller's stated intent, never a value read from the pass: the
 // processor loads the pass itself and refuses the call if it is a different
@@ -459,12 +464,17 @@ func (e *Executor) buildDeleteUserInstruction(userPubkey solana.PublicKey, user 
 		solana.Meta(e.signer.PublicKey()).SIGNER().WRITE(),
 		solana.Meta(solana.SystemProgramID),
 	)
+	// The processor detects the optional tenant from the User account, not from
+	// accounts.len(), and calls authorize() unless the payer owns the user.
+	accounts, err = e.appendPermission(accounts)
+	if err != nil {
+		return nil, err
+	}
 
 	return &genericInstruction{
-		programID:            e.programID,
-		accounts:             accounts,
-		data:                 data,
-		skipPermissionInject: true,
+		programID: e.programID,
+		accounts:  accounts,
+		data:      data,
 	}, nil
 }
 
@@ -487,6 +497,8 @@ func (e *Executor) SetUserBGPStatus(ctx context.Context, u UserBGPStatusUpdate) 
 	return sig, err
 }
 
+// buildSetUserBGPStatusInstruction does not append the Permission PDA: the processor
+// authorizes the payer against the device's metrics_publisher_pk, not via authorize().
 func (e *Executor) buildSetUserBGPStatusInstruction(userPubkey, devicePubkey solana.PublicKey, status BGPStatus, bgpRttNs uint64) solana.Instruction {
 	data := make([]byte, 10)
 	data[0] = instructionSetUserBGPStatus
@@ -504,41 +516,44 @@ func (e *Executor) buildSetUserBGPStatusInstruction(userPubkey, devicePubkey sol
 	}
 }
 
-func (e *Executor) buildSetDeviceHealthInstruction(devicePubkey, globalStatePubkey solana.PublicKey, health DeviceHealth) solana.Instruction {
+func (e *Executor) buildSetDeviceHealthInstruction(devicePubkey, globalStatePubkey solana.PublicKey, health DeviceHealth) (solana.Instruction, error) {
+	accounts, err := e.appendPermission(solana.AccountMetaSlice{
+		solana.Meta(devicePubkey).WRITE(),
+		solana.Meta(globalStatePubkey),
+		solana.Meta(e.signer.PublicKey()).SIGNER().WRITE(),
+		solana.Meta(solana.SystemProgramID),
+	})
+	if err != nil {
+		return nil, err
+	}
 	return &genericInstruction{
 		programID: e.programID,
-		accounts: solana.AccountMetaSlice{
-			solana.Meta(devicePubkey).WRITE(),
-			solana.Meta(globalStatePubkey),
-			solana.Meta(e.signer.PublicKey()).SIGNER().WRITE(),
-			solana.Meta(solana.SystemProgramID),
-		},
-		data: []byte{instructionSetDeviceHealth, byte(health)},
-	}
+		accounts:  accounts,
+		data:      []byte{instructionSetDeviceHealth, byte(health)},
+	}, nil
 }
 
-func (e *Executor) buildSetLinkHealthInstruction(linkPubkey, globalStatePubkey solana.PublicKey, health LinkHealth) solana.Instruction {
+func (e *Executor) buildSetLinkHealthInstruction(linkPubkey, globalStatePubkey solana.PublicKey, health LinkHealth) (solana.Instruction, error) {
+	accounts, err := e.appendPermission(solana.AccountMetaSlice{
+		solana.Meta(linkPubkey).WRITE(),
+		solana.Meta(globalStatePubkey),
+		solana.Meta(e.signer.PublicKey()).SIGNER().WRITE(),
+		solana.Meta(solana.SystemProgramID),
+	})
+	if err != nil {
+		return nil, err
+	}
 	return &genericInstruction{
 		programID: e.programID,
-		accounts: solana.AccountMetaSlice{
-			solana.Meta(linkPubkey).WRITE(),
-			solana.Meta(globalStatePubkey),
-			solana.Meta(e.signer.PublicKey()).SIGNER().WRITE(),
-			solana.Meta(solana.SystemProgramID),
-		},
-		data: []byte{instructionSetLinkHealth, byte(health)},
-	}
+		accounts:  accounts,
+		data:      []byte{instructionSetLinkHealth, byte(health)},
+	}, nil
 }
 
 type genericInstruction struct {
 	programID solana.PublicKey
 	accounts  solana.AccountMetaSlice
 	data      []byte
-	// skipPermissionInject suppresses the executor's auto-appending of the Permission PDA.
-	// CreateUser/DeleteUser opt out because the on-chain processor uses accounts.len()
-	// to detect the optional tenant account; appending a trailing Permission shifts that
-	// count and would mis-classify accounts.
-	skipPermissionInject bool
 }
 
 func (i *genericInstruction) ProgramID() solana.PublicKey {
@@ -553,25 +568,21 @@ func (i *genericInstruction) Data() ([]byte, error) {
 	return i.data, nil
 }
 
-// resolvePermissionPDA checks on-chain (once) whether a Permission account exists for this
-// executor's signer and caches the PDA address. Subsequent calls are no-ops.
-func (e *Executor) resolvePermissionPDA(ctx context.Context) {
-	e.permissionOnce.Do(func() {
-		if e.signer == nil {
-			return
-		}
-		pda, _, err := GetPermissionPDA(e.programID, e.signer.PublicKey())
-		if err != nil {
-			e.log.Warn("failed to derive Permission PDA", "error", err)
-			return
-		}
-		info, err := e.rpc.GetAccountInfo(ctx, pda)
-		if err != nil || info == nil || info.Value == nil {
-			return
-		}
-		e.permissionPDA = &pda
-		e.log.Debug("Permission account found, will include in transactions", "pda", pda)
-	})
+// appendPermission appends the signer's Permission PDA, read-only, as the last account of
+// an instruction whose processor routes through authorize(). The PDA is derived offline
+// and appended whether or not the account exists onchain: authorize() treats the payer's
+// PDA while it is uninitialized (system-owned, no data, any lamports) exactly like no
+// Permission account, so a signer without one is still authorized by the GlobalState
+// allowlists while RequirePermissionAccounts is off.
+//
+// Older serviceability programs reject an uninitialized trailing PDA with
+// InvalidAccountData, so the program that tolerates it must be deployed first.
+func (e *Executor) appendPermission(accounts solana.AccountMetaSlice) (solana.AccountMetaSlice, error) {
+	pda, _, err := GetPermissionPDA(e.programID, e.signer.PublicKey())
+	if err != nil {
+		return nil, fmt.Errorf("derive permission PDA: %w", err)
+	}
+	return append(accounts, solana.Meta(pda)), nil
 }
 
 func (e *Executor) executeTransaction(ctx context.Context, instructions []solana.Instruction) (solana.Signature, *solanarpc.GetTransactionResult, error) {
@@ -580,16 +591,6 @@ func (e *Executor) executeTransaction(ctx context.Context, instructions []solana
 	}
 	if e.programID.IsZero() {
 		return solana.Signature{}, nil, ErrNoProgramID
-	}
-
-	// Resolve and inject the Permission PDA into every instruction when the account exists.
-	e.resolvePermissionPDA(ctx)
-	if e.permissionPDA != nil {
-		for _, instr := range instructions {
-			if gi, ok := instr.(*genericInstruction); ok && !gi.skipPermissionInject {
-				gi.accounts = append(gi.accounts, solana.Meta(*e.permissionPDA))
-			}
-		}
 	}
 
 	blockhashResult, err := e.rpc.GetLatestBlockhash(ctx, solanarpc.CommitmentFinalized)

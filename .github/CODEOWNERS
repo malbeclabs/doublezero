@@ -1,0 +1,9 @@
+# Code owners are added as reviewers on pull requests, and the main ruleset
+# requires their approval. Please keep code owners in alphabetical order.
+
+# CI: what a pull request runs, and who may change it
+/.github/workflows/ @armcconnell @bgm-malbeclabs @nikw9944
+/.github/actions/ @armcconnell @bgm-malbeclabs @nikw9944
+/.github/actionlint.yaml @armcconnell @bgm-malbeclabs @nikw9944
+/.github/actionlint.yml @armcconnell @bgm-malbeclabs @nikw9944
+/.github/CODEOWNERS @armcconnell @bgm-malbeclabs @nikw9944

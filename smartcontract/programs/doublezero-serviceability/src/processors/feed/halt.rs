@@ -23,7 +23,7 @@ pub struct FeedHaltArgs {}
 /// Stop a feed publishing, reversibly.
 ///
 /// Halt is the builder's own lever and doubles as a way to rotate the upstream source without
-/// redeploying, so it is reversible and touches neither the stake nor the seats already sold.
+/// redeploying, so it is reversible and touches neither the bond nor the seats already sold.
 /// Retirement is the terminal path and is not this.
 pub fn process_halt_feed(
     program_id: &Pubkey,
@@ -46,7 +46,7 @@ pub fn process_halt_feed(
     assert!(feed_account.is_writable, "PDA Account is not writable");
 
     let mut feed = Feed::try_from(feed_account)?;
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     require_feed_writer(
         program_id,
         accounts_iter,

@@ -121,7 +121,7 @@ pub fn process_create_device(
     if !device_account.data_is_empty() {
         return Err(ProgramError::AccountAlreadyInitialized);
     }
-    let mut globalstate = GlobalState::try_from(globalstate_account)?;
+    let mut globalstate = GlobalState::load(program_id, globalstate_account)?;
     globalstate.account_index += 1;
 
     assert_eq!(globalstate.account_type, AccountType::GlobalState);

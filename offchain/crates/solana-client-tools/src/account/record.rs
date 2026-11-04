@@ -13,7 +13,9 @@ pub struct BorshRecordAccountData<T: BorshDeserialize> {
 
 impl<T: BorshDeserialize> BorshRecordAccountData<T> {
     pub fn from_account(account: &Account) -> Option<Self> {
-        let (header_data, record_data) = account.data.split_at(size_of::<RecordData>());
+        // Lamports sent to a record's address before it exists leave an account
+        // with no header.
+        let (header_data, record_data) = account.data.split_at_checked(size_of::<RecordData>())?;
         let header = *bytemuck::from_bytes::<RecordData>(header_data);
         let data = borsh::from_slice(record_data).ok()?;
 
@@ -39,5 +41,22 @@ impl<T: BorshDeserialize> TryFrom<Account> for BorshRecordAccountData<T> {
                 std::any::type_name::<T>(),
             )
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_from_account_refuses_data_shorter_than_the_header() {
+        for data_len in [0, size_of::<RecordData>() - 1] {
+            let account = Account {
+                data: vec![0; data_len],
+                ..Default::default()
+            };
+
+            assert!(BorshRecordAccountData::<u64>::from_account(&account).is_none());
+        }
     }
 }

@@ -30,7 +30,7 @@ def skip_unless_compat() -> None:
 
 
 def _rpc_url() -> str:
-    return os.environ.get("SOLANA_RPC_URL", LEDGER_RPC_URLS["mainnet-beta"])
+    return LEDGER_RPC_URLS["mainnet-beta"]
 
 
 def _program_id() -> Pubkey:
@@ -140,9 +140,8 @@ class TestCompatGlobalState:
         assert gs.account_type == 1
 
         # Sanity checks.
-        assert gs.activator_authority_pk != Pubkey.default(), "ActivatorAuthorityPK is zero"
         assert gs.sentinel_authority_pk != Pubkey.default(), "SentinelAuthorityPK is zero"
-        # health_oracle_pk may be zero on mainnet
+        # activator_authority_pk and health_oracle_pk may be zero on mainnet
 
 
 class TestCompatGetProgramData:

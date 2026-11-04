@@ -18,6 +18,9 @@ pub trait SnapshotStorage: Send + Sync {
     /// Upload/save a snapshot and return its location (path or URL)
     async fn save(&self, snapshot: &CompleteSnapshot, filename: &str) -> Result<String>;
 
+    /// The location (path or URL) that `save` returns for this filename
+    fn location(&self, filename: &str) -> String;
+
     /// Verify a snapshot exists at the given location
     async fn exists(&self, filename: &str) -> Result<bool>;
 

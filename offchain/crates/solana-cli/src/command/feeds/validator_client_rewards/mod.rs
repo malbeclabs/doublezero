@@ -1,3 +1,4 @@
+mod claim;
 mod configure_proportion;
 
 use std::io::Write;
@@ -5,6 +6,7 @@ use std::io::Write;
 use anyhow::{Result, ensure};
 use clap::{Args, Subcommand};
 use doublezero_cli_core::CliContext;
+use doublezero_solana_client_tools::payer::Wallet;
 use solana_sdk::pubkey::Pubkey;
 
 #[derive(Debug, Args)]
@@ -23,12 +25,39 @@ impl ValidatorClientRewardsCommand {
 pub enum ValidatorClientRewardsSubcommand {
     /// Set a validator client's share of the rewards. Only the client's manager can sign it.
     ConfigureProportion(configure_proportion::ConfigureProportionCommand),
+    /// Withdraw the 2Z in every open claim holding the client has. Only the client's manager can
+    /// sign it.
+    Claim(claim::ClaimCommand),
 }
 
 impl ValidatorClientRewardsSubcommand {
     pub async fn execute(self, ctx: &CliContext, out: &mut impl Write) -> Result<()> {
         match self {
             Self::ConfigureProportion(command) => command.execute(ctx, out).await,
+            Self::Claim(command) => command.execute(ctx, out).await,
+        }
+    }
+}
+
+// Who signs for the manager: the wallet itself, or a Squads vault the multisig
+// signs for once a payload is imported and approved.
+enum Actor {
+    Wallet(Box<Wallet>),
+    Vault(Pubkey),
+}
+
+impl Actor {
+    fn key(&self) -> Pubkey {
+        match self {
+            Self::Wallet(wallet) => wallet.pubkey(),
+            Self::Vault(vault_key) => *vault_key,
+        }
+    }
+
+    fn label(&self) -> &'static str {
+        match self {
+            Self::Wallet(_) => "wallet",
+            Self::Vault(_) => "vault",
         }
     }
 }

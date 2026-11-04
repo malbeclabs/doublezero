@@ -615,11 +615,12 @@ impl TryFrom<&[u8]> for Device {
                 })
                 .collect::<Result<Vec<_>, _>>()?
         } else {
-            assert_eq!(
-                trailing.len(),
-                deprecated_interfaces.len(),
-                "trailing interfaces length must match deprecated_interfaces length"
-            );
+            // The serializer writes both lists from one source, so a length mismatch means the
+            // account is corrupt. Off-chain readers decode every device in a scan, so this returns
+            // an error instead of panicking.
+            if trailing.len() != deprecated_interfaces.len() {
+                return Err(ProgramError::InvalidAccountData);
+            }
             trailing
         };
 
@@ -1742,6 +1743,20 @@ mod test_device_interfaces_vec {
             interfaces,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn test_device_try_from_rejects_mismatched_interface_vecs() {
+        let mut bytes = borsh::to_vec(&sample_device_with_n_interfaces(0)).unwrap();
+        // The trailing `interfaces` vec is the last field: replace its empty length with one
+        // interface while the legacy vec stays empty.
+        bytes.truncate(bytes.len() - 4);
+        bytes.extend(borsh::to_vec(&vec![sample_iface("Switch1/1/1", 100)]).unwrap());
+
+        assert_eq!(
+            Device::try_from(&bytes[..]).unwrap_err(),
+            ProgramError::InvalidAccountData
+        );
     }
 
     #[test]

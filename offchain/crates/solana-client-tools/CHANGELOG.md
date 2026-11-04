@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+- `BorshRecordAccountData::from_account` returns `None` instead of panicking on an account shorter than the record header, which lamports sent to a record's address before it exists leave there ([malbeclabs/infra#2696](https://github.com/malbeclabs/infra/issues/2696))
 - add `squads::vault_transaction_packing_budget` and `squads::SQUADS_IMPORT_MEMO_RESERVE_BYTES`, the payload budget less an allowance for a memo typed into the Squads import dialog. A caller packing instructions aims at this rather than at the budget the encoder enforces, so its payloads still import once a memo is typed ([malbeclabs/doublezero#4185](https://github.com/malbeclabs/doublezero/issues/4185))
 - add `squads::try_write_vault_transaction`, which writes the import payload to an `impl Write` the way a verb's `out` requires. `try_print_vault_transaction` delegates to it ([malbeclabs/doublezero#4185](https://github.com/malbeclabs/doublezero/issues/4185))
 - extract `Wallet::signers`, the fee payer and signer list shared by `try_new_transaction` and `try_transaction_size`, so both measure and sign with the same set. Behavior is unchanged: the fee payer was already deduplicated against the signer

@@ -17,6 +17,7 @@ use crate::{
                 remove::process_remove_qa_allowlist_globalconfig,
             },
         },
+        bond_mirror::write::process_write_bond_mirror,
         contributor::{
             create::process_create_contributor, delete::process_delete_contributor,
             resume::process_resume_contributor, suspend::process_suspend_contributor,
@@ -90,7 +91,6 @@ use crate::{
             closeaccount::process_closeaccount_resource_extension, create::process_create_resource,
             deallocate::process_deallocate_resource,
         },
-        stake_mirror::write::process_write_stake_mirror,
         tenant::{
             add_administrator::process_add_administrator_tenant, create::process_create_tenant,
             delete::process_delete_tenant,
@@ -464,8 +464,8 @@ pub fn process_instruction(
         DoubleZeroInstruction::CreateFeed(value) => {
             process_create_feed(program_id, accounts, &value)?
         }
-        DoubleZeroInstruction::WriteStakeMirror(value) => {
-            process_write_stake_mirror(program_id, accounts, &value)?
+        DoubleZeroInstruction::WriteBondMirror(value) => {
+            process_write_bond_mirror(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::HaltFeed(value) => process_halt_feed(program_id, accounts, &value)?,
         DoubleZeroInstruction::RetireFeed(value) => {

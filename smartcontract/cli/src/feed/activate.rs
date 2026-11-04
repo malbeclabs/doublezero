@@ -1,6 +1,6 @@
 use crate::{
     doublezerocommand::CliCommand,
-    feed::resolve::{stake_mirror_of, FeedTargetArgs},
+    feed::resolve::{bond_mirror_of, FeedTargetArgs},
 };
 use clap::Args;
 use doublezero_cli_core::{print_signature, require, CliContext, RequirementCheck};
@@ -31,11 +31,11 @@ impl ActivateFeedCliCommand {
 
         let (pubkey, feed) = self.target.resolve(client)?;
 
-        let stake_mirror = stake_mirror_of(client, &feed);
+        let bond_mirror = bond_mirror_of(client, &feed);
 
         let signature = client.activate_feed(ActivateFeedCommand {
             pubkey,
-            stake_mirror,
+            bond_mirror,
         })?;
         print_signature(out, &signature)
     }
@@ -53,11 +53,11 @@ mod tests {
         commands::feed::{activate::ActivateFeedCommand, get::GetFeedCommand},
         AccountType, Feed,
     };
-    use doublezero_serviceability::{pda::get_stake_mirror_pda, state::feed::FeedStatus};
+    use doublezero_serviceability::{pda::get_bond_mirror_pda, state::feed::FeedStatus};
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
-    fn pending_feed(builder: Pubkey, stake_ref: Pubkey) -> Feed {
+    fn pending_feed(builder: Pubkey, bond_ref: Pubkey) -> Feed {
         Feed {
             account_type: AccountType::Feed,
             owner: builder,
@@ -67,25 +67,25 @@ mod tests {
             exchange: Pubkey::new_unique(),
             groups: vec![],
             builder,
-            stake_ref,
+            bond_ref,
             status: FeedStatus::Pending,
             ..Default::default()
         }
     }
 
-    /// A staked feed's mirror is derived from the feed rather than asked for, so a caller cannot
-    /// name a different stake than the one backing it.
+    /// A bonded feed's mirror is derived from the feed rather than asked for, so a caller cannot
+    /// name a different bond than the one backing it.
     #[test]
     fn test_cli_feed_activate_derives_the_mirror_from_the_feed() {
         let mut client = create_test_client();
         client.expect_check_requirements().returning(|_| Ok(()));
 
         let feed_pk = Pubkey::new_unique();
-        let stake_ref = Pubkey::new_unique();
-        let feed = pending_feed(Pubkey::new_unique(), stake_ref);
+        let bond_ref = Pubkey::new_unique();
+        let feed = pending_feed(Pubkey::new_unique(), bond_ref);
         let signature = Signature::new_unique();
         let program_id = client.get_program_id();
-        let (expected_mirror, _) = get_stake_mirror_pda(&program_id, &stake_ref);
+        let (expected_mirror, _) = get_bond_mirror_pda(&program_id, &bond_ref);
 
         client
             .expect_get_feed()
@@ -99,7 +99,7 @@ mod tests {
             .expect_activate_feed()
             .with(predicate::eq(ActivateFeedCommand {
                 pubkey: feed_pk,
-                stake_mirror: Some(expected_mirror),
+                bond_mirror: Some(expected_mirror),
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -123,7 +123,7 @@ mod tests {
         );
     }
 
-    /// A catalog feed has no stake to re-read, so it sends no mirror. Sending one would ask the
+    /// A catalog feed has no bond to re-read, so it sends no mirror. Sending one would ask the
     /// program for an account it refuses.
     #[test]
     fn test_cli_feed_activate_sends_no_mirror_for_a_catalog_feed() {
@@ -143,7 +143,7 @@ mod tests {
             .expect_activate_feed()
             .with(predicate::eq(ActivateFeedCommand {
                 pubkey: feed_pk,
-                stake_mirror: None,
+                bond_mirror: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));

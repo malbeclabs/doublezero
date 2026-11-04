@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
-use crate::DoubleZeroClient;
+use crate::{AccountData, DoubleZeroClient};
 use doublezero_serviceability::{processors::feed::update::FeedUpdateArgs, state::feed::FeedChain};
-use doublezero_serviceability_instruction::feed::update_feed;
+use doublezero_serviceability_instruction::feed::{update_feed, update_feed_as_builder};
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 pub const MAX_FEEDS_PER_TRANSACTION: usize = 8;
@@ -45,7 +45,22 @@ impl UpdateFeedCommand {
 
         let mut instructions = Vec::with_capacity(pubkeys.len());
         for pubkey in &pubkeys {
-            instructions.push(update_feed(&program_id, &payer, pubkey, args.clone()));
+            // A bonded feed's builder sends the account of each group it adds, which the program
+            // checks against its bond. Read only when groups change, so a rename costs no read.
+            let builders_groups = match self.groups {
+                Some(_) => match client.get(*pubkey)? {
+                    AccountData::Feed(feed) if feed.builder == payer => Some(feed.groups),
+                    AccountData::Feed(_) => None,
+                    _ => eyre::bail!("{pubkey} is not a feed"),
+                },
+                None => None,
+            };
+            instructions.push(match builders_groups {
+                Some(current) => {
+                    update_feed_as_builder(&program_id, &payer, pubkey, &current, args.clone())
+                }
+                None => update_feed(&program_id, &payer, pubkey, args.clone()),
+            });
         }
         client.send_instructions(instructions)
     }
@@ -54,11 +69,19 @@ impl UpdateFeedCommand {
 #[cfg(test)]
 mod tests {
     use super::{UpdateFeedCommand, MAX_FEEDS_PER_TRANSACTION};
-    use crate::{tests::utils::create_test_client, DoubleZeroClient};
+    use crate::{tests::utils::create_test_client, AccountData, DoubleZeroClient};
     use doublezero_serviceability::{
-        pda::get_feed_pda, processors::feed::update::FeedUpdateArgs, state::feed::FeedChain,
+        pda::get_feed_pda,
+        processors::feed::update::FeedUpdateArgs,
+        state::{
+            accounttype::AccountType,
+            feed::{Feed, FeedChain},
+        },
     };
-    use doublezero_serviceability_instruction::{compute_budget_prelude, feed::update_feed};
+    use doublezero_serviceability_instruction::{
+        compute_budget_prelude,
+        feed::{update_feed, update_feed_as_builder},
+    };
     use mockall::predicate;
     use solana_sdk::{
         instruction::AccountMeta, message::Message, pubkey::Pubkey, signature::Signature,
@@ -103,6 +126,55 @@ mod tests {
         }
         .execute(&client);
         assert!(res.is_ok());
+    }
+
+    // A builder changing its own feed's groups sends the builder's instruction, carrying the account
+    // of the group it adds; a group change by anyone else sends the admin's, with none.
+    #[test]
+    fn test_commands_feed_update_sends_the_builders_instruction_for_its_own_feed() {
+        let mut client = create_test_client();
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let (kept, added) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let (own, other) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let feed = |builder| Feed {
+            account_type: AccountType::Feed,
+            builder,
+            groups: vec![kept],
+            ..Default::default()
+        };
+        let own_feed = feed(payer);
+        let other_feed = feed(Pubkey::new_unique());
+        client
+            .expect_get()
+            .with(predicate::eq(own))
+            .returning(move |_| Ok(AccountData::Feed(own_feed.clone())));
+        client
+            .expect_get()
+            .with(predicate::eq(other))
+            .returning(move |_| Ok(AccountData::Feed(other_feed.clone())));
+        let args = FeedUpdateArgs {
+            groups: Some(vec![kept, added]),
+            ..Default::default()
+        };
+        let expected = vec![
+            update_feed_as_builder(&program_id, &payer, &own, &[kept], args.clone()),
+            update_feed(&program_id, &payer, &other, args),
+        ];
+        client
+            .expect_send_instructions()
+            .with(predicate::eq(expected))
+            .times(1)
+            .returning(|_| Ok(Signature::new_unique()));
+
+        let res = UpdateFeedCommand {
+            pubkeys: vec![own, other],
+            name: None,
+            groups: Some(vec![kept, added]),
+            feed_chain: None,
+        }
+        .execute(&client);
+        assert!(res.is_ok(), "{res:?}");
     }
 
     #[test]

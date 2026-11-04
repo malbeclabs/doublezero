@@ -1221,26 +1221,45 @@ async fn test_user_admin_leaves_a_max_feed_without_prelude() {
         .unwrap();
     assert_eq!(device.interfaces.len(), INTERFACES);
     let (exchange, g) = (f.exchange_pubkey, f.groups.clone());
-    // Four kept feeds carry only g[0], so the departing feed's groups are all uncovered.
+    // The costliest leave: every held feed carries its own MAX_FEED_GROUPS groups, so the user
+    // holds 100 subscriptions, and the pass carries 17 seats. A cheaper shape (kept feeds sharing
+    // one group) would hide a leave that runs past the default 200k CU.
+    const SEATS: usize = 17;
     let mut kept = Vec::new();
+    let mut kept_groups = Vec::new();
     for i in 0..MAX_USER_FEEDS - 1 {
-        kept.push(create_feed(&mut f, &format!("kept{i}"), exchange, vec![g[0]]).await);
+        let groups = create_groups(&mut f, MAX_FEED_GROUPS).await;
+        kept.push(create_feed(&mut f, &format!("kept{i}"), exchange, groups.clone()).await);
+        kept_groups.push(groups);
     }
     let mut big_groups = g[1..5].to_vec();
     let extra = create_groups(&mut f, MAX_FEED_GROUPS - big_groups.len()).await;
     big_groups.extend(extra);
     let big = create_feed(&mut f, "big", exchange, big_groups.clone()).await;
+    // The user is created on `seed` (g[0] only), which it leaves once the kept feeds are held.
+    let seed = create_feed(&mut f, "seed", exchange, vec![g[0]]).await;
+    let mut fillers = Vec::new();
+    for i in 0..SEATS - MAX_USER_FEEDS - 1 {
+        fillers.push(create_feed(&mut f, &format!("filler{i}"), exchange, vec![g[0]]).await);
+    }
     let seats = kept
         .iter()
-        .chain(std::iter::once(&big))
+        .chain([&big, &seed])
+        .chain(&fillers)
         .map(|k| seat(*k, 1))
-        .collect();
+        .collect::<Vec<_>>();
+    assert_eq!(seats.len(), SEATS);
     set_pass_feeds(&mut f, seats).await;
-    create_user_on(&mut f, kept[0], g[0]).await;
-    for feed in &kept[1..] {
-        join(&mut f, &[*feed], &[]).await.unwrap();
+    create_user_on(&mut f, seed, g[0]).await;
+    for (feed, groups) in kept.iter().zip(&kept_groups) {
+        join(&mut f, &[*feed], groups).await.unwrap();
     }
+    leave(&mut f, &[seed], &kept, &[g[0]]).await.unwrap();
     join(&mut f, &[big], &big_groups).await.unwrap();
+    assert_eq!(
+        read_user(&mut f).await.subscribers.len(),
+        MAX_USER_FEEDS * MAX_FEED_GROUPS
+    );
     assert_eq!(read_user(&mut f).await.feed_pks.len(), MAX_USER_FEEDS);
 
     let delegate = Keypair::new();
@@ -1302,6 +1321,10 @@ async fn test_user_admin_leaves_a_max_feed_without_prelude() {
 
     let user = read_user(&mut f).await;
     assert_eq!(user.feed_pks, kept);
-    assert_eq!(user.subscribers, vec![g[0]]);
+    let mut held = user.subscribers.clone();
+    held.sort();
+    let mut want = kept_groups.concat();
+    want.sort();
+    assert_eq!(held, want);
     assert_eq!(seat_users(&read_pass(&mut f).await, &big), 0);
 }

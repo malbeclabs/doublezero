@@ -27,14 +27,23 @@ use std::net::Ipv4Addr;
 /// feed still provisioned on the pass (as `retained`, so a group two feeds share is kept) and
 /// exactly the departing group list; both are derived here. A held feed the pass has dropped is
 /// left out of `retained`: the program prunes those itself and rejects them as retained.
+#[derive(Debug, PartialEq, Clone)]
+pub struct UnsubscribeFeedCommand {
+    pub user_pk: Pubkey,
+    pub feed_pks: Vec<Pubkey>,
+    pub accesspass_pk: Option<Pubkey>,
+}
+
 /// Send one leave carrying `accounts` feed and group accounts, of at most
 /// [`MAX_FEED_TX_ACCOUNTS`].
 ///
 /// A payer that keeps its Permission account fits one account fewer behind the compute-budget
 /// prelude, which would leave a delegate's worst-case single-feed leave (one target, four
 /// retained, twenty groups) with no transaction that fits. `UnsubscribeFeed` needs neither the
-/// raised compute limit nor the larger heap (that leave uses about 73k CU, under the default 200k,
-/// and fits the default 32 KiB heap), so a leave past the prelude's capacity goes without it.
+/// raised compute limit nor the larger heap, so a leave past the prelude's capacity goes without
+/// it. Under SBF that leave uses about 167k CU, under the default 200k, when every held feed has
+/// its own twenty groups on a 17-seat pass. The program's stock allocator keeps the heap at
+/// 32 KiB with or without the prelude.
 fn send_leave(
     client: &dyn DoubleZeroClient,
     omit_permission: bool,
@@ -47,13 +56,6 @@ fn send_leave(
     } else {
         client.send_transaction_without_prelude(ix)
     }
-}
-
-#[derive(Debug, PartialEq, Clone)]
-pub struct UnsubscribeFeedCommand {
-    pub user_pk: Pubkey,
-    pub feed_pks: Vec<Pubkey>,
-    pub accesspass_pk: Option<Pubkey>,
 }
 
 impl UnsubscribeFeedCommand {

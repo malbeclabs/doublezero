@@ -491,23 +491,25 @@ func TestClient_Liveness_Faults_HardLoss_NoFlapAfterRecovery(t *testing.T) {
 	require.True(t, bothUp(), "both sessions must still be Up at the end of the stability window")
 }
 
-// Characterizes active mode under a peer that flaps on a ~24s cycle: nothing damps it, so
-// the route is withdrawn and reinstalled on every cycle. Backoff does not hold it down:
-// it resets on every Down, and within a 24s cycle it never reaches backoffMax.
-func TestClient_Liveness_Faults_PeriodicFlap_ChurnsRouteEveryCycle(t *testing.T) {
+// A peer flapping on a ~24s cycle loses its route after the second flap and gets it back
+// only once its session has stayed Up for the hold-down.
+func TestClient_Liveness_Faults_PeriodicFlap_HoldsRouteDownUntilStable(t *testing.T) {
 	t.Parallel()
 
 	if testing.Short() {
-		t.Skip("Skipping periodic flap churn test in short mode")
+		t.Skip("Skipping periodic flap hold-down test in short mode")
 	}
 
-	// Production timing (1s/3/60s backoffMax, 24s cycle) scaled down 10x.
+	// Production timing (1s/3/60s backoffMax, 30s/5m hold-down, 24s cycle) scaled down 10x,
+	// except holdDownMax, which is shortened to keep the test brief.
 	cfg := livenessTestConfig{
 		clientCount: 2,
 		txMin:       100 * time.Millisecond,
 		rxMin:       100 * time.Millisecond,
 		detectMult:  3,
 		backoffMax:  6 * time.Second,
+		holdDown:    3 * time.Second,
+		holdDownMax: 6 * time.Second,
 	}
 	const (
 		cycles  = 5
@@ -528,22 +530,33 @@ func TestClient_Liveness_Faults_PeriodicFlap_ChurnsRouteEveryCycle(t *testing.T)
 	withdraws := func(c *testClient) float64 {
 		return metricValueWithLabels(t, c.metrics, "doublezero_liveness_route_withdraws_total", map[string]string{LabelIface: c.iface})
 	}
+	snapshot := func(f func(*testClient) float64) map[*testClient]float64 {
+		return map[*testClient]float64{cA: f(cA), cB: f(cB)}
+	}
+	installs0, withdraws0 := snapshot(installs), snapshot(withdraws)
 
 	for cycle := range cycles {
-		w := map[*testClient]float64{cA: withdraws(cA), cB: withdraws(cB)}
 		sw.SetHardLoss(ipA, ipB)
 		time.Sleep(outage)
-		for c, v := range w {
-			require.Equalf(t, v+1, withdraws(c), "cycle %d: client %d should withdraw the route once", cycle, c.id)
-		}
-
-		i := map[*testClient]float64{cA: installs(cA), cB: installs(cB)}
 		sw.SetNoFault(ipA, ipB)
 		time.Sleep(healthy)
-		for c, v := range i {
-			require.Equalf(t, v+1, installs(c), "cycle %d: client %d should reinstall the route once", cycle, c.id)
+
+		// Only the first flap is reinstalled; the route is withdrawn once more and then stays out.
+		for _, c := range clients {
+			require.Equalf(t, installs0[c]+1, installs(c), "cycle %d: client %d reinstalled during hold-down", cycle, c.id)
+			require.Equalf(t, withdraws0[c]+float64(min(cycle+1, 2)), withdraws(c), "cycle %d: client %d withdraws", cycle, c.id)
 		}
 	}
+
+	// Five flaps put the hold-down at its 6s cap, timed from the last Up early in the final
+	// healthy window: still held 4.4s after the last heal, installed within a few seconds after.
+	time.Sleep(3 * time.Second)
+	for _, c := range clients {
+		require.Equalf(t, installs0[c]+1, installs(c), "client %d reinstalled before the hold-down elapsed", c.id)
+	}
+	require.Eventually(t, func() bool {
+		return installs(cA) == installs0[cA]+2 && installs(cB) == installs0[cB]+2
+	}, 5*time.Second, 50*time.Millisecond, "route should be reinstalled once the session is stable for the hold-down")
 }
 
 func TestClient_Liveness_Faults_SoftLoss_TimeoutAtHighLoss(t *testing.T) {
@@ -821,6 +834,8 @@ type livenessTestConfig struct {
 	rxMin       time.Duration
 	detectMult  uint8
 	backoffMax  time.Duration
+	holdDown    time.Duration
+	holdDownMax time.Duration
 }
 
 // getLivenessTestConfig parses flags once and returns the shared config for all tests.
@@ -897,6 +912,8 @@ func setupLivenessClientsWithConfig(t *testing.T, basePort int, cfg livenessTest
 			MinTxFloor:      cfg.txMin,
 			MaxTxCeil:       cfg.txMin,
 			BackoffMax:      cfg.backoffMax,
+			HoldDown:        cfg.holdDown,
+			HoldDownMax:     cfg.holdDownMax,
 			ClientVersion:   "1.2.3-dev",
 		}, nil)
 		require.NoError(t, err)

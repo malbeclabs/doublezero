@@ -123,6 +123,48 @@ type Session struct {
 	// Scheduled time of the next enqueued detect and tx events (zero means nothing enqueued)
 	nextTxScheduled     time.Time
 	nextDetectScheduled time.Time
+
+	// Route-flap damping: Up->Down transitions since the count last decayed.
+	flaps    uint32
+	lastFlap time.Time
+	dampUp   bool // came Up since the last counted flap
+}
+
+// holdDown records that the session came Up and returns how long it must stay
+// Up before its route is installed: zero through the first flap, then base
+// doubling per further flap up to max. Flaps decay after 2*max without one.
+func (s *Session) holdDown(now time.Time, base, max time.Duration) (time.Duration, uint32) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.decayFlaps(now, 2*max)
+	s.dampUp = true
+	if s.flaps < 2 {
+		return 0, s.flaps
+	}
+	hold := base
+	for i := uint32(2); i < s.flaps && hold < max; i++ {
+		hold *= 2
+	}
+	return min(hold, max), s.flaps
+}
+
+// recordFlap counts an Up->Down transition for route-flap damping.
+func (s *Session) recordFlap(now time.Time, max time.Duration) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.dampUp {
+		return
+	}
+	s.dampUp = false
+	s.decayFlaps(now, 2*max)
+	s.flaps++
+	s.lastFlap = now
+}
+
+func (s *Session) decayFlaps(now time.Time, decay time.Duration) {
+	if now.Sub(s.lastFlap) > decay {
+		s.flaps = 0
+	}
 }
 
 // GetState returns the current state of the session.

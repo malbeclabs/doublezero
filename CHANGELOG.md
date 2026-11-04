@@ -7,7 +7,7 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 - Client
-  - `doublezerod` runs route liveness in active mode by default for IBRL users. When a peer stops answering liveness probes over DoubleZero, the client withdraws the route to that peer, and traffic to the peer uses the public internet. A peer that never answers gets no route. Peers that still run passive liveness, the default since v0.8.3, keep their routes until they upgrade. IBRL with an allocated IP waits for the session to come up before it installs a route, but never withdraws one. Opt out with `-route-liveness-enable-active=false`. UDP port `DefaultLivenessPort` (44880) must be reachable over `doublezero0`.
+  - `doublezerod` runs route liveness in active mode by default for IBRL users. When a peer stops answering liveness probes over DoubleZero, the client withdraws the route to that peer, and traffic to the peer uses the public internet. A peer that never answers gets no route. After a first flap, the client reinstalls the route as soon as the session comes back up. After a second flap, the client reinstalls the route only after the session stays up for `-route-liveness-hold-down` (default 30s). That time doubles with each further flap up to `-route-liveness-hold-down-max` (default 5m), and the flap count resets after twice that time with no flap. Peers that still run passive liveness, the default since v0.8.3, keep their routes until they upgrade. IBRL with an allocated IP waits for the session to come up before it installs a route, but never withdraws one. Opt out with `-route-liveness-enable-active=false`. UDP port `DefaultLivenessPort` (44880) must be reachable over `doublezero0`.
 
 ### Changes
 

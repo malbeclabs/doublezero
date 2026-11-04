@@ -45,7 +45,7 @@ var (
 	slackWebhookURL         = flag.String("slack-webhook-url", "", "The Slack webhook URL to send alerts")
 	provisioningSlotCount   = flag.Uint64("provisioning-slot-count", defaultProvisioningSlotCount, "Burn-in slot count for new devices/links (~20 hours at 200000)")
 	drainedSlotCount        = flag.Uint64("drained-slot-count", defaultDrainedSlotCount, "Burn-in slot count for reactivated devices/links (~30 min at 5000)")
-	linkLossThreshold       = flag.Float64("link-loss-threshold", 5.0, "Per-direction packet loss percentage above which a link is considered impaired (link_rollup_5m a_loss_pct/z_loss_pct)")
+	linkLossThreshold       = flag.Float64("link-loss-threshold", 5.0, "Packet loss percentage that both directions must exceed for a link to be considered impaired (link_rollup_5m a_loss_pct/z_loss_pct)")
 	version                 = "dev"
 	commit                  = "none"
 	date                    = "unknown"
@@ -148,6 +148,12 @@ func main() {
 		if chDB == "" {
 			chDB = "default"
 		}
+		// link_rollup_5m and fact_dz_device_interface_counters live in the lake's
+		// database, separate from the telemetry tables in CLICKHOUSE_DB.
+		chLakeDB := os.Getenv("CLICKHOUSE_LAKE_DB")
+		if chLakeDB == "" {
+			chLakeDB = chDB
+		}
 		chUser := os.Getenv("CLICKHOUSE_USER")
 		if chUser == "" {
 			chUser = "default"
@@ -155,12 +161,17 @@ func main() {
 		chPass := os.Getenv("CLICKHOUSE_PASS")
 		chTLSDisabled := os.Getenv("CLICKHOUSE_TLS_DISABLED") == "true"
 
-		chClient, err := worker.NewClickHouseClient(chAddr, chDB, chUser, chPass, chTLSDisabled)
+		chClient, err := worker.NewClickHouseClient(chAddr, chDB, chLakeDB, chUser, chPass, chTLSDisabled)
 		if err != nil {
-			log.Warn("ClickHouse connection failed, continuing without ClickHouse-based criteria", "addr", chAddr, "error", err)
+			log.Warn("ClickHouse client setup failed, continuing without ClickHouse-based criteria", "addr", chAddr, "error", err)
 		} else {
 			defer chClient.Close()
-			log.Info("ClickHouse enabled", "addr", chAddr, "db", chDB, "user", chUser, "tls", !chTLSDisabled, "linkLossThreshold", *linkLossThreshold)
+			// Criteria hold on query errors, so build them even when the server
+			// is down: dropping them here would last the life of the process.
+			if err := chClient.Ping(context.Background()); err != nil {
+				log.Warn("ClickHouse ping failed, criteria will hold until it recovers", "addr", chAddr, "error", err)
+			}
+			log.Info("ClickHouse enabled", "addr", chAddr, "db", chDB, "lakeDB", chLakeDB, "user", chUser, "tls", !chTLSDisabled, "linkLossThreshold", *linkLossThreshold)
 			controllerSuccess := worker.NewControllerSuccessCriterion(chClient, log)
 			interfaceCounters := worker.NewInterfaceCountersCriterion(chClient, log)
 			deviceCriteria = append(deviceCriteria, controllerSuccess, interfaceCounters)

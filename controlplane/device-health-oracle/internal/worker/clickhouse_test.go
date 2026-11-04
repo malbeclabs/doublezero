@@ -118,7 +118,7 @@ func TestInterfaceCountersCoverage_ReturnsCount(t *testing.T) {
 		},
 	}
 
-	client := &ClickHouseClient{conn: conn, db: "testdb"}
+	client := &ClickHouseClient{conn: conn, lakeDB: "testdb"}
 	start := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
 	end := start.Add(1 * time.Hour)
 
@@ -138,7 +138,7 @@ func TestInterfaceCountersCoverage_QueryError(t *testing.T) {
 		},
 	}
 
-	client := &ClickHouseClient{conn: conn, db: "testdb"}
+	client := &ClickHouseClient{conn: conn, lakeDB: "testdb"}
 	start := time.Now().Add(-1 * time.Hour)
 	end := time.Now()
 
@@ -160,7 +160,7 @@ func TestInterfaceCountersCoverage_QuotesDatabaseName(t *testing.T) {
 		},
 	}
 
-	client := &ClickHouseClient{conn: conn, db: "mainnet-beta"}
+	client := &ClickHouseClient{conn: conn, lakeDB: "mainnet-beta"}
 	start := time.Now().Add(-1 * time.Hour)
 	end := time.Now()
 
@@ -171,12 +171,16 @@ func TestInterfaceCountersCoverage_QuotesDatabaseName(t *testing.T) {
 
 func TestLinkHealthRecent_ReturnsLatestBucket(t *testing.T) {
 	bucketTs := time.Date(2026, 5, 6, 16, 10, 0, 0, time.UTC)
+	start, end := bucketTs.Add(-15*time.Minute), bucketTs
 	conn := &mockConn{
 		queryRowFunc: func(_ context.Context, query string, args ...any) driver.Row {
 			assert.Contains(t, query, `"testdb".link_rollup_5m`)
 			assert.Contains(t, query, "bucket_ts")
 			assert.Contains(t, query, "ORDER BY bucket_ts DESC, ingested_at DESC")
 			assert.Contains(t, query, "LIMIT 1")
+			// The bounds keep a link with no recent rows from scanning all history.
+			assert.Contains(t, query, "bucket_ts >= ?")
+			assert.Contains(t, query, "bucket_ts <= ?")
 			// The provisioning filter must sit after the ingested_at dedup, or
 			// a bucket whose newest row flips provisioning gets filtered out
 			// and the dedup falls back to a stale version of it.
@@ -184,28 +188,36 @@ func TestLinkHealthRecent_ReturnsLatestBucket(t *testing.T) {
 				strings.Index(query, "provisioning = false"),
 				strings.Index(query, "ORDER BY bucket_ts DESC, ingested_at DESC"),
 				"provisioning must be filtered after the dedup, not in the inner WHERE")
-			assert.Len(t, args, 1)
+			assert.Len(t, args, 3)
 			assert.Equal(t, "linkABC", args[0])
+			assert.Equal(t, start, args[1])
+			assert.Equal(t, end, args[2])
 			return &mockRow{
 				scanFunc: func(dest ...any) error {
 					*(dest[0].(*time.Time)) = bucketTs
 					*(dest[1].(*bool)) = true
-					*(dest[2].(*float64)) = 12.5
-					*(dest[3].(*float64)) = 0.0
+					*(dest[2].(*string)) = "activated"
+					*(dest[3].(*float64)) = 12.5
+					*(dest[4].(*float64)) = 0.0
+					*(dest[5].(*uint32)) = 30
+					*(dest[6].(*uint32)) = 28
 					return nil
 				},
 			}
 		},
 	}
 
-	client := &ClickHouseClient{conn: conn, db: "testdb"}
-	r, found, err := client.LinkHealthRecent(context.Background(), "linkABC")
+	client := &ClickHouseClient{conn: conn, lakeDB: "testdb"}
+	r, found, err := client.LinkHealthRecent(context.Background(), "linkABC", start, end)
 	require.NoError(t, err)
 	assert.True(t, found)
 	assert.Equal(t, bucketTs, r.BucketTs)
 	assert.True(t, r.IsisDown)
+	assert.Equal(t, "activated", r.Status)
 	assert.Equal(t, 12.5, r.ALossPct)
 	assert.Equal(t, 0.0, r.ZLossPct)
+	assert.Equal(t, uint32(30), r.ASamples)
+	assert.Equal(t, uint32(28), r.ZSamples)
 }
 
 func TestLinkHealthRecent_NoData_ReturnsFoundFalse(t *testing.T) {
@@ -219,8 +231,8 @@ func TestLinkHealthRecent_NoData_ReturnsFoundFalse(t *testing.T) {
 		},
 	}
 
-	client := &ClickHouseClient{conn: conn, db: "testdb"}
-	_, found, err := client.LinkHealthRecent(context.Background(), "linkABC")
+	client := &ClickHouseClient{conn: conn, lakeDB: "testdb"}
+	_, found, err := client.LinkHealthRecent(context.Background(), "linkABC", time.Now().Add(-time.Hour), time.Now())
 	require.NoError(t, err)
 	assert.False(t, found)
 }
@@ -236,8 +248,8 @@ func TestLinkHealthRecent_QueryError(t *testing.T) {
 		},
 	}
 
-	client := &ClickHouseClient{conn: conn, db: "testdb"}
-	_, _, err := client.LinkHealthRecent(context.Background(), "linkABC")
+	client := &ClickHouseClient{conn: conn, lakeDB: "testdb"}
+	_, _, err := client.LinkHealthRecent(context.Background(), "linkABC", time.Now().Add(-time.Hour), time.Now())
 	assert.ErrorContains(t, err, "connection reset")
 }
 
@@ -248,16 +260,13 @@ func TestLinkHealthRecent_QuotesDatabaseName(t *testing.T) {
 			return &mockRow{
 				scanFunc: func(dest ...any) error {
 					*(dest[0].(*time.Time)) = time.Now()
-					*(dest[1].(*bool)) = false
-					*(dest[2].(*float64)) = 0
-					*(dest[3].(*float64)) = 0
 					return nil
 				},
 			}
 		},
 	}
-	client := &ClickHouseClient{conn: conn, db: "mainnet-beta"}
-	_, found, err := client.LinkHealthRecent(context.Background(), "linkABC")
+	client := &ClickHouseClient{conn: conn, lakeDB: "mainnet-beta"}
+	_, found, err := client.LinkHealthRecent(context.Background(), "linkABC", time.Now().Add(-time.Hour), time.Now())
 	require.NoError(t, err)
 	assert.True(t, found)
 }
@@ -270,7 +279,12 @@ func TestLinkHealthWindowAllClean_AllClean(t *testing.T) {
 			assert.Contains(t, query, "countIf")
 			assert.Contains(t, query, "argMax")
 			assert.Contains(t, query, "GROUP BY bucket_ts")
-			assert.Contains(t, query, "max(bucket_ts)")
+			assert.Contains(t, query, "maxIf(bucket_ts, a_samples > 0 AND z_samples > 0)")
+			// Bad-bucket predicate: must match checkImpairment.
+			assert.Contains(t, query, "isis_down = true AND status != 'hard-drained'")
+			assert.Contains(t, query, "a_samples > 0 AND z_samples > 0 AND a_loss_pct > ? AND z_loss_pct > ?")
+			assert.Contains(t, query, "countIf(a_samples > 0 AND z_samples > 0) AS total_buckets")
+			assert.Contains(t, query, "argMax(status, ingested_at)")
 			// provisioning is deduped alongside the health columns and filtered
 			// afterwards, so a flip on the newest row can't resurrect a stale one.
 			assert.Contains(t, query, "argMax(provisioning, ingested_at)")
@@ -294,7 +308,7 @@ func TestLinkHealthWindowAllClean_AllClean(t *testing.T) {
 		},
 	}
 
-	client := &ClickHouseClient{conn: conn, db: "testdb"}
+	client := &ClickHouseClient{conn: conn, lakeDB: "testdb"}
 	r, found, err := client.LinkHealthWindowAllClean(context.Background(), "linkABC",
 		time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 		time.Date(2026, 1, 1, 1, 0, 0, 0, time.UTC),
@@ -320,7 +334,7 @@ func TestLinkHealthWindowAllClean_HasBadBuckets(t *testing.T) {
 			}
 		},
 	}
-	client := &ClickHouseClient{conn: conn, db: "testdb"}
+	client := &ClickHouseClient{conn: conn, lakeDB: "testdb"}
 	r, found, err := client.LinkHealthWindowAllClean(context.Background(), "linkABC",
 		time.Now().Add(-1*time.Hour), time.Now(), 5.0)
 	require.NoError(t, err)
@@ -343,7 +357,7 @@ func TestLinkHealthWindowAllClean_NoBucketsInWindow(t *testing.T) {
 			}
 		},
 	}
-	client := &ClickHouseClient{conn: conn, db: "testdb"}
+	client := &ClickHouseClient{conn: conn, lakeDB: "testdb"}
 	_, found, err := client.LinkHealthWindowAllClean(context.Background(), "linkABC",
 		time.Now().Add(-1*time.Hour), time.Now(), 5.0)
 	require.NoError(t, err)
@@ -360,29 +374,68 @@ func TestLinkHealthWindowAllClean_QueryError(t *testing.T) {
 			}
 		},
 	}
-	client := &ClickHouseClient{conn: conn, db: "testdb"}
+	client := &ClickHouseClient{conn: conn, lakeDB: "testdb"}
 	_, _, err := client.LinkHealthWindowAllClean(context.Background(), "linkABC",
 		time.Now().Add(-1*time.Hour), time.Now(), 5.0)
 	assert.ErrorContains(t, err, "connection reset")
 }
 
-func TestNewClickHouseClient_StripsScheme(t *testing.T) {
+// Links and interface counters read lake tables, controller calls the telemetry
+// database, so each must qualify its table with the right one.
+func TestClickHouseClient_RoutesTablesToTheirDatabase(t *testing.T) {
+	var queries []string
+	conn := &mockConn{
+		queryRowFunc: func(_ context.Context, query string, _ ...any) driver.Row {
+			queries = append(queries, query)
+			return &mockRow{scanFunc: func(_ ...any) error { return errors.New("stop") }}
+		},
+	}
+	client := &ClickHouseClient{conn: conn, db: "default", lakeDB: "lake"}
+	ctx := context.Background()
+	now := time.Now()
+
+	_, _ = client.ControllerCallCoverage(ctx, "d", now, now)
+	_, _ = client.InterfaceCountersCoverage(ctx, "d", now, now)
+	_, _, _ = client.LinkHealthRecent(ctx, "l", now, now)
+	_, _, _ = client.LinkHealthWindowAllClean(ctx, "l", now, now, 5.0)
+
+	require.Len(t, queries, 4)
+	assert.Contains(t, queries[0], `"default".controller_grpc_getconfig_success`)
+	assert.Contains(t, queries[1], `"lake".fact_dz_device_interface_counters`)
+	assert.Contains(t, queries[2], `"lake".link_rollup_5m`)
+	assert.Contains(t, queries[3], `"lake".link_rollup_5m`)
+}
+
+// Building the client must not need a reachable server: a startup blip would
+// otherwise drop every ClickHouse criterion for the life of the process.
+func TestNewClickHouseClient_UnreachableServer_StillBuilds(t *testing.T) {
 	tests := []struct {
 		name string
 		addr string
 	}{
-		{"plain host:port", "localhost:8123"},
-		{"https prefix", "https://clickhouse.example.com:8443"},
-		{"http prefix", "http://localhost:8123"},
+		{"plain host:port", "127.0.0.1:1"},
+		{"https prefix", "https://127.0.0.1:1"},
+		{"http prefix", "http://127.0.0.1:1"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewClickHouseClient(tt.addr, "default", "default", "", true)
-			// Connection will fail (no server) — verify no panic and an error is returned.
-			assert.Error(t, err)
+			client, err := NewClickHouseClient(tt.addr, "default", "lake", "default", "", true)
+			require.NoError(t, err)
+			defer client.Close()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			assert.Error(t, client.Ping(ctx))
 		})
 	}
+}
+
+func TestNewClickHouseClient_InvalidDatabaseName(t *testing.T) {
+	_, err := NewClickHouseClient("127.0.0.1:1", "bad;db", "lake", "default", "", true)
+	assert.ErrorContains(t, err, "invalid clickhouse database name")
+	_, err = NewClickHouseClient("127.0.0.1:1", "default", "bad;db", "default", "", true)
+	assert.ErrorContains(t, err, "invalid clickhouse database name")
 }
 
 func TestOptions_ConnMaxLifetime(t *testing.T) {

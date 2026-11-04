@@ -12,22 +12,22 @@ import (
 )
 
 type mockLinkHealthChecker struct {
-	recentFunc func(ctx context.Context, linkPubkey string) (LinkHealthRecentResult, bool, error)
+	recentFunc func(ctx context.Context, linkPubkey string, start, end time.Time) (LinkHealthRecentResult, bool, error)
 	windowFunc func(ctx context.Context, linkPubkey string, start, end time.Time, lossThreshold float64) (LinkHealthWindowResult, bool, error)
 }
 
-func (m *mockLinkHealthChecker) LinkHealthRecent(ctx context.Context, linkPubkey string) (LinkHealthRecentResult, bool, error) {
-	return m.recentFunc(ctx, linkPubkey)
+func (m *mockLinkHealthChecker) LinkHealthRecent(ctx context.Context, linkPubkey string, start, end time.Time) (LinkHealthRecentResult, bool, error) {
+	return m.recentFunc(ctx, linkPubkey, start, end)
 }
 
 func (m *mockLinkHealthChecker) LinkHealthWindowAllClean(ctx context.Context, linkPubkey string, start, end time.Time, lossThreshold float64) (LinkHealthWindowResult, bool, error) {
 	return m.windowFunc(ctx, linkPubkey, start, end, lossThreshold)
 }
 
-// freshBucket returns a bucket timestamp that's recent enough to pass the
-// stale-data floor in checkImpairment.
+// freshBucket returns the timestamp of a settled bucket recent enough to pass
+// the recovery window's stale-data floor.
 func freshBucket() time.Time {
-	return time.Now().Add(-1 * time.Minute)
+	return time.Now().Add(-linkHealthSettleDelay - 1*time.Minute)
 }
 
 func TestLinkHealthCriterion_Name(t *testing.T) {
@@ -39,7 +39,7 @@ func TestLinkHealthCriterion_Name(t *testing.T) {
 
 func TestLinkHealthCriterion_Impairment_NoData_Passes(t *testing.T) {
 	checker := &mockLinkHealthChecker{
-		recentFunc: func(_ context.Context, _ string) (LinkHealthRecentResult, bool, error) {
+		recentFunc: func(_ context.Context, _ string, _, _ time.Time) (LinkHealthRecentResult, bool, error) {
 			return LinkHealthRecentResult{}, false, nil
 		},
 	}
@@ -50,29 +50,68 @@ func TestLinkHealthCriterion_Impairment_NoData_Passes(t *testing.T) {
 	assert.True(t, passed, "no data must not flag a link as impaired")
 }
 
-func TestLinkHealthCriterion_Impairment_StaleBucket_Passes(t *testing.T) {
-	// A latest bucket older than the recency floor signals a broken telemetry
-	// pipeline. Don't act on it — neither demote nor recover.
+// In-flight buckets flap healthy links, and buckets older than the floor mean a
+// broken pipeline. Either way the check must only read the range between them;
+// past the floor the query finds nothing, which is the no-data pass above.
+func TestLinkHealthCriterion_Impairment_ReadsSettledRecentBuckets(t *testing.T) {
+	for _, mode := range []LinkHealthMode{LinkHealthModeImpairment, LinkHealthModePromotion} {
+		var gotStart, gotEnd time.Time
+		checker := &mockLinkHealthChecker{
+			recentFunc: func(_ context.Context, _ string, start, end time.Time) (LinkHealthRecentResult, bool, error) {
+				gotStart, gotEnd = start, end
+				return LinkHealthRecentResult{}, false, nil
+			},
+		}
+		c := NewLinkHealthCriterion(mode, checker, 5.0, testLogger())
+
+		passed, _ := c.Check(context.Background(), serviceability.Link{})
+		assert.True(t, passed)
+		assert.WithinDuration(t, time.Now().Add(-15*time.Minute), gotEnd, 5*time.Second)
+		assert.WithinDuration(t, time.Now().Add(-30*time.Minute), gotStart, 5*time.Second)
+	}
+}
+
+// Hard drain sets isis passive, so isis_down is always true while hard-drained.
+// Counting it would hold the link Impaired forever and stall RFC-12 reactivation.
+func TestLinkHealthCriterion_Impairment_IsisDownByStatus(t *testing.T) {
+	tests := []struct {
+		status   string
+		expected bool
+	}{
+		{"activated", false},
+		{"soft-drained", false},
+		{"hard-drained", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.status, func(t *testing.T) {
+			checker := &mockLinkHealthChecker{
+				recentFunc: func(_ context.Context, _ string, _, _ time.Time) (LinkHealthRecentResult, bool, error) {
+					return LinkHealthRecentResult{BucketTs: freshBucket(), IsisDown: true, Status: tt.status, ASamples: 30, ZSamples: 30}, true, nil
+				},
+			}
+			c := NewLinkHealthCriterion(LinkHealthModeImpairment, checker, 5.0, testLogger())
+			passed, _ := c.Check(context.Background(), serviceability.Link{})
+			assert.Equal(t, tt.expected, passed)
+		})
+	}
+}
+
+func TestLinkHealthCriterion_Impairment_HardDrainedLoss_Fails(t *testing.T) {
 	checker := &mockLinkHealthChecker{
-		recentFunc: func(_ context.Context, _ string) (LinkHealthRecentResult, bool, error) {
-			return LinkHealthRecentResult{
-				BucketTs: time.Now().Add(-1 * time.Hour),
-				IsisDown: true,
-				ALossPct: 100,
-				ZLossPct: 100,
-			}, true, nil
+		recentFunc: func(_ context.Context, _ string, _, _ time.Time) (LinkHealthRecentResult, bool, error) {
+			return LinkHealthRecentResult{BucketTs: freshBucket(), IsisDown: true, Status: "hard-drained", ALossPct: 50, ZLossPct: 50, ASamples: 30, ZSamples: 30}, true, nil
 		},
 	}
 	c := NewLinkHealthCriterion(LinkHealthModeImpairment, checker, 5.0, testLogger())
-
-	passed, _ := c.Check(context.Background(), serviceability.Link{})
-	assert.True(t, passed, "stale bucket should be treated as no data even when it indicates impairment")
+	passed, reason := c.Check(context.Background(), serviceability.Link{})
+	assert.False(t, passed, "hard drain only excuses isis_down, not measured loss")
+	assert.Contains(t, reason, "loss")
 }
 
 func TestLinkHealthCriterion_Impairment_IsisDown_Fails(t *testing.T) {
 	bucket := freshBucket()
 	checker := &mockLinkHealthChecker{
-		recentFunc: func(_ context.Context, _ string) (LinkHealthRecentResult, bool, error) {
+		recentFunc: func(_ context.Context, _ string, _, _ time.Time) (LinkHealthRecentResult, bool, error) {
 			return LinkHealthRecentResult{BucketTs: bucket, IsisDown: true}, true, nil
 		},
 	}
@@ -89,23 +128,32 @@ func TestLinkHealthCriterion_Impairment_LossExceedsThreshold(t *testing.T) {
 		name     string
 		aLoss    float64
 		zLoss    float64
+		aSamples uint32
+		zSamples uint32
 		expected bool
 	}{
-		{"both clean", 1.0, 1.0, true},
-		{"a above threshold", 6.0, 1.0, false},
-		{"z above threshold", 1.0, 6.0, false},
-		{"a exactly at threshold", 5.0, 0, true},
-		{"z exactly at threshold", 0, 5.0, true},
-		{"both far above", 80.0, 90.0, false},
+		{"both clean", 1.0, 1.0, 30, 30, true},
+		{"a only: z's agent restarted", 6.7, 0, 30, 28, true},
+		{"z only: a's agent restarted", 0, 6.7, 28, 30, true},
+		{"both exactly at threshold", 5.0, 5.0, 30, 30, true},
+		{"one at threshold, one above", 5.0, 6.0, 30, 30, true},
+		{"both just above", 6.0, 6.0, 30, 30, false},
+		{"both far above", 80.0, 90.0, 30, 30, false},
+		{"a all lost, z side not landed", 100.0, 0, 30, 0, true},
+		{"z all lost, a side not landed", 0, 100.0, 0, 30, true},
+		{"loss on both, a side not landed", 100.0, 100.0, 0, 30, true},
+		{"loss on both, z side not landed", 100.0, 100.0, 30, 0, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			checker := &mockLinkHealthChecker{
-				recentFunc: func(_ context.Context, _ string) (LinkHealthRecentResult, bool, error) {
+				recentFunc: func(_ context.Context, _ string, _, _ time.Time) (LinkHealthRecentResult, bool, error) {
 					return LinkHealthRecentResult{
 						BucketTs: freshBucket(),
 						ALossPct: tt.aLoss,
 						ZLossPct: tt.zLoss,
+						ASamples: tt.aSamples,
+						ZSamples: tt.zSamples,
 					}, true, nil
 				},
 			}
@@ -116,9 +164,22 @@ func TestLinkHealthCriterion_Impairment_LossExceedsThreshold(t *testing.T) {
 	}
 }
 
+// A dead device reports no samples from one side, so only isis_down catches it.
+func TestLinkHealthCriterion_Impairment_IsisDownWithoutSamples_Fails(t *testing.T) {
+	checker := &mockLinkHealthChecker{
+		recentFunc: func(_ context.Context, _ string, _, _ time.Time) (LinkHealthRecentResult, bool, error) {
+			return LinkHealthRecentResult{BucketTs: freshBucket(), IsisDown: true, Status: "activated", ALossPct: 100, ASamples: 30}, true, nil
+		},
+	}
+	c := NewLinkHealthCriterion(LinkHealthModeImpairment, checker, 5.0, testLogger())
+	passed, reason := c.Check(context.Background(), serviceability.Link{})
+	assert.False(t, passed)
+	assert.Contains(t, reason, "isis")
+}
+
 func TestLinkHealthCriterion_Impairment_QueryError_HoldsHealth(t *testing.T) {
 	checker := &mockLinkHealthChecker{
-		recentFunc: func(_ context.Context, _ string) (LinkHealthRecentResult, bool, error) {
+		recentFunc: func(_ context.Context, _ string, _, _ time.Time) (LinkHealthRecentResult, bool, error) {
 			return LinkHealthRecentResult{}, false, errors.New("connection reset")
 		},
 	}
@@ -136,7 +197,7 @@ func TestLinkHealthCriterion_Impairment_QueryError_HoldsHealth(t *testing.T) {
 // demotion path is actually closed end to end.
 func TestLinkHealthEvaluator_ReadyForService_QueryError_StaysReadyForService(t *testing.T) {
 	checker := &mockLinkHealthChecker{
-		recentFunc: func(_ context.Context, _ string) (LinkHealthRecentResult, bool, error) {
+		recentFunc: func(_ context.Context, _ string, _, _ time.Time) (LinkHealthRecentResult, bool, error) {
 			return LinkHealthRecentResult{}, false, errors.New("connection reset")
 		},
 	}
@@ -180,6 +241,49 @@ func TestLinkHealthCriterion_Recovery_AllClean_Passes(t *testing.T) {
 	checker := &mockLinkHealthChecker{
 		windowFunc: func(_ context.Context, _ string, _, _ time.Time, _ float64) (LinkHealthWindowResult, bool, error) {
 			return LinkHealthWindowResult{Bad: 0, Total: 6, MaxBucketTs: freshBucket(), AllClean: true}, true, nil
+		},
+	}
+	c := NewLinkHealthCriterion(LinkHealthModeRecovery, checker, 5.0, testLogger())
+
+	passed, reason := c.Check(ctx, serviceability.Link{})
+	assert.True(t, passed, reason)
+}
+
+// The window must span the same dwell over settled buckets only, or the newest
+// bucket in it would still be filling.
+func TestLinkHealthCriterion_Recovery_WindowShiftedToSettledBuckets(t *testing.T) {
+	now := time.Now()
+	drainedStart := now.Add(-30 * time.Minute)
+	ctx := ContextWithBurnInTimes(context.Background(), BurnInTimes{
+		DrainedStart: drainedStart,
+		Now:          now,
+	})
+	var gotStart, gotEnd time.Time
+	checker := &mockLinkHealthChecker{
+		windowFunc: func(_ context.Context, _ string, start, end time.Time, _ float64) (LinkHealthWindowResult, bool, error) {
+			gotStart, gotEnd = start, end
+			return LinkHealthWindowResult{Total: 6, MaxBucketTs: freshBucket(), AllClean: true}, true, nil
+		},
+	}
+	c := NewLinkHealthCriterion(LinkHealthModeRecovery, checker, 5.0, testLogger())
+
+	passed, reason := c.Check(ctx, serviceability.Link{})
+	assert.True(t, passed, reason)
+	assert.Equal(t, drainedStart.Add(-15*time.Minute), gotStart)
+	assert.Equal(t, now.Add(-15*time.Minute), gotEnd)
+}
+
+// A newest settled bucket is 15-20 minutes old in normal operation, so the
+// recency floor must sit past that or no link could ever recover.
+func TestLinkHealthCriterion_Recovery_NewestSettledBucketIsNotStale(t *testing.T) {
+	now := time.Now()
+	ctx := ContextWithBurnInTimes(context.Background(), BurnInTimes{
+		DrainedStart: now.Add(-30 * time.Minute),
+		Now:          now,
+	})
+	checker := &mockLinkHealthChecker{
+		windowFunc: func(_ context.Context, _ string, _, _ time.Time, _ float64) (LinkHealthWindowResult, bool, error) {
+			return LinkHealthWindowResult{Total: 6, MaxBucketTs: now.Add(-20 * time.Minute), AllClean: true}, true, nil
 		},
 	}
 	c := NewLinkHealthCriterion(LinkHealthModeRecovery, checker, 5.0, testLogger())
@@ -345,27 +449,27 @@ func TestLinkHealthCriterion_Recovery_PassesThresholdToChecker(t *testing.T) {
 func TestLinkHealthEvaluator_Pending_PromotionGatedOnImpairment(t *testing.T) {
 	tests := []struct {
 		name     string
-		recent   func(ctx context.Context, linkPubkey string) (LinkHealthRecentResult, bool, error)
+		recent   func(ctx context.Context, linkPubkey string, start, end time.Time) (LinkHealthRecentResult, bool, error)
 		expected serviceability.LinkHealth
 	}{
 		{
 			name: "latest bucket impaired blocks promotion",
-			recent: func(_ context.Context, _ string) (LinkHealthRecentResult, bool, error) {
+			recent: func(_ context.Context, _ string, _, _ time.Time) (LinkHealthRecentResult, bool, error) {
 				return LinkHealthRecentResult{BucketTs: freshBucket(), IsisDown: true}, true, nil
 			},
 			expected: serviceability.LinkHealthPending,
 		},
 		{
 			name: "no telemetry still promotes",
-			recent: func(_ context.Context, _ string) (LinkHealthRecentResult, bool, error) {
+			recent: func(_ context.Context, _ string, _, _ time.Time) (LinkHealthRecentResult, bool, error) {
 				return LinkHealthRecentResult{}, false, nil
 			},
 			expected: serviceability.LinkHealthReadyForService,
 		},
 		{
 			name: "latest bucket clean promotes",
-			recent: func(_ context.Context, _ string) (LinkHealthRecentResult, bool, error) {
-				return LinkHealthRecentResult{BucketTs: freshBucket(), ALossPct: 1, ZLossPct: 1}, true, nil
+			recent: func(_ context.Context, _ string, _, _ time.Time) (LinkHealthRecentResult, bool, error) {
+				return LinkHealthRecentResult{BucketTs: freshBucket(), ALossPct: 1, ZLossPct: 1, ASamples: 30, ZSamples: 30}, true, nil
 			},
 			expected: serviceability.LinkHealthReadyForService,
 		},
@@ -394,7 +498,7 @@ func TestLinkHealthEvaluator_Pending_PromotionGatedOnImpairment(t *testing.T) {
 // passes. Otherwise a lake outage promotes every Pending link.
 func TestLinkHealthEvaluator_Pending_QueryError_StaysPending(t *testing.T) {
 	checker := &mockLinkHealthChecker{
-		recentFunc: func(_ context.Context, _ string) (LinkHealthRecentResult, bool, error) {
+		recentFunc: func(_ context.Context, _ string, _, _ time.Time) (LinkHealthRecentResult, bool, error) {
 			return LinkHealthRecentResult{}, false, errors.New("connection reset")
 		},
 	}

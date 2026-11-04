@@ -14,7 +14,7 @@ import (
 type LinkHealthMode int
 
 const (
-	// LinkHealthModeImpairment checks the most recent link_rollup_5m bucket.
+	// LinkHealthModeImpairment checks the most recent settled link_rollup_5m bucket.
 	// Used to detect impairment fast (RFS → Impaired transition).
 	LinkHealthModeImpairment LinkHealthMode = iota
 	// LinkHealthModeRecovery checks every bucket in the recovery window.
@@ -25,19 +25,31 @@ const (
 	LinkHealthModePromotion
 )
 
+// linkHealthSettleDelay excludes buckets the lake is still filling. The newest
+// bucket is rewritten as samples land, so a single lost probe among its first
+// few reads above the loss threshold, and a side that has not landed yet reads
+// as missing. Raw sample ingest lag peaks near 10 minutes, so 15 minutes after
+// its start a bucket is complete; infra's link alerts use the same margin.
+const linkHealthSettleDelay = 15 * time.Minute
+
 // linkHealthRecentMaxAge is how recent a rollup bucket must be to be acted on:
 // the latest bucket for the impairment check, the newest bucket in the window
 // for the recovery check. Anything older is stale telemetry, which must
-// neither demote nor recover a link. Sized at 3× the 5-minute rollup cadence
-// to absorb a single missed bucket plus an ingest delay.
-const linkHealthRecentMaxAge = 15 * time.Minute
+// neither demote nor recover a link. Sized at the settle delay plus 3× the
+// 5-minute rollup cadence, to absorb a single missed bucket.
+const linkHealthRecentMaxAge = linkHealthSettleDelay + 15*time.Minute
 
 // LinkHealthCriterion evaluates link impairment from the link_rollup_5m table,
 // over the window its mode selects (RecoveryMode resolves it via LinkBurnIn).
 //
-// "Clean" means: isis_down=false AND a_loss_pct <= LossThreshold AND
-// z_loss_pct <= LossThreshold. Buckets with provisioning=true are excluded
-// to avoid flagging links that are still being brought up.
+// A bucket is bad when ISIS is down on a link that is not hard-drained, or when
+// both sides have samples and both report loss above LossThreshold. Both
+// directions are round trips over the same link, so real loss shows on both.
+// Loss on one side alone is the peer's telemetry agent: its TWAMP reflector
+// runs inside the agent, so a restart reads as lost probes on the far side.
+// A dead device still reads as bad through isis_down. Buckets with
+// provisioning=true are excluded to avoid flagging links that are still being
+// brought up.
 //
 // "No data" handling differs by mode: in ImpairmentMode, missing data is
 // treated as a pass (we cannot conclude a link is impaired without telemetry);
@@ -82,7 +94,8 @@ func (c *LinkHealthCriterion) Check(ctx context.Context, link serviceability.Lin
 }
 
 func (c *LinkHealthCriterion) checkImpairment(ctx context.Context, link serviceability.Link, pubkey string) (bool, string) {
-	r, found, err := c.checker.LinkHealthRecent(ctx, pubkey)
+	now := time.Now()
+	r, found, err := c.checker.LinkHealthRecent(ctx, pubkey, now.Add(-linkHealthRecentMaxAge), now.Add(-linkHealthSettleDelay))
 	if err != nil {
 		// Hold current health on error, and count it separately so an outage
 		// doesn't read as impairment in MetricCriterionResults{_, "fail"}.
@@ -101,21 +114,10 @@ func (c *LinkHealthCriterion) checkImpairment(ctx context.Context, link servicea
 		return true, ""
 	}
 	if !found {
-		// No telemetry → cannot conclude impairment. Hold current health.
+		// No recent telemetry → cannot conclude impairment. Hold current health
+		// rather than act on a frozen snapshot if the pipeline is stuck.
 		// Distinct from the error path above: no data is a real answer about
 		// the link, a query failure is no answer at all.
-		return true, ""
-	}
-
-	// A stale latest bucket means the rollup pipeline is broken for this link;
-	// treat it like "no data" rather than acting on a frozen snapshot. Without
-	// this floor, a stuck pipeline at the moment of an ISIS flap would keep the
-	// link Impaired indefinitely even after the link recovered.
-	age := time.Since(r.BucketTs)
-	if age > linkHealthRecentMaxAge {
-		c.log.Debug("Link health latest bucket is stale; treating as no data",
-			"link", pubkey, "code", link.Code,
-			"bucketTs", r.BucketTs, "age", age, "maxAge", linkHealthRecentMaxAge)
 		return true, ""
 	}
 
@@ -123,18 +125,19 @@ func (c *LinkHealthCriterion) checkImpairment(ctx context.Context, link servicea
 		"link", pubkey, "code", link.Code,
 		"bucketTs", r.BucketTs,
 		"isisDown", r.IsisDown,
+		"status", r.Status,
 		"aLossPct", r.ALossPct,
 		"zLossPct", r.ZLossPct,
+		"aSamples", r.ASamples,
+		"zSamples", r.ZSamples,
 		"lossThreshold", c.lossThreshold)
 
-	if r.IsisDown {
+	// LinkHealthWindowAllClean's bad-bucket predicate mirrors these two checks.
+	if r.IsisDown && r.Status != linkStatusHardDrained {
 		return false, fmt.Sprintf("isis adjacency down (bucket=%s)", r.BucketTs.UTC().Format(time.RFC3339))
 	}
-	if r.ALossPct > c.lossThreshold {
-		return false, fmt.Sprintf("a-side loss %.2f%% > %.2f%% (bucket=%s)", r.ALossPct, c.lossThreshold, r.BucketTs.UTC().Format(time.RFC3339))
-	}
-	if r.ZLossPct > c.lossThreshold {
-		return false, fmt.Sprintf("z-side loss %.2f%% > %.2f%% (bucket=%s)", r.ZLossPct, c.lossThreshold, r.BucketTs.UTC().Format(time.RFC3339))
+	if r.ASamples > 0 && r.ZSamples > 0 && r.ALossPct > c.lossThreshold && r.ZLossPct > c.lossThreshold {
+		return false, fmt.Sprintf("loss a=%.2f%% z=%.2f%% > %.2f%% (bucket=%s)", r.ALossPct, r.ZLossPct, c.lossThreshold, r.BucketTs.UTC().Format(time.RFC3339))
 	}
 	return true, ""
 }
@@ -151,7 +154,9 @@ func (c *LinkHealthCriterion) checkRecovery(ctx context.Context, link serviceabi
 		return false, "recovery window not yet established"
 	}
 
-	r, found, err := c.checker.LinkHealthWindowAllClean(ctx, pubkey, start, now, c.lossThreshold)
+	// Shifted so the window spans the same dwell, over settled buckets only.
+	start, end := start.Add(-linkHealthSettleDelay), now.Add(-linkHealthSettleDelay)
+	r, found, err := c.checker.LinkHealthWindowAllClean(ctx, pubkey, start, end, c.lossThreshold)
 	if err != nil {
 		c.log.Error("Failed to query link health recovery window",
 			"link", pubkey, "code", link.Code, "error", err)
@@ -169,7 +174,7 @@ func (c *LinkHealthCriterion) checkRecovery(ctx context.Context, link serviceabi
 		"totalBuckets", r.Total,
 		"maxBucketTs", r.MaxBucketTs,
 		"start", start,
-		"end", now,
+		"end", end,
 		"expectedMinutes", expectedMinutes,
 		"lossThreshold", c.lossThreshold)
 

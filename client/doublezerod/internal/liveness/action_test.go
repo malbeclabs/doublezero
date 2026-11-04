@@ -1,0 +1,202 @@
+package liveness
+
+import (
+	"context"
+	"log/slog"
+	"net"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+type logRecorder struct {
+	mu      sync.Mutex
+	records []slog.Record
+}
+
+func (r *logRecorder) Enabled(context.Context, slog.Level) bool { return true }
+func (r *logRecorder) WithAttrs([]slog.Attr) slog.Handler       { return r }
+func (r *logRecorder) WithGroup(string) slog.Handler            { return r }
+func (r *logRecorder) Handle(_ context.Context, rec slog.Record) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.records = append(r.records, rec.Clone())
+	return nil
+}
+
+func (r *logRecorder) find(level slog.Level, msg string) []slog.Record {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	var out []slog.Record
+	for _, rec := range r.records {
+		if rec.Level == level && rec.Message == msg {
+			out = append(out, rec)
+		}
+	}
+	return out
+}
+
+func recordAttr(rec slog.Record, key string) string {
+	var v string
+	rec.Attrs(func(a slog.Attr) bool {
+		if a.Key == key {
+			v = a.Value.String()
+			return false
+		}
+		return true
+	})
+	return v
+}
+
+// newRouteActionTestManager skips NewManager so no ticker races the test's checks.
+func newRouteActionTestManager(passive bool) (*manager, *logRecorder) {
+	rec := &logRecorder{}
+	return &manager{
+		cfg:       &ManagerConfig{PassiveMode: passive},
+		log:       slog.New(rec),
+		sessions:  make(map[Peer]*Session),
+		desired:   make(map[RouteKey]*Route),
+		installed: make(map[RouteKey]bool),
+		action:    RouteActionNone,
+	}, rec
+}
+
+func addRouteActionTestSession(m *manager, peerIP string, state State, lastRx time.Time) *Session {
+	r := newTestRoute(func(r *Route) {
+		r.Dst = &net.IPNet{IP: net.ParseIP(peerIP), Mask: net.CIDRMask(32, 32)}
+	})
+	peer := Peer{Interface: "doublezero0", LocalIP: r.Src.String(), PeerIP: peerIP}
+	sess := &Session{route: r, peer: &peer, state: state, lastRx: lastRx}
+	m.desired[routeKeyFor(peer.Interface, r)] = r
+	m.sessions[peer] = sess
+	return sess
+}
+
+func TestClient_Liveness_RouteAction_Rule(t *testing.T) {
+	t.Parallel()
+
+	// lastRx is when the session last heard its peer, relative to the period's start:
+	// zero for never, negative for before the period began.
+	type sess struct {
+		state  State
+		lastRx time.Duration
+	}
+	for _, tc := range []struct {
+		name     string
+		passive  bool
+		sessions []sess
+		want     RouteAction
+	}{
+		{name: "no desired routes", want: RouteActionNone},
+		{name: "all sessions down", sessions: []sess{{StateDown, 0}, {StateDown, 0}}, want: RouteActionInbound},
+		{name: "one session up", sessions: []sess{{StateDown, 0}, {StateUp, -time.Second}, {StateInit, -time.Second}}, want: RouteActionNone},
+		{name: "init mixed with peers that never answer", sessions: []sess{{StateInit, -time.Second}, {StateDown, 0}, {StateDown, 0}}, want: RouteActionOutbound},
+		{name: "probe since the period began, session down again", sessions: []sess{{StateDown, time.Minute}, {StateDown, 0}}, want: RouteActionOutbound},
+		{name: "probe only before the period began", sessions: []sess{{StateDown, -time.Second}, {StateDown, 0}}, want: RouteActionInbound},
+		{name: "passive mode", passive: true, sessions: []sess{{StateDown, 0}}, want: RouteActionNone},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			m, _ := newRouteActionTestManager(tc.passive)
+			t0 := time.Now()
+			for i, s := range tc.sessions {
+				var lastRx time.Time
+				if s.lastRx != 0 {
+					lastRx = t0.Add(s.lastRx)
+				}
+				addRouteActionTestSession(m, net.IPv4(10, 4, 0, byte(11+i)).String(), s.state, lastRx)
+			}
+
+			require.Equal(t, RouteActionNone, m.checkRouteAction(t0))
+			require.Equal(t, RouteActionNone, m.checkRouteAction(t0.Add(routeActionGrace-time.Second)), "within the grace period")
+			require.Equal(t, tc.want, m.checkRouteAction(t0.Add(routeActionGrace)))
+		})
+	}
+}
+
+func TestClient_Liveness_RouteAction_WarnRepeatsAndClears(t *testing.T) {
+	t.Parallel()
+
+	m, logs := newRouteActionTestManager(false)
+	sess := addRouteActionTestSession(m, "10.4.0.11", StateDown, time.Time{})
+	inbound := routeActionWarnings[RouteActionInbound]
+	outbound := routeActionWarnings[RouteActionOutbound]
+	const cleared = "liveness: missing peer routes cleared"
+
+	t0 := time.Now()
+	m.checkRouteAction(t0)
+	m.checkRouteAction(t0.Add(routeActionGrace))
+	m.checkRouteAction(t0.Add(routeActionGrace + routeActionWarnEvery - time.Second))
+	warns := logs.find(slog.LevelWarn, inbound)
+	require.Len(t, warns, 1, "one WARN until the interval passes")
+	require.Equal(t, "inbound", recordAttr(warns[0], "direction"))
+	require.Equal(t, DocsMissingPeerRoutes, recordAttr(warns[0], "docs"))
+
+	m.checkRouteAction(t0.Add(routeActionGrace + routeActionWarnEvery))
+	require.Len(t, logs.find(slog.LevelWarn, inbound), 2, "WARN repeats on the interval")
+
+	sess.mu.Lock()
+	sess.lastRx = t0.Add(time.Minute)
+	sess.mu.Unlock()
+	m.checkRouteAction(t0.Add(routeActionGrace + routeActionWarnEvery + time.Second))
+	require.Len(t, logs.find(slog.LevelWarn, outbound), 1, "a new direction is logged at once")
+
+	sess.mu.Lock()
+	sess.state = StateUp
+	sess.mu.Unlock()
+	m.checkRouteAction(t0.Add(time.Hour))
+	m.checkRouteAction(t0.Add(time.Hour + time.Minute))
+	require.Len(t, logs.find(slog.LevelInfo, cleared), 1)
+	require.Len(t, logs.find(slog.LevelWarn, inbound), 2)
+	require.Len(t, logs.find(slog.LevelWarn, outbound), 1)
+}
+
+// The grace period starts again on reconnect, even one faster than a check.
+func TestClient_Liveness_RouteAction_WithdrawingLastRouteRestartsGrace(t *testing.T) {
+	t.Parallel()
+
+	m, err := newTestManager(t, nil)
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(nil)
+	require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
+	t0 := time.Now()
+	m.checkRouteAction(t0)
+	require.NoError(t, m.WithdrawRoute(r, "lo"))
+	require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
+
+	require.Equal(t, RouteActionNone, m.checkRouteAction(t0.Add(routeActionGrace)))
+	require.Equal(t, RouteActionInbound, m.checkRouteAction(t0.Add(2*routeActionGrace)))
+}
+
+// A peer that never hears us sends Down, which knocks our session from Init back to
+// Down, so outbound must not depend on catching the session in Init.
+func TestClient_Liveness_RouteAction_OutboundAfterDeafPeerResetsInit(t *testing.T) {
+	t.Parallel()
+
+	m, err := newTestManager(t, func(cfg *ManagerConfig) {
+		cfg.TxMin, cfg.RxMin, cfg.MaxTxCeil = time.Second, time.Second, 3*time.Second
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(nil)
+	require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
+	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+	sess, ok := m.GetSession(peer)
+	require.True(t, ok)
+	t0 := time.Now()
+	m.checkRouteAction(t0)
+
+	deaf := &ControlPacket{State: StateDown, LocalDiscr: 99}
+	m.HandleRx(deaf, peer)
+	require.Equal(t, StateInit, sess.GetState())
+	m.HandleRx(deaf, peer)
+	require.Equal(t, StateDown, sess.GetState())
+	require.Equal(t, DownReasonRemoteDown, sess.Snapshot().LastDownReason)
+
+	require.Equal(t, RouteActionOutbound, m.checkRouteAction(t0.Add(routeActionGrace)))
+}

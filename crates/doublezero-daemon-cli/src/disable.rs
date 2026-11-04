@@ -141,6 +141,7 @@ mod tests {
                         tenant: String::new(),
                         multicast_groups: Default::default(),
                         subscriptions: Default::default(),
+                        routes: None,
                     }],
                 })
             });

@@ -15,9 +15,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/go-cmp/cmp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/latency"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/liveness"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/pim"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -1628,6 +1630,62 @@ func TestConnectionInfoMetric(t *testing.T) {
 			t.Fatalf("expected 0 loss metric series after teardown, got %d", lossCount)
 		}
 	})
+}
+
+type mockLivenessManager struct {
+	sessions []liveness.SessionSnapshot
+	action   liveness.RouteAction
+}
+
+func (m *mockLivenessManager) GetSessions() []liveness.SessionSnapshot { return m.sessions }
+func (m *mockLivenessManager) RouteAction() liveness.RouteAction       { return m.action }
+
+func TestServeV2Status_RouteSummary(t *testing.T) {
+	lm := &mockLivenessManager{
+		sessions: []liveness.SessionSnapshot{{
+			Route:               liveness.Route{Route: routing.Route{Src: net.IPv4(10, 0, 0, 1), Dst: &net.IPNet{IP: net.IPv4(10, 0, 0, 2), Mask: net.CIDRMask(32, 32)}}},
+			State:               liveness.StateDown,
+			ExpectedKernelState: liveness.KernelStateAbsent,
+		}},
+		action: liveness.RouteActionInbound,
+	}
+	for _, tc := range []struct {
+		name string
+		lm   LivenessManager
+		want *api.RouteSummary
+	}{
+		{"liveness off", nil, nil},
+		{"liveness on", lm, &api.RouteSummary{
+			Desired:      1,
+			NotInstalled: []api.RouteGroup{{State: "down", Reason: "no reply", Count: 1}},
+			Action:       liveness.RouteActionInbound,
+			Docs:         liveness.DocsMissingPeerRoutes,
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			n := newTestNLMForHTTP(t.TempDir(), WithLivenessManager(tc.lm))
+			provisionUnicast(t, n)
+
+			w := httptest.NewRecorder()
+			n.ServeV2Status(w, httptest.NewRequest(http.MethodGet, "/v2/status", nil))
+
+			var resp V2StatusResponse
+			if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+				t.Fatal(err)
+			}
+			if len(resp.Services) != 1 {
+				t.Fatalf("expected 1 service, got %d", len(resp.Services))
+			}
+			if diff := cmp.Diff(tc.want, resp.Services[0].Routes); diff != "" {
+				t.Fatalf("routes mismatch (-want +got):\n%s", diff)
+			}
+		})
+	}
+
+	n := newTestNLMForHTTP(t.TempDir(), WithLivenessManager(lm))
+	if got := n.routeSummary(&api.StatusResponse{UserType: api.UserTypeMulticast}); got != nil {
+		t.Fatalf("expected no route summary for a multicast service, got %+v", got)
+	}
 }
 
 func TestServeV2Status_NoFetcher(t *testing.T) {

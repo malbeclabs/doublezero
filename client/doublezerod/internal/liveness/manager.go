@@ -181,6 +181,7 @@ type Manager interface {
 	GetSession(peer Peer) (*Session, bool)
 	IsInstalled(rk RouteKey) bool
 	AdminDownRoute(r *Route, iface string)
+	RouteAction() RouteAction
 	Close() error
 	Err() <-chan error
 }
@@ -216,6 +217,13 @@ type manager struct {
 	unknownPeerErrWarnEvery time.Duration
 	unknownPeerErrWarnLast  time.Time
 	unknownPeerErrWarnMu    sync.Mutex
+
+	// State of checkRouteAction; actionMu is taken before mu. zeroUpSince starts
+	// the current period with a route desired and no session Up.
+	actionMu       sync.Mutex
+	zeroUpSince    time.Time
+	action         RouteAction
+	actionWarnedAt time.Time
 }
 
 // NewManager constructs a Manager, opens the UDP socket, and launches the
@@ -274,6 +282,7 @@ func NewManager(ctx context.Context, cfg *ManagerConfig, cr *routing.ConfiguredR
 		installed: make(map[RouteKey]bool),
 
 		unknownPeerErrWarnEvery: 5 * time.Second,
+		action:                  RouteActionNone,
 	}
 
 	m.metrics = newMetrics()
@@ -308,6 +317,22 @@ func NewManager(ctx context.Context, cfg *ManagerConfig, cr *routing.ConfiguredR
 			m.log.Error("liveness: error running scheduler", "error", err)
 			m.errCh <- err
 			cancel()
+		}
+	}()
+
+	// Checks the missing-peer-routes rule even when nobody reads it, so its WARN is logged.
+	m.wg.Add(1)
+	go func() {
+		defer m.wg.Done()
+		ticker := time.NewTicker(routeActionCheckEvery)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-m.ctx.Done():
+				return
+			case <-ticker.C:
+				m.checkRouteAction(time.Now())
+			}
 		}
 	}()
 
@@ -442,10 +467,15 @@ func (m *manager) WithdrawRoute(r *Route, iface string) error {
 	m.mu.Lock()
 	delete(m.desired, rk)
 	m.metrics.DesiredMapSize.Set(float64(len(m.desired)))
+	noneDesired := len(m.desired) == 0
 	wasInstalled := m.installed[rk]
 	delete(m.installed, rk)
 	m.metrics.InstalledMapSize.Set(float64(len(m.installed)))
 	m.mu.Unlock()
+	if noneDesired {
+		// A reconnect faster than one check must not inherit the old grace period.
+		m.restartRouteActionGrace()
+	}
 
 	peer := Peer{Interface: iface, LocalIP: srcIP, PeerIP: dstIP}
 
@@ -765,6 +795,8 @@ func (m *manager) onSessionUp(sess *Session) {
 	snap := sess.Snapshot()
 	peer := snap.Peer
 	rk := routeKeyFor(peer.Interface, &snap.Route)
+	// An Up shorter than one check interval must still restart the grace period.
+	m.restartRouteActionGrace()
 
 	m.mu.Lock()
 	route := m.desired[rk]
@@ -820,7 +852,7 @@ func (m *manager) onSessionUp(sess *Session) {
 	sess.convUpStart = time.Time{}
 	sess.mu.Unlock()
 
-	m.log.Info("liveness: session up"+logSuffix,
+	args := []any{
 		"peer", peer.String(),
 		"route", snap.Route.String(),
 		"convergence", convergence.String(),
@@ -829,7 +861,11 @@ func (m *manager) onSessionUp(sess *Session) {
 		"peerClientVersion", snap.PeerClientVersion.String(),
 		"flaps", flaps,
 		"holdDown", hold.String(),
-	)
+	}
+	if hold > 0 {
+		args = append(args, "docs", DocsMissingPeerRoutes)
+	}
+	m.log.Info("liveness: session up"+logSuffix, args...)
 }
 
 // installRoute installs rk's desired route if sess still owns it and it is not
@@ -944,6 +980,7 @@ func (m *manager) onSessionDown(sess *Session) {
 		"downSince", snap.DownSince.UTC().String(),
 		"downReason", snap.LastDownReason.String(),
 		"peerClientVersion", snap.PeerClientVersion.String(),
+		"docs", DocsMissingPeerRoutes,
 	)
 }
 

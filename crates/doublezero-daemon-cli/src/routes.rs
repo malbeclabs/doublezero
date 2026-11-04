@@ -1,14 +1,15 @@
 //! `doublezero routes` — show installed routes, plus the route-retrieval
-//! utility.
+//! utility. `doublezero routes status` summarizes them.
 
 use std::io::Write;
 
-use clap::Args;
+use clap::{Args, Subcommand};
 use doublezero_cli_core::CliContext;
 use indicatif::ProgressBar;
+use tabled::{settings::Style, Table};
 
 use crate::{
-    client::{DaemonClient, RouteRecord},
+    client::{route_action_problem, DaemonClient, RouteRecord},
     helpers,
     ledger::LedgerClient,
     requirements::check_daemon,
@@ -33,9 +34,18 @@ pub async fn retrieve_routes<D: DaemonClient>(
 /// View your installed routes
 #[derive(Args, Debug)]
 pub struct Routes {
+    #[command(subcommand)]
+    command: Option<RoutesCommand>,
+
     /// Output as json
-    #[arg(long, default_value = "false")]
+    #[arg(long, default_value = "false", global = true)]
     json: bool,
+}
+
+#[derive(Subcommand, Debug)]
+enum RoutesCommand {
+    /// Summarize your peer routes and say whether you must act
+    Status,
 }
 
 impl Routes {
@@ -48,17 +58,71 @@ impl Routes {
     ) -> eyre::Result<()> {
         check_daemon(daemon, ledger).await?;
 
-        let routes = retrieve_routes(daemon, None).await?;
-        helpers::show_output(routes, self.json, out)?;
+        match self.command {
+            None => {
+                let routes = retrieve_routes(daemon, None).await?;
+                helpers::show_output(routes, self.json, out)?;
+            }
+            Some(RoutesCommand::Status) => show_route_summary(daemon, self.json, out).await?,
+        }
 
         Ok(())
     }
 }
 
+async fn show_route_summary<D: DaemonClient, W: Write>(
+    daemon: &D,
+    json: bool,
+    out: &mut W,
+) -> eyre::Result<()> {
+    let v2_status = daemon.v2_status().await?;
+    let ibrl = v2_status
+        .services
+        .iter()
+        .find(|svc| {
+            matches!(
+                svc.status.user_type.as_deref(),
+                Some("IBRL" | "IBRLWithAllocatedIP")
+            )
+        })
+        .ok_or_else(|| eyre::eyre!("No IBRL service found"))?;
+    let summary = ibrl
+        .routes
+        .as_ref()
+        .ok_or_else(|| eyre::eyre!("doublezerod does not report a route summary"))?;
+
+    if json {
+        writeln!(out, "{}", serde_json::to_string_pretty(summary)?)?;
+        return Ok(());
+    }
+    let table = Table::new([summary])
+        .with(Style::psql().remove_horizontals())
+        .to_string();
+    writeln!(out, "{table}")?;
+    if let Some(problem) = route_action_problem(&summary.action) {
+        writeln!(
+            out,
+            "\n⚠️  Missing peer routes: {problem}. Allow {} UDP 44880 on doublezero0.",
+            summary.action
+        )?;
+        if let Some(docs) = &summary.docs {
+            writeln!(out, "See {docs}")?;
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{client::MockDaemonClient, ledger::MockLedgerClient};
+    use crate::{
+        client::{
+            DoubleZeroStatus, MockDaemonClient, RouteGroup, RouteSummary, StatusResponse,
+            V2ServiceStatus, V2StatusResponse,
+        },
+        ledger::MockLedgerClient,
+    };
+    use clap::Parser;
     use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_config::Environment;
 
@@ -133,9 +197,12 @@ mod tests {
 
             let ctx = cli_context_default_for_tests();
             let mut out = Vec::new();
-            let result = Routes { json: true }
-                .execute(&ctx, &daemon, &ledger, &mut out)
-                .await;
+            let result = Routes {
+                command: None,
+                json: true,
+            }
+            .execute(&ctx, &daemon, &ledger, &mut out)
+            .await;
 
             assert!(result.is_ok());
             let output = String::from_utf8(out).unwrap();
@@ -156,11 +223,179 @@ mod tests {
 
             let ctx = cli_context_default_for_tests();
             let mut out = Vec::new();
-            let result = Routes { json: false }
-                .execute(&ctx, &daemon, &ledger, &mut out)
-                .await;
+            let result = Routes {
+                command: None,
+                json: false,
+            }
+            .execute(&ctx, &daemon, &ledger, &mut out)
+            .await;
 
             assert!(result.is_err());
         });
+    }
+
+    #[derive(Parser)]
+    struct TestCli {
+        #[command(subcommand)]
+        command: TestCommand,
+    }
+
+    #[derive(clap::Subcommand)]
+    enum TestCommand {
+        Routes(Routes),
+    }
+
+    fn parse(args: &[&str]) -> Routes {
+        let TestCommand::Routes(routes) = TestCli::try_parse_from(args).unwrap().command;
+        routes
+    }
+
+    #[test]
+    fn test_routes_status_is_an_optional_subcommand() {
+        let routes = parse(&["doublezero", "routes"]);
+        assert!(routes.command.is_none() && !routes.json);
+        let routes = parse(&["doublezero", "routes", "--json"]);
+        assert!(routes.command.is_none() && routes.json);
+        let routes = parse(&["doublezero", "routes", "status"]);
+        assert!(matches!(routes.command, Some(RoutesCommand::Status)) && !routes.json);
+        let routes = parse(&["doublezero", "routes", "status", "--json"]);
+        assert!(matches!(routes.command, Some(RoutesCommand::Status)) && routes.json);
+    }
+
+    const DOCS: &str =
+        "https://docs.doublezero.xyz/support/troubleshooting#issue-missing-peer-routes";
+
+    fn summary(action: &str, installed: u64, not_installed: Vec<RouteGroup>) -> RouteSummary {
+        RouteSummary {
+            desired: installed + not_installed.iter().map(|g| g.count).sum::<u64>(),
+            installed,
+            not_installed,
+            action: action.to_string(),
+            docs: (action != "none").then(|| DOCS.to_string()),
+        }
+    }
+
+    fn group(state: &str, reason: &str, count: u64) -> RouteGroup {
+        RouteGroup {
+            state: state.to_string(),
+            reason: reason.to_string(),
+            count,
+        }
+    }
+
+    fn v2_status(user_type: &str, routes: Option<RouteSummary>) -> V2StatusResponse {
+        V2StatusResponse {
+            reconciler_enabled: true,
+            client_ip: "1.2.3.4".to_string(),
+            network: "testnet".to_string(),
+            services: vec![V2ServiceStatus {
+                status: StatusResponse {
+                    doublezero_status: DoubleZeroStatus {
+                        session_status: "BGP Session Up".to_string(),
+                        last_session_update: None,
+                    },
+                    tunnel_name: Some("doublezero0".to_string()),
+                    tunnel_src: None,
+                    tunnel_dst: None,
+                    doublezero_ip: Some("1.2.3.4".to_string()),
+                    user_type: Some(user_type.to_string()),
+                },
+                current_device: String::new(),
+                lowest_latency_device: String::new(),
+                metro: String::new(),
+                tenant: String::new(),
+                multicast_groups: Default::default(),
+                subscriptions: Vec::new(),
+                routes,
+            }],
+        }
+    }
+
+    fn run_status(response: V2StatusResponse, json: bool) -> eyre::Result<String> {
+        block_on(async {
+            let mut daemon = MockDaemonClient::new();
+            let mut ledger = MockLedgerClient::new();
+            setup_passing_checks(&mut daemon, &mut ledger);
+            daemon
+                .expect_v2_status()
+                .returning(move || Ok(response.clone()));
+
+            let ctx = cli_context_default_for_tests();
+            let mut out = Vec::new();
+            Routes {
+                command: Some(RoutesCommand::Status),
+                json,
+            }
+            .execute(&ctx, &daemon, &ledger, &mut out)
+            .await?;
+            Ok(String::from_utf8(out).unwrap())
+        })
+    }
+
+    #[test]
+    fn test_routes_status_table() {
+        let none = summary("none", 9, vec![group("down", "no reply", 3)]);
+        let output = run_status(v2_status("IBRL", Some(none)), false).unwrap();
+        assert_eq!(
+            output,
+            concat!(
+                " Desired | Installed | Not Installed      | Action \n",
+                " 12      | 9         | down (no reply): 3 | none   \n",
+            )
+        );
+
+        let inbound = summary("inbound", 0, vec![group("down", "no reply", 12)]);
+        let output = run_status(v2_status("IBRL", Some(inbound)), false).unwrap();
+        assert!(output.ends_with(&format!(
+            "\n⚠️  Missing peer routes: this host receives no liveness probes from peers. \
+             Allow inbound UDP 44880 on doublezero0.\nSee {DOCS}\n"
+        )));
+
+        let outbound = summary(
+            "outbound",
+            0,
+            vec![group("down", "timeout", 2), group("init", "", 1)],
+        );
+        let output = run_status(v2_status("IBRLWithAllocatedIP", Some(outbound)), false).unwrap();
+        assert!(output.contains("down (timeout): 2, init: 1"));
+        assert!(output.ends_with(&format!(
+            "\n⚠️  Missing peer routes: peers receive no liveness probes from this host. \
+             Allow outbound UDP 44880 on doublezero0.\nSee {DOCS}\n"
+        )));
+    }
+
+    #[test]
+    fn test_routes_status_json() {
+        let inbound = summary("inbound", 0, vec![group("down", "no reply", 2)]);
+        let output = run_status(v2_status("IBRL", Some(inbound)), true).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(output.trim()).unwrap();
+        assert_eq!(
+            parsed,
+            serde_json::json!({
+                "desired": 2,
+                "installed": 0,
+                "not_installed": [{"state": "down", "reason": "no reply", "count": 2}],
+                "action": "inbound",
+                "docs": DOCS,
+            })
+        );
+
+        let none = summary("none", 1, vec![]);
+        let output = run_status(v2_status("IBRL", Some(none)), true).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(output.trim()).unwrap();
+        assert_eq!(parsed["action"], "none");
+        assert!(parsed.get("docs").is_none());
+    }
+
+    #[test]
+    fn test_routes_status_without_a_summary() {
+        let err = run_status(v2_status("IBRL", None), false).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "doublezerod does not report a route summary"
+        );
+
+        let err = run_status(v2_status("Multicast", None), false).unwrap_err();
+        assert_eq!(err.to_string(), "No IBRL service found");
     }
 }

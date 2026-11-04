@@ -10,7 +10,10 @@ use std::time::Duration;
 use tabled::Tabled;
 
 use crate::{
-    client::{DaemonClient, DoubleZeroStatus, MulticastGroups, StatusResponse, Subscription},
+    client::{
+        route_action_problem, DaemonClient, DoubleZeroStatus, MulticastGroups, StatusResponse,
+        Subscription,
+    },
     helpers,
     ledger::LedgerClient,
     requirements::check_daemon,
@@ -44,6 +47,9 @@ struct AppendedStatusResponse {
     multicast_groups: String,
     #[tabled(skip)]
     subscriptions: Vec<Subscription>,
+    /// The daemon's `routes.action`; `None` without a route summary.
+    #[tabled(skip)]
+    route_action: Option<String>,
 }
 
 fn format_multicast_groups(groups: &MulticastGroups) -> String {
@@ -67,7 +73,17 @@ impl Status {
     ) -> eyre::Result<()> {
         check_daemon(daemon, ledger).await?;
         let responses = self.build_status(daemon, ledger).await?;
+        let problem = responses
+            .iter()
+            .find_map(|r| route_action_problem(r.route_action.as_deref()?))
+            .filter(|_| !self.json);
         helpers::show_output(responses, self.json, out)?;
+        if let Some(problem) = problem {
+            writeln!(
+                out,
+                "\n⚠️  Missing peer routes: {problem}. Run 'doublezero routes status' for details."
+            )?;
+        }
         Ok(())
     }
 
@@ -110,6 +126,7 @@ impl Status {
                 },
                 multicast_groups: String::new(),
                 subscriptions: Vec::new(),
+                route_action: None,
             }]);
         }
 
@@ -155,6 +172,7 @@ impl Status {
                 tenant: svc.tenant.clone(),
                 multicast_groups: format_multicast_groups(&svc.multicast_groups),
                 subscriptions: svc.subscriptions.clone(),
+                route_action: svc.routes.as_ref().map(|r| r.action.clone()),
             });
         }
 
@@ -166,7 +184,7 @@ impl Status {
 mod tests {
     use super::*;
     use crate::{
-        client::{MockDaemonClient, V2ServiceStatus, V2StatusResponse},
+        client::{MockDaemonClient, RouteSummary, V2ServiceStatus, V2StatusResponse},
         ledger::MockLedgerClient,
     };
     use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
@@ -218,6 +236,7 @@ mod tests {
             tenant: tenant.to_string(),
             multicast_groups: MulticastGroups::default(),
             subscriptions: Vec::new(),
+            routes: None,
         }
     }
 
@@ -316,6 +335,7 @@ mod tests {
                         tenant: String::new(),
                         multicast_groups: MulticastGroups::default(),
                         subscriptions: Vec::new(),
+                        routes: None,
                     }],
                 },
             );
@@ -507,6 +527,7 @@ mod tests {
                                 subscriber: true,
                             },
                         ],
+                        routes: None,
                     }],
                 })
             });
@@ -579,6 +600,7 @@ mod tests {
                 publisher: true,
                 subscriber: false,
             }],
+            route_action: Some("none".to_string()),
         };
 
         let json_response = vec![appended_response];
@@ -621,6 +643,7 @@ mod tests {
         assert_eq!(sub.get("max_bandwidth").unwrap(), 1_000_000_000);
         assert_eq!(sub.get("publisher").unwrap(), true);
         assert_eq!(sub.get("subscriber").unwrap(), false);
+        assert_eq!(status.get("route_action").unwrap(), "none");
 
         // Validate response nested fields
         let response = status.get("response").unwrap();
@@ -699,6 +722,7 @@ mod tests {
             tenant: "".to_string(),
             multicast_groups: String::new(),
             subscriptions: Vec::new(),
+            route_action: None,
         };
 
         let json_response = vec![appended_response];
@@ -711,6 +735,7 @@ mod tests {
         assert!(dz_status.get("last_session_update").unwrap().is_null());
         assert_eq!(response.get("user_type").unwrap(), "Multicast");
         assert_eq!(status.get("multicast_groups").unwrap(), "");
+        assert!(status.get("route_action").unwrap().is_null());
     }
 
     /// Test lowest_latency_device display formatting: json=true returns raw, json=false adds emoji.
@@ -754,6 +779,75 @@ mod tests {
                 .unwrap();
             assert_eq!(result[0].lowest_latency_device, "⚠️  device2");
         });
+    }
+
+    #[test]
+    fn test_status_warns_only_when_route_action_is_needed() {
+        for (action, warning) in [
+            ("none", None),
+            (
+                "inbound",
+                Some("⚠️  Missing peer routes: this host receives no liveness probes from peers. Run 'doublezero routes status' for details."),
+            ),
+            (
+                "outbound",
+                Some("⚠️  Missing peer routes: peers receive no liveness probes from this host. Run 'doublezero routes status' for details."),
+            ),
+        ] {
+            let mut svc = make_v2_service(
+                "BGP Session Up",
+                Some("doublezero0"),
+                Some("1.2.3.4"),
+                Some("5.6.7.8"),
+                Some("1.2.3.4"),
+                Some("IBRL"),
+                "device1",
+                "device1",
+                "metro",
+                "",
+            );
+            svc.routes = Some(RouteSummary {
+                desired: 3,
+                installed: 0,
+                not_installed: vec![],
+                action: action.to_string(),
+                docs: None,
+            });
+            for json in [false, true] {
+                let mut daemon = MockDaemonClient::new();
+                let mut ledger = MockLedgerClient::new();
+                setup_passing_checks(&mut daemon, &mut ledger);
+                make_status_response(
+                    &mut daemon,
+                    V2StatusResponse {
+                        reconciler_enabled: true,
+                        client_ip: String::new(),
+                        network: "testnet".to_string(),
+                        services: vec![svc.clone()],
+                    },
+                );
+
+                let ctx = cli_context_default_for_tests();
+                let mut out = Vec::new();
+                block_on(Status { json }.execute(&ctx, &daemon, &ledger, &mut out)).unwrap();
+                let output = String::from_utf8(out).unwrap();
+
+                if json {
+                    let parsed: Vec<AppendedStatusResponse> =
+                        serde_json::from_str(output.trim()).unwrap();
+                    assert_eq!(parsed[0].route_action.as_deref(), Some(action));
+                } else {
+                    assert_eq!(
+                        output.contains("Missing peer routes"),
+                        warning.is_some(),
+                        "{action}"
+                    );
+                    if let Some(warning) = warning {
+                        assert!(output.ends_with(&format!("\n{warning}\n")), "{action}");
+                    }
+                }
+            }
+        }
     }
 
     #[test]

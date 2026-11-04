@@ -76,6 +76,7 @@ type MockNetlink struct {
 	tunUp         bool
 	ruleAdded     []*routing.IPRule
 	ruleRemoved   []*routing.IPRule
+	rpFilter      map[string]int
 	callLog       []string
 }
 
@@ -138,6 +139,14 @@ func (m *MockNetlink) RuleDel(n *routing.IPRule) error {
 
 func (m *MockNetlink) RouteByProtocol(protocol int) ([]*routing.Route, error) {
 	return m.routes, nil
+}
+
+func (m *MockNetlink) LinkSetRPFilter(ifname string, mode int) error {
+	if m.rpFilter == nil {
+		m.rpFilter = map[string]int{}
+	}
+	m.rpFilter[ifname] = mode
+	return nil
 }
 
 type MockPIMServer struct{}
@@ -227,6 +236,7 @@ func TestServices(t *testing.T) {
 		wantTunAdded        *routing.Tunnel
 		wantTunUp           bool
 		wantTunRemoved      *routing.Tunnel
+		wantRPFilter        map[string]int
 		wantPeerConfig      *bgp.PeerConfig
 		wantPeerRemoved     net.IP
 	}{
@@ -258,6 +268,7 @@ func TestServices(t *testing.T) {
 			},
 			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31", Scope: syscall.RT_SCOPE_LINK}},
 			wantTunUp:        true,
+			wantRPFilter:     map[string]int{"doublezero0": routing.RPFilterLoose},
 			wantRulesAdded:   nil,
 			wantRoutesAdded:  nil,
 			wantPeerConfig: &bgp.PeerConfig{
@@ -310,6 +321,7 @@ func TestServices(t *testing.T) {
 			},
 			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31", Scope: syscall.RT_SCOPE_LINK}, {IP: "192.168.1.0/32", Scope: syscall.RT_SCOPE_UNIVERSE}},
 			wantTunUp:        true,
+			wantRPFilter:     map[string]int{"doublezero0": routing.RPFilterLoose},
 			wantRulesAdded:   nil,
 			wantRoutesAdded:  nil,
 			wantPeerConfig: &bgp.PeerConfig{
@@ -704,6 +716,12 @@ func TestServices(t *testing.T) {
 			t.Run("check_tunnel_up", func(t *testing.T) {
 				if mockNetlink.tunUp != tt.wantTunUp {
 					t.Errorf("unexpected tunnel up status: got %t, want %t", mockNetlink.tunUp, tt.wantTunUp)
+				}
+			})
+
+			t.Run("check_rp_filter", func(t *testing.T) {
+				if diff := cmp.Diff(tt.wantRPFilter, mockNetlink.rpFilter); diff != "" {
+					t.Errorf("unexpected rp_filter (-want +got):\n%s", diff)
 				}
 			})
 

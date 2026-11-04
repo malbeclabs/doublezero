@@ -1,4 +1,5 @@
 use doublezero_serviceability::{
+    error::DoubleZeroError,
     instructions::*,
     pda::*,
     processors::{
@@ -1885,6 +1886,56 @@ async fn test_user_create_existing_different_owner_rejected() {
         )) => {}
         other => panic!("expected AccountAlreadyInitialized, got {other:?}"),
     }
+
+    // Creation accepts only the per-IP address.
+    let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (old_user_pubkey, _) = get_user_old_pda(&program_id, gs.account_index + 1);
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let err = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateUser(UserCreateArgs {
+            client_ip: user_ip,
+            user_type: UserType::IBRL,
+            cyoa_type: UserCYOA::GREOverDIA,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+            ip_proof: None,
+        }),
+        vec![
+            AccountMeta::new(old_user_pubkey, false),
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(accesspass_b, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::UserTunnelBlock).0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0))
+                    .0,
+                false,
+            ),
+            AccountMeta::new(
+                get_resource_extension_pda(
+                    &program_id,
+                    ResourceType::DzPrefixBlock(device_pubkey, 0),
+                )
+                .0,
+                false,
+            ),
+        ],
+        &payer_b,
+    )
+    .await
+    .unwrap_err();
+    assert_custom_error(&err, DoubleZeroError::InvalidUserPubkey);
+    assert!(account_is_closed(&mut banks_client, old_user_pubkey).await);
 
     // The user still belongs to the original owner.
     let user = get_account_data(&mut banks_client, user_pubkey)

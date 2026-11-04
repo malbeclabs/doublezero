@@ -51,10 +51,17 @@ func compatNetworkConfig(t *testing.T) *config.NetworkConfig {
 	return cfg
 }
 
+func compatSolanaRPCURL(cfg *config.NetworkConfig) string {
+	if url := os.Getenv("SOLANA_MAINNET_RPC_URL"); url != "" {
+		return url
+	}
+	return cfg.SolanaRPCURL
+}
+
 func compatClient(t *testing.T) (*Client, solana.PublicKey) {
 	t.Helper()
 	cfg := compatNetworkConfig(t)
-	rpcClient := NewRPCClient(cfg.SolanaRPCURL)
+	rpcClient := NewRPCClient(compatSolanaRPCURL(cfg))
 	ledger := &rpcLedgerClient{rpc: NewRPCClient(cfg.LedgerPublicRPCURL)}
 	return NewWithLedger(rpcClient, cfg.RevenueDistributionProgramID, ledger), cfg.RevenueDistributionProgramID
 }
@@ -62,7 +69,7 @@ func compatClient(t *testing.T) (*Client, solana.PublicKey) {
 func compatRPCClient(t *testing.T) *solanarpc.Client {
 	t.Helper()
 	cfg := compatNetworkConfig(t)
-	return NewRPCClient(cfg.SolanaRPCURL)
+	return NewRPCClient(compatSolanaRPCURL(cfg))
 }
 
 func fetchRawAccount(t *testing.T, rpcClient *solanarpc.Client, addr solana.PublicKey) []byte {
@@ -278,33 +285,6 @@ func TestCompatContributorRewards(t *testing.T) {
 	}
 
 	t.Logf("validated %d contributors, spot-checked %s", len(rewards), first.ServiceKey)
-}
-
-func TestCompatValidatorDebts(t *testing.T) {
-	skipUnlessCompat(t)
-	client, _ := compatClient(t)
-	ctx := context.Background()
-
-	// Use a known epoch that has validator debts on mainnet.
-	epoch := uint64(100)
-
-	debts, err := client.FetchValidatorDebts(ctx, epoch)
-	if err != nil {
-		t.Fatalf("FetchValidatorDebts(%d): %v", epoch, err)
-	}
-
-	if len(debts.Debts) == 0 {
-		t.Fatal("expected validator debts for epoch 100")
-	}
-	if debts.LastSolanaEpoch == 0 {
-		t.Error("LastSolanaEpoch is 0, expected > 0 on mainnet")
-	}
-	if debts.FirstSolanaEpoch > debts.LastSolanaEpoch {
-		t.Errorf("FirstSolanaEpoch (%d) > LastSolanaEpoch (%d)", debts.FirstSolanaEpoch, debts.LastSolanaEpoch)
-	}
-
-	t.Logf("epoch %d: %d validator debts, solana epochs %d-%d",
-		epoch, len(debts.Debts), debts.FirstSolanaEpoch, debts.LastSolanaEpoch)
 }
 
 func TestCompatRewardShares(t *testing.T) {

@@ -115,10 +115,14 @@ impl SnapshotStorage for S3Storage {
         // Verify upload
         self.verify_upload(filename, data_size).await?;
 
-        let s3_url = format!("https://{}.s3.amazonaws.com/{}", self.bucket, filename);
+        let s3_url = self.location(filename);
 
         info!("Snapshot uploaded successfully: {}", s3_url);
         Ok(s3_url)
+    }
+
+    fn location(&self, filename: &str) -> String {
+        format!("https://{}.s3.amazonaws.com/{}", self.bucket, filename)
     }
 
     async fn exists(&self, filename: &str) -> Result<bool> {
@@ -131,13 +135,9 @@ impl SnapshotStorage for S3Storage {
             .await
         {
             Ok(_) => Ok(true),
-            Err(e) => {
-                if e.to_string().contains("NotFound") {
-                    Ok(false)
-                } else {
-                    Err(anyhow!("Failed to check if snapshot exists: {}", e))
-                }
-            }
+            // The error's Display is only "service error", so match the variant.
+            Err(e) if e.as_service_error().is_some_and(|e| e.is_not_found()) => Ok(false),
+            Err(e) => Err(e).context("Failed to check if snapshot exists"),
         }
     }
 

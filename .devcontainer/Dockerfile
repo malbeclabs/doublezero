@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/devcontainers/go:1.25
+FROM mcr.microsoft.com/devcontainers/go:1.26
 
 # Install Go at a pinned version directly, replacing whatever the base image
 # ships. The devcontainers/features/go feature is intentionally not used: layering
@@ -6,7 +6,7 @@ FROM mcr.microsoft.com/devcontainers/go:1.25
 # fchmodat/at.go declarations). This keeps a single clean Go matching go.mod's
 # toolchain directive. GOTOOLCHAIN=auto lets Go fetch a newer toolchain on demand
 # if go.mod is bumped past this version (the base image otherwise pins it to local).
-ARG GO_VERSION=1.25.11
+ARG GO_VERSION=1.26.10
 RUN ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/') && \
     rm -rf /usr/local/go && \
     curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${ARCH}.tar.gz" | tar -C /usr/local -xz

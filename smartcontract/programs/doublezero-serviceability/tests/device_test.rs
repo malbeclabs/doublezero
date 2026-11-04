@@ -1669,6 +1669,159 @@ async fn test_delete_device_atomic_close() {
     assert_eq!(exchange.reference_count, initial_exchange_refcount);
 }
 
+/// The atomic delete closes only the device's own resource extensions: with the global state in
+/// resource slot `slot`, it fails before closing anything. `as_contributor_owner` signs as the
+/// owner of a fresh contributor who holds no admin rights; otherwise the foundation payer signs.
+async fn assert_delete_device_rejects_globalstate_in_slot(as_contributor_owner: bool, slot: usize) {
+    let (
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        location_pubkey,
+        exchange_pubkey,
+        foundation_contributor,
+    ) = setup_program_with_location_and_exchange().await;
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+
+    let (signer, contributor_pubkey) = if as_contributor_owner {
+        let owner = Keypair::new();
+        transfer(&mut banks_client, &payer, &owner.pubkey(), 10_000_000_000).await;
+        let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+        let (contributor, _) = get_contributor_pda(&program_id, gs.account_index + 1);
+        execute_transaction(
+            &mut banks_client,
+            recent_blockhash,
+            program_id,
+            DoubleZeroInstruction::CreateContributor(ContributorCreateArgs {
+                code: "operator".to_string(),
+            }),
+            vec![
+                AccountMeta::new(contributor, false),
+                AccountMeta::new(owner.pubkey(), false),
+                AccountMeta::new(globalstate_pubkey, false),
+            ],
+            &payer,
+        )
+        .await;
+        (owner, contributor)
+    } else {
+        (payer.insecure_clone(), foundation_contributor)
+    };
+
+    let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (device_pubkey, _) = get_device_pda(&program_id, gs.account_index + 1);
+    let (tunnel_ids_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::TunnelIds(device_pubkey, 0));
+    let (dz_prefix_pda, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::DzPrefixBlock(device_pubkey, 0));
+    let (config_pubkey, _) = get_globalconfig_pda(&program_id);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
+            code: "dev1".to_string(),
+            device_type: DeviceType::Hybrid,
+            public_ip: [100, 0, 0, 1].into(),
+            dz_prefixes: "100.1.0.0/23".parse().unwrap(),
+            metrics_publisher_pk: Pubkey::default(),
+            mgmt_vrf: "mgmt".to_string(),
+            desired_status: Some(DeviceDesiredStatus::Activated),
+            resource_count: 2,
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(config_pubkey, false),
+            AccountMeta::new(tunnel_ids_pda, false),
+            AccountMeta::new(dz_prefix_pda, false),
+        ],
+        &signer,
+    )
+    .await;
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            status: Some(DeviceStatus::Drained),
+            desired_status: Some(DeviceDesiredStatus::Drained),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &signer,
+    )
+    .await;
+
+    let mut resources = [tunnel_ids_pda, dz_prefix_pda];
+    resources[slot] = globalstate_pubkey;
+    let watched = [
+        globalstate_pubkey,
+        device_pubkey,
+        tunnel_ids_pda,
+        dz_prefix_pda,
+    ];
+    let mut before = vec![];
+    for key in watched {
+        before.push(banks_client.get_account(key).await.unwrap());
+    }
+
+    let result = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteDevice(DeviceDeleteArgs { resource_count: 2 }),
+        vec![
+            AccountMeta::new(device_pubkey, false),
+            AccountMeta::new(contributor_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(location_pubkey, false),
+            AccountMeta::new(exchange_pubkey, false),
+            AccountMeta::new(resources[0], false),
+            AccountMeta::new(resources[1], false),
+            AccountMeta::new(signer.pubkey(), false),
+            AccountMeta::new(signer.pubkey(), false),
+            AccountMeta::new(signer.pubkey(), false),
+        ],
+        &signer,
+    )
+    .await;
+
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        TransactionError::InstructionError(0, InstructionError::InvalidSeeds)
+    );
+    for (key, before) in watched.iter().zip(before) {
+        assert_eq!(banks_client.get_account(*key).await.unwrap(), before);
+    }
+}
+
+#[tokio::test]
+async fn test_delete_device_rejects_globalstate_as_tunnel_ids() {
+    assert_delete_device_rejects_globalstate_in_slot(false, 0).await;
+}
+
+#[tokio::test]
+async fn test_delete_device_rejects_globalstate_as_tunnel_ids_from_contributor_owner() {
+    assert_delete_device_rejects_globalstate_in_slot(true, 0).await;
+}
+
+#[tokio::test]
+async fn test_delete_device_rejects_globalstate_as_dz_prefix_block_from_contributor_owner() {
+    assert_delete_device_rejects_globalstate_in_slot(true, 1).await;
+}
+
 // Note: legacy `test_delete_device_atomic_close_from_pending` was removed because devices
 // no longer transition through Pending — onchain allocation in CreateDevice activates the
 // device immediately. Atomic close from a drained device is covered by

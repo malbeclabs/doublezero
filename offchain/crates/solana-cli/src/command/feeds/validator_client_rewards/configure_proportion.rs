@@ -4,7 +4,7 @@ use anyhow::{Context, Result, ensure};
 use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_solana_client_tools::{
-    payer::{TransactionOutcome, Wallet},
+    payer::TransactionOutcome,
     squads::{OptionalSquadsArgs, try_write_vault_transaction},
 };
 use doublezero_solana_sdk::{
@@ -23,7 +23,9 @@ use doublezero_solana_sdk::{
 };
 use solana_commitment_config::CommitmentConfig;
 use solana_compute_budget_interface::ComputeBudgetInstruction;
-use solana_sdk::{instruction::Instruction, pubkey::Pubkey};
+use solana_sdk::instruction::Instruction;
+
+use super::Actor;
 
 /*
    doublezero-solana feeds validator-client-rewards configure-proportion \
@@ -51,29 +53,6 @@ pub struct ConfigureProportionCommand {
     squads: OptionalSquadsArgs,
     #[command(flatten)]
     write_opts: crate::command::WriteVerbOptions,
-}
-
-// Who signs for the manager: the wallet itself, or a Squads vault the multisig
-// signs for once the payload is imported and approved.
-enum Actor {
-    Wallet(Box<Wallet>),
-    Vault(Pubkey),
-}
-
-impl Actor {
-    fn key(&self) -> Pubkey {
-        match self {
-            Self::Wallet(wallet) => wallet.pubkey(),
-            Self::Vault(vault_key) => *vault_key,
-        }
-    }
-
-    fn label(&self) -> &'static str {
-        match self {
-            Self::Wallet(_) => "wallet",
-            Self::Vault(_) => "vault",
-        }
-    }
 }
 
 impl ConfigureProportionCommand {
@@ -242,7 +221,7 @@ mod tests {
         SQUADS_IMPORT_MEMO_RESERVE_BYTES, try_encode_vault_transaction,
         vault_transaction_payload_budget,
     };
-    use solana_sdk::message::Message;
+    use solana_sdk::{message::Message, pubkey::Pubkey};
 
     use super::*;
 

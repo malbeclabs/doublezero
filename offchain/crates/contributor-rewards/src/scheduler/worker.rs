@@ -1,8 +1,9 @@
 use std::{
+    collections::HashSet,
     fs,
     path::PathBuf,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
     },
     time::{Duration, Instant},
@@ -21,10 +22,7 @@ use doublezero_solana_client_tools::{
     payer::Wallet,
     rpc::{DoubleZeroLedgerConnection, SolanaConnection, try_fetch_zero_copy_data_with_commitment},
 };
-use doublezero_solana_sdk::revenue_distribution::fetch::{SolConversionState, try_fetch_config};
-use slack_notifier::contributor_rewards::{
-    DistributionRewardRow, WriteResultInfo, post_contributor_rewards, post_distribution_rewards,
-};
+use slack_notifier::contributor_rewards::{WriteResultInfo, post_contributor_rewards};
 use solana_client::client_error::ClientError as SolanaClientError;
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::pubkey::Pubkey;
@@ -38,12 +36,16 @@ use tracing::{debug, error, info, warn};
 
 use crate::{
     calculator::{
-        DistributionOutcome, DistributionSummary, WriteConfig, distribute,
-        keypair_loader::load_keypair, ledger_operations::WriteResult, orchestrator::Orchestrator,
+        WriteConfig,
+        keypair_loader::load_keypair,
+        ledger_operations::WriteResult,
+        monthly,
+        monthly_distribute::{self, MonthStep, MonthlyContext},
+        orchestrator::Orchestrator,
     },
     cli::snapshot::{CompleteSnapshot, SnapshotMetadata},
     ingestor::{epoch::EpochFinder, fetcher::Fetcher},
-    scheduler::state::SchedulerState,
+    scheduler::{finalize_distribution, initialize_distribution, state::SchedulerState},
     settings::{aws::StorageBackend, network::Network},
     storage::SnapshotStorage,
 };
@@ -57,6 +59,7 @@ pub struct ScheduleWorker {
     keypair_path: Option<PathBuf>,
     dry_run: bool,
     interval: Duration,
+    once: bool,
 }
 
 impl ScheduleWorker {
@@ -68,6 +71,7 @@ impl ScheduleWorker {
         keypair_path: Option<PathBuf>,
         dry_run: bool,
         interval: Duration,
+        once: bool,
     ) -> Self {
         let snapshot_dir = PathBuf::from(&orchestrator.settings.scheduler.snapshot_dir);
         Self {
@@ -78,6 +82,7 @@ impl ScheduleWorker {
             keypair_path,
             dry_run,
             interval,
+            once,
         }
     }
 
@@ -86,6 +91,7 @@ impl ScheduleWorker {
         info!("Starting rewards worker");
         info!("Configuration:");
         info!("  Interval: {:?}", self.interval);
+        info!("  Once: {}", self.once);
         info!("  Dry run: {}", self.dry_run);
         info!("  State file: {:?}", self.state_file);
 
@@ -97,6 +103,30 @@ impl ScheduleWorker {
                 self.keypair_path.as_ref().map(|p| p.display())
             );
         }
+
+        let enable_monthly_distribution = self
+            .orchestrator
+            .settings
+            .scheduler
+            .enable_monthly_distribution;
+        info!("  Monthly distribution: {enable_monthly_distribution}");
+
+        // Every step below writes, so a dry run skips them all.
+        let wallet = if !self.dry_run {
+            Some(Wallet {
+                connection: SolanaConnection::new(
+                    self.orchestrator.settings.rpc.solana_url.clone(),
+                ),
+                signer: load_keypair(&self.keypair_path)?,
+                compute_unit_price_ix: None,
+                verbose: false,
+                fee_payer: None,
+                dry_run: false,
+            })
+        } else {
+            None
+        };
+        let warned_skips = Mutex::new(HashSet::new());
 
         // Load or create worker state
         let mut state = SchedulerState::load_or_default(&self.state_file)?;
@@ -132,6 +162,23 @@ impl ScheduleWorker {
 
             // Mark that we're checking
             state.mark_check();
+            let mut has_failed = false;
+
+            if let Some(wallet) = &wallet {
+                let dz_connection =
+                    DoubleZeroLedgerConnection::new(self.orchestrator.settings.rpc.dz_url.clone());
+                if let Err(e) =
+                    initialize_distribution::try_initialize_distribution(wallet, &dz_connection)
+                        .await
+                {
+                    error!("Failed to initialize distribution: {e:#}");
+                    has_failed = true;
+                    metrics::counter!(
+                        "doublezero_contributor_rewards_initialize_distribution_failure"
+                    )
+                    .increment(1);
+                }
+            }
 
             // Process rewards
             match self.process_rewards(&mut state).await {
@@ -148,6 +195,7 @@ impl ScheduleWorker {
                 }
                 Err(e) => {
                     error!("Failed to process rewards: {e:#}");
+                    has_failed = true;
                     state.mark_failure();
                     state.save(&self.state_file)?;
 
@@ -164,209 +212,166 @@ impl ScheduleWorker {
                 }
             }
 
-            // Try to distribute rewards for the eligible epoch.
-            if !self.dry_run {
-                match self.try_get_distribution_epoch().await {
-                    Ok((dz_epoch, rewards_accountant_key)) => {
-                        let calc_epoch = state.last_processed_epoch;
-                        info!(
-                            "Calculation epoch: {:?} | Distribution epoch: {dz_epoch}",
-                            calc_epoch
-                        );
-
-                        if !state.should_distribute_epoch(dz_epoch) {
-                            debug!("Epoch {dz_epoch} already fully distributed, skipping");
-                        } else {
-                            match self
-                                .try_distribute_rewards(dz_epoch, &rewards_accountant_key)
-                                .await
-                            {
-                                Ok(summary) => match &summary.outcome {
-                                    DistributionOutcome::Complete { total_contributors } => {
-                                        let total_contributors = *total_contributors;
-                                        info!(
-                                            "Epoch {dz_epoch} complete: {total_contributors}/{total_contributors} distributed"
-                                        );
-                                        state.mark_distribution_success(dz_epoch);
-                                        state.save(&self.state_file)?;
-                                        metrics::counter!(
-                                            "doublezero_contributor_rewards_distribution_success"
-                                        )
-                                        .increment(1);
-
-                                        self.post_distribution_slack_notification(&summary).await;
-                                    }
-                                    DistributionOutcome::PartiallyComplete {
-                                        total_contributors,
-                                        distributed,
-                                        skipped,
-                                    } => {
-                                        let (total_contributors, distributed, skipped) =
-                                            (*total_contributors, *distributed, *skipped);
-                                        info!(
-                                            "Epoch {dz_epoch} partially complete: {distributed}/{total_contributors} distributed, {skipped} skipped (missing ContributorRewards accounts)"
-                                        );
-                                        state.mark_distribution_success(dz_epoch);
-                                        state.save(&self.state_file)?;
-                                        metrics::counter!(
-                                            "doublezero_contributor_rewards_distribution_success"
-                                        )
-                                        .increment(1);
-
-                                        self.post_distribution_slack_notification(&summary).await;
-                                    }
-                                    DistributionOutcome::NotReady => {
-                                        debug!("Distribution not ready for epoch {dz_epoch}");
-                                    }
-                                },
-                                Err(e) => {
-                                    error!(
-                                        "Failed to distribute rewards for epoch {dz_epoch}: {e}"
-                                    );
-                                    state.mark_distribution_failure();
-                                    state.save(&self.state_file)?;
-                                    metrics::counter!(
-                                        "doublezero_contributor_rewards_distribution_failure"
-                                    )
-                                    .increment(1);
-                                    if state.consecutive_distribution_failures % 10 == 0 {
-                                        error!(
-                                            "Distribution has failed {} consecutive times",
-                                            state.consecutive_distribution_failures
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    Err(e) => {
-                        warn!("Failed to fetch distribution epoch: {e}");
+            // Finalize the epochs before the processed epoch. This gives each root one more epoch
+            // after its post before the finalize locks it, and the older epochs catch up a skip.
+            if let Some(wallet) = &wallet {
+                for dz_epoch in state.epochs_to_finalize() {
+                    if let Err(e) =
+                        finalize_distribution::try_finalize_distribution(wallet, dz_epoch).await
+                    {
+                        error!("Failed to finalize distribution for epoch {dz_epoch}: {e:#}");
+                        has_failed = true;
                         metrics::counter!(
-                            "doublezero_contributor_rewards_distribution_fetch_failure"
+                            "doublezero_contributor_rewards_finalize_distribution_failure"
                         )
                         .increment(1);
                     }
                 }
+            }
+
+            if let Some(wallet) = wallet.as_ref().filter(|_| enable_monthly_distribution) {
+                has_failed |= self
+                    .try_process_monthly(&mut state, wallet, &warned_skips)
+                    .await?;
+            }
+
+            if self.once {
+                ensure!(!has_failed, "The scheduler tick failed");
+                info!("Tick complete, exiting (--once)");
+                break;
             }
         }
 
         Ok(())
     }
 
-    /// Fetch the config and compute the distribution-eligible epoch.
-    async fn try_get_distribution_epoch(&self) -> Result<(u64, Pubkey)> {
-        let connection =
-            SolanaConnection::new(self.orchestrator.settings.rpc.solana_write_url.clone());
-        let (_, config) = try_fetch_config(&connection).await?;
-
-        let sol_conversion_state = SolConversionState::try_fetch(&connection).await?;
-        let next_sweep = sol_conversion_state
-            .journal
-            .1
-            .next_dz_epoch_to_sweep_tokens
-            .value();
-        ensure!(next_sweep > 0, "No epochs have been swept yet");
-        let dz_epoch_value = next_sweep - 1;
-
-        Ok((dz_epoch_value, config.rewards_accountant_key))
-    }
-
-    /// Attempt to distribute rewards for the given epoch.
-    async fn try_distribute_rewards(
+    /// Run the monthly steps, counting a failed tick toward
+    /// `consecutive_monthly_failures`, and return whether the tick failed.
+    async fn try_process_monthly(
         &self,
-        dz_epoch_value: u64,
-        rewards_accountant_key: &Pubkey,
-    ) -> Result<DistributionSummary> {
-        let signer = load_keypair(&self.keypair_path)?;
-        let connection =
-            SolanaConnection::new(self.orchestrator.settings.rpc.solana_write_url.clone());
-        let dz_connection =
-            DoubleZeroLedgerConnection::new(self.orchestrator.settings.rpc.dz_url.clone());
+        state: &mut SchedulerState,
+        wallet: &Wallet,
+        warned_skips: &Mutex<HashSet<(u16, u8, Pubkey)>>,
+    ) -> Result<bool> {
+        let has_failed = self.run_monthly_steps(wallet, warned_skips).await;
+        if has_failed {
+            state.mark_monthly_failure();
 
-        let wallet = Wallet {
-            connection,
-            signer,
-            compute_unit_price_ix: None,
-            verbose: false,
-            fee_payer: None,
-            dry_run: false,
-        };
+            // Alert every 10 consecutive failures for Grafana monitoring
+            if state.consecutive_monthly_failures.is_multiple_of(10) {
+                error!(
+                    "Monthly steps have failed in {} consecutive ticks",
+                    state.consecutive_monthly_failures
+                );
+            }
+        } else {
+            state.mark_monthly_success();
+        }
 
-        let shapley_prefix = self.orchestrator.settings.get_contributor_rewards_prefix();
-
-        distribute::try_distribute_epoch_rewards(
-            &wallet,
-            &dz_connection,
-            rewards_accountant_key,
-            dz_epoch_value,
-            &shapley_prefix,
-        )
-        .await
+        state.save(&self.state_file)?;
+        Ok(has_failed)
     }
 
-    /// Post a Slack notification with the per-contributor distribution table.
-    async fn post_distribution_slack_notification(&self, summary: &DistributionSummary) {
-        if summary.contributors.is_empty() {
-            return;
-        }
+    /// Run each monthly step and return whether the tick failed: a step failed,
+    /// or an older month is collected but not finalized.
+    async fn run_monthly_steps(
+        &self,
+        wallet: &Wallet,
+        warned_skips: &Mutex<HashSet<(u16, u8, Pubkey)>>,
+    ) -> bool {
+        let settings = &self.orchestrator.settings;
+        let monthly_settings = monthly::MonthlySettings::from(settings);
+        let dz_connection = DoubleZeroLedgerConnection::new(settings.rpc.dz_url.clone());
+        let prefix = settings.get_contributor_rewards_prefix();
 
-        let Some(slack_settings) = &self.orchestrator.settings.slack else {
-            return;
+        let context = try_with_retries("context", async || {
+            let context =
+                MonthlyContext::try_new(&monthly_settings, wallet, &dz_connection).await?;
+            let previous_month = monthly_distribute::try_previous_month(Utc::now())?;
+            let (month_start, _) = monthly::try_month_bounds(previous_month.0, previous_month.1)?;
+
+            Ok((context, previous_month, month_start))
+        })
+        .await;
+        let (context, previous_month, month_start) = match context {
+            Ok(context) => context,
+            Err(e) => return track_monthly_step("context", "every month", Err(e)),
         };
-        if !slack_settings.enabled {
-            return;
-        }
-        let Some(webhook_url) = &slack_settings.webhook_url else {
-            return;
+
+        let recorded = try_with_retries("epoch_end", async || {
+            monthly::try_record_epoch_ends(
+                &dz_connection,
+                &wallet.signer,
+                &prefix,
+                &context.schedule,
+                context.finalized_epoch,
+                month_start,
+            )
+            .await
+        })
+        .await;
+
+        let mut has_failed = track_monthly_step(
+            "epoch_end",
+            "DZ epoch ends",
+            recorded.map(|count| count > 0),
+        );
+
+        let distributions = try_with_retries("read", async || {
+            monthly_distribute::try_fetch_monthly_distributions(&wallet.connection).await
+        })
+        .await;
+        let distributions = match distributions {
+            Ok(distributions) => distributions,
+            Err(e) => return track_monthly_step("read", "every month", Err(e)),
         };
 
-        // Fetch contributor labels for human-readable names.
-        let dz_connection =
-            DoubleZeroLedgerConnection::new(self.orchestrator.settings.rpc.dz_url.clone());
-        let labels = crate::calculator::ledger_operations::try_fetch_contributor_labels(
-            &dz_connection,
-            &self
-                .orchestrator
-                .settings
-                .programs
-                .serviceability_program_id,
-        )
-        .await
-        .unwrap_or_default();
+        // Oldest first, and one month's failure does not stop the others.
+        for ((year, month), month_step) in
+            monthly_distribute::plan_months(&distributions, previous_month)
+        {
+            let label = format!("{year}-{month:02}");
 
-        let network = format!("{:?}", self.orchestrator.settings.network);
-        let rows: Vec<DistributionRewardRow> = summary
-            .contributors
-            .iter()
-            .map(|c| {
-                let contributor = labels
-                    .get(&c.contributor_key)
-                    .cloned()
-                    .unwrap_or_else(|| c.contributor_key.to_string());
-                DistributionRewardRow {
-                    index: c.index,
-                    contributor,
-                    proportion: format!("{:.2}%", 100.0 * c.proportion),
-                    reward: format!("{:.1} 2Z", c.reward_tokens),
-                    distributed: if c.distributed { "yes" } else { "no" }.to_string(),
+            let (step, outcome) = match month_step {
+                // Counted as a failure, so it keeps alerting until finalized by hand.
+                MonthStep::FinalizeByHand => {
+                    warn!(
+                        "Monthly {label} is collected but not finalized. Finalize it with \
+                         distribute-monthly-rewards --year {year} --month {month}"
+                    );
+                    has_failed = true;
+                    continue;
                 }
-            })
-            .collect();
+                // A leaf can wait on its contributor's recipients, so this only warns.
+                MonthStep::DistributeByHand => {
+                    warn!(
+                        "Monthly {label} has unpaid leaves. Distribute them with \
+                         distribute-monthly-rewards --year {year} --month {month}"
+                    );
+                    continue;
+                }
+                MonthStep::Finalize => (
+                    "finalize",
+                    try_with_retries("finalize", async || {
+                        context.try_finalize_month(year, month).await
+                    })
+                    .await,
+                ),
+                MonthStep::Distribute => (
+                    "distribute",
+                    try_with_retries("distribute", async || {
+                        context
+                            .try_distribute_month(year, month, warned_skips)
+                            .await
+                    })
+                    .await,
+                ),
+            };
 
-        match post_distribution_rewards(webhook_url, network, summary.dz_epoch, rows).await {
-            Ok(()) => {
-                info!(
-                    "[OK] Posted distribution Slack notification for epoch {}",
-                    summary.dz_epoch
-                );
-            }
-            Err(e) => {
-                warn!(
-                    "[WARN] Failed to post distribution Slack notification: {}",
-                    e
-                );
-            }
+            has_failed |= track_monthly_step(step, &label, outcome);
         }
+
+        has_failed
     }
 
     /// Process rewards for the current epoch if needed
@@ -403,6 +408,16 @@ impl ScheduleWorker {
                 "Epoch {} already processed (last processed: {:?}), waiting for new epoch",
                 target_epoch, state.last_processed_epoch
             );
+            return Ok(false);
+        }
+
+        // Checked before the snapshot, so a run with nothing to do skips the fetch.
+        if !self.dry_run && self.rewards_exist_for_epoch(&fetcher, target_epoch).await? {
+            info!(
+                "Rewards already exist for epoch {}, marking as processed",
+                target_epoch
+            );
+            state.mark_success(target_epoch);
             return Ok(false);
         }
 
@@ -448,16 +463,6 @@ impl ScheduleWorker {
                 target_epoch
             );
         } else {
-            // Check if rewards already exist for this epoch (idempotency, only when not in dry-run)
-            if self.rewards_exist_for_epoch(&fetcher, target_epoch).await? {
-                info!(
-                    "Rewards already exist for epoch {}, marking as processed",
-                    target_epoch
-                );
-                state.mark_success(target_epoch);
-                return Ok(false);
-            }
-
             // Step 2: Calculate and write rewards using the snapshot
             info!("Step 2/2: Calculating rewards from snapshot");
             let write_summary = self
@@ -468,6 +473,7 @@ impl ScheduleWorker {
                     Some(snapshot_path),
                     false,
                     WriteConfig::default(),
+                    false,
                 )
                 .await?;
 
@@ -522,82 +528,62 @@ impl ScheduleWorker {
     /// Check if rewards already exist for a given epoch
     ///
     /// Returns true only if ALL steps are complete:
-    /// 1. Records exist (contributor rewards OR reward input)
+    /// 1. All four records exist: device telemetry, internet telemetry, reward input
+    ///    and shapley output
     /// 2. Merkle root posted to Distribution account
     async fn rewards_exist_for_epoch(&self, fetcher: &Fetcher, epoch: u64) -> Result<bool> {
-        // Check if records exist (either contributor rewards or reward input)
-        let contributor_rewards_exists = self
-            .check_contributor_rewards_record(fetcher, epoch)
-            .await?;
+        let rewards_accountant_key = self.get_rewards_accountant(fetcher).await?;
+        let epoch_bytes = epoch.to_le_bytes();
+        let prefixes = &self.orchestrator.settings.prefixes;
 
-        let reward_input_exists = self.check_reward_input_record(fetcher, epoch).await?;
+        let records: [(&str, &[&[u8]]); 4] = [
+            (
+                "device telemetry",
+                &[prefixes.device_telemetry.as_bytes(), &epoch_bytes],
+            ),
+            (
+                "internet telemetry",
+                &[prefixes.internet_telemetry.as_bytes(), &epoch_bytes],
+            ),
+            (
+                "reward input",
+                &[prefixes.reward_input.as_bytes(), &epoch_bytes],
+            ),
+            (
+                "shapley output",
+                &[
+                    prefixes.contributor_rewards.as_bytes(),
+                    &epoch_bytes,
+                    b"shapley_output",
+                ],
+            ),
+        ];
 
-        let records_exist = contributor_rewards_exists || reward_input_exists;
+        let mut missing_records = Vec::new();
+        for (name, seeds) in records {
+            let record_key = create_record_key(&rewards_accountant_key, seeds);
+            debug!("Checking for {name} record at: {record_key}");
+
+            if !self.account_exists(fetcher, &record_key).await? {
+                missing_records.push(name);
+            }
+        }
 
         // Check if merkle root has been posted
         let merkle_root_posted = self.check_distribution_merkle_root(fetcher, epoch).await?;
 
         // All steps must be complete
-        let all_complete = records_exist && merkle_root_posted;
+        let all_complete = missing_records.is_empty() && merkle_root_posted;
 
         if all_complete {
-            debug!(
-                "All rewards steps complete for epoch {}: records_exist={}, merkle_root_posted={}",
-                epoch, records_exist, merkle_root_posted
-            );
+            debug!("All rewards steps complete for epoch {epoch}");
         } else {
             debug!(
-                "Rewards incomplete for epoch {}: records_exist={}, merkle_root_posted={}",
-                epoch, records_exist, merkle_root_posted
+                "Rewards incomplete for epoch {epoch}: missing_records={missing_records:?}, merkle_root_posted={merkle_root_posted}"
             );
         }
 
         Ok(all_complete)
-    }
-
-    /// Check if contributor rewards record exists
-    async fn check_contributor_rewards_record(
-        &self,
-        fetcher: &Fetcher,
-        epoch: u64,
-    ) -> Result<bool> {
-        // Get rewards accountant
-        let rewards_accountant = self.get_rewards_accountant(fetcher).await?;
-
-        // Compute record address
-        let prefix = self
-            .orchestrator
-            .settings
-            .prefixes
-            .contributor_rewards
-            .as_bytes();
-        let epoch_bytes = epoch.to_le_bytes();
-        let seeds: &[&[u8]] = &[prefix, &epoch_bytes, b"shapley_output"];
-        let record_key = create_record_key(&rewards_accountant, seeds);
-
-        debug!("Checking for contributor rewards at: {}", record_key);
-
-        // Check if account exists
-        let exists = self.account_exists(fetcher, &record_key).await?;
-        Ok(exists)
-    }
-
-    /// Check if reward input record exists
-    async fn check_reward_input_record(&self, fetcher: &Fetcher, epoch: u64) -> Result<bool> {
-        // Get rewards accountant
-        let rewards_accountant = self.get_rewards_accountant(fetcher).await?;
-
-        // Compute record address
-        let prefix = self.orchestrator.settings.prefixes.reward_input.as_bytes();
-        let epoch_bytes = epoch.to_le_bytes();
-        let seeds: &[&[u8]] = &[prefix, &epoch_bytes];
-        let record_key = create_record_key(&rewards_accountant, seeds);
-
-        debug!("Checking for reward input at: {}", record_key);
-
-        // Check if account exists
-        let exists = self.account_exists(fetcher, &record_key).await?;
-        Ok(exists)
     }
 
     /// Check if merkle root has been posted to Distribution account
@@ -755,64 +741,96 @@ impl ScheduleWorker {
         // Generate snapshot filename
         let filename = format!("{}-epoch-{}-snapshot.json", network_prefix, epoch);
 
-        // Fetch all data for the epoch
-        info!("Fetching data for epoch {}", epoch);
-        let fetcher = Fetcher::from_settings(&self.orchestrator.settings)?;
-        let (fetch_epoch, fetch_data) = fetcher.fetch(Some(epoch)).await?;
-
-        if fetch_epoch != epoch {
-            bail!(
-                "Fetched epoch {} does not match target epoch {}",
-                fetch_epoch,
-                epoch
+        // A retry reads the snapshot the first attempt saved, so it posts the same root.
+        let (snapshot, snapshot_location) = if self.storage.exists(&filename).await? {
+            info!("Loading the saved snapshot for epoch {epoch}");
+            let snapshot = self.storage.load(&filename).await?;
+            ensure!(
+                snapshot.dz_epoch == epoch,
+                "Saved snapshot {filename} is for epoch {}, not {epoch}",
+                snapshot.dz_epoch
             );
-        }
+            snapshot.validate()?;
 
-        // Required: every consumer rejects a snapshot without a leader schedule.
-        info!("Fetching leader schedule for epoch {}", epoch);
-        let leader_schedule = EpochFinder::new(
-            fetcher.dz_rpc_client.clone(),
-            fetcher.solana_read_client.clone(),
-        )
-        .fetch_leader_schedule(epoch, fetch_data.start_us)
-        .await
-        .with_context(|| format!("Failed to fetch leader schedule for DZ epoch {epoch}"))?;
-        info!(
-            "Leader schedule fetched successfully for Solana epoch {}",
-            leader_schedule.solana_epoch
-        );
+            let fetcher = Fetcher::from_settings(&self.orchestrator.settings)?;
+            let mut epoch_finder = EpochFinder::new(
+                fetcher.dz_rpc_client.clone(),
+                fetcher.solana_read_client.clone(),
+            );
+            let first_solana_epoch = epoch_finder
+                .find_epoch_at_timestamp(snapshot.fetch_data.start_us)
+                .await?;
+            let last_solana_epoch = epoch_finder
+                .find_epoch_at_timestamp(snapshot.fetch_data.end_us.saturating_sub(1))
+                .await?;
+            snapshot
+                .leader_schedule
+                .as_ref()
+                .context("Saved snapshot has no leader schedule")?
+                .ensure_covers_epochs(first_solana_epoch, last_solana_epoch)
+                .with_context(|| format!("Saved snapshot {filename} does not fit epoch {epoch}"))?;
+            (snapshot, self.storage.location(&filename))
+        } else {
+            // Fetch all data for the epoch
+            info!("Fetching data for epoch {}", epoch);
+            let fetcher = Fetcher::from_settings(&self.orchestrator.settings)?;
+            let (fetch_epoch, fetch_data) = fetcher.fetch(Some(epoch)).await?;
 
-        // Create metadata
-        let metadata = SnapshotMetadata {
-            created_at: Utc::now().to_rfc3339(),
-            network: format!("{:?}", self.orchestrator.settings.network),
-            exchanges_count: fetch_data.dz_serviceability.exchanges.len(),
-            locations_count: fetch_data.dz_serviceability.locations.len(),
-            devices_count: fetch_data.dz_serviceability.devices.len(),
-            internet_samples_count: fetch_data.dz_internet.internet_latency_samples.len(),
-            device_samples_count: fetch_data.dz_telemetry.device_latency_samples.len(),
+            if fetch_epoch != epoch {
+                bail!(
+                    "Fetched epoch {} does not match target epoch {}",
+                    fetch_epoch,
+                    epoch
+                );
+            }
+
+            // Required: every consumer rejects a snapshot without a leader schedule.
+            info!("Fetching leader schedule for epoch {}", epoch);
+            let leader_schedule = EpochFinder::new(
+                fetcher.dz_rpc_client.clone(),
+                fetcher.solana_read_client.clone(),
+            )
+            .fetch_leader_schedule(epoch, fetch_data.start_us, fetch_data.end_us)
+            .await
+            .with_context(|| format!("Failed to fetch leader schedule for DZ epoch {epoch}"))?;
+            info!(
+                "Leader schedule fetched successfully for Solana epoch {}",
+                leader_schedule.solana_epoch
+            );
+
+            // Create metadata
+            let metadata = SnapshotMetadata {
+                created_at: Utc::now().to_rfc3339(),
+                network: format!("{:?}", self.orchestrator.settings.network),
+                exchanges_count: fetch_data.dz_serviceability.exchanges.len(),
+                locations_count: fetch_data.dz_serviceability.locations.len(),
+                devices_count: fetch_data.dz_serviceability.devices.len(),
+                internet_samples_count: fetch_data.dz_internet.internet_latency_samples.len(),
+                device_samples_count: fetch_data.dz_telemetry.device_latency_samples.len(),
+            };
+
+            // Create complete snapshot
+            let snapshot = CompleteSnapshot {
+                dz_epoch: epoch,
+                solana_epoch: Some(leader_schedule.solana_epoch),
+                fetch_data,
+                leader_schedule: Some(leader_schedule),
+                metadata,
+            };
+
+            // Validate before saving: storage.save writes the canonical per-epoch key, so
+            // an incomplete snapshot overwrites a good one, and a dry run never reads it
+            // back to find out.
+            snapshot.validate()?;
+
+            // Save snapshot using storage abstraction (S3 or local file)
+            info!(
+                "Saving snapshot using {} storage",
+                self.storage.storage_type()
+            );
+            let snapshot_location = self.storage.save(&snapshot, &filename).await?;
+            (snapshot, snapshot_location)
         };
-
-        // Create complete snapshot
-        let snapshot = CompleteSnapshot {
-            dz_epoch: epoch,
-            solana_epoch: Some(leader_schedule.solana_epoch),
-            fetch_data,
-            leader_schedule: Some(leader_schedule),
-            metadata,
-        };
-
-        // Validate before saving: storage.save writes the canonical per-epoch key, so
-        // an incomplete snapshot overwrites a good one, and a dry run never reads it
-        // back to find out.
-        snapshot.validate()?;
-
-        // Save snapshot using storage abstraction (S3 or local file)
-        info!(
-            "Saving snapshot using {} storage",
-            self.storage.storage_type()
-        );
-        let snapshot_location = self.storage.save(&snapshot, &filename).await?;
 
         // For calculate_rewards, we need a local file path
         // If using S3, create a temp file; if local storage, use the path directly
@@ -873,5 +891,33 @@ impl ScheduleWorker {
         );
 
         Ok((snapshot_location, local_path, temp_file_guard))
+    }
+}
+
+// A failed monthly step pages, so retrying keeps one RPC blip from paging.
+async fn try_with_retries<T>(step: &str, attempt: impl AsyncFn() -> Result<T>) -> Result<T> {
+    (|| attempt())
+        .retry(ExponentialBuilder::default().with_jitter())
+        .notify(|err, dur| info!("Retrying the monthly {step} step in {dur:?}: {err:#}"))
+        .await
+}
+
+/// Log and count a monthly step's outcome, where `Ok(true)` means the step
+/// acted, and return whether it failed.
+fn track_monthly_step(step: &'static str, subject: &str, outcome: Result<bool>) -> bool {
+    match outcome {
+        Ok(has_acted) => {
+            if has_acted {
+                metrics::counter!("doublezero_contributor_rewards_monthly_success", "step" => step)
+                    .increment(1);
+            }
+            false
+        }
+        Err(e) => {
+            error!("Monthly {step} step failed for {subject}: {e:#}");
+            metrics::counter!("doublezero_contributor_rewards_monthly_failure", "step" => step)
+                .increment(1);
+            true
+        }
     }
 }

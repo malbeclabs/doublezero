@@ -109,7 +109,7 @@ func TestClient_HandleSession(t *testing.T) {
 	require.Equal(t, "ping", string(buf))
 
 	tunnelConn.Close()
-	<-done
+	_ = <-done
 }
 
 func TestClient_HandleSession_NetworkDetection(t *testing.T) {

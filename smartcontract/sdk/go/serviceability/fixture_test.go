@@ -268,7 +268,7 @@ func TestFixtureFeedLegacy(t *testing.T) {
 	require.Len(t, feed.Groups, 1)
 	assert.Equal(t, serviceability.FeedStatusActive, feed.Status)
 	assert.Equal(t, [32]byte{}, feed.Builder)
-	assert.Equal(t, [32]byte{}, feed.StakeRef)
+	assert.Equal(t, [32]byte{}, feed.BondRef)
 	assert.Equal(t, "", feed.SpecId)
 	assert.Equal(t, [32]byte{}, feed.SlaHash)
 	assert.Equal(t, uint64(0), feed.CommittedRateBitsPerSec)

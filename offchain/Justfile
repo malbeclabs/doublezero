@@ -38,7 +38,3 @@ elixir-ci:
 # Start a Solana mainnet-beta fork and drive the CLIs against it
 test-fork:
     cd .. && bash offchain/sh/test_doublezero_solana_fork.sh
-
-# Run the full debt flow against a running fork
-test-debt-flow:
-    cd .. && bash offchain/sh/test_full_debt_flow.sh

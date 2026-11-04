@@ -6,7 +6,13 @@ workspace_dir=$(dirname "${script_dir}")
 
 image="dz-go-test"
 
-docker build -q -t "${image}" -f "${script_dir}/Dockerfile.go-test" "${script_dir}" >&2
+build_log="$(mktemp)"
+if ! docker build --progress=plain -t "${image}" -f "${script_dir}/Dockerfile.go-test" "${script_dir}" >"${build_log}" 2>&1; then
+    cat "${build_log}" >&2
+    rm -f "${build_log}"
+    exit 1
+fi
+rm -f "${build_log}"
 
 exec docker run --rm \
     -v "${workspace_dir}:/workspace" \

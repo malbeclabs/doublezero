@@ -920,6 +920,8 @@ export interface MulticastGroup {
   code: string;
   publisherCount: number;
   subscriberCount: number;
+  /** The BuilderBond that created the group, or the default key for a group an admin created. */
+  bondRef: PublicKey;
 }
 
 export function deserializeMulticastGroup(data: Uint8Array): MulticastGroup {
@@ -936,6 +938,8 @@ export function deserializeMulticastGroup(data: Uint8Array): MulticastGroup {
     code: r.readString(),
     publisherCount: r.readU32(),
     subscriberCount: r.readU32(),
+    // A group created before the field existed ends here, and the reader throws past the end.
+    bondRef: r.remaining >= 32 ? readPubkey(r) : PublicKey.default,
   };
 }
 
@@ -1256,10 +1260,10 @@ export interface Feed {
   name: string;
   exchange: PublicKey;
   groups: PublicKey[];
-  // RFC-28. Absent from feeds written before RFC-28, which decode with these defaulted and
+  // RFC-29. Absent from feeds written before RFC-29, which decode with these defaulted and
   // status "active".
   builder: PublicKey;
-  stakeRef: PublicKey;
+  bondRef: PublicKey;
   specId: string;
   slaHash: Uint8Array;
   committedRateBitsPerSec: bigint;
@@ -1294,18 +1298,18 @@ export function deserializeFeed(data: Uint8Array): Feed {
   // A feed serves one metro: an exchange pubkey followed by a Vec<Pubkey> of joinable groups.
   const exchange = readPubkey(r);
   const groups = readPubkeyVec(r);
-  // RFC-28 tail. DefensiveReader returns zeros past EOF, so a feed written before RFC-28 lands
+  // RFC-29 tail. DefensiveReader returns zeros past EOF, so a feed written before RFC-29 lands
   // here with every field defaulted. Read the flag before the tail, not after: the tail reads
   // themselves leave `remaining` at zero either way.
-  const hasRfc28Tail = r.remaining > 0;
+  const hasRfc29Tail = r.remaining > 0;
   const builder = readPubkey(r);
-  const stakeRef = readPubkey(r);
+  const bondRef = readPubkey(r);
   const specId = r.readString();
   const slaHash = r.readBytes(32);
   const committedRateBitsPerSec = r.readU64();
-  // Not "pending": a feed written before RFC-28 has no status byte, and reading one as pending
+  // Not "pending": a feed written before RFC-29 has no status byte, and reading one as pending
   // would show every live catalog feed as out of service.
-  const status = hasRfc28Tail ? r.readU8() : FEED_STATUS_ACTIVE;
+  const status = hasRfc29Tail ? r.readU8() : FEED_STATUS_ACTIVE;
   const haltedBy = readPubkey(r);
   // readU64 is unsigned; reinterpret the sign bit, as the seat timestamps above do.
   const retiresAt = BigInt.asIntN(64, r.readU64());
@@ -1319,7 +1323,7 @@ export function deserializeFeed(data: Uint8Array): Feed {
     exchange,
     groups,
     builder,
-    stakeRef,
+    bondRef,
     specId,
     slaHash,
     committedRateBitsPerSec,

@@ -2,7 +2,7 @@ use crate::doublezerocommand::CliCommand;
 use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_sdk::{convert_url_to_ws, read_doublezero_config};
-use std::io::Write;
+use std::{collections::HashMap, io::Write};
 
 #[derive(Args, Debug)]
 pub struct GetConfigCliCommand;
@@ -18,7 +18,7 @@ impl GetConfigCliCommand {
 
         writeln!(
             out,
-            "Config File: {}\nRPC URL: {}\nWebSocket URL: {}\nKeypair Path: {}\nProgram ID: {}\nGeolocation Program ID: {}\nTenant: {}\n",
+            "Config File: {}\nRPC URL: {}\nWebSocket URL: {}\nKeypair Path: {}\nProgram ID: {}\nGeolocation Program ID: {}\nTenant: {}\n{}",
             filename.display(),
             config.json_rpc_url,
             config.websocket_url.unwrap_or(format!(
@@ -34,11 +34,27 @@ impl GetConfigCliCommand {
                 "{} (computed)",
                 doublezero_sdk::default_geolocation_program_id()
             )),
-            config.tenant.unwrap_or("(not set)".to_string())
+            config.tenant.unwrap_or("(not set)".to_string()),
+            format_address_labels(&config.address_labels),
         )?;
 
         Ok(())
     }
+}
+
+/// The `Address Labels:` section of `config get`: one `pubkey: label` line
+/// per label, sorted by pubkey, or `(none)`.
+fn format_address_labels(labels: &HashMap<String, String>) -> String {
+    if labels.is_empty() {
+        return "Address Labels: (none)\n".to_string();
+    }
+    let mut entries: Vec<_> = labels.iter().collect();
+    entries.sort();
+    let mut out = "Address Labels:\n".to_string();
+    for (pubkey, label) in entries {
+        out.push_str(&format!("  {pubkey}: {label}\n"));
+    }
+    out
 }
 
 #[cfg(test)]
@@ -79,6 +95,7 @@ mod tests {
             assert!(output_str.contains("Program ID:"));
             assert!(output_str.contains("Geolocation Program ID:"));
             assert!(output_str.contains("Tenant: (not set)"));
+            assert!(output_str.contains("Address Labels: (none)"));
 
             let devnet_config = Environment::Devnet.config().unwrap();
             assert!(output_str.contains(&devnet_config.ledger_public_rpc_url));
@@ -105,6 +122,36 @@ mod tests {
             block_on(GetConfigCliCommand.execute(&ctx, &client, &mut output)).unwrap();
             let output_str = String::from_utf8(output).unwrap();
             assert!(output_str.contains("Tenant: my-tenant"));
+        });
+    }
+
+    #[test]
+    #[serial]
+    fn test_cli_config_get_with_address_labels() {
+        let (_tmp, config_path, cfg) = new_test_config(|cfg| {
+            cfg.address_labels.insert(
+                "DZfLKFDgLShjY34WqXdVVzHUvVtrYXb7UtdrALnGa8jw".to_string(),
+                "Jared".to_string(),
+            );
+            cfg.address_labels.insert(
+                "11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo".to_string(),
+                "Ops".to_string(),
+            );
+        });
+
+        temp_env::with_var(CONFIG_ENV_VAR, Some(&config_path.to_str().unwrap()), || {
+            write_doublezero_config(&cfg).unwrap();
+            create_new_pubkey_user(false, Some(cfg.keypair_path.clone())).unwrap();
+
+            let client = create_test_client();
+            let ctx = cli_context_default_for_tests();
+
+            let mut output = Vec::new();
+            block_on(GetConfigCliCommand.execute(&ctx, &client, &mut output)).unwrap();
+            let output_str = String::from_utf8(output).unwrap();
+            assert!(output_str.ends_with(
+                "Address Labels:\n  11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo: Ops\n  DZfLKFDgLShjY34WqXdVVzHUvVtrYXb7UtdrALnGa8jw: Jared\n\n"
+            ));
         });
     }
 

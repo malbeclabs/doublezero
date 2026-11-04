@@ -1,4 +1,3 @@
-mod initialize_distribution;
 mod pause_gate;
 mod slack_report;
 
@@ -25,7 +24,6 @@ use doublezero_solana_sdk::{
     try_build_instruction,
 };
 use futures::{StreamExt, TryStreamExt, stream};
-pub use initialize_distribution::*;
 use leaky_bucket::RateLimiter;
 pub(super) use pause_gate::is_config_paused;
 use reqwest::Client;

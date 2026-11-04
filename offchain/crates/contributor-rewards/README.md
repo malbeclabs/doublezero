@@ -26,7 +26,7 @@ The rewarder prepares the following inputs:
 There are two demand classes:
 
 1. **Validator-to-validator IBRL traffic.** IBRL demands are generated between validator metros, excluding same-city pairs. The receiver count is the destination city's validator count, traffic per receiver comes from `demand.traffic`, and the priority/value input is `demand.priority`. In production this priority is set to **$20**. This gives validator-to-validator traffic non-zero value even though it generates no immediate revenue, unlike multicast shreds, which generate roughly $30-100 per seat. The value reflects non-monetary protocol benefits such as validator acquisition and a foundation for future business models.
-2. **Multicast shred traffic.** Shred demands are generated from validator metros to metros with multicast subscribers and non-zero metro prices. The receiver count is the subscriber count, traffic per receiver comes from `demand.traffic`, and priority comes from the destination metro price.
+2. **Multicast shred traffic.** Shred demands are generated from validator metros to metros with multicast subscribers. The receiver count is the subscriber count, traffic per receiver comes from `demand.traffic`, and priority comes from the destination metro price, which the `metro_prices` settings define.
 
 For each source city, the rewarder runs `network-shapley` with the full network topology and that city's demands. `network-shapley` validates and consolidates the inputs, adds public-internet nodes and crossovers between private and public paths, builds a flow optimization problem, and solves that problem for every coalition of contributors. Each contributor's Shapley value is its average marginal improvement across coalitions. The rewarder then aggregates per-city values using the city weights, normalizes them into final proportions, converts those proportions into fixed-point reward shares, stores the Shapley output, and posts a Merkle root for distribution.
 
@@ -47,15 +47,31 @@ The protocol cannot yet reliably estimate public internet latencies for large tr
 - An epoch belongs to the month in which the block time of its last block falls.
 - Each contributor's share is its average over all of the month's epochs, counting zero for an epoch it is absent from. Averages are floored, and the leftover units go one each to the largest remainders, ties to the lower pubkey.
 - The command refuses a month that has not closed, a month with no epochs, and a month with an epoch whose shapley output record does not match the merkle root and contributor count posted to that epoch's `Distribution`. It reads records at the current rewards accountant's addresses, so it also refuses any month with an epoch recorded under an earlier accountant key. Calculate a month before rotating that key.
-- Block times come from the DoubleZero Ledger RPC, and selecting a month reads blocks from before it starts. The command refuses a month when the RPC no longer serves those blocks. Testnet and devnet RPCs keep about 18 days of blocks, so every testnet and devnet month is refused for now.
+- An epoch's end comes from its `epoch_end` record on the DoubleZero Ledger, and otherwise from DoubleZero Ledger block times. The scheduler writes these records while `scheduler.enable_monthly_distribution` is set, and its first run records back to the last epoch to end before the previous month, or as far back as the RPC holds blocks. Selecting a month also reads the epoch before it, so the command refuses a month when neither a record nor the RPC has an epoch it needs. Testnet and devnet RPCs keep about 18 days of blocks, so a testnet or devnet month can be calculated only once the scheduler has recorded it. There, the first month the scheduler can finalize is the one it is enabled in, and only if it is enabled within about that month's first two weeks.
+
+### Monthly distribution
+
+With `scheduler.enable_monthly_distribution` set, and outside a dry run, each scheduler tick acts on recent UTC months by the state of each one's `MonthlyContributorDistribution`:
+
+- The previous month is finalized once it is collected and a DoubleZero epoch has ended after it. The scheduler recalculates the month as `calculate-monthly-rewards` does, stores the leaves on the DoubleZero Ledger in a `monthly_rewards` record keyed by the month and its merkle root, then posts and finalizes that root in one transaction.
+- A finalized month among the last three, the previous month and the two before it, has each unpaid leaf distributed from that record with `DistributeMonthlyContributorRewards`, creating any missing recipient ATA. A leaf whose contributor has no `ContributorRewards` account or no recipients is skipped with a warning and retried every tick, so a contributor that sets up its recipients late is still paid.
+- Any other month waits. The scheduler never initializes or collects a month, so a month whose feed bucket is never collected is never finalized.
+
+A month the scheduler no longer acts on is left for a manual run, since acting on it late needs someone to find out why it was missed. Each tick logs a warning for every month before the previous one that is collected but not finalized, which also counts the tick as failed, and for every month before the last three that has unpaid leaves. `distribute-monthly-rewards --year <YEAR> --month <MONTH> --solana-url <URL> --dz-url <URL> -k <KEYPAIR>` runs one month by hand with the steps the scheduler uses: it finalizes the month if it is collected and closed, then distributes its unpaid leaves. It takes both RPCs as flags and reads no config file. The keypair must be the rewards accountant's. `--dry-run` writes nothing: it simulates finalizing an unfinalized month, or each leaf's distribution for a finalized one.
+
+The scheduler's keypair must be the rewards accountant. A failed step logs an error and increments `doublezero_contributor_rewards_monthly_failure{step}`, and every tenth consecutive failed tick logs another error.
 
 ## Fetching snapshots from S3
 
-Replace `<num>` with DZ Epoch (50, 51, .. etc)
+Replace `<num>` with DZ Epoch (50, 51, .. etc). Snapshots for epoch 228 and earlier are public.
 
 ```bash
 $ wget https://doublezero-contributor-rewards-mn-beta-snapshots.s3.us-east-1.amazonaws.com/mn-epoch-<num>-snapshot.json
 ```
+
+Snapshots for epoch 229 and later are in the private bucket `malbeclabs-contributor-rewards-snapshots-mn-beta-967501763874`, and they are not public yet.
+
+<!-- TODO: serve the snapshots for epoch 229 and later through a CloudFront distribution in front of the new bucket, then put its address here. -->
 
 ## Snapshot Compatibility Matrix
 
@@ -109,13 +125,9 @@ log_level = "info"
 # DoubleZero ledger RPC endpoint
 dz_url = "https://doublezero-mainnet-beta.rpcpool.com/db336024-e7a8-46b1-80e5-352dd77060ab"
 
-# Solana read client - for reading chain data (leader schedules, epoch info)
-# Typically points to mainnet for production data
-solana_read_url = "https://api.mainnet-beta.solana.com"
-
-# Solana write client - for writing rewards data (merkle roots)
-# Can point to testnet for testing or mainnet for production
-solana_write_url = "https://api.mainnet-beta.solana.com"
+# Solana RPC - for reading chain data (leader schedules, epoch info) and writing rewards data (merkle roots)
+# It must point to the cluster of the DoubleZero network: mainnet-beta for production
+solana_url = "https://api.mainnet-beta.solana.com"
 
 # Transaction commitment level
 # Options: processed, confirmed, finalized
@@ -150,7 +162,7 @@ public_latency_multiplier = 1.25
 traffic = 0.15
 
 # Priority for IBRL validator-to-validator demands
-# Shred demand priority remains derived from metro price
+# Shred demand priority comes from the metro_prices settings
 priority = 20.0
 
 # Demand kind/type values written into Shapley demand rows
@@ -160,6 +172,20 @@ shred_kind = 2
 # Multicast flags for IBRL and shred demands
 multicast_enabled = false
 shred_multicast_enabled = true
+
+# ========== Metro Prices ==========
+[metro_prices]
+# Price in whole USDC dollars of a city that is not listed in prices
+default_price = 30
+
+# Setting prices replaces the whole table
+[metro_prices.prices]
+FRA = 100
+AMS = 100
+NYC = 60
+LON = 60
+SIN = 60
+TYO = 60
 
 # ========== Program IDs ==========
 [programs]
@@ -231,9 +257,7 @@ max_consecutive_failures = 10
 # ========== AWS Configuration (Optional) ==========
 [aws]
 region = "us-east-1"
-bucket = "doublezero-contributor-rewards-mn-beta-snapshots"
-access_key_id = "not"
-secret_access_key = "required"
+bucket = "malbeclabs-contributor-rewards-snapshots-mn-beta-967501763874"
 
 # ========== Metrics Configuration (Optional) ==========
 [metrics]

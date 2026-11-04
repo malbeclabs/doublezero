@@ -27,7 +27,7 @@ def compat_client() -> Client:
     from revdist.config import PROGRAM_ID, LEDGER_RPC_URLS
     from revdist.rpc import new_rpc_client
 
-    rpc_url = os.environ.get("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
+    rpc_url = os.environ.get("SOLANA_MAINNET_RPC_URL") or "https://api.mainnet-beta.solana.com"
     return Client(
         new_rpc_client(rpc_url),
         new_rpc_client(LEDGER_RPC_URLS["mainnet-beta"]),
@@ -36,7 +36,7 @@ def compat_client() -> Client:
 
 
 def _rpc_url() -> str:
-    return os.environ.get("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com")
+    return os.environ.get("SOLANA_MAINNET_RPC_URL") or "https://api.mainnet-beta.solana.com"
 
 
 async def fetch_raw_account(addr: Pubkey) -> bytes:
@@ -186,23 +186,6 @@ class TestCompatJournal:
         assert journal.swap_2z_destination_balance == read_u64(raw, 32), "Swap2ZDestinationBalance"
         assert journal.swapped_sol_amount == read_u64(raw, 40), "SwappedSOLAmount"
         assert journal.next_dz_epoch_to_sweep_tokens == read_u64(raw, 48), "NextDZEpochToSweepTokens"
-
-
-class TestCompatValidatorDebts:
-    async def test_fetch(self) -> None:
-        skip_unless_compat()
-        client = compat_client()
-
-        # Use a known epoch that has validator debts on mainnet.
-        epoch = 100
-
-        debts = await client.fetch_validator_debts(epoch)
-
-        assert len(debts.debts) > 0, "expected validator debts for epoch 100"
-        assert debts.last_solana_epoch > 0, "LastSolanaEpoch should be > 0"
-        assert debts.first_solana_epoch <= debts.last_solana_epoch, (
-            f"FirstSolanaEpoch ({debts.first_solana_epoch}) > LastSolanaEpoch ({debts.last_solana_epoch})"
-        )
 
 
 class TestCompatRewardShares:

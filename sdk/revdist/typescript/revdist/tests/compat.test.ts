@@ -51,7 +51,7 @@ function readPubkey(buf: Buffer, offset: number): PublicKey {
 }
 
 function rpcUrl(): string {
-  return process.env.SOLANA_RPC_URL || SOLANA_RPC_URLS["mainnet-beta"];
+  return process.env.SOLANA_MAINNET_RPC_URL || SOLANA_RPC_URLS["mainnet-beta"];
 }
 
 function compatClient(): Client {
@@ -191,26 +191,6 @@ describe("compat: Journal", () => {
     expect(journal.swap2zDestinationBalance).toBe(readU64LE(raw, 32));
     expect(journal.swappedSolAmount).toBe(readU64LE(raw, 40));
     expect(journal.nextDzEpochToSweepTokens).toBe(readU64LE(raw, 48));
-  });
-});
-
-describe("compat: ValidatorDebts", () => {
-  test("fetch and validate", async () => {
-    try {
-      skipUnlessCompat();
-    } catch {
-      return;
-    }
-
-    const client = compatClient();
-    // Use a known epoch that has validator debts on mainnet.
-    const epoch = 100n;
-
-    const debts = await client.fetchValidatorDebts(epoch);
-
-    expect(debts.debts.length).toBeGreaterThan(0);
-    expect(debts.lastSolanaEpoch > 0n).toBe(true);
-    expect(debts.firstSolanaEpoch <= debts.lastSolanaEpoch).toBe(true);
   });
 });
 

@@ -50,7 +50,7 @@ pub fn process_retire_feed(
     assert!(feed_account.is_writable, "PDA Account is not writable");
 
     let mut feed = Feed::try_from(feed_account)?;
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     require_feed_writer(
         program_id,
         accounts_iter,
@@ -60,7 +60,7 @@ pub fn process_retire_feed(
     )?;
 
     // A feed already retiring or retired has nothing left to start. Everything else can retire,
-    // including `Pending`: `DeleteFeed` refuses a staked feed, so refusing here as well would
+    // including `Pending`: `DeleteFeed` refuses a bonded feed, so refusing here as well would
     // leave a feed that never went live with no way out at all.
     if matches!(feed.status, FeedStatus::Retiring | FeedStatus::Retired) {
         msg!(
@@ -75,7 +75,8 @@ pub fn process_retire_feed(
 
     // The notice exists for seat holders, and a feed that was never `Active` has none: it admits
     // no subscriber until it publishes. So the wait is zero rather than absent, which keeps one
-    // path through retirement instead of two.
+    // path through retirement instead of two. Only a feed created before `CreateFeed` started
+    // every feed `Active` can still be `Pending` here.
     feed.retires_at = if feed.status == FeedStatus::Pending {
         now
     } else {

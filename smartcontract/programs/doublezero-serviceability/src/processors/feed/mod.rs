@@ -10,18 +10,77 @@ pub mod update;
 use crate::{
     authorize::{authorize, FEED_ADMIN_FLAGS},
     error::{DoubleZeroError, Validate},
-    pda::get_stake_mirror_pda,
     state::{
         accesspass::AccessPass,
+        bond_mirror::BondMirror,
         feed::{Feed, FeedStatus},
         globalstate::GlobalState,
-        stake_mirror::StakeMirror,
+        multicastgroup::MulticastGroup,
     },
 };
 use solana_program::{
     account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
     pubkey::Pubkey,
 };
+
+/// Split the accounts that name one of `groups` from the rest of an instruction's tail, by
+/// address. A builder passes its groups' accounts so the program can read who owns them, and the
+/// rest is the authorization tail, which [`authorize`] reads from its first account.
+pub(crate) fn split_group_accounts<'a, 'b>(
+    groups: &[Pubkey],
+    tail: Vec<&'a AccountInfo<'b>>,
+) -> (Vec<&'a AccountInfo<'b>>, Vec<&'a AccountInfo<'b>>) {
+    tail.into_iter()
+        .partition(|account| groups.contains(account.key))
+}
+
+/// Check that every group a bonded feed lists is its builder's own: created on the feed's bond, or
+/// assigned to the builder by an admin with no bond.
+///
+/// A seat on a feed lets its holder join every group the feed lists ([`check_feed_metro_coverage`]),
+/// so a feed the builder admits with its own bond may list only its own groups. A group with no bond
+/// can only have been given to the builder by an admin, since a builder creates groups on a bond. A
+/// group on another of the builder's bonds is refused, because each bond backs one feed. Each
+/// group's account must be among `group_accounts`, in any order.
+pub(crate) fn check_groups_on_bond(
+    program_id: &Pubkey,
+    builder: &Pubkey,
+    bond_ref: &Pubkey,
+    groups: &[Pubkey],
+    group_accounts: &[&AccountInfo],
+) -> ProgramResult {
+    for group_key in groups {
+        let Some(account) = group_accounts.iter().find(|a| a.key == group_key) else {
+            msg!(
+                "Multicast group {} has no account in the instruction",
+                group_key
+            );
+            return Err(DoubleZeroError::GroupNotOnBond.into());
+        };
+        if account.owner != program_id {
+            msg!(
+                "Multicast group {} is not a serviceability account",
+                group_key
+            );
+            return Err(DoubleZeroError::GroupNotOnBond.into());
+        }
+        let group =
+            MulticastGroup::try_from(*account).map_err(|_| DoubleZeroError::GroupNotOnBond)?;
+        let on_this_bond = group.bond_ref == *bond_ref || group.bond_ref == Pubkey::default();
+        if group.owner != *builder || !on_this_bond {
+            msg!(
+                "Multicast group {} is owned by {} on bond {}, not by {} on bond {}",
+                group_key,
+                group.owner,
+                group.bond_ref,
+                builder,
+                bond_ref
+            );
+            return Err(DoubleZeroError::GroupNotOnBond.into());
+        }
+    }
+    Ok(())
+}
 
 /// Validate the EdgeSeat feed metro gate without mutating the pass.
 ///
@@ -115,7 +174,7 @@ pub fn enforce_feed_metro_gate(
 /// status changes, so retirement and slashing need no sweep over the access passes that already
 /// carry a seat for it.
 ///
-/// `Retiring` admits, and that is the point of the state. RFC-28 gives seat holders thirty days
+/// `Retiring` admits, and that is the point of the state. RFC-29 gives seat holders thirty days
 /// notice *before publication stops*, so a feed serves its existing holders throughout. Refusing
 /// here would lock out anyone who reconnects on the first day of the notice, which would leave the
 /// notice protecting only the population that cannot come back. A new seat is refused instead
@@ -138,7 +197,7 @@ pub fn require_feed_admits(feed_key: &Pubkey, feed: &Feed) -> Result<(), DoubleZ
 
 /// Whether `payer` may change this feed's lifecycle.
 ///
-/// Two ways in, for different reasons. The feed's own builder, because RFC-28 makes halt the
+/// Two ways in, for different reasons. The feed's own builder, because RFC-29 makes halt the
 /// builder's lever and a builder that cannot halt its own feed cannot rotate its upstream source.
 /// A `FEED_AUTHORITY` or `FOUNDATION` key, because a feed whose builder has gone quiet must still
 /// be stoppable, and every other feed instruction already authorizes that way.
@@ -168,65 +227,35 @@ where
     )
 }
 
-/// Split a staked feed's mirror out of the trailing accounts, leaving the rest for `authorize`.
+/// Whether the bond behind `feed` still covers the rate it publishes at.
 ///
-/// The mirror rides after the fixed accounts and is found by its address rather than its position,
-/// so a catalog feed's caller is not forced to send one and a caller that sends only a `Permission`
-/// account still works.
-///
-/// Returns `(mirror, rest)`. `rest` filters by key rather than by identity: a caller may pass the
-/// mirror twice, and a stray copy left among the candidates would be read as the `Permission`
-/// account.
-///
-/// `builder` and `stake_ref` come from the `Feed` for an instruction acting on one that exists, and
-/// from the arguments for `CreateFeed`, which is describing a feed it has not written yet.
-pub(crate) fn split_stake_mirror<'a, 'b: 'a>(
-    program_id: &Pubkey,
-    builder: &Pubkey,
-    stake_ref: &Pubkey,
-    accounts_iter: &mut impl Iterator<Item = &'a AccountInfo<'b>>,
-) -> (Option<&'a AccountInfo<'b>>, Vec<&'a AccountInfo<'b>>) {
-    let tail: Vec<&AccountInfo> = accounts_iter.collect();
-    let mirror_key =
-        (builder != &Pubkey::default()).then(|| get_stake_mirror_pda(program_id, stake_ref).0);
-    let mirror = mirror_key.and_then(|key| tail.iter().copied().find(|a| a.key == &key));
-    let rest = tail
-        .into_iter()
-        .filter(|a| Some(*a.key) != mirror_key)
-        .collect();
-
-    (mirror, rest)
-}
-
-/// Whether the stake behind `feed` still covers the rate it publishes at.
-///
-/// Not the same question `CreateFeed` asks. Creation claims an unspent stake, so it requires
+/// Not the same question `CreateFeed` asks. Creation claims an unspent bond, so it requires
 /// `feed_key` to be empty; here the feed already holds the claim, so the mirror must name this
 /// feed and no other. What both check is the tier, because a mirror can be corrected downward
 /// while a feed sits halted.
-pub fn require_stake_still_covers(
+pub fn require_bond_still_covers(
     program_id: &Pubkey,
     mirror_account: &AccountInfo,
     feed_key: &Pubkey,
     feed: &Feed,
 ) -> Result<(), DoubleZeroError> {
     if mirror_account.data_is_empty() || mirror_account.owner != program_id {
-        msg!("No stake mirror written for stake {}", feed.stake_ref);
-        return Err(DoubleZeroError::StakeMirrorMissing);
+        msg!("No bond mirror written for bond {}", feed.bond_ref);
+        return Err(DoubleZeroError::BondMirrorMissing);
     }
 
     let mirror =
-        StakeMirror::try_from(mirror_account).map_err(|_| DoubleZeroError::InvalidAccountType)?;
+        BondMirror::try_from(mirror_account).map_err(|_| DoubleZeroError::InvalidAccountType)?;
     mirror.validate()?;
 
-    if mirror.stake_ref != feed.stake_ref || mirror.builder != feed.builder {
-        msg!("Stake mirror names a different stake or builder");
+    if mirror.bond_ref != feed.bond_ref || mirror.builder != feed.builder {
+        msg!("Bond mirror names a different bond or builder");
         return Err(DoubleZeroError::InvalidArgument);
     }
     // The claim has to point back at this feed. A mirror claimed by another feed is not this
     // feed's cover, whatever its tier says.
     if &mirror.feed_key != feed_key {
-        msg!("Stake mirror is claimed by feed {}", mirror.feed_key);
+        msg!("Bond mirror is claimed by feed {}", mirror.feed_key);
         return Err(DoubleZeroError::InvalidArgument);
     }
 
@@ -237,8 +266,36 @@ pub fn require_stake_still_covers(
             mirror.tier.max_rate_bits_per_sec(),
             feed.committed_rate_bits_per_sec
         );
-        return Err(DoubleZeroError::StakeDoesNotCoverRate);
+        return Err(DoubleZeroError::BondDoesNotCoverRate);
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Every status, because no instruction writes `Pending` any more: a `Pending` dropped from the
+    // match would pass every test that drives real instructions.
+    #[test]
+    fn test_only_an_active_or_retiring_feed_admits() {
+        for (status, admits) in [
+            (FeedStatus::Pending, false),
+            (FeedStatus::Active, true),
+            (FeedStatus::Halted, false),
+            (FeedStatus::Retiring, true),
+            (FeedStatus::Retired, false),
+        ] {
+            let feed = Feed {
+                status,
+                ..Feed::default()
+            };
+            assert_eq!(
+                require_feed_admits(&Pubkey::new_unique(), &feed).is_ok(),
+                admits,
+                "{status:?}"
+            );
+        }
+    }
 }

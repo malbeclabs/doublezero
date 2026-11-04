@@ -1,26 +1,26 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Mutex};
 
 use anyhow::{Result, ensure};
 use chrono::DateTime;
 use clap::Subcommand;
-use doublezero_solana_client_tools::rpc::{DoubleZeroLedgerConnection, SolanaConnection};
-use doublezero_solana_sdk::revenue_distribution::{
-    fetch::{SolConversionState, try_fetch_config, try_fetch_distribution},
-    types::UnitShare32,
+use doublezero_solana_client_tools::{
+    payer::Wallet,
+    rpc::{DoubleZeroLedgerConnection, SolanaConnection},
 };
-use slack_notifier::contributor_rewards::{
-    DistributionRewardRow, WriteResultInfo, post_contributor_rewards, post_distribution_rewards,
-};
+use doublezero_solana_sdk::revenue_distribution::types::UnitShare32;
+use slack_notifier::contributor_rewards::{WriteResultInfo, post_contributor_rewards};
 use solana_sdk::pubkey::Pubkey;
 use tabled::{builder::Builder as TableBuilder, settings::Style};
 use tracing::{info, warn};
 
 use crate::{
     calculator::{
+        keypair_loader::load_keypair,
         ledger_operations::{
             RewardEntry, WriteResult, format_unit_share_proportion, try_fetch_contributor_labels,
         },
         monthly,
+        monthly_distribute::{self, MonthAction, MonthlyContext},
         orchestrator::Orchestrator,
     },
     cli::snapshot::CompleteSnapshot,
@@ -46,6 +46,9 @@ pub enum RewardsCommands {
 
     # Repost only merkle root (skip all DZ Ledger writes)
     calculate-rewards --snapshot mn-epoch-27-snapshot.json -k keypair.json --skip-device-telemetry --skip-internet-telemetry --skip-reward-input --skip-shapley-output
+
+    # Repost the merkle root from the shapley output already on the DZ Ledger (skips the Shapley calculation)
+    calculate-rewards --snapshot mn-epoch-27-snapshot.json -k keypair.json --shapley-from-ledger
 
     # Create a snapshot first using the snapshot command
     snapshot all --epoch 27 --output-file mn-epoch-27-snapshot.json"#
@@ -93,6 +96,10 @@ pub enum RewardsCommands {
         #[arg(long)]
         skip_merkle_root: bool,
 
+        /// Read the shapley output from the DZ Ledger instead of calculating it, and write no record to the DZ Ledger
+        #[arg(long)]
+        shapley_from_ledger: bool,
+
         /// Send Slack notification after completion (requires Slack settings in config)
         #[arg(long)]
         slack_notify: bool,
@@ -118,6 +125,40 @@ pub enum RewardsCommands {
         /// Output as JSON instead of tables
         #[arg(long)]
         json: bool,
+    },
+    #[command(
+        about = "Finalize and distribute one month's contributor rewards by hand",
+        after_help = r#"Examples:
+    # Simulate finalizing and distributing September 2026
+    distribute-monthly-rewards --year 2026 --month 9 --solana-url <SOLANA_URL> --dz-url <DZ_URL> -k keypair.json --dry-run
+
+    # Finalize and distribute September 2026
+    distribute-monthly-rewards --year 2026 --month 9 --solana-url <SOLANA_URL> --dz-url <DZ_URL> -k keypair.json"#
+    )]
+    DistributeMonthlyRewards {
+        /// UTC calendar year
+        #[arg(long, value_name = "YEAR")]
+        year: u16,
+
+        /// UTC calendar month, 1 through 12
+        #[arg(long, value_name = "MONTH", value_parser = clap::value_parser!(u8).range(1..=12))]
+        month: u8,
+
+        /// Simulate transactions and write nothing
+        #[arg(long)]
+        dry_run: bool,
+
+        /// Path to the rewards accountant's keypair file
+        #[arg(short = 'k', long, value_name = "FILE")]
+        keypair: Option<PathBuf>,
+
+        /// Solana RPC URL. The command reads no config file
+        #[arg(long, value_name = "URL")]
+        solana_url: String,
+
+        /// DoubleZero Ledger RPC URL
+        #[arg(long, value_name = "URL")]
+        dz_url: String,
     },
     #[command(
         about = "Read and display telemetry aggregate statistics from the ledger",
@@ -320,43 +361,6 @@ pub enum RewardsCommands {
         )]
         keypair: Option<PathBuf>,
     },
-    #[command(
-        about = "Distribute rewards to contributors for a finalized epoch",
-        long_about = "Three modes of operation:\n\n\
-            1. Readiness check (--dry-run, no keypair): shows distribution status without simulation\n\
-            2. Simulate (--dry-run with keypair): simulates transactions without sending\n\
-            3. Execute (no --dry-run, keypair required): sends real transactions",
-        after_help = r#"Examples:
-    # Check distribution readiness (no keypair needed)
-    distribute-rewards --dry-run
-
-    # Check a specific epoch
-    distribute-rewards --dry-run -e 27
-
-    # Simulate distribution (dry-run with keypair)
-    distribute-rewards --dry-run -k keypair.json -e 27
-
-    # Execute distribution
-    distribute-rewards -k keypair.json -e 27"#
-    )]
-    DistributeRewards {
-        /// DZ epoch to distribute rewards for (defaults to current eligible epoch)
-        #[arg(short = 'e', long, value_name = "EPOCH")]
-        dz_epoch: Option<u64>,
-
-        /// Skip sending transactions and show what would happen
-        #[arg(long)]
-        dry_run: bool,
-
-        /// Path to keypair file for signing transactions
-        #[arg(
-            short = 'k',
-            long,
-            value_name = "FILE",
-            required_unless_present = "dry_run"
-        )]
-        keypair: Option<PathBuf>,
-    },
 }
 
 /// Handle rewards commands
@@ -371,10 +375,9 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
             skip_reward_input,
             skip_shapley_output,
             skip_merkle_root,
+            shapley_from_ledger,
             slack_notify,
         } => {
-            use tracing::warn;
-
             // Construct WriteConfig from CLI flags
             let write_config = crate::calculator::WriteConfig::from_flags(
                 skip_device_telemetry,
@@ -407,7 +410,14 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
             }
 
             let write_summary = orchestrator
-                .calculate_rewards(None, keypair, Some(snapshot.clone()), dry_run, write_config)
+                .calculate_rewards(
+                    None,
+                    keypair,
+                    Some(snapshot.clone()),
+                    dry_run,
+                    write_config,
+                    shapley_from_ledger,
+                )
                 .await?;
 
             // Send Slack notification if requested
@@ -463,8 +473,12 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
             Ok(())
         }
         RewardsCommands::CalculateMonthlyRewards { year, month, json } => {
-            let monthly_rewards =
-                monthly::try_calculate_monthly_rewards(&orchestrator.settings, year, month).await?;
+            let monthly_rewards = monthly::try_calculate_monthly_rewards(
+                &monthly::MonthlySettings::from(&orchestrator.settings),
+                year,
+                month,
+            )
+            .await?;
             let total_units = monthly_rewards
                 .rewards
                 .iter()
@@ -543,6 +557,14 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
 
             Ok(())
         }
+        RewardsCommands::DistributeMonthlyRewards {
+            year,
+            month,
+            dry_run,
+            keypair,
+            solana_url,
+            dz_url,
+        } => distribute_monthly_rewards(year, month, dry_run, keypair, solana_url, dz_url).await,
         RewardsCommands::ReadTelemAgg {
             epoch,
             rewards_accountant,
@@ -611,197 +633,113 @@ pub async fn handle(orchestrator: &Orchestrator, cmd: RewardsCommands) -> Result
                 .write_telemetry_aggregates(epoch, keypair, dry_run, r#type)
                 .await
         }
-        RewardsCommands::DistributeRewards {
-            dz_epoch,
-            dry_run,
-            keypair,
-        } => {
-            let connection =
-                SolanaConnection::new(orchestrator.settings.rpc.solana_write_url.clone());
+    }
+}
 
-            let (_, config) = try_fetch_config(&connection).await?;
+/// Finalize and distribute one month by hand. It reads nothing from the
+/// settings, so the binary runs it without a config file.
+pub async fn distribute_monthly_rewards(
+    year: u16,
+    month: u8,
+    dry_run: bool,
+    keypair: Option<PathBuf>,
+    solana_url: String,
+    dz_url: String,
+) -> Result<()> {
+    let settings = monthly::MonthlySettings {
+        dz_url,
+        solana_url,
+        // Every SDK derives contributor rewards records under this prefix.
+        contributor_rewards_prefix: b"dz_contributor_rewards".to_vec(),
+    };
+    let wallet = Wallet {
+        connection: SolanaConnection::new(settings.solana_url.clone()),
+        signer: load_keypair(&keypair)?,
+        compute_unit_price_ix: None,
+        verbose: false,
+        fee_payer: None,
+        dry_run,
+    };
+    let dz_connection = DoubleZeroLedgerConnection::new(settings.dz_url.clone());
+    let context = MonthlyContext::try_new(&settings, &wallet, &dz_connection).await?;
+    let label = format!("{year}-{month:02}");
 
-            let dz_epoch_value = match dz_epoch {
-                Some(epoch) => {
-                    info!("Will distribute for provided dz_epoch: {epoch}");
-                    epoch
-                }
-                None => {
-                    let sol_conversion_state = SolConversionState::try_fetch(&connection).await?;
-                    let next_sweep = sol_conversion_state
-                        .journal
-                        .1
-                        .next_dz_epoch_to_sweep_tokens
-                        .value();
-                    ensure!(next_sweep > 0, "No epochs have been swept yet");
-                    let dist_epoch = next_sweep - 1;
-                    info!("Will distribute for dz_epoch: {dist_epoch}, next_sweep: {next_sweep}");
-                    dist_epoch
-                }
-            };
-
-            match (dry_run, keypair) {
-                // Mode 1: Readiness check only (no keypair, no wallet)
-                (true, None) => {
-                    let (_, distribution) =
-                        try_fetch_distribution(&connection, dz_epoch_value).await?;
-                    info!("Epoch {dz_epoch_value} readiness:");
-                    info!(
-                        "  Rewards finalized: {}",
-                        distribution.is_rewards_calculation_finalized()
-                    );
-                    info!("  2Z tokens swept: {}", distribution.has_swept_2z_tokens());
-                    info!(
-                        "  Progress: {}/{}",
-                        distribution.distributed_rewards_count, distribution.total_contributors
-                    );
-                }
-                // Mode 2 & 3: Simulate or Execute (keypair present)
-                (dry_run, Some(keypair_path)) => {
-                    use doublezero_solana_client_tools::{
-                        payer::Wallet, rpc::DoubleZeroLedgerConnection,
-                    };
-
-                    use crate::calculator::{distribute, keypair_loader::load_keypair};
-
-                    let signer = load_keypair(&Some(keypair_path))?;
-                    let dz_connection =
-                        DoubleZeroLedgerConnection::new(orchestrator.settings.rpc.dz_url.clone());
-
-                    let wallet = Wallet {
-                        connection,
-                        signer,
-                        compute_unit_price_ix: None,
-                        verbose: false,
-                        fee_payer: None,
-                        dry_run,
-                    };
-
-                    info!("Distributing rewards for epoch {dz_epoch_value}");
-
-                    let shapley_prefix = orchestrator.settings.get_contributor_rewards_prefix();
-
-                    let summary = distribute::try_distribute_epoch_rewards(
-                        &wallet,
-                        &dz_connection,
-                        &config.rewards_accountant_key,
-                        dz_epoch_value,
-                        &shapley_prefix,
-                    )
-                    .await?;
-
-                    match &summary.outcome {
-                        distribute::DistributionOutcome::Complete { total_contributors } => {
-                            info!(
-                                "Epoch {dz_epoch_value} complete: {total_contributors}/{total_contributors} distributed"
-                            );
-                        }
-                        distribute::DistributionOutcome::PartiallyComplete {
-                            total_contributors,
-                            distributed,
-                            skipped,
-                        } => {
-                            info!(
-                                "Epoch {dz_epoch_value} partially complete: {distributed}/{total_contributors} distributed, {skipped} skipped (missing ContributorRewards accounts)"
-                            );
-                        }
-                        distribute::DistributionOutcome::NotReady => {
-                            info!("Distribution not ready for epoch {dz_epoch_value}");
-                        }
-                    }
-
-                    // Fetch contributor labels and build display rows.
-                    if !summary.contributors.is_empty() {
-                        let labels =
-                            crate::calculator::ledger_operations::try_fetch_contributor_labels(
-                                &dz_connection,
-                                &orchestrator.settings.programs.serviceability_program_id,
-                            )
-                            .await
-                            .unwrap_or_default();
-
-                        let resolve_label = |key: &solana_sdk::pubkey::Pubkey| {
-                            labels.get(key).cloned().unwrap_or_else(|| key.to_string())
-                        };
-
-                        // Print per-contributor rewards table to stdout.
-                        let mut table_builder = TableBuilder::default();
-                        table_builder.push_record([
-                            "dz_epoch".to_string(),
-                            "index".to_string(),
-                            "contributor".to_string(),
-                            "proportion".to_string(),
-                            "reward".to_string(),
-                            "distributed".to_string(),
-                        ]);
-                        for c in &summary.contributors {
-                            table_builder.push_record([
-                                summary.dz_epoch.to_string(),
-                                c.index.to_string(),
-                                resolve_label(&c.contributor_key),
-                                format!("{:.2}%", 100.0 * c.proportion),
-                                format!("{:.1} 2Z", c.reward_tokens),
-                                if c.distributed { "yes" } else { "no" }.to_string(),
-                            ]);
-                        }
-                        let table = table_builder
-                            .build()
-                            .with(Style::psql().remove_horizontals())
-                            .to_string();
-                        println!("\n{table}");
-
-                        // Post Slack notification for completed distributions.
-                        if matches!(
-                            summary.outcome,
-                            distribute::DistributionOutcome::Complete { .. }
-                                | distribute::DistributionOutcome::PartiallyComplete { .. }
-                        ) && let Some(slack_settings) = &orchestrator.settings.slack
-                            && slack_settings.enabled
-                            && let Some(webhook_url) = &slack_settings.webhook_url
-                        {
-                            let network = format!("{:?}", orchestrator.settings.network);
-                            let rows: Vec<DistributionRewardRow> = summary
-                                .contributors
-                                .iter()
-                                .map(|c| DistributionRewardRow {
-                                    index: c.index,
-                                    contributor: resolve_label(&c.contributor_key),
-                                    proportion: format!("{:.2}%", 100.0 * c.proportion),
-                                    reward: format!("{:.1} 2Z", c.reward_tokens),
-                                    distributed: if c.distributed { "yes" } else { "no" }
-                                        .to_string(),
-                                })
-                                .collect();
-
-                            match post_distribution_rewards(
-                                webhook_url,
-                                network,
-                                summary.dz_epoch,
-                                rows,
-                            )
-                            .await
-                            {
-                                Ok(()) => {
-                                    info!(
-                                        "[OK] Posted distribution Slack notification for epoch {}",
-                                        dz_epoch_value
-                                    );
-                                }
-                                Err(e) => {
-                                    warn!(
-                                        "[WARN] Failed to post distribution Slack notification: {}",
-                                        e
-                                    );
-                                }
-                            }
-                        }
-                    }
-                }
-                // Unreachable: clap enforces keypair is required unless dry_run
-                (false, None) => unreachable!(),
-            }
-
-            Ok(())
+    let distribution = context.try_fetch_monthly_distribution(year, month).await?;
+    match monthly_distribute::month_action(&distribution) {
+        MonthAction::Idle(reason) => {
+            info!("Nothing to do for {label}: {reason}");
+            return Ok(());
         }
+        MonthAction::Finalize => {
+            ensure!(
+                context.try_finalize_month(year, month).await?,
+                "{label} has not closed, since no DZ epoch has ended after it"
+            );
+            if dry_run {
+                info!("Dry run: {label} is distributed once it is finalized");
+                return Ok(());
+            }
+        }
+        MonthAction::Distribute => {}
+    }
+
+    context
+        .try_distribute_month(year, month, &Mutex::default())
+        .await?;
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::{Parser, error::ErrorKind};
+
+    use super::*;
+
+    #[derive(Parser)]
+    struct Cli {
+        #[command(subcommand)]
+        command: RewardsCommands,
+    }
+
+    #[test]
+    fn test_distribute_monthly_rewards_takes_both_rpcs_as_flags() {
+        let cli = Cli::try_parse_from([
+            "contributor-rewards",
+            "distribute-monthly-rewards",
+            "--year",
+            "2026",
+            "--month",
+            "8",
+            "--solana-url",
+            "https://solana.example",
+            "--dz-url",
+            "https://ledger.example",
+            "-k",
+            "accountant.json",
+        ])
+        .unwrap();
+        let RewardsCommands::DistributeMonthlyRewards {
+            solana_url, dz_url, ..
+        } = cli.command
+        else {
+            panic!("parsed another command");
+        };
+        assert_eq!(solana_url, "https://solana.example");
+        assert_eq!(dz_url, "https://ledger.example");
+
+        // Neither RPC falls back to the settings.
+        let missing_rpcs = Cli::try_parse_from([
+            "contributor-rewards",
+            "distribute-monthly-rewards",
+            "--year",
+            "2026",
+            "--month",
+            "8",
+        ]);
+        assert_eq!(
+            missing_rpcs.err().unwrap().kind(),
+            ErrorKind::MissingRequiredArgument
+        );
     }
 }

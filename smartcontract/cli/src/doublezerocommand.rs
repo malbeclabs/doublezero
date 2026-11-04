@@ -54,6 +54,7 @@ use doublezero_sdk::{
             setauthority::SetAuthorityCommand, setfeatureflags::SetFeatureFlagsCommand,
             setversion::SetVersionCommand,
         },
+        index::create::CreateIndexCommand,
         link::{
             accept::AcceptLinkCommand, create::CreateLinkCommand, delete::DeleteLinkCommand,
             get::GetLinkCommand, latency::LatencyLinkCommand, list::ListLinkCommand,
@@ -304,6 +305,7 @@ pub trait CliCommand {
         &self,
         cmd: CreateMulticastGroupCommand,
     ) -> eyre::Result<(Signature, Pubkey)>;
+    fn create_index(&self, cmd: CreateIndexCommand) -> eyre::Result<(Signature, Pubkey)>;
     fn get_multicastgroup(
         &self,
         cmd: GetMulticastGroupCommand,
@@ -764,6 +766,9 @@ impl CliCommand for CliCommandImpl<'_> {
         &self,
         cmd: CreateMulticastGroupCommand,
     ) -> eyre::Result<(Signature, Pubkey)> {
+        cmd.execute(self.client)
+    }
+    fn create_index(&self, cmd: CreateIndexCommand) -> eyre::Result<(Signature, Pubkey)> {
         cmd.execute(self.client)
     }
     fn get_multicastgroup(

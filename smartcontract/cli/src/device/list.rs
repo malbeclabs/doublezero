@@ -1,6 +1,6 @@
 use crate::doublezerocommand::CliCommand;
 use clap::Args;
-use doublezero_cli_core::CliContext;
+use doublezero_cli_core::{labeled_table, CliContext};
 use doublezero_program_common::{serializer, types::NetworkV4List};
 use doublezero_sdk::{
     commands::{
@@ -15,7 +15,7 @@ use doublezero_serviceability::state::device::{DeviceDesiredStatus, DeviceHealth
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr, str::FromStr};
-use tabled::{settings::Style, Table, Tabled};
+use tabled::{settings::Style, Tabled};
 
 #[derive(Args, Debug)]
 pub struct ListDeviceCliCommand {
@@ -156,7 +156,7 @@ impl DeviceDisplayNarrow {
 impl ListDeviceCliCommand {
     pub async fn execute<C: CliCommand, W: Write>(
         self,
-        _ctx: &CliContext,
+        ctx: &CliContext,
         client: &C,
         out: &mut W,
     ) -> eyre::Result<()> {
@@ -314,11 +314,11 @@ impl ListDeviceCliCommand {
                 .iter()
                 .map(DeviceDisplayNarrow::from_display)
                 .collect();
-            Table::new(narrow)
+            labeled_table(narrow, &ctx.address_labels)
                 .with(Style::psql().remove_horizontals())
                 .to_string()
         } else {
-            Table::new(device_displays)
+            labeled_table(device_displays, &ctx.address_labels)
                 .with(Style::psql().remove_horizontals())
                 .to_string()
         };

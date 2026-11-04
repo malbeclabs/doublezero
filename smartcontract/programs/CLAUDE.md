@@ -2,7 +2,7 @@
 
 ### Security
 
-1. **PDA ownership verification**: Always verify the owner of PDA accounts (both internal PDAs and those from other programs like serviceability) to prevent being tricked into reading an account owned by another program. For serviceability accounts, verify the owner is the serviceability program ID. For your own PDAs, verify the owner is `program_id`. Exception: for singleton PDAs (e.g., ProgramConfig, GlobalState) the account type discriminator check via `try_from` is sufficient — the ownership check is harmless but redundant since there is only one valid account.
+1. **PDA ownership verification**: Always verify the owner of PDA accounts (both internal PDAs and those from other programs like serviceability) to prevent being tricked into reading an account owned by another program. For serviceability accounts, verify the owner is the serviceability program ID. For your own PDAs, verify the owner is `program_id`. A singleton PDA (e.g., ProgramConfig, GlobalState) must also be checked against its derived address: the discriminator check in `try_from` does not stop a caller from passing another account with the same bytes. Serviceability processors read the global state only through `GlobalState::load`.
 
 2. **System program validation**: Checks for the system program are unnecessary because the system interface builds instructions using the system program as the program ID. If the wrong program is provided, you'll get a revert automatically.
 

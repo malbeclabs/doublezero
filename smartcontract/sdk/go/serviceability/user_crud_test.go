@@ -70,7 +70,8 @@ func TestBuildCreateUserInstruction(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, expectedPDA, userPDA)
 
-	// Account count = 7 fixed + DzPrefixCount + payer + system (no tenant).
+	// Account count = 7 fixed + DzPrefixCount + payer + system (no tenant). CreateUser
+	// never carries the Permission PDA: its processor detects the tenant by length.
 	accs := instr.Accounts()
 	require.Len(t, accs, 7+int(args.DzPrefixCount)+2)
 	assert.Equal(t, userPDA, accs[0].PublicKey)
@@ -321,16 +322,17 @@ func TestBuildDeleteUserInstruction(t *testing.T) {
 		"borsh body must match Rust-generated user_delete_args.bin")
 
 	accs := instr.Accounts()
-	// 7 fixed + 3 dz_prefix + owner + payer + system = 13 accounts (no tenant).
-	require.Len(t, accs, 13)
+	// 7 fixed + 3 dz_prefix + owner + payer + system + permission = 14 accounts (no tenant).
+	require.Len(t, accs, 14)
 	assert.Equal(t, userPubkey, accs[0].PublicKey)
 	assert.Equal(t, device, accs[3].PublicKey)
-	ownerSlot := accs[len(accs)-3]
+	ownerSlot := accs[len(accs)-4]
 	assert.Equal(t, owner, ownerSlot.PublicKey)
 	assert.True(t, ownerSlot.IsWritable)
-	assert.Equal(t, executor.signer.PublicKey(), accs[len(accs)-2].PublicKey)
-	assert.True(t, accs[len(accs)-2].IsSigner)
-	assert.Equal(t, solana.SystemProgramID, accs[len(accs)-1].PublicKey)
+	assert.Equal(t, executor.signer.PublicKey(), accs[len(accs)-3].PublicKey)
+	assert.True(t, accs[len(accs)-3].IsSigner)
+	assert.Equal(t, solana.SystemProgramID, accs[len(accs)-2].PublicKey)
+	assertPermissionLast(t, executor, accs)
 }
 
 func TestBuildDeleteUserInstructionPicksVariantPerKind(t *testing.T) {
@@ -392,8 +394,8 @@ func TestBuildDeleteUserInstruction_WithTenant(t *testing.T) {
 	require.NoError(t, err)
 
 	accs := instr.Accounts()
-	// Tenant sits before the owner/payer/system tail (3 trailing slots).
-	tenantSlot := accs[len(accs)-4]
+	// Tenant sits before the owner/payer/system/permission tail (4 trailing slots).
+	tenantSlot := accs[len(accs)-5]
 	assert.Equal(t, tenant, tenantSlot.PublicKey)
 	assert.True(t, tenantSlot.IsWritable)
 }
@@ -414,8 +416,8 @@ func TestCreateUserWaitsForAccountVisible(t *testing.T) {
 	expectedPDA, _, err := GetUserPDA(programID, args.ClientIP, args.UserType)
 	require.NoError(t, err)
 
-	// First call (permission probe) returns nil; the user-PDA probe then returns
-	// a non-nil Value so the visibility wait completes immediately.
+	// First probe of the user PDA returns nil; later probes return a non-nil Value
+	// so the visibility wait completes after one poll.
 	var lookups atomic.Int32
 	rpc := &mockRPCClient{
 		getAccountInfoFunc: func(ctx context.Context, account solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {
@@ -473,7 +475,7 @@ func TestDeleteUserWaitsForAccountGone(t *testing.T) {
 	userBytes := makeMinimalUserBytes(owner, device, [4]byte{10, 0, 0, 5})
 
 	// Sequence: GetAccountInfo returns user bytes once (initial DeleteUser read), nil
-	// thereafter (visibility wait sees account gone). Permission probe returns nil.
+	// thereafter (visibility wait sees account gone).
 	var lookups atomic.Int32
 	rpc := &mockRPCClient{
 		getAccountInfoFunc: func(ctx context.Context, account solana.PublicKey) (*solanarpc.GetAccountInfoResult, error) {

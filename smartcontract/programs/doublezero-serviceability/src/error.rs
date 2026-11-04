@@ -247,14 +247,14 @@ pub enum DoubleZeroError {
     IpProofMessageMismatch, // variant 117
     #[error("IP ownership proof carries an unsupported layout version")]
     IpProofVersionUnsupported, // variant 118
-    #[error("A staked feed must present the builder's stake mirror account")]
-    StakeMirrorMissing, // variant 119
-    #[error("The builder's stake does not cover the rate this feed commits to")]
-    StakeDoesNotCoverRate, // variant 120
-    #[error("This stake already backs a feed; RFC-28 is one feed per stake")]
-    StakeAlreadyBacksFeed, // variant 121
-    #[error("A staked feed must be retired, not deleted; deleting it would strand its stake")]
-    StakedFeedCannotBeDeleted, // variant 122
+    #[error("A bonded feed must present the builder's bond mirror account")]
+    BondMirrorMissing, // variant 119
+    #[error("The builder's bond does not cover the rate this feed commits to")]
+    BondDoesNotCoverRate, // variant 120
+    #[error("This bond already backs a feed; RFC-29 is one feed per bond")]
+    BondAlreadyBacksFeed, // variant 121
+    #[error("A bonded feed must be retired, not deleted; deleting it would strand its bond")]
+    BondedFeedCannotBeDeleted, // variant 122
     #[error("This feed is not publishing, so it admits no new subscribers")]
     FeedNotActive, // variant 123
     #[error("Only an active feed can be halted")]
@@ -273,11 +273,17 @@ pub enum DoubleZeroError {
     FeedNotActivatable, // variant 130
     #[error("This instruction is for a different access pass type")]
     InvalidAccessPassType, // variant 131
+    #[error("This bond has created as many multicast groups as one bond may")]
+    BondGroupLimitReached, // variant 132
+    #[error(
+        "A bonded feed may list only its builder's own multicast groups, on its bond or with none"
+    )]
+    GroupNotOnBond, // variant 133
     #[error(
         "Device account must stay within {max} bytes, the most the telemetry and geolocation programs can load",
         max = crate::state::device::MAX_DEVICE_ACCOUNT_SIZE
     )]
-    DeviceAccountTooLarge, // variant 132
+    DeviceAccountTooLarge, // variant 134
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -402,10 +408,10 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::IpProofSignatureMismatch => ProgramError::Custom(116),
             DoubleZeroError::IpProofMessageMismatch => ProgramError::Custom(117),
             DoubleZeroError::IpProofVersionUnsupported => ProgramError::Custom(118),
-            DoubleZeroError::StakeMirrorMissing => ProgramError::Custom(119),
-            DoubleZeroError::StakeDoesNotCoverRate => ProgramError::Custom(120),
-            DoubleZeroError::StakeAlreadyBacksFeed => ProgramError::Custom(121),
-            DoubleZeroError::StakedFeedCannotBeDeleted => ProgramError::Custom(122),
+            DoubleZeroError::BondMirrorMissing => ProgramError::Custom(119),
+            DoubleZeroError::BondDoesNotCoverRate => ProgramError::Custom(120),
+            DoubleZeroError::BondAlreadyBacksFeed => ProgramError::Custom(121),
+            DoubleZeroError::BondedFeedCannotBeDeleted => ProgramError::Custom(122),
             DoubleZeroError::FeedNotActive => ProgramError::Custom(123),
             DoubleZeroError::FeedNotHaltable => ProgramError::Custom(124),
             DoubleZeroError::FeedNotResumable => ProgramError::Custom(125),
@@ -415,7 +421,9 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::RetiringFeedCannotBeDeleted => ProgramError::Custom(129),
             DoubleZeroError::FeedNotActivatable => ProgramError::Custom(130),
             DoubleZeroError::InvalidAccessPassType => ProgramError::Custom(131),
-            DoubleZeroError::DeviceAccountTooLarge => ProgramError::Custom(132),
+            DoubleZeroError::BondGroupLimitReached => ProgramError::Custom(132),
+            DoubleZeroError::GroupNotOnBond => ProgramError::Custom(133),
+            DoubleZeroError::DeviceAccountTooLarge => ProgramError::Custom(134),
         }
     }
 }
@@ -541,10 +549,10 @@ impl From<u32> for DoubleZeroError {
             116 => DoubleZeroError::IpProofSignatureMismatch,
             117 => DoubleZeroError::IpProofMessageMismatch,
             118 => DoubleZeroError::IpProofVersionUnsupported,
-            119 => DoubleZeroError::StakeMirrorMissing,
-            120 => DoubleZeroError::StakeDoesNotCoverRate,
-            121 => DoubleZeroError::StakeAlreadyBacksFeed,
-            122 => DoubleZeroError::StakedFeedCannotBeDeleted,
+            119 => DoubleZeroError::BondMirrorMissing,
+            120 => DoubleZeroError::BondDoesNotCoverRate,
+            121 => DoubleZeroError::BondAlreadyBacksFeed,
+            122 => DoubleZeroError::BondedFeedCannotBeDeleted,
             123 => DoubleZeroError::FeedNotActive,
             124 => DoubleZeroError::FeedNotHaltable,
             125 => DoubleZeroError::FeedNotResumable,
@@ -554,7 +562,9 @@ impl From<u32> for DoubleZeroError {
             129 => DoubleZeroError::RetiringFeedCannotBeDeleted,
             130 => DoubleZeroError::FeedNotActivatable,
             131 => DoubleZeroError::InvalidAccessPassType,
-            132 => DoubleZeroError::DeviceAccountTooLarge,
+            132 => DoubleZeroError::BondGroupLimitReached,
+            133 => DoubleZeroError::GroupNotOnBond,
+            134 => DoubleZeroError::DeviceAccountTooLarge,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -591,7 +601,7 @@ mod tests {
 
     /// Pins the wire code. `test_error_enum_conversions` below round-trips every variant, so it
     /// would still pass if this one were renumbered; an offchain reader matching on 131 would
-    /// not. Rebasing this work over the RFC-28 feed lifecycle already moved it once.
+    /// not. Rebasing this work over the RFC-29 feed lifecycle already moved it once.
     #[test]
     fn test_invalid_access_pass_type_code() {
         assert_eq!(
@@ -611,7 +621,7 @@ mod tests {
         }
 
         // EnumIter generates Custom(0) by default, so we explicitly test values
-        // outside the known variant range (currently 0-132) to ensure the conversion
+        // outside the known variant range (currently 0-134) to ensure the conversion
         // logic handles arbitrary custom codes correctly.
         for code in [1000u32, 100_000, u32::MAX] {
             let err = DoubleZeroError::Custom(code);

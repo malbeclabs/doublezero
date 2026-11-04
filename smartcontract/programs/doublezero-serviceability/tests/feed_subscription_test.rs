@@ -15,7 +15,10 @@ use doublezero_serviceability::{
             set::SetAccessPassArgs,
             set_feeds::{FeedSeatConfig, SetAccessPassFeedsArgs},
         },
-        device::{create::DeviceCreateArgs, update::DeviceUpdateArgs},
+        device::{
+            create::DeviceCreateArgs, interface::create::DeviceInterfaceCreateArgs,
+            update::DeviceUpdateArgs,
+        },
         feed::create::{FeedCreateArgs, MAX_FEED_GROUPS},
         multicastgroup::{
             create::MulticastGroupCreateArgs,
@@ -23,21 +26,25 @@ use doublezero_serviceability::{
             subscribe_feed::{SubscribeFeedArgs, MAX_USER_FEEDS},
             unsubscribe_feed::UnsubscribeFeedArgs,
         },
+        permission::create::PermissionCreateArgs,
         user::{create::UserCreateArgs, create_subscribe::UserCreateSubscribeArgs},
     },
     resource::ResourceType,
     state::{
         accesspass::{AccessPass, AccessPassType, FeedSeat},
         device::DeviceType,
+        interface::{InterfaceCYOA, InterfaceDIA, LoopbackType, RoutingMode},
+        permission::permission_flags,
         user::{User, UserCYOA, UserType},
     },
 };
+use doublezero_serviceability_instruction as dzi;
 use solana_program_test::*;
 use solana_sdk::{
-    instruction::{AccountMeta, InstructionError},
+    instruction::{AccountMeta, Instruction, InstructionError},
     pubkey::Pubkey,
-    signature::Signer,
-    transaction::TransactionError,
+    signature::{Keypair, Signer},
+    transaction::{Transaction, TransactionError},
 };
 use std::net::Ipv4Addr;
 
@@ -54,6 +61,7 @@ struct Fixture {
     program_id: Pubkey,
     globalstate_pubkey: Pubkey,
     exchange_pubkey: Pubkey,
+    contributor_pubkey: Pubkey,
     device_pubkey: Pubkey,
     accesspass_pubkey: Pubkey,
     /// Five activated multicast groups, split across feeds by the tests.
@@ -154,6 +162,7 @@ async fn setup(client_ip: [u8; 4]) -> Fixture {
                 max_bandwidth: 1000,
                 owner: payer.pubkey(),
                 use_onchain_allocation: true,
+                bond_ref: Pubkey::default(),
             }),
             vec![
                 AccountMeta::new(mgroup_pubkey, false),
@@ -203,6 +212,7 @@ async fn setup(client_ip: [u8; 4]) -> Fixture {
         program_id,
         globalstate_pubkey,
         exchange_pubkey,
+        contributor_pubkey,
         device_pubkey,
         accesspass_pubkey,
         groups,
@@ -212,6 +222,53 @@ async fn setup(client_ip: [u8; 4]) -> Fixture {
         multicast_publisher_block,
         tunnel_ids,
         dz_prefix_block,
+    }
+}
+
+/// Adds `count` physical interfaces to the fixture device, so instructions that load the
+/// Device pay for deserializing a realistically sized interface list. Sent with the
+/// compute-budget prelude, as the SDK sends CreateDeviceInterface.
+async fn add_interfaces(f: &mut Fixture, count: usize) {
+    let (device_tunnel_block, _, _) =
+        get_resource_extension_pda(&f.program_id, ResourceType::DeviceTunnelBlock);
+    let (segment_routing_ids, _, _) =
+        get_resource_extension_pda(&f.program_id, ResourceType::SegmentRoutingIds);
+    for i in 0..count {
+        let create = DoubleZeroInstruction::CreateDeviceInterface(DeviceInterfaceCreateArgs {
+            name: format!("Ethernet{}/{}.{}", i / 8 + 1, i % 8 + 1, 1000 + i),
+            interface_dia: InterfaceDIA::None,
+            loopback_type: LoopbackType::None,
+            interface_cyoa: InterfaceCYOA::None,
+            bandwidth: 10_000_000_000,
+            ip_net: None,
+            cir: 0,
+            mtu: 9000,
+            routing_mode: RoutingMode::Static,
+            vlan_id: 1000 + i as u16,
+            user_tunnel_endpoint: false,
+            use_onchain_allocation: true,
+            topology_count: 0,
+        });
+        let mut ixs = dzi::compute_budget_prelude().to_vec();
+        ixs.push(Instruction::new_with_borsh(
+            f.program_id,
+            &create,
+            vec![
+                AccountMeta::new(f.device_pubkey, false),
+                AccountMeta::new(f.contributor_pubkey, false),
+                AccountMeta::new(f.globalstate_pubkey, false),
+                AccountMeta::new(device_tunnel_block, false),
+                AccountMeta::new(segment_routing_ids, false),
+                AccountMeta::new(f.payer.pubkey(), true),
+                AccountMeta::new_readonly(solana_system_interface::program::ID, false),
+            ],
+        ));
+        let mut tx = Transaction::new_with_payer(&ixs, Some(&f.payer.pubkey()));
+        tx.sign(
+            &[&f.payer],
+            f.banks_client.get_latest_blockhash().await.unwrap(),
+        );
+        f.banks_client.process_transaction(tx).await.unwrap();
     }
 }
 
@@ -255,6 +312,7 @@ async fn create_groups(f: &mut Fixture, n: usize) -> Vec<Pubkey> {
                 max_bandwidth: 1000,
                 owner: f.payer.pubkey(),
                 use_onchain_allocation: true,
+                bond_ref: Pubkey::default(),
             }),
             vec![
                 AccountMeta::new(mgroup_pubkey, false),
@@ -1139,4 +1197,134 @@ async fn test_duplicate_create_subscribe_user_rejected() {
 
     assert_eq!(seat_users(&read_pass(&mut f).await, &feed), 1);
     assert_eq!(read_user(&mut f).await.subscribers, vec![g[0]]);
+}
+
+fn wire_size(tx: &Transaction) -> usize {
+    // Signature count, one 64-byte signature per required signer, then the message.
+    1 + 64 * usize::from(tx.message.header.num_required_signatures) + tx.message.serialize().len()
+}
+
+// A USER_ADMIN delegate (neither the pass owner nor a foundation member) must send its Permission
+// account, so the worst-case single-feed leave (four retained feeds, twenty departing groups) is
+// past the packet limit behind the compute-budget prelude. The SDK sends it without the prelude:
+// it fits, runs under the default compute limit and heap, and lands in one transaction.
+#[tokio::test]
+async fn test_user_admin_leaves_a_max_feed_without_prelude() {
+    let mut f = setup([100, 0, 0, 47]).await;
+    // The leave loads the full Device on the default 32 KiB heap. 24 subinterfaces is the
+    // largest Device CreateDeviceInterface can grow (the 25th create runs out of heap itself),
+    // and above the 14 interfaces the busiest mainnet device carried at epoch 129.
+    const INTERFACES: usize = 24;
+    add_interfaces(&mut f, INTERFACES).await;
+    let device = get_device(&mut f.banks_client, f.device_pubkey)
+        .await
+        .unwrap();
+    assert_eq!(device.interfaces.len(), INTERFACES);
+    let (exchange, g) = (f.exchange_pubkey, f.groups.clone());
+    // The costliest leave: every held feed carries its own MAX_FEED_GROUPS groups, so the user
+    // holds 100 subscriptions, and the pass carries 17 seats. A cheaper shape (kept feeds sharing
+    // one group) would hide a leave that runs past the default 200k CU.
+    const SEATS: usize = 17;
+    let mut kept = Vec::new();
+    let mut kept_groups = Vec::new();
+    for i in 0..MAX_USER_FEEDS - 1 {
+        let groups = create_groups(&mut f, MAX_FEED_GROUPS).await;
+        kept.push(create_feed(&mut f, &format!("kept{i}"), exchange, groups.clone()).await);
+        kept_groups.push(groups);
+    }
+    let mut big_groups = g[1..5].to_vec();
+    let extra = create_groups(&mut f, MAX_FEED_GROUPS - big_groups.len()).await;
+    big_groups.extend(extra);
+    let big = create_feed(&mut f, "big", exchange, big_groups.clone()).await;
+    // The user is created on `seed` (g[0] only), which it leaves once the kept feeds are held.
+    let seed = create_feed(&mut f, "seed", exchange, vec![g[0]]).await;
+    let mut fillers = Vec::new();
+    for i in 0..SEATS - MAX_USER_FEEDS - 1 {
+        fillers.push(create_feed(&mut f, &format!("filler{i}"), exchange, vec![g[0]]).await);
+    }
+    let seats = kept
+        .iter()
+        .chain([&big, &seed])
+        .chain(&fillers)
+        .map(|k| seat(*k, 1))
+        .collect::<Vec<_>>();
+    assert_eq!(seats.len(), SEATS);
+    set_pass_feeds(&mut f, seats).await;
+    create_user_on(&mut f, seed, g[0]).await;
+    for (feed, groups) in kept.iter().zip(&kept_groups) {
+        join(&mut f, &[*feed], groups).await.unwrap();
+    }
+    leave(&mut f, &[seed], &kept, &[g[0]]).await.unwrap();
+    join(&mut f, &[big], &big_groups).await.unwrap();
+    assert_eq!(
+        read_user(&mut f).await.subscribers.len(),
+        MAX_USER_FEEDS * MAX_FEED_GROUPS
+    );
+    assert_eq!(read_user(&mut f).await.feed_pks.len(), MAX_USER_FEEDS);
+
+    let delegate = Keypair::new();
+    transfer(
+        &mut f.banks_client,
+        &f.payer,
+        &delegate.pubkey(),
+        10_000_000_000,
+    )
+    .await;
+    let mut grant: Vec<Instruction> = dzi::compute_budget_prelude().to_vec();
+    grant.push(dzi::permission::create_permission(
+        &f.program_id,
+        &f.payer.pubkey(),
+        PermissionCreateArgs {
+            user_payer: delegate.pubkey(),
+            permissions: permission_flags::USER_ADMIN,
+        },
+    ));
+    let mut tx = Transaction::new_with_payer(&grant, Some(&f.payer.pubkey()));
+    tx.sign(
+        &[&f.payer],
+        wait_for_new_blockhash(&mut f.banks_client).await,
+    );
+    f.banks_client.process_transaction(tx).await.unwrap();
+
+    let leave = dzi::multicastgroup::unsubscribe_feed(
+        &f.program_id,
+        &delegate.pubkey(),
+        &f.accesspass_pubkey,
+        &f.user_pubkey,
+        &f.device_pubkey,
+        &[big],
+        &kept,
+        &big_groups,
+    );
+    let mut with_prelude = dzi::compute_budget_prelude().to_vec();
+    with_prelude.push(leave.clone());
+    let with_prelude = Transaction::new_with_payer(&with_prelude, Some(&delegate.pubkey()));
+    assert!(wire_size(&with_prelude) > 1232);
+
+    let mut tx = Transaction::new_with_payer(&[leave], Some(&delegate.pubkey()));
+    assert!(wire_size(&tx) <= 1232, "{} bytes", wire_size(&tx));
+    tx.sign(
+        &[&delegate],
+        wait_for_new_blockhash(&mut f.banks_client).await,
+    );
+    let outcome = f
+        .banks_client
+        .process_transaction_with_metadata(tx)
+        .await
+        .expect("banks client failure");
+    outcome.result.expect("leave must succeed");
+    // Without the prelude the leave runs under the default 200k CU limit. The test
+    // runtime raises the limit to 1.4M, so check the consumption directly (meaningful
+    // under SBF; the native processor reports no CU).
+    let consumed = outcome.metadata.expect("metadata").compute_units_consumed;
+    assert!(consumed <= 200_000, "{consumed} CU");
+
+    let user = read_user(&mut f).await;
+    assert_eq!(user.feed_pks, kept);
+    let mut held = user.subscribers.clone();
+    held.sort();
+    let mut want = kept_groups.concat();
+    want.sort();
+    assert_eq!(held, want);
+    assert_eq!(seat_users(&read_pass(&mut f).await, &big), 0);
 }

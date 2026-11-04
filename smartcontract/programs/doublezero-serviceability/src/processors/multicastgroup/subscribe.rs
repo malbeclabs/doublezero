@@ -177,7 +177,7 @@ pub fn process_update_multicastgroup_roles(
         gs_account.key, &expected_globalstate_pda,
         "Invalid GlobalState PDA"
     );
-    let globalstate = GlobalState::try_from(gs_account)?;
+    let globalstate = GlobalState::load(program_id, gs_account)?;
     let multicast_publisher_block_ext = next_account_info(accounts_iter)?;
 
     // Trailing layout: [mgroup₁..mgroupₙ, payer, system, permission?]. The extra

@@ -45,7 +45,7 @@ impl std::fmt::Display for PermissionList {
 impl GetPermissionCliCommand {
     pub async fn execute<C: CliCommand, W: Write>(
         self,
-        _ctx: &CliContext,
+        ctx: &CliContext,
         client: &C,
         out: &mut W,
     ) -> eyre::Result<()> {
@@ -67,7 +67,12 @@ impl GetPermissionCliCommand {
             owner: permission.owner,
         };
 
-        render_record(out, &display, OutputFormat::from_flags(self.json, false))
+        render_record(
+            out,
+            &display,
+            OutputFormat::from_flags(self.json, false),
+            &ctx.address_labels,
+        )
     }
 }
 

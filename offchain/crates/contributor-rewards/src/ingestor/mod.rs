@@ -3,7 +3,7 @@ pub mod epoch;
 pub mod fetcher;
 pub mod inet_accumulator;
 pub mod internet;
+pub mod metro_prices;
 pub mod serviceability;
-pub mod shred_subscription;
 pub mod telemetry;
 pub mod types;

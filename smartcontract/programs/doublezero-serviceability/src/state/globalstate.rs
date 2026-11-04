@@ -1,6 +1,7 @@
 use crate::{
     error::{DoubleZeroError, Validate},
     helper::deserialize_vec_with_capacity,
+    pda::get_globalstate_pda,
     state::accounttype::AccountType,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
@@ -122,10 +123,26 @@ impl TryFrom<&[u8]> for GlobalState {
     }
 }
 
-impl TryFrom<&AccountInfo<'_>> for GlobalState {
-    type Error = ProgramError;
-
-    fn try_from(account: &AccountInfo) -> Result<Self, Self::Error> {
+impl GlobalState {
+    /// Reads the global state only from `program_id`'s global state PDA.
+    pub fn load(program_id: &Pubkey, account: &AccountInfo) -> Result<Self, ProgramError> {
+        if account.owner != program_id {
+            msg!(
+                "GlobalState must be owned by {}, found owner {}",
+                program_id,
+                account.owner
+            );
+            return Err(DoubleZeroError::InvalidAccountOwner.into());
+        }
+        let (expected, _) = get_globalstate_pda(program_id);
+        if account.key != &expected {
+            msg!(
+                "GlobalState must be the PDA {}, found {}",
+                expected,
+                account.key
+            );
+            return Err(ProgramError::InvalidSeeds);
+        }
         let data = account.try_borrow_data()?;
         let res = Self::try_from(&data[..]);
         if res.is_err() {
@@ -289,6 +306,47 @@ mod tests {
         assert_eq!(val.feature_flags, val2.feature_flags);
         assert_eq!(val.feed_authority_pk, val2.feed_authority_pk);
         assert_eq!(val.ip_verifier_authority_pk, val2.ip_verifier_authority_pk);
+    }
+
+    fn load_from(
+        program_id: &Pubkey,
+        key: &Pubkey,
+        owner: &Pubkey,
+    ) -> Result<GlobalState, ProgramError> {
+        let gs = GlobalState {
+            foundation_allowlist: vec![Pubkey::new_unique()],
+            ..GlobalState::default()
+        };
+        let mut data = borsh::to_vec(&gs).unwrap();
+        let mut lamports = 1_000_000;
+        let account = AccountInfo::new(key, false, false, &mut lamports, &mut data, owner, false);
+        GlobalState::load(program_id, &account)
+    }
+
+    #[test]
+    fn test_state_globalstate_load_accepts_program_owned_pda() {
+        let program_id = Pubkey::new_unique();
+        let (pda, _) = crate::pda::get_globalstate_pda(&program_id);
+        assert!(load_from(&program_id, &pda, &program_id).is_ok());
+    }
+
+    #[test]
+    fn test_state_globalstate_load_rejects_other_address() {
+        let program_id = Pubkey::new_unique();
+        assert_eq!(
+            load_from(&program_id, &Pubkey::new_unique(), &program_id).unwrap_err(),
+            ProgramError::InvalidSeeds
+        );
+    }
+
+    #[test]
+    fn test_state_globalstate_load_rejects_other_owner() {
+        let program_id = Pubkey::new_unique();
+        let (pda, _) = crate::pda::get_globalstate_pda(&program_id);
+        assert_eq!(
+            load_from(&program_id, &pda, &Pubkey::new_unique()).unwrap_err(),
+            DoubleZeroError::InvalidAccountOwner.into()
+        );
     }
 
     #[test]

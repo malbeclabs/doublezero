@@ -82,7 +82,7 @@ pub(crate) fn build_with_permission(
 }
 
 /// [`build_with_permission`] for an instruction that also carries accounts *after*
-/// `[payer, system]` (the feed stake mirror, which its processors find by address).
+/// `[payer, system]` (the feed bond mirror, which its processors find by address).
 /// Those land between the system program and the Permission PDA, so the Permission
 /// account stays last.
 pub(crate) fn build_with_permission_after_system(

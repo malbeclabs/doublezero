@@ -1,5 +1,5 @@
 use crate::{
-    authorize::{authorize, split_trailing_permission},
+    authorize::{authorize, feed_authority_role, split_trailing_permission},
     error::DoubleZeroError,
     pda::get_accesspass_pda,
     processors::{accesspass::airdrop_user_credits, validation::validate_program_account},
@@ -86,11 +86,23 @@ pub fn process_add_multicastgroup_sub_allowlist(
 
     // Parse the global state account
     let mgroup = MulticastGroup::try_from(mgroup_account)?;
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
 
     // Authorization: the multicast group owner, or ACCESS_PASS_ADMIN (Permission
     // account) / foundation-sentinel-feed (legacy).
-    let is_authorized = mgroup.owner == *payer_account.key
+    //
+    // Not the owner of a bonded group. That owner is a builder, and a subscriber it added here
+    // would join the group on a Prepaid pass, which skips the EdgeSeat check where a feed sells
+    // its seats. Its subscribers come in through seats instead.
+    let owner_may_grant =
+        mgroup.owner == *payer_account.key && mgroup.bond_ref == Pubkey::default();
+    let feed_role = feed_authority_role(
+        program_id,
+        permission_account,
+        payer_account.key,
+        &globalstate,
+    );
+    let is_authorized = owner_may_grant
         || authorize(
             program_id,
             &mut permission_account.into_iter(),
@@ -175,9 +187,7 @@ pub fn process_add_multicastgroup_sub_allowlist(
         );
 
         // Feed authority can only modify access passes they own
-        if globalstate.feed_authority_pk == *payer_account.key
-            && accesspass.owner != *payer_account.key
-        {
+        if feed_role.limited_to_own_passes() && accesspass.owner != *payer_account.key {
             return Err(DoubleZeroError::NotAllowed.into());
         }
 
@@ -189,7 +199,7 @@ pub fn process_add_multicastgroup_sub_allowlist(
             );
         }
         // Feed authority may operate on access passes with a different user_payer
-        if globalstate.feed_authority_pk != *payer_account.key {
+        if !feed_role.is_feed_authority() {
             assert!(
                 accesspass.user_payer == value.user_payer,
                 "AccessPass user_payer does not match"

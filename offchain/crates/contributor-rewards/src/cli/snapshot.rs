@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{Context, Result, bail, ensure};
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
@@ -197,6 +197,7 @@ pub async fn create_snapshot(
     epoch: Option<u64>,
     local_file: Option<PathBuf>,
     local_dir: Option<PathBuf>,
+    leader_schedule_files: Vec<PathBuf>,
 ) -> Result<()> {
     info!("Creating complete snapshot");
 
@@ -209,6 +210,12 @@ pub async fn create_snapshot(
     let fetch_epoch = prep_data.epoch;
 
     info!("Processed data for DZ epoch {}", fetch_epoch);
+
+    let current_epoch = fetcher.dz_rpc_client.get_epoch_info().await?.epoch;
+    ensure!(
+        fetch_epoch < current_epoch,
+        "DZ epoch {fetch_epoch} is not complete, because the ledger is at epoch {current_epoch}"
+    );
 
     // Get the fetch_data by re-fetching and applying same internet accumulator logic
     let (_, mut fetch_data) = fetcher.fetch(Some(fetch_epoch)).await?;
@@ -247,18 +254,48 @@ pub async fn create_snapshot(
         fetch_data.dz_internet = internet_data;
     }
 
+    // Required: validate() below rejects a snapshot without a leader schedule.
+    // fetch_leader_schedule resolves the Solana epochs itself and reports which ones it
+    // used, so taking the epochs from its result avoids running the chain-verified
+    // epoch search twice over the same timestamps.
     let mut epoch_finder = EpochFinder::new(
         fetcher.dz_rpc_client.clone(),
         fetcher.solana_read_client.clone(),
     );
-    // Required: validate() below rejects a snapshot without a leader schedule.
-    // fetch_leader_schedule resolves the Solana epoch itself and reports which one it
-    // used, so taking the epoch from its result avoids running the chain-verified
-    // epoch search twice over the same timestamp.
-    let leader_schedule = epoch_finder
-        .fetch_leader_schedule(fetch_epoch, fetch_data.start_us)
-        .await
-        .with_context(|| format!("Failed to fetch leader schedule for DZ epoch {fetch_epoch}"))?;
+    let leader_schedule = if leader_schedule_files.is_empty() {
+        epoch_finder
+            .fetch_leader_schedule(fetch_epoch, fetch_data.start_us, fetch_data.end_us)
+            .await
+            .with_context(|| {
+                format!("Failed to fetch leader schedule for DZ epoch {fetch_epoch}")
+            })?
+    } else {
+        let schedules = leader_schedule_files
+            .iter()
+            .map(|path| {
+                let contents = std::fs::read_to_string(path).with_context(|| {
+                    format!("Failed to read leader schedule file {}", path.display())
+                })?;
+                serde_json::from_str::<LeaderSchedule>(&contents).with_context(|| {
+                    format!("Failed to parse leader schedule file {}", path.display())
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let leader_schedule = LeaderSchedule::try_sum(schedules)?;
+
+        // end_us is exclusive, so a window that ends on a Solana epoch boundary stops before it.
+        let first_solana_epoch = epoch_finder
+            .find_epoch_at_timestamp(fetch_data.start_us)
+            .await?;
+        let last_solana_epoch = epoch_finder
+            .find_epoch_at_timestamp(fetch_data.end_us.saturating_sub(1))
+            .await?;
+        leader_schedule
+            .ensure_covers_epochs(first_solana_epoch, last_solana_epoch)
+            .with_context(|| format!("Leader schedule files do not fit DZ epoch {fetch_epoch}"))?;
+
+        leader_schedule
+    };
 
     // Create metadata
     let metadata = SnapshotMetadata {

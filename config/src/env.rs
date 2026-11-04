@@ -270,7 +270,7 @@ mod tests {
         );
         assert_eq!(
             config.internet_latency_collector_pk.to_string(),
-            "HWGQSTmXWMB85NY2vFLhM1nGpXA8f4VCARRyeGNbqDF1",
+            "DtkyktXDfywXqEupfdsPtGZnFK6zCjJmpHjGq9X6uzCa",
             "Invalid Internet Latency Collector Program ID"
         );
     }

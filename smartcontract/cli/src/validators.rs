@@ -13,3 +13,71 @@ pub use doublezero_cli_core::validators::{
     validate_parse_delay_override_ms, validate_parse_jitter_ms, validate_pubkey,
     validate_pubkey_or_code,
 };
+
+use doublezero_serviceability::helper::is_global;
+use std::net::Ipv4Addr;
+
+/// Parses a public IPv4 address: one the serviceability program accepts as a
+/// device's public or agent IP (`is_global`). Private, loopback, link-local,
+/// CGNAT, documentation, multicast, reserved and unspecified addresses fail.
+pub fn validate_public_ipv4(val: &str) -> Result<Ipv4Addr, String> {
+    let ip: Ipv4Addr = val
+        .parse()
+        .map_err(|_| format!("invalid IPv4 address: {val}"))?;
+    if !is_global(ip) {
+        return Err(format!("not a public IPv4 address: {ip}"));
+    }
+    Ok(ip)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate_public_ipv4_accepts_global() {
+        for val in ["37.61.209.41", "8.8.8.8", "1.1.1.1"] {
+            assert_eq!(validate_public_ipv4(val), Ok(val.parse().unwrap()), "{val}");
+        }
+    }
+
+    #[test]
+    fn test_validate_public_ipv4_rejects_non_global() {
+        for val in [
+            "0.0.0.0",
+            "0.1.2.3",
+            "10.0.0.1",
+            "100.64.0.1",
+            "127.0.0.1",
+            "169.254.0.1",
+            "172.16.0.1",
+            "192.0.0.1",
+            "192.0.2.1",
+            "192.168.1.1",
+            "198.51.100.1",
+            "203.0.113.1",
+            "224.0.0.1",
+            "240.0.0.1",
+            "255.255.255.255",
+        ] {
+            assert!(validate_public_ipv4(val).is_err(), "{val} must be rejected");
+        }
+    }
+
+    #[test]
+    fn test_validate_public_ipv4_rejects_malformed() {
+        for val in [
+            "",
+            "37.61.209",
+            "37.61.209.256",
+            "2001:db8::1",
+            "37.61.209.41/32",
+            "host",
+        ] {
+            assert!(
+                validate_public_ipv4(val).is_err(),
+                "{val:?} must be rejected"
+            );
+        }
+    }
+}

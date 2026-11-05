@@ -107,6 +107,7 @@ impl MigrateMulticastCountsCliCommand {
                 max_multicast_publishers: None,
                 multicast_subscribers_count: Some(*actual_sub),
                 multicast_publishers_count: Some(*actual_pub),
+                agent_ip: None,
             });
             match result {
                 Ok(sig) => {

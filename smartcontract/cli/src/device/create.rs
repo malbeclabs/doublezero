@@ -3,7 +3,7 @@ use crate::{
     helpers::parse_pubkey,
     poll_for_activation::poll_for_device_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::{validate_code, validate_pubkey, validate_pubkey_or_code},
+    validators::{validate_code, validate_pubkey, validate_pubkey_or_code, validate_public_ipv4},
 };
 use clap::Args;
 use doublezero_cli_core::CliContext;
@@ -53,6 +53,10 @@ pub struct CreateDeviceCliCommand {
     /// Desired status for the device (optional)
     #[arg(long, hide = true)]
     pub desired_status: Option<DeviceDesiredStatus>,
+    /// Public IPv4 address the device's agents connect from, when it is neither the
+    /// public IP nor an interface address (optional)
+    #[arg(long, value_parser = validate_public_ipv4)]
+    pub agent_ip: Option<Ipv4Addr>,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -164,6 +168,7 @@ impl CreateDeviceCliCommand {
             metrics_publisher,
             mgmt_vrf: self.mgmt_vrf.clone(),
             desired_status: self.desired_status,
+            agent_ip: self.agent_ip,
         })?;
         writeln!(out, "Signature: {signature}")?;
 
@@ -297,6 +302,7 @@ mod tests {
                 metrics_publisher: Pubkey::default(),
                 mgmt_vrf: "default".to_string(),
                 desired_status: None,
+                agent_ip: Some([37, 61, 209, 41].into()),
             }))
             .returning(move |_| Ok((signature, pda_pubkey)));
 
@@ -315,6 +321,7 @@ mod tests {
                 metrics_publisher: Some(Pubkey::default().to_string()),
                 mgmt_vrf: "default".to_string(),
                 desired_status: None,
+                agent_ip: Some([37, 61, 209, 41].into()),
                 wait: false,
             }
             .execute(&ctx, &client, &mut output),
@@ -401,6 +408,7 @@ mod tests {
                 mgmt_vrf: String::default(),
                 desired_status: None,
                 wait: false,
+                agent_ip: None,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -444,6 +452,7 @@ mod tests {
                 mgmt_vrf: String::default(),
                 desired_status: None,
                 wait: false,
+                agent_ip: None,
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -453,5 +462,56 @@ mod tests {
         assert!(err
             .to_string()
             .contains("Public IP '10.1.5.10' conflicts with device's own dz_prefix '10.1.0.0/16'"));
+    }
+
+    #[derive(clap::Parser)]
+    struct TestCli {
+        #[command(flatten)]
+        cmd: CreateDeviceCliCommand,
+    }
+
+    fn parse_create(extra: &[&str]) -> Result<CreateDeviceCliCommand, clap::Error> {
+        let base = [
+            "create",
+            "--code",
+            "dz1",
+            "--contributor",
+            "co01",
+            "--location",
+            "lax",
+            "--exchange",
+            "xlax",
+            "--public-ip",
+            "8.8.8.8",
+            "--dz-prefixes",
+            "110.1.0.0/23",
+        ];
+        <TestCli as clap::Parser>::try_parse_from(base.iter().chain(extra.iter()).copied())
+            .map(|cli| cli.cmd)
+    }
+
+    #[test]
+    fn test_cli_device_create_agent_ip_flag() {
+        assert_eq!(parse_create(&[]).unwrap().agent_ip, None);
+        assert_eq!(
+            parse_create(&["--agent-ip", "37.61.209.41"])
+                .unwrap()
+                .agent_ip,
+            Some([37, 61, 209, 41].into())
+        );
+        for bad in [
+            "10.0.0.1",
+            "192.168.1.1",
+            "127.0.0.1",
+            "100.64.0.1",
+            "0.0.0.0",
+            "224.0.0.1",
+            "nope",
+        ] {
+            assert!(
+                parse_create(&["--agent-ip", bad]).is_err(),
+                "--agent-ip {bad} must be rejected"
+            );
+        }
     }
 }

@@ -200,6 +200,7 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1092,6 +1093,7 @@ async fn test_create_subscribe_user_foundation_owner_override() {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1402,6 +1404,7 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1698,6 +1701,7 @@ async fn test_create_subscribe_user_user_admin_owner_override() {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1987,6 +1991,7 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

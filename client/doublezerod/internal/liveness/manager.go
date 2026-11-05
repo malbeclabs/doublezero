@@ -320,7 +320,7 @@ func NewManager(ctx context.Context, cfg *ManagerConfig, cr *routing.ConfiguredR
 		}
 	}()
 
-	// Checks the missing-peer-routes rule even when nobody reads it, so its WARN is logged.
+	// The only caller of checkRouteAction; RouteAction reads its last result.
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()

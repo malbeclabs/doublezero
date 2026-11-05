@@ -27,16 +27,18 @@ var routeActionWarnings = map[RouteAction]string{
 	RouteActionOutbound: "liveness: missing peer routes: peers receive no liveness probes from this host; allow outbound UDP 44880 on doublezero0",
 }
 
-// RouteAction checks the rule now; see checkRouteAction.
+// RouteAction returns the result of the last check, so a status read never runs the rule.
 func (m *manager) RouteAction() RouteAction {
-	return m.checkRouteAction(time.Now())
+	m.actionMu.Lock()
+	defer m.actionMu.Unlock()
+	return m.action
 }
 
 // checkRouteAction applies the rule at now: in active mode, with a route desired,
 // action is needed once no session has been Up for routeActionGrace.
-func (m *manager) checkRouteAction(now time.Time) RouteAction {
+func (m *manager) checkRouteAction(now time.Time) {
 	if m.cfg.PassiveMode {
-		return RouteActionNone
+		return
 	}
 	m.actionMu.Lock()
 	defer m.actionMu.Unlock()
@@ -85,7 +87,6 @@ func (m *manager) checkRouteAction(now time.Time) RouteAction {
 		m.log.Info("liveness: missing peer routes cleared")
 	}
 	m.action = action
-	return action
 }
 
 // restartRouteActionGrace makes the next check start a new grace period.

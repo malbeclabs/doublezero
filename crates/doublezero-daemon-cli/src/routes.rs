@@ -346,10 +346,20 @@ mod tests {
 
         let inbound = summary("inbound", 0, vec![group("down", "no reply", 12)]);
         let output = run_status(v2_status("IBRL", Some(inbound)), false).unwrap();
-        assert!(output.ends_with(&format!(
-            "\n⚠️  Missing peer routes: this host receives no liveness probes from peers. \
-             Allow inbound UDP 44880 on doublezero0.\nSee {DOCS}\n"
-        )));
+        assert_eq!(
+            output,
+            format!(
+                concat!(
+                    " Desired | Installed | Not Installed       | Action  \n",
+                    " 12      | 0         | down (no reply): 12 | inbound \n",
+                    "\n",
+                    "⚠️  Missing peer routes: this host receives no liveness probes from peers. ",
+                    "Allow inbound UDP 44880 on doublezero0.\n",
+                    "See {}\n",
+                ),
+                DOCS
+            )
+        );
 
         let outbound = summary(
             "outbound",
@@ -357,11 +367,20 @@ mod tests {
             vec![group("down", "timeout", 2), group("init", "", 1)],
         );
         let output = run_status(v2_status("IBRLWithAllocatedIP", Some(outbound)), false).unwrap();
-        assert!(output.contains("down (timeout): 2, init: 1"));
-        assert!(output.ends_with(&format!(
-            "\n⚠️  Missing peer routes: peers receive no liveness probes from this host. \
-             Allow outbound UDP 44880 on doublezero0.\nSee {DOCS}\n"
-        )));
+        assert_eq!(
+            output,
+            format!(
+                concat!(
+                    " Desired | Installed | Not Installed              | Action   \n",
+                    " 3       | 0         | down (timeout): 2, init: 1 | outbound \n",
+                    "\n",
+                    "⚠️  Missing peer routes: peers receive no liveness probes from this host. ",
+                    "Allow outbound UDP 44880 on doublezero0.\n",
+                    "See {}\n",
+                ),
+                DOCS
+            )
+        );
     }
 
     #[test]

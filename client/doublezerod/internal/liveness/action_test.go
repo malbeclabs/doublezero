@@ -63,6 +63,12 @@ func newRouteActionTestManager(passive bool) (*manager, *logRecorder) {
 	}, rec
 }
 
+// checkAt runs one check at now, as the ticker does, and returns what a status read then reports.
+func checkAt(m *manager, now time.Time) RouteAction {
+	m.checkRouteAction(now)
+	return m.RouteAction()
+}
+
 func addRouteActionTestSession(m *manager, peerIP string, state State, lastRx time.Time) *Session {
 	r := newTestRoute(func(r *Route) {
 		r.Dst = &net.IPNet{IP: net.ParseIP(peerIP), Mask: net.CIDRMask(32, 32)}
@@ -109,9 +115,9 @@ func TestClient_Liveness_RouteAction_Rule(t *testing.T) {
 				addRouteActionTestSession(m, net.IPv4(10, 4, 0, byte(11+i)).String(), s.state, lastRx)
 			}
 
-			require.Equal(t, RouteActionNone, m.checkRouteAction(t0))
-			require.Equal(t, RouteActionNone, m.checkRouteAction(t0.Add(routeActionGrace-time.Second)), "within the grace period")
-			require.Equal(t, tc.want, m.checkRouteAction(t0.Add(routeActionGrace)))
+			require.Equal(t, RouteActionNone, checkAt(m, t0))
+			require.Equal(t, RouteActionNone, checkAt(m, t0.Add(routeActionGrace-time.Second)), "within the grace period")
+			require.Equal(t, tc.want, checkAt(m, t0.Add(routeActionGrace)))
 		})
 	}
 }
@@ -153,6 +159,26 @@ func TestClient_Liveness_RouteAction_WarnRepeatsAndClears(t *testing.T) {
 	require.Len(t, logs.find(slog.LevelWarn, outbound), 1)
 }
 
+// A status read reports the last check and runs no rule of its own.
+func TestClient_Liveness_RouteAction_ReadReportsLastCheck(t *testing.T) {
+	t.Parallel()
+
+	m, logs := newRouteActionTestManager(false)
+	sess := addRouteActionTestSession(m, "10.4.0.11", StateDown, time.Time{})
+
+	require.Equal(t, RouteActionNone, m.RouteAction())
+	require.True(t, m.zeroUpSince.IsZero(), "a read must not start the grace period")
+
+	t0 := time.Now()
+	m.checkRouteAction(t0)
+	m.checkRouteAction(t0.Add(routeActionGrace))
+	sess.mu.Lock()
+	sess.state = StateUp
+	sess.mu.Unlock()
+	require.Equal(t, RouteActionInbound, m.RouteAction(), "a read reports the last check until the next one")
+	require.Empty(t, logs.find(slog.LevelInfo, "liveness: missing peer routes cleared"), "a read must not log")
+}
+
 // The grace period starts again on reconnect, even one faster than a check.
 func TestClient_Liveness_RouteAction_WithdrawingLastRouteRestartsGrace(t *testing.T) {
 	t.Parallel()
@@ -168,8 +194,8 @@ func TestClient_Liveness_RouteAction_WithdrawingLastRouteRestartsGrace(t *testin
 	require.NoError(t, m.WithdrawRoute(r, "lo"))
 	require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
 
-	require.Equal(t, RouteActionNone, m.checkRouteAction(t0.Add(routeActionGrace)))
-	require.Equal(t, RouteActionInbound, m.checkRouteAction(t0.Add(2*routeActionGrace)))
+	require.Equal(t, RouteActionNone, checkAt(m, t0.Add(routeActionGrace)))
+	require.Equal(t, RouteActionInbound, checkAt(m, t0.Add(2*routeActionGrace)))
 }
 
 // A peer that never hears us sends Down, which knocks our session from Init back to
@@ -198,5 +224,5 @@ func TestClient_Liveness_RouteAction_OutboundAfterDeafPeerResetsInit(t *testing.
 	require.Equal(t, StateDown, sess.GetState())
 	require.Equal(t, DownReasonRemoteDown, sess.Snapshot().LastDownReason)
 
-	require.Equal(t, RouteActionOutbound, m.checkRouteAction(t0.Add(routeActionGrace)))
+	require.Equal(t, RouteActionOutbound, checkAt(m, t0.Add(routeActionGrace)))
 }

@@ -94,6 +94,7 @@ func (m *mockNetlinker) TunnelUp(*routing.Tunnel) error                   { retu
 func (m *mockNetlinker) RouteGet(net.IP) ([]*routing.Route, error)        { return nil, nil }
 func (m *mockNetlinker) RuleAdd(*routing.IPRule) error                    { return nil }
 func (m *mockNetlinker) RuleDel(*routing.IPRule) error                    { return nil }
+func (m *mockNetlinker) LinkSetRPFilter(string, int) error                { return nil }
 
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))

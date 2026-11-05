@@ -92,6 +92,12 @@ type ManagerConfig struct {
 
 	// Client version to advertise to peers in control packets.
 	ClientVersion string
+
+	// Route-flap damping in active mode: after a peer's second flap, its route
+	// is reinstalled only once the session has stayed Up for HoldDown, doubling
+	// per further flap up to HoldDownMax. Zero disables damping.
+	HoldDown    time.Duration
+	HoldDownMax time.Duration
 }
 
 // Validate fills defaults and enforces constraints for ManagerConfig.
@@ -150,6 +156,12 @@ func (c *ManagerConfig) Validate() error {
 	}
 	if c.ClientVersion == "" {
 		return errors.New("clientVersion is required")
+	}
+	if c.HoldDown < 0 {
+		return errors.New("holdDown must be greater than or equal to 0")
+	}
+	if c.HoldDown > 0 && c.HoldDownMax < c.HoldDown {
+		return errors.New("holdDownMax must be greater than or equal to holdDown")
 	}
 	return nil
 }
@@ -239,6 +251,8 @@ func NewManager(ctx context.Context, cfg *ManagerConfig, cr *routing.ConfiguredR
 		"minTxFloor", cfg.MinTxFloor.String(),
 		"maxTxCeil", cfg.MaxTxCeil.String(),
 		"backoffMax", cfg.BackoffMax.String(),
+		"holdDown", cfg.HoldDown.String(),
+		"holdDownMax", cfg.HoldDownMax.String(),
 		"passiveMode", cfg.PassiveMode,
 		"peerMetrics", cfg.EnablePeerMetrics,
 		"honorPeerAdvertisedPassive", cfg.HonorPeerAdvertisedPassive,
@@ -740,8 +754,8 @@ func (m *manager) AdminDownRoute(r *Route, iface string) {
 	}
 }
 
-// onSessionUp installs the route if it is desired and not already installed.
-// In PassiveMode, install was already done at registration time and we do
+// onSessionUp installs the route if it is desired and not already installed,
+// after the flap hold-down if one applies. In PassiveMode, install was already done at registration time and we do
 // not touch installed[] here.
 //
 // Peer-advertised passive does NOT prevent installation: it only affects
@@ -757,6 +771,8 @@ func (m *manager) onSessionUp(sess *Session) {
 	alreadyInstalled := m.installed[rk]
 
 	var logSuffix string
+	var hold time.Duration
+	var flaps uint32
 
 	// If route is missing from desired, already installed, or we’re in
 	// global PassiveMode, do not touch dataplane or installed[] here.
@@ -772,16 +788,24 @@ func (m *manager) onSessionUp(sess *Session) {
 			logSuffix = " (not desired; no-op)"
 		}
 	} else {
-		m.installed[rk] = true
-		m.metrics.InstalledMapSize.Set(float64(len(m.installed)))
 		m.mu.Unlock()
-
-		if err := m.cfg.Netlinker.RouteAdd(&route.Route); err != nil {
-			m.log.Error("liveness: error adding route on session up",
-				"error", err, "route", route.String())
-			m.metrics.RouteInstallFailures.WithLabelValues(peer.Interface, peer.LocalIP).Inc()
+		if m.cfg.HoldDown > 0 && !route.NoUninstall && !m.isPeerEffectivelyPassive(snap) {
+			hold, flaps = sess.holdDown(time.Now(), m.cfg.HoldDown, m.cfg.HoldDownMax)
+		}
+		if hold > 0 {
+			logSuffix = " (route held down)"
+			upSince := snap.UpSince
+			time.AfterFunc(hold, func() {
+				if m.ctx.Err() != nil || sess.GetState() != StateUp || !sess.Snapshot().UpSince.Equal(upSince) {
+					return // flapped again; that Up armed its own hold-down
+				}
+				if m.installRoute(sess, rk) {
+					m.log.Info("liveness: route reinstalled after hold-down",
+						"peer", peer.String(), "flaps", flaps, "holdDown", hold.String())
+				}
+			})
 		} else {
-			m.metrics.routeInstall(peer.Interface, peer.LocalIP)
+			m.installRoute(sess, rk)
 		}
 	}
 
@@ -803,7 +827,33 @@ func (m *manager) onSessionUp(sess *Session) {
 		"upSince", snap.UpSince.UTC().String(),
 		"peerAdvertisedMode", snap.PeerAdvertisedMode.String(),
 		"peerClientVersion", snap.PeerClientVersion.String(),
+		"flaps", flaps,
+		"holdDown", hold.String(),
 	)
+}
+
+// installRoute installs rk's desired route if sess still owns it and it is not
+// already installed. Returns whether it issued the install.
+func (m *manager) installRoute(sess *Session, rk RouteKey) bool {
+	peer := *sess.peer
+	m.mu.Lock()
+	route := m.desired[rk]
+	if route == nil || m.installed[rk] || m.sessions[peer] != sess {
+		m.mu.Unlock()
+		return false
+	}
+	m.installed[rk] = true
+	m.metrics.InstalledMapSize.Set(float64(len(m.installed)))
+	m.mu.Unlock()
+
+	if err := m.cfg.Netlinker.RouteAdd(&route.Route); err != nil {
+		m.log.Error("liveness: error adding route on session up",
+			"error", err, "route", route.String())
+		m.metrics.RouteInstallFailures.WithLabelValues(peer.Interface, peer.LocalIP).Inc()
+	} else {
+		m.metrics.routeInstall(peer.Interface, peer.LocalIP)
+	}
+	return true
 }
 
 // onSessionDown withdraws the route if currently installed (unless PassiveMode
@@ -814,6 +864,9 @@ func (m *manager) onSessionDown(sess *Session) {
 	rk := routeKeyFor(peer.Interface, &snap.Route)
 
 	effectivelyPassive := m.isPeerEffectivelyPassive(snap)
+	if m.cfg.HoldDown > 0 && !m.cfg.PassiveMode && !effectivelyPassive {
+		sess.recordFlap(time.Now(), m.cfg.HoldDownMax)
+	}
 
 	m.mu.Lock()
 	route := m.desired[rk]

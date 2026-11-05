@@ -23,8 +23,8 @@ const (
 )
 
 var routeActionWarnings = map[RouteAction]string{
-	RouteActionInbound:  "liveness: missing peer routes: this host receives no liveness probes from peers; allow inbound UDP 44880 on doublezero0",
-	RouteActionOutbound: "liveness: missing peer routes: peers receive no liveness probes from this host; allow outbound UDP 44880 on doublezero0",
+	RouteActionInbound:  "liveness: missing peer routes: this host receives no liveness probes from peers; check that inbound UDP 44880 is allowed on doublezero0",
+	RouteActionOutbound: "liveness: missing peer routes: peers receive no liveness probes from this host; check that outbound UDP 44880 is allowed on doublezero0",
 }
 
 // RouteAction returns the result of the last check, so a status read never runs the rule.

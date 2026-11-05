@@ -86,10 +86,12 @@ async fn show_route_summary<D: DaemonClient, W: Write>(
             )
         })
         .ok_or_else(|| eyre::eyre!("No IBRL service found"))?;
-    let summary = ibrl
-        .routes
-        .as_ref()
-        .ok_or_else(|| eyre::eyre!("doublezerod does not report a route summary"))?;
+    let summary = ibrl.routes.as_ref().ok_or_else(|| {
+        eyre::eyre!(
+            "doublezerod reports no route summary: route liveness is off, doublezerod is older \
+             than this CLI, or it could not read the kernel routes (see its log)"
+        )
+    })?;
 
     if json {
         writeln!(out, "{}", serde_json::to_string_pretty(summary)?)?;
@@ -102,7 +104,7 @@ async fn show_route_summary<D: DaemonClient, W: Write>(
     if let Some(problem) = route_action_problem(&summary.action) {
         writeln!(
             out,
-            "\n⚠️  Missing peer routes: {problem}. Allow {} UDP 44880 on doublezero0.",
+            "\n⚠️  Missing peer routes: {problem}. Check that {} UDP 44880 is allowed on doublezero0.",
             summary.action
         )?;
         if let Some(docs) = &summary.docs {
@@ -354,7 +356,7 @@ mod tests {
                     " 12      | 0         | down (no reply): 12 | inbound \n",
                     "\n",
                     "⚠️  Missing peer routes: this host receives no liveness probes from peers. ",
-                    "Allow inbound UDP 44880 on doublezero0.\n",
+                    "Check that inbound UDP 44880 is allowed on doublezero0.\n",
                     "See {}\n",
                 ),
                 DOCS
@@ -375,7 +377,7 @@ mod tests {
                     " 3       | 0         | down (timeout): 2, init: 1 | outbound \n",
                     "\n",
                     "⚠️  Missing peer routes: peers receive no liveness probes from this host. ",
-                    "Allow outbound UDP 44880 on doublezero0.\n",
+                    "Check that outbound UDP 44880 is allowed on doublezero0.\n",
                     "See {}\n",
                 ),
                 DOCS
@@ -411,7 +413,7 @@ mod tests {
         let err = run_status(v2_status("IBRL", None), false).unwrap_err();
         assert_eq!(
             err.to_string(),
-            "doublezerod does not report a route summary"
+            "doublezerod reports no route summary: route liveness is off, doublezerod is older than this CLI, or it could not read the kernel routes (see its log)"
         );
 
         let err = run_status(v2_status("Multicast", None), false).unwrap_err();

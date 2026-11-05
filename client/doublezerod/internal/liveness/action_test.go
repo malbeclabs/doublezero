@@ -127,9 +127,11 @@ func TestClient_Liveness_RouteAction_WarnRepeatsAndClears(t *testing.T) {
 
 	m, logs := newRouteActionTestManager(false)
 	sess := addRouteActionTestSession(m, "10.4.0.11", StateDown, time.Time{})
-	inbound := routeActionWarnings[RouteActionInbound]
-	outbound := routeActionWarnings[RouteActionOutbound]
-	const cleared = "liveness: missing peer routes cleared"
+	const (
+		inbound  = "liveness: missing peer routes: this host receives no liveness probes from peers; check that inbound UDP 44880 is allowed on doublezero0"
+		outbound = "liveness: missing peer routes: peers receive no liveness probes from this host; check that outbound UDP 44880 is allowed on doublezero0"
+		cleared  = "liveness: missing peer routes cleared"
+	)
 
 	t0 := time.Now()
 	m.checkRouteAction(t0)

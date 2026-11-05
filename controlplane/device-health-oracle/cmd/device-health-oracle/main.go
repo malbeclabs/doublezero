@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"os"
@@ -44,6 +45,7 @@ var (
 	slackWebhookURL         = flag.String("slack-webhook-url", "", "The Slack webhook URL to send alerts")
 	provisioningSlotCount   = flag.Uint64("provisioning-slot-count", defaultProvisioningSlotCount, "Burn-in slot count for new devices/links (~20 hours at 200000)")
 	drainedSlotCount        = flag.Uint64("drained-slot-count", defaultDrainedSlotCount, "Burn-in slot count for reactivated devices/links (~30 min at 5000)")
+	linkLossThreshold       = flag.Float64("link-loss-threshold", 5.0, "Packet loss percentage that both directions must exceed for a link to be considered impaired (link_rollup_5m a_loss_pct/z_loss_pct)")
 	version                 = "dev"
 	commit                  = "none"
 	date                    = "unknown"
@@ -55,6 +57,13 @@ func main() {
 	if *showVersion {
 		fmt.Printf("version: %s, commit: %s, date: %s\n", version, commit, date)
 		os.Exit(0)
+	}
+
+	// A nonsense threshold silently flags every link as impaired or none at all,
+	// so it becomes an onchain write storm or a blind spot. Fail fast instead.
+	if math.IsNaN(*linkLossThreshold) || math.IsInf(*linkLossThreshold, 0) || *linkLossThreshold < 0 || *linkLossThreshold > 100 {
+		fmt.Fprintf(os.Stderr, "invalid --link-loss-threshold %v: must be in [0, 100]\n", *linkLossThreshold)
+		os.Exit(1)
 	}
 
 	logLevel := slog.LevelInfo
@@ -131,10 +140,19 @@ func main() {
 
 	// Initialize ClickHouse-dependent criteria.
 	var deviceCriteria []worker.DeviceCriterion
+	var linkPromotionCriteria []worker.LinkCriterion
+	var linkImpairmentCriteria []worker.LinkCriterion
+	var linkRecoveryCriteria []worker.LinkCriterion
 	if chAddr := os.Getenv("CLICKHOUSE_ADDR"); chAddr != "" {
 		chDB := os.Getenv("CLICKHOUSE_DB")
 		if chDB == "" {
 			chDB = "default"
+		}
+		// link_rollup_5m and fact_dz_device_interface_counters live in the lake's
+		// database, separate from the telemetry tables in CLICKHOUSE_DB.
+		chLakeDB := os.Getenv("CLICKHOUSE_LAKE_DB")
+		if chLakeDB == "" {
+			chLakeDB = chDB
 		}
 		chUser := os.Getenv("CLICKHOUSE_USER")
 		if chUser == "" {
@@ -143,15 +161,26 @@ func main() {
 		chPass := os.Getenv("CLICKHOUSE_PASS")
 		chTLSDisabled := os.Getenv("CLICKHOUSE_TLS_DISABLED") == "true"
 
-		chClient, err := worker.NewClickHouseClient(chAddr, chDB, chUser, chPass, chTLSDisabled)
+		chClient, err := worker.NewClickHouseClient(chAddr, chDB, chLakeDB, chUser, chPass, chTLSDisabled)
 		if err != nil {
-			log.Warn("ClickHouse connection failed, continuing without ClickHouse-based criteria", "addr", chAddr, "error", err)
+			log.Warn("ClickHouse client setup failed, continuing without ClickHouse-based criteria", "addr", chAddr, "error", err)
 		} else {
 			defer chClient.Close()
-			log.Info("ClickHouse enabled", "addr", chAddr, "db", chDB, "user", chUser, "tls", !chTLSDisabled)
+			// Criteria hold on query errors, so build them even when the server
+			// is down: dropping them here would last the life of the process.
+			if err := chClient.Ping(context.Background()); err != nil {
+				log.Warn("ClickHouse ping failed, criteria will hold until it recovers", "addr", chAddr, "error", err)
+			}
+			log.Info("ClickHouse enabled", "addr", chAddr, "db", chDB, "lakeDB", chLakeDB, "user", chUser, "tls", !chTLSDisabled, "linkLossThreshold", *linkLossThreshold)
 			controllerSuccess := worker.NewControllerSuccessCriterion(chClient, log)
 			interfaceCounters := worker.NewInterfaceCountersCriterion(chClient, log)
 			deviceCriteria = append(deviceCriteria, controllerSuccess, interfaceCounters)
+			linkPromotionCriteria = append(linkPromotionCriteria,
+				worker.NewLinkHealthCriterion(worker.LinkHealthModePromotion, chClient, *linkLossThreshold, log))
+			linkImpairmentCriteria = append(linkImpairmentCriteria,
+				worker.NewLinkHealthCriterion(worker.LinkHealthModeImpairment, chClient, *linkLossThreshold, log))
+			linkRecoveryCriteria = append(linkRecoveryCriteria,
+				worker.NewLinkHealthCriterion(worker.LinkHealthModeRecovery, chClient, *linkLossThreshold, log))
 		}
 	} else {
 		log.Error("ClickHouse disabled (CLICKHOUSE_ADDR not set), no ClickHouse-based criteria")
@@ -163,7 +192,12 @@ func main() {
 		Log:                   log,
 	}
 	linkEvaluator := &worker.LinkHealthEvaluator{
-		ReadyForServiceCriteria: nil,
+		// Running the impairment check on promotion stops a link that already
+		// reads impaired from promoting only to demote a tick later. It passes
+		// on no-data, so links with no telemetry promote as before.
+		ReadyForServiceCriteria: linkPromotionCriteria,
+		ImpairmentCriteria:      linkImpairmentCriteria,
+		RecoveryCriteria:        linkRecoveryCriteria,
 		Log:                     log,
 	}
 

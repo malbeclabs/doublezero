@@ -2,12 +2,14 @@ package liveness
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/stretchr/testify/require"
 )
 
@@ -54,7 +56,7 @@ func recordAttr(rec slog.Record, key string) string {
 func newRouteActionTestManager(passive bool) (*manager, *logRecorder) {
 	rec := &logRecorder{}
 	return &manager{
-		cfg:       &ManagerConfig{PassiveMode: passive},
+		cfg:       &ManagerConfig{PassiveMode: passive, Netlinker: &MockRouteReaderWriter{}},
 		log:       slog.New(rec),
 		sessions:  make(map[Peer]*Session),
 		desired:   make(map[RouteKey]*Route),
@@ -123,26 +125,91 @@ func TestClient_Liveness_RouteAction_Rule(t *testing.T) {
 	}
 }
 
-// A route that stays installed means no action; a key onSessionDown cleared to false does not.
-func TestClient_Liveness_RouteAction_InstalledRouteMeansNone(t *testing.T) {
+// The action follows the routes the kernel holds.
+func TestClient_Liveness_RouteAction_KernelRoutes(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range []struct {
-		installed bool
-		want      RouteAction
+		name   string
+		kept   int // of four desired routes, all with sessions down
+		during RouteAction
+		after  RouteAction
 	}{
-		{installed: true, want: RouteActionNone},
-		{installed: false, want: RouteActionInbound},
+		{name: "one passive route kept with three active peers down", kept: 1, during: RouteActionStarting, after: RouteActionInbound},
+		{name: "all routes kept with no session up", kept: 4, during: RouteActionNone, after: RouteActionNone},
 	} {
-		m, _ := newRouteActionTestManager(false)
-		sess := addRouteActionTestSession(m, "10.4.0.11", StateDown, time.Time{})
-		addRouteActionTestSession(m, "10.4.0.12", StateDown, time.Time{})
-		m.installed[routeKeyFor(sess.peer.Interface, sess.route)] = tc.installed
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			m, logs := newRouteActionTestManager(false)
+			var kernel []*routing.Route
+			for i := range 4 {
+				sess := addRouteActionTestSession(m, net.IPv4(10, 4, 0, byte(11+i)).String(), StateDown, time.Time{})
+				if i < tc.kept {
+					kernel = append(kernel, &sess.route.Route)
+				}
+			}
+			m.cfg.Netlinker = &MockRouteReaderWriter{RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return kernel, nil }}
 
-		t0 := time.Now()
-		m.checkRouteAction(t0)
-		require.Equal(t, tc.want, checkAt(m, t0.Add(routeActionGrace)), "installed[rk] = %v", tc.installed)
+			t0 := time.Now()
+			require.Equal(t, tc.during, checkAt(m, t0))
+			require.Equal(t, tc.after, checkAt(m, t0.Add(routeActionGrace)))
+			require.Equal(t, tc.after == RouteActionInbound, len(logs.find(slog.LevelWarn, routeActionWarnings[RouteActionInbound])) == 1, "WARN")
+		})
 	}
+}
+
+// onSessionDown clears installed[] for a NoUninstall route but leaves it in the kernel.
+func TestClient_Liveness_RouteAction_NoUninstallRouteKeptGivesNone(t *testing.T) {
+	t.Parallel()
+
+	kernel := map[RouteKey]*routing.Route{}
+	nl := &MockRouteReaderWriter{
+		RouteAddFunc:    func(r *routing.Route) error { kernel[kernelKey(r)] = r; return nil },
+		RouteDeleteFunc: func(r *routing.Route) error { delete(kernel, kernelKey(r)); return nil },
+		RouteByProtocolFunc: func(int) ([]*routing.Route, error) {
+			var out []*routing.Route
+			for _, r := range kernel {
+				out = append(out, r)
+			}
+			return out, nil
+		},
+	}
+	m, err := newTestManager(t, func(cfg *ManagerConfig) { cfg.Netlinker = nl })
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = m.Close() })
+
+	r := newTestRoute(func(r *Route) { r.NoUninstall = true })
+	require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
+	peer := Peer{Interface: "lo", LocalIP: r.Src.String(), PeerIP: r.Dst.IP.String()}
+	sess, ok := m.GetSession(peer)
+	require.True(t, ok)
+	rk := routeKeyFor("lo", r)
+	inKernel := func() bool { routes, _ := nl.RouteByProtocol(0); return len(routes) == 1 }
+
+	m.HandleRx(&ControlPacket{LocalDiscr: 7, State: StateInit}, peer)
+	m.HandleRx(&ControlPacket{PeerDiscr: sess.localDiscr, LocalDiscr: 7, State: StateInit}, peer)
+	require.Eventually(t, func() bool { return m.IsInstalled(rk) && inKernel() }, time.Second, 10*time.Millisecond)
+	m.HandleRx(&ControlPacket{PeerDiscr: sess.localDiscr, LocalDiscr: 7, State: StateAdminDown}, peer)
+	require.Eventually(t, func() bool { return !m.IsInstalled(rk) }, time.Second, 10*time.Millisecond)
+	require.True(t, inKernel(), "a NoUninstall route stays in the kernel")
+
+	t0 := time.Now()
+	require.Equal(t, RouteActionNone, checkAt(m, t0))
+	require.Equal(t, RouteActionNone, checkAt(m, t0.Add(routeActionGrace)))
+}
+
+// A failed kernel listing leaves the action as it was.
+func TestClient_Liveness_RouteAction_KernelListingFails(t *testing.T) {
+	t.Parallel()
+
+	m, logs := newRouteActionTestManager(false)
+	addRouteActionTestSession(m, "10.4.0.11", StateDown, time.Time{})
+	t0 := time.Now()
+	require.Equal(t, RouteActionStarting, checkAt(m, t0))
+
+	m.cfg.Netlinker = &MockRouteReaderWriter{RouteByProtocolFunc: func(int) ([]*routing.Route, error) { return nil, errors.New("boom") }}
+	require.Equal(t, RouteActionStarting, checkAt(m, t0.Add(routeActionGrace)))
+	require.Len(t, logs.find(slog.LevelWarn, "liveness: failed to list kernel routes for the missing peer routes check"), 1)
 }
 
 func TestClient_Liveness_RouteAction_WarnRepeatsAndClears(t *testing.T) {

@@ -1,6 +1,11 @@
 package liveness
 
-import "time"
+import (
+	"time"
+
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
+	"golang.org/x/sys/unix"
+)
 
 // DocsMissingPeerRoutes is the troubleshooting page for peer routes that liveness withholds.
 const DocsMissingPeerRoutes = "https://docs.doublezero.xyz/support/troubleshooting#issue-missing-peer-routes"
@@ -36,8 +41,8 @@ func (m *manager) RouteAction() RouteAction {
 	return m.action
 }
 
-// checkRouteAction applies the rule at now: in active mode, with a route desired,
-// action is needed once no session has been Up and no route installed for routeActionGrace.
+// checkRouteAction applies the rule at now: in active mode, action is needed once no
+// session has been Up, and a desired route missing from the kernel, for routeActionGrace.
 func (m *manager) checkRouteAction(now time.Time) {
 	if m.cfg.PassiveMode {
 		return
@@ -46,12 +51,9 @@ func (m *manager) checkRouteAction(now time.Time) {
 	defer m.actionMu.Unlock()
 
 	m.mu.Lock()
-	desired := len(m.desired)
-	installed := 0
-	for _, ok := range m.installed {
-		if ok { // onSessionDown stores false rather than deleting the key
-			installed++
-		}
+	desired := make([]RouteKey, 0, len(m.desired))
+	for _, r := range m.desired {
+		desired = append(desired, kernelKey(&r.Route))
 	}
 	sessions := make([]SessionSnapshot, 0, len(m.sessions))
 	for _, sess := range m.sessions {
@@ -63,7 +65,27 @@ func (m *manager) checkRouteAction(now time.Time) {
 	for _, s := range sessions {
 		up = up || s.State == StateUp
 	}
-	if desired == 0 || up || installed > 0 {
+	// The kernel, not installed[], because onSessionDown clears NoUninstall routes it keeps.
+	missing := 0
+	if !up && len(desired) > 0 {
+		kernel, err := m.cfg.Netlinker.RouteByProtocol(unix.RTPROT_BGP)
+		if err != nil {
+			m.log.Warn("liveness: failed to list kernel routes for the missing peer routes check", "error", err)
+			return
+		}
+		inKernel := make(map[RouteKey]bool, len(kernel))
+		for _, r := range kernel {
+			if r.Src != nil && r.Dst != nil {
+				inKernel[kernelKey(r)] = true
+			}
+		}
+		for _, k := range desired {
+			if !inKernel[k] {
+				missing++
+			}
+		}
+	}
+	if up || missing == 0 {
 		m.zeroUpSince = time.Time{}
 	} else if m.zeroUpSince.IsZero() {
 		m.zeroUpSince = now
@@ -94,13 +116,18 @@ func (m *manager) checkRouteAction(now time.Time) {
 		m.log.Warn(msg,
 			"direction", string(action),
 			"since", m.zeroUpSince.UTC().String(),
-			"peers", desired,
+			"peers", len(desired),
 			"docs", DocsMissingPeerRoutes,
 		)
 	case !needed && wasNeeded:
 		m.log.Info("liveness: missing peer routes cleared")
 	}
 	m.action = action
+}
+
+// kernelKey matches routes by source, destination and next hop, as the route summary does.
+func kernelKey(r *routing.Route) RouteKey {
+	return RouteKey{SrcIP: r.Src.To4().String(), DstPrefix: r.Dst.IP.To4().String(), NextHop: r.NextHop.To4().String()}
 }
 
 // restartRouteActionGrace makes the next check start a new grace period.

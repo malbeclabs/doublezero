@@ -669,8 +669,9 @@ func TestSummarizeRoutes(t *testing.T) {
 
 	got := SummarizeRoutes(kernel, sessions, src, liveness.RouteActionNone, time.Now())
 	require.Equal(t, &RouteSummary{
-		Peers:     5,
-		Installed: 2,
+		Peers:      5,
+		Installed:  2,
+		SessionsUp: 1,
 		NotInstalled: []RouteGroup{
 			{State: "down", Reason: "no reply", Count: 2},
 			{State: "init", Count: 1},
@@ -681,4 +682,5 @@ func TestSummarizeRoutes(t *testing.T) {
 	got = SummarizeRoutes(nil, nil, src, liveness.RouteActionInbound, time.Now())
 	require.Equal(t, liveness.DocsMissingPeerRoutes, got.Docs)
 	require.NotNil(t, got.NotInstalled, "an empty list, not null")
+	require.Empty(t, SummarizeRoutes(nil, nil, src, liveness.RouteActionStarting, time.Now()).Docs, "no docs while starting")
 }

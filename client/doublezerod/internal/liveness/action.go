@@ -16,6 +16,8 @@ type RouteAction string
 
 const (
 	RouteActionNone RouteAction = "none"
+	// RouteActionStarting: inbound or outbound would apply, but routeActionGrace has not passed.
+	RouteActionStarting RouteAction = "starting"
 	// RouteActionInbound: this host receives no probes from peers.
 	RouteActionInbound RouteAction = "inbound"
 	// RouteActionOutbound: this host hears peers, but they never hear it.
@@ -35,7 +37,7 @@ func (m *manager) RouteAction() RouteAction {
 }
 
 // checkRouteAction applies the rule at now: in active mode, with a route desired,
-// action is needed once no session has been Up for routeActionGrace.
+// action is needed once no session has been Up and no route installed for routeActionGrace.
 func (m *manager) checkRouteAction(now time.Time) {
 	if m.cfg.PassiveMode {
 		return
@@ -45,6 +47,12 @@ func (m *manager) checkRouteAction(now time.Time) {
 
 	m.mu.Lock()
 	desired := len(m.desired)
+	installed := 0
+	for _, ok := range m.installed {
+		if ok { // onSessionDown stores false rather than deleting the key
+			installed++
+		}
+	}
 	sessions := make([]SessionSnapshot, 0, len(m.sessions))
 	for _, sess := range m.sessions {
 		sessions = append(sessions, sess.Snapshot())
@@ -55,35 +63,41 @@ func (m *manager) checkRouteAction(now time.Time) {
 	for _, s := range sessions {
 		up = up || s.State == StateUp
 	}
-	if desired == 0 || up {
+	if desired == 0 || up || installed > 0 {
 		m.zeroUpSince = time.Time{}
 	} else if m.zeroUpSince.IsZero() {
 		m.zeroUpSince = now
 	}
 
 	action := RouteActionNone
-	if !m.zeroUpSince.IsZero() && now.Sub(m.zeroUpSince) >= routeActionGrace {
+	switch {
+	case m.zeroUpSince.IsZero():
+	case now.Sub(m.zeroUpSince) < routeActionGrace:
+		action = RouteActionStarting
+	default:
 		action = RouteActionInbound
 		for _, s := range sessions {
-			// A peer that cannot hear us keeps resetting our session from Init to Down,
-			// so any probe since the period began counts, not only a session in Init now.
-			if s.State == StateInit || s.LastRx.After(m.zeroUpSince) {
+			// A peer that cannot hear us keeps resetting our session from Init to Down, so count
+			// any probe in the last routeActionGrace, which outlasts the default 60 s Down probe interval.
+			if s.LastRx.After(now.Add(-routeActionGrace)) {
 				action = RouteActionOutbound
 				break
 			}
 		}
 	}
 
+	msg, needed := routeActionWarnings[action]
+	_, wasNeeded := routeActionWarnings[m.action]
 	switch {
-	case action != RouteActionNone && (action != m.action || now.Sub(m.actionWarnedAt) >= routeActionWarnEvery):
+	case needed && (action != m.action || now.Sub(m.actionWarnedAt) >= routeActionWarnEvery):
 		m.actionWarnedAt = now
-		m.log.Warn(routeActionWarnings[action],
+		m.log.Warn(msg,
 			"direction", string(action),
 			"since", m.zeroUpSince.UTC().String(),
 			"peers", desired,
 			"docs", DocsMissingPeerRoutes,
 		)
-	case action == RouteActionNone && m.action != RouteActionNone:
+	case !needed && wasNeeded:
 		m.log.Info("liveness: missing peer routes cleared")
 	}
 	m.action = action

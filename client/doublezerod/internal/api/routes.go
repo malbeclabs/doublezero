@@ -42,6 +42,7 @@ type Route struct {
 type RouteSummary struct {
 	Peers        int                  `json:"peers"`
 	Installed    int                  `json:"installed"`
+	SessionsUp   int                  `json:"sessions_up"`
 	NotInstalled []RouteGroup         `json:"not_installed"`
 	Action       liveness.RouteAction `json:"action"`
 	Docs         string               `json:"docs,omitempty"`
@@ -64,7 +65,7 @@ func SummarizeRoutes(kernel []*routing.Route, sessions []liveness.SessionSnapsho
 	}
 
 	sum := &RouteSummary{NotInstalled: []RouteGroup{}, Action: action}
-	if action != liveness.RouteActionNone {
+	if action == liveness.RouteActionInbound || action == liveness.RouteActionOutbound {
 		sum.Docs = liveness.DocsMissingPeerRoutes
 	}
 	counts := make(map[RouteGroup]int)
@@ -74,6 +75,9 @@ func SummarizeRoutes(kernel []*routing.Route, sessions []liveness.SessionSnapsho
 			continue
 		}
 		sum.Peers++
+		if sess.State == liveness.StateUp {
+			sum.SessionsUp++
+		}
 		if inKernel[routeKeyFor(rt)] {
 			sum.Installed++
 			continue

@@ -101,6 +101,13 @@ async fn show_route_summary<D: DaemonClient, W: Write>(
         .with(Style::psql().remove_horizontals())
         .to_string();
     writeln!(out, "{table}")?;
+    if summary.action == "starting" {
+        writeln!(
+            out,
+            "\nLiveness checks are still starting. Run 'doublezero routes status' again in 2 minutes."
+        )?;
+        return Ok(());
+    }
     let missing: u64 = summary.not_installed.iter().map(|g| g.count).sum();
     if let Some(problem) = route_action_problem(&summary.action) {
         writeln!(
@@ -108,10 +115,22 @@ async fn show_route_summary<D: DaemonClient, W: Write>(
             "\n⚠️  Missing peer routes: {problem}. Check that {} UDP 44880 is allowed on doublezero0.",
             summary.action
         )?;
-    } else if summary.action == "none" && missing == 1 {
-        writeln!(out, "\nThe route to 1 peer is not installed, so traffic to it uses the public internet. This host appears healthy and needs no action.")?;
-    } else if summary.action == "none" && missing > 1 {
-        writeln!(out, "\nRoutes to {missing} peers are not installed, so traffic to them uses the public internet. This host appears healthy and needs no action.")?;
+    } else if summary.action == "none" && missing > 0 {
+        match missing {
+            1 => write!(
+                out,
+                "\nThe route to 1 peer is not installed, so traffic to it uses the public internet."
+            )?,
+            n => write!(
+                out,
+                "\nRoutes to {n} peers are not installed, so traffic to them uses the public internet."
+            )?,
+        }
+        // `none` also covers no session up with routes still installed, which is not healthy.
+        if summary.sessions_up > 0 {
+            write!(out, " This host appears healthy and needs no action.")?;
+        }
+        writeln!(out)?;
     } else {
         return Ok(());
     }
@@ -276,9 +295,10 @@ mod tests {
         RouteSummary {
             peers: installed + not_installed.iter().map(|g| g.count).sum::<u64>(),
             installed,
+            sessions_up: installed,
             not_installed,
             action: action.to_string(),
-            docs: (action != "none").then(|| DOCS.to_string()),
+            docs: matches!(action, "inbound" | "outbound").then(|| DOCS.to_string()),
         }
     }
 
@@ -385,6 +405,37 @@ mod tests {
             )
         );
 
+        let no_session_up = RouteSummary {
+            sessions_up: 0,
+            ..summary("none", 2, vec![group("down", "timeout", 3)])
+        };
+        let output = run_status(v2_status("IBRL", Some(no_session_up)), false).unwrap();
+        assert_eq!(
+            output,
+            format!(
+                concat!(
+                    " Peers | Installed | Not Installed     | Action \n",
+                    " 5     | 2         | down (timeout): 3 | none   \n",
+                    "\n",
+                    "Routes to 3 peers are not installed, so traffic to them uses the public internet.\n",
+                    "See {}\n",
+                ),
+                DOCS
+            )
+        );
+
+        let starting = summary("starting", 0, vec![group("down", "no reply", 12)]);
+        let output = run_status(v2_status("IBRL", Some(starting)), false).unwrap();
+        assert_eq!(
+            output,
+            concat!(
+                " Peers | Installed | Not Installed       | Action   \n",
+                " 12    | 0         | down (no reply): 12 | starting \n",
+                "\n",
+                "Liveness checks are still starting. Run 'doublezero routes status' again in 2 minutes.\n",
+            )
+        );
+
         let inbound = summary("inbound", 0, vec![group("down", "no reply", 12)]);
         let output = run_status(v2_status("IBRL", Some(inbound)), false).unwrap();
         assert_eq!(
@@ -434,17 +485,20 @@ mod tests {
             serde_json::json!({
                 "peers": 2,
                 "installed": 0,
+                "sessions_up": 0,
                 "not_installed": [{"state": "down", "reason": "no reply", "count": 2}],
                 "action": "inbound",
                 "docs": DOCS,
             })
         );
 
-        let none = summary("none", 1, vec![]);
-        let output = run_status(v2_status("IBRL", Some(none)), true).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(output.trim()).unwrap();
-        assert_eq!(parsed["action"], "none");
-        assert!(parsed.get("docs").is_none());
+        for action in ["none", "starting"] {
+            let output =
+                run_status(v2_status("IBRL", Some(summary(action, 1, vec![]))), true).unwrap();
+            let parsed: serde_json::Value = serde_json::from_str(output.trim()).unwrap();
+            assert_eq!(parsed["action"], action);
+            assert!(parsed.get("docs").is_none(), "{action}");
+        }
     }
 
     #[test]

@@ -219,7 +219,7 @@ type manager struct {
 	unknownPeerErrWarnMu    sync.Mutex
 
 	// State of checkRouteAction; actionMu is taken before mu. zeroUpSince starts
-	// the current period with a route desired and no session Up.
+	// the current period with a route desired, no session Up and no route installed.
 	actionMu       sync.Mutex
 	zeroUpSince    time.Time
 	action         RouteAction

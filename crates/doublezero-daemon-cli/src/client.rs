@@ -213,9 +213,12 @@ pub struct RouteSummary {
     #[tabled(rename = "Installed")]
     pub installed: u64,
     #[serde(default)]
+    #[tabled(skip)]
+    pub sessions_up: u64,
+    #[serde(default)]
     #[tabled(rename = "Not Installed", display = "display_route_groups")]
     pub not_installed: Vec<RouteGroup>,
-    /// `none`, `inbound` or `outbound`.
+    /// `none`, `starting`, `inbound` or `outbound`.
     #[tabled(rename = "Action")]
     pub action: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -678,7 +681,7 @@ mod tests {
             "tunnel_name": "doublezero0", "tunnel_src": null, "tunnel_dst": null,
             "doublezero_ip": "1.2.3.4", "user_type": "IBRL",
             "routes": {
-                "peers": 3, "installed": 1,
+                "peers": 3, "installed": 1, "sessions_up": 1,
                 "not_installed": [{"state": "down", "reason": "no reply", "count": 2}],
                 "action": "inbound",
                 "docs": "https://docs.doublezero.xyz/support/troubleshooting#issue-missing-peer-routes",
@@ -691,6 +694,7 @@ mod tests {
             Some(RouteSummary {
                 peers: 3,
                 installed: 1,
+                sessions_up: 1,
                 not_installed: vec![RouteGroup {
                     state: "down".to_string(),
                     reason: "no reply".to_string(),

@@ -785,6 +785,7 @@ mod tests {
     fn test_status_warns_only_when_route_action_is_needed() {
         for (action, warning) in [
             ("none", None),
+            ("starting", None),
             (
                 "inbound",
                 Some("⚠️  Missing peer routes: this host receives no liveness probes from peers. Run 'doublezero routes status' for details."),
@@ -809,6 +810,7 @@ mod tests {
             svc.routes = Some(RouteSummary {
                 peers: 3,
                 installed: 0,
+                sessions_up: 0,
                 not_installed: vec![],
                 action: action.to_string(),
                 docs: None,

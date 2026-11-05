@@ -93,15 +93,16 @@ func TestClient_Liveness_RouteAction_Rule(t *testing.T) {
 		name     string
 		passive  bool
 		sessions []sess
-		want     RouteAction
+		during   RouteAction // within routeActionGrace
+		after    RouteAction // once it has passed
 	}{
-		{name: "no desired routes", want: RouteActionNone},
-		{name: "all sessions down", sessions: []sess{{StateDown, 0}, {StateDown, 0}}, want: RouteActionInbound},
-		{name: "one session up", sessions: []sess{{StateDown, 0}, {StateUp, -time.Second}, {StateInit, -time.Second}}, want: RouteActionNone},
-		{name: "init mixed with peers that never answer", sessions: []sess{{StateInit, -time.Second}, {StateDown, 0}, {StateDown, 0}}, want: RouteActionOutbound},
-		{name: "probe since the period began, session down again", sessions: []sess{{StateDown, time.Minute}, {StateDown, 0}}, want: RouteActionOutbound},
-		{name: "probe only before the period began", sessions: []sess{{StateDown, -time.Second}, {StateDown, 0}}, want: RouteActionInbound},
-		{name: "passive mode", passive: true, sessions: []sess{{StateDown, 0}}, want: RouteActionNone},
+		{name: "no desired routes", during: RouteActionNone, after: RouteActionNone},
+		{name: "all sessions down", sessions: []sess{{StateDown, 0}, {StateDown, 0}}, during: RouteActionStarting, after: RouteActionInbound},
+		{name: "one session up", sessions: []sess{{StateDown, 0}, {StateUp, -time.Second}, {StateInit, -time.Second}}, during: RouteActionNone, after: RouteActionNone},
+		{name: "init mixed with peers that never answer", sessions: []sess{{StateInit, routeActionGrace - time.Second}, {StateDown, 0}, {StateDown, 0}}, during: RouteActionStarting, after: RouteActionOutbound},
+		{name: "probe since the period began, session down again", sessions: []sess{{StateDown, time.Minute}, {StateDown, 0}}, during: RouteActionStarting, after: RouteActionOutbound},
+		{name: "probe older than the window", sessions: []sess{{StateDown, -time.Second}, {StateDown, 0}}, during: RouteActionStarting, after: RouteActionInbound},
+		{name: "passive mode", passive: true, sessions: []sess{{StateDown, 0}}, during: RouteActionNone, after: RouteActionNone},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -115,10 +116,32 @@ func TestClient_Liveness_RouteAction_Rule(t *testing.T) {
 				addRouteActionTestSession(m, net.IPv4(10, 4, 0, byte(11+i)).String(), s.state, lastRx)
 			}
 
-			require.Equal(t, RouteActionNone, checkAt(m, t0))
-			require.Equal(t, RouteActionNone, checkAt(m, t0.Add(routeActionGrace-time.Second)), "within the grace period")
-			require.Equal(t, tc.want, checkAt(m, t0.Add(routeActionGrace)))
+			require.Equal(t, tc.during, checkAt(m, t0))
+			require.Equal(t, tc.during, checkAt(m, t0.Add(routeActionGrace-time.Second)), "within the grace period")
+			require.Equal(t, tc.after, checkAt(m, t0.Add(routeActionGrace)))
 		})
+	}
+}
+
+// A route that stays installed means no action; a key onSessionDown cleared to false does not.
+func TestClient_Liveness_RouteAction_InstalledRouteMeansNone(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		installed bool
+		want      RouteAction
+	}{
+		{installed: true, want: RouteActionNone},
+		{installed: false, want: RouteActionInbound},
+	} {
+		m, _ := newRouteActionTestManager(false)
+		sess := addRouteActionTestSession(m, "10.4.0.11", StateDown, time.Time{})
+		addRouteActionTestSession(m, "10.4.0.12", StateDown, time.Time{})
+		m.installed[routeKeyFor(sess.peer.Interface, sess.route)] = tc.installed
+
+		t0 := time.Now()
+		m.checkRouteAction(t0)
+		require.Equal(t, tc.want, checkAt(m, t0.Add(routeActionGrace)), "installed[rk] = %v", tc.installed)
 	}
 }
 
@@ -135,6 +158,7 @@ func TestClient_Liveness_RouteAction_WarnRepeatsAndClears(t *testing.T) {
 
 	t0 := time.Now()
 	m.checkRouteAction(t0)
+	require.Empty(t, logs.find(slog.LevelWarn, inbound), "no WARN while starting")
 	m.checkRouteAction(t0.Add(routeActionGrace))
 	m.checkRouteAction(t0.Add(routeActionGrace + routeActionWarnEvery - time.Second))
 	warns := logs.find(slog.LevelWarn, inbound)
@@ -146,11 +170,14 @@ func TestClient_Liveness_RouteAction_WarnRepeatsAndClears(t *testing.T) {
 	m.checkRouteAction(t0.Add(routeActionGrace + routeActionWarnEvery))
 	require.Len(t, logs.find(slog.LevelWarn, inbound), 2, "WARN repeats on the interval")
 
+	probe := t0.Add(routeActionGrace + routeActionWarnEvery)
 	sess.mu.Lock()
-	sess.lastRx = t0.Add(time.Minute)
+	sess.lastRx = probe
 	sess.mu.Unlock()
-	m.checkRouteAction(t0.Add(routeActionGrace + routeActionWarnEvery + time.Second))
+	m.checkRouteAction(probe.Add(time.Second))
 	require.Len(t, logs.find(slog.LevelWarn, outbound), 1, "a new direction is logged at once")
+	m.checkRouteAction(probe.Add(routeActionGrace + time.Second))
+	require.Len(t, logs.find(slog.LevelWarn, inbound), 3, "the probe ages out, so inbound returns")
 
 	sess.mu.Lock()
 	sess.state = StateUp
@@ -158,7 +185,7 @@ func TestClient_Liveness_RouteAction_WarnRepeatsAndClears(t *testing.T) {
 	m.checkRouteAction(t0.Add(time.Hour))
 	m.checkRouteAction(t0.Add(time.Hour + time.Minute))
 	require.Len(t, logs.find(slog.LevelInfo, cleared), 1)
-	require.Len(t, logs.find(slog.LevelWarn, inbound), 2)
+	require.Len(t, logs.find(slog.LevelWarn, inbound), 3)
 	require.Len(t, logs.find(slog.LevelWarn, outbound), 1)
 }
 
@@ -197,7 +224,7 @@ func TestClient_Liveness_RouteAction_WithdrawingLastRouteRestartsGrace(t *testin
 	require.NoError(t, m.WithdrawRoute(r, "lo"))
 	require.NoError(t, m.RegisterRoute(r, "lo", m.LocalAddr().Port))
 
-	require.Equal(t, RouteActionNone, checkAt(m, t0.Add(routeActionGrace)))
+	require.Equal(t, RouteActionStarting, checkAt(m, t0.Add(routeActionGrace)))
 	require.Equal(t, RouteActionInbound, checkAt(m, t0.Add(2*routeActionGrace)))
 }
 
@@ -218,7 +245,7 @@ func TestClient_Liveness_RouteAction_OutboundAfterDeafPeerResetsInit(t *testing.
 	sess, ok := m.GetSession(peer)
 	require.True(t, ok)
 	t0 := time.Now()
-	m.checkRouteAction(t0)
+	m.checkRouteAction(t0.Add(-time.Second))
 
 	deaf := &ControlPacket{State: StateDown, LocalDiscr: 99}
 	m.HandleRx(deaf, peer)
@@ -227,5 +254,5 @@ func TestClient_Liveness_RouteAction_OutboundAfterDeafPeerResetsInit(t *testing.
 	require.Equal(t, StateDown, sess.GetState())
 	require.Equal(t, DownReasonRemoteDown, sess.Snapshot().LastDownReason)
 
-	require.Equal(t, RouteActionOutbound, checkAt(m, t0.Add(routeActionGrace)))
+	require.Equal(t, RouteActionOutbound, checkAt(m, t0.Add(routeActionGrace-time.Second)))
 }

@@ -52,6 +52,8 @@ var (
 	routeLivenessMinTxFloor  = flag.Duration("route-liveness-min-tx-floor", defaultRouteLivenessMinTxFloor, "route liveness min tx floor")
 	routeLivenessMaxTxCeil   = flag.Duration("route-liveness-max-tx-ceil", defaultRouteLivenessMaxTxCeil, "route liveness max tx ceil")
 	routeLivenessBackoffMax  = flag.Duration("route-liveness-backoff-max", defaultRouteLivenessBackoffMax, "route liveness backoff max (cap on Down-state probe interval; must be >= route-liveness-min-tx-floor)")
+	routeLivenessHoldDown    = flag.Duration("route-liveness-hold-down", defaultRouteLivenessHoldDown, "in active mode, how long a peer's session must stay up after its second flap before its route is reinstalled; doubles per further flap; 0 disables")
+	routeLivenessHoldDownMax = flag.Duration("route-liveness-hold-down-max", defaultRouteLivenessHoldDownMax, "cap on route-liveness-hold-down; flap history resets after twice this without a flap")
 	routeLivenessPeerMetrics = flag.Bool("route-liveness-peer-metrics", false, "enables per peer metrics for route liveness (high cardinality)")
 	routeLivenessDebug       = flag.Bool("route-liveness-debug", false, "enables debug logging for route liveness")
 
@@ -59,7 +61,7 @@ var (
 	// They will be superceded by a single `route-liveness-enable` flag, where false means
 	// passive-mode and true means active-mode.
 	routeLivenessEnablePassive = flag.Bool("route-liveness-enable-passive", true, "enables route liveness in passive mode")
-	routeLivenessEnableActive  = flag.Bool("route-liveness-enable-active", false, "enables route liveness in active mode (experimental)")
+	routeLivenessEnableActive  = flag.Bool("route-liveness-enable-active", true, "enables route liveness in active mode")
 
 	// set by LDFLAGS
 	version = "0.0.0-dev"
@@ -78,6 +80,9 @@ const (
 	// Matches liveness.defaultBackoffMax so production behavior is unchanged; the
 	// e2e harness overrides this to a small value to avoid the Down-state probe gap.
 	defaultRouteLivenessBackoffMax = 1 * time.Minute
+	// Longer than the ~24s flap cycle seen in production, so such a peer stays withdrawn.
+	defaultRouteLivenessHoldDown    = 30 * time.Second
+	defaultRouteLivenessHoldDownMax = 5 * time.Minute
 
 	defaultRouteLivenessBindIP = "0.0.0.0"
 )
@@ -183,6 +188,9 @@ func main() {
 			MinTxFloor: *routeLivenessMinTxFloor,
 			MaxTxCeil:  *routeLivenessMaxTxCeil,
 			BackoffMax: *routeLivenessBackoffMax,
+
+			HoldDown:    *routeLivenessHoldDown,
+			HoldDownMax: *routeLivenessHoldDownMax,
 
 			EnablePeerMetrics: *routeLivenessPeerMetrics,
 

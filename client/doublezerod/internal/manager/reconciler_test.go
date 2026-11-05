@@ -65,6 +65,7 @@ func (m *mockNetlink) RouteDelete(*routing.Route) error                 { return
 func (m *mockNetlink) RouteGet(net.IP) ([]*routing.Route, error)        { return m.routes, nil }
 func (m *mockNetlink) RuleAdd(*routing.IPRule) error                    { return nil }
 func (m *mockNetlink) RuleDel(*routing.IPRule) error                    { return nil }
+func (m *mockNetlink) LinkSetRPFilter(string, int) error                { return nil }
 func (m *mockNetlink) RouteByProtocol(int) ([]*routing.Route, error) {
 	return m.routes, nil
 }

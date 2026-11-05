@@ -128,9 +128,8 @@ type MeasurementMeta struct {
 	TargetAttempts    int64 `json:"target_attempts,omitempty"`
 	TargetSuccesses   int64 `json:"target_successes,omitempty"`
 
-	// TargetLossCursor is the newest result timestamp counted into the tallies. An
-	// enlisted probe's replays are dropped against its own LastExportedAt, so this only
-	// still gates counting for a probe absent from Sources, which has no mark to keep.
+	// TargetLossCursor is the newest result timestamp counted into the tallies. It gates
+	// counting only for a probe absent from Sources, which has no LastExportedAt to keep.
 	TargetLossCursor int64 `json:"target_loss_cursor,omitempty"`
 }
 
@@ -286,15 +285,13 @@ func migrateTargetMarks(tracker *MetadataTracker) int {
 // seedExportMarks gives each source the export mark a file from before LastExportedAt
 // could not record, so the first lookback does not re-export what that build wrote.
 //
-// That build advanced LastResponseAt for every fetched result and the cursor only past a
-// durable write, so a success is known to be written only at or behind both: a probe ahead
-// of the cursor had its write fail and relied on the cursor to fetch those results again.
-// Bounding by the cursor can tally a timeout past it a second time, once, which beats
-// losing a sample. A measurement with no cursor has written nothing. The timestamps are
-// probe-reported and that build did not screen them, so wall clock bounds the mark.
+// That build advanced LastResponseAt for every fetched result but the cursor only past a
+// durable write, so only a success at or behind both is known to be written. Bounding by
+// the cursor can tally a timeout past it once more, which beats losing a sample. That
+// build did not screen probe-reported timestamps, so wall clock also bounds the mark.
 //
-// Load runs this once and records that in the file. Afterwards LastResponseAt moves ahead
-// of a failed write, and seeding from it again would exclude that write's retry.
+// Load runs this once: afterwards LastResponseAt moves ahead of a failed write, and
+// reseeding from it would exclude that write's retry.
 func seedExportMarks(tracker *MetadataTracker) {
 	now := time.Now().Unix()
 	for _, meta := range tracker.Metadata {
@@ -531,8 +528,7 @@ func (ms *MeasurementState) UpdateSourceProbeResponse(measurementID int, probeID
 }
 
 // UpdateSourceProbeExported advances the probe's export mark, the boundary the next
-// lookback fetch excludes against. Callers apply it only once the batch is durable: a
-// mark advanced past a failed write would exclude those results from the retry.
+// lookback fetch excludes against.
 func (ms *MeasurementState) UpdateSourceProbeExported(measurementID int, probeID int, timestamp int64) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
@@ -555,10 +551,9 @@ func (ms *MeasurementState) UpdateSourceProbeExported(measurementID int, probeID
 
 // RecordTargetResults adds a batch of ping outcomes against a measurement's target
 // probe to the current window, starting one if none is open, and advances the loss
-// cursor to newestResult, which records how far the tallies have reached.
+// cursor to newestResult.
 //
-// The caller is responsible for not counting a result twice; it gates each result on
-// the reporting probe's LastExportedAt.
+// The caller is responsible for not counting a result twice.
 func (ms *MeasurementState) RecordTargetResults(measurementID int, attempts, successes, newestResult, now int64) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()

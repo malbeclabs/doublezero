@@ -2777,8 +2777,6 @@ func TestInternetLatency_RIPEAtlas_ExportSingleMeasurementResults_LateUploads(t 
 	t.Run("a future-dated result touches nothing", func(t *testing.T) {
 		t.Parallel()
 
-		// The timestamp is probe-reported. Letting a skewed one through would park the
-		// probe's marks and the cursor ahead of wall clock until the skew passed.
 		c, ms, _ := newCollector(t, nil, [][]any{
 			{answered(100, time.Now().Add(48*time.Hour))},
 		})

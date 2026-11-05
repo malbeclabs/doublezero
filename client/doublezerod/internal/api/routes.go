@@ -40,7 +40,7 @@ type Route struct {
 
 // RouteSummary counts an IBRL service's peer routes and the action the user must take.
 type RouteSummary struct {
-	Desired      int                  `json:"desired"`
+	Peers        int                  `json:"peers"`
 	Installed    int                  `json:"installed"`
 	NotInstalled []RouteGroup         `json:"not_installed"`
 	Action       liveness.RouteAction `json:"action"`
@@ -73,7 +73,7 @@ func SummarizeRoutes(kernel []*routing.Route, sessions []liveness.SessionSnapsho
 		if sess.ExpectedKernelState == liveness.KernelStateUnknown || rt.Src == nil || rt.Dst == nil || !rt.Src.Equal(src) {
 			continue
 		}
-		sum.Desired++
+		sum.Peers++
 		if inKernel[routeKeyFor(rt)] {
 			sum.Installed++
 			continue

@@ -669,7 +669,7 @@ func TestSummarizeRoutes(t *testing.T) {
 
 	got := SummarizeRoutes(kernel, sessions, src, liveness.RouteActionNone, time.Now())
 	require.Equal(t, &RouteSummary{
-		Desired:   5,
+		Peers:     5,
 		Installed: 2,
 		NotInstalled: []RouteGroup{
 			{State: "down", Reason: "no reply", Count: 2},

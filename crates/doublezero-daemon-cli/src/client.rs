@@ -208,8 +208,8 @@ pub struct Subscription {
 /// The daemon's summary of an IBRL service's peer routes.
 #[derive(Clone, Tabled, Serialize, Deserialize, Debug, PartialEq, Eq)]
 pub struct RouteSummary {
-    #[tabled(rename = "Desired")]
-    pub desired: u64,
+    #[tabled(rename = "Peers")]
+    pub peers: u64,
     #[tabled(rename = "Installed")]
     pub installed: u64,
     #[serde(default)]
@@ -242,6 +242,10 @@ fn display_route_groups(groups: &[RouteGroup]) -> String {
         .collect::<Vec<_>>()
         .join(", ")
 }
+
+/// Matches `liveness.DocsMissingPeerRoutes` in doublezerod, which sends it only with an action.
+pub(crate) const DOCS_MISSING_PEER_ROUTES: &str =
+    "https://docs.doublezero.xyz/support/troubleshooting#issue-missing-peer-routes";
 
 /// Names what blocks liveness for `action`, or `None` when the user has nothing to do.
 pub(crate) fn route_action_problem(action: &str) -> Option<&'static str> {
@@ -674,7 +678,7 @@ mod tests {
             "tunnel_name": "doublezero0", "tunnel_src": null, "tunnel_dst": null,
             "doublezero_ip": "1.2.3.4", "user_type": "IBRL",
             "routes": {
-                "desired": 3, "installed": 1,
+                "peers": 3, "installed": 1,
                 "not_installed": [{"state": "down", "reason": "no reply", "count": 2}],
                 "action": "inbound",
                 "docs": "https://docs.doublezero.xyz/support/troubleshooting#issue-missing-peer-routes",
@@ -685,7 +689,7 @@ mod tests {
         assert_eq!(
             svc.routes,
             Some(RouteSummary {
-                desired: 3,
+                peers: 3,
                 installed: 1,
                 not_installed: vec![RouteGroup {
                     state: "down".to_string(),

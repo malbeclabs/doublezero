@@ -1656,7 +1656,7 @@ func TestServeV2Status_RouteSummary(t *testing.T) {
 	}{
 		{"liveness off", nil, nil},
 		{"liveness on", lm, &api.RouteSummary{
-			Desired:      1,
+			Peers:        1,
 			NotInstalled: []api.RouteGroup{{State: "down", Reason: "no reply", Count: 1}},
 			Action:       liveness.RouteActionInbound,
 			Docs:         liveness.DocsMissingPeerRoutes,

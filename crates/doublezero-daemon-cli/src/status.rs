@@ -807,7 +807,7 @@ mod tests {
                 "",
             );
             svc.routes = Some(RouteSummary {
-                desired: 3,
+                peers: 3,
                 installed: 0,
                 not_installed: vec![],
                 action: action.to_string(),

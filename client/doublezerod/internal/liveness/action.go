@@ -80,7 +80,7 @@ func (m *manager) checkRouteAction(now time.Time) {
 		m.log.Warn(routeActionWarnings[action],
 			"direction", string(action),
 			"since", m.zeroUpSince.UTC().String(),
-			"routesDesired", desired,
+			"peers", desired,
 			"docs", DocsMissingPeerRoutes,
 		)
 	case action == RouteActionNone && m.action != RouteActionNone:

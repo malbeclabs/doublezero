@@ -140,6 +140,7 @@ func TestClient_Liveness_RouteAction_WarnRepeatsAndClears(t *testing.T) {
 	warns := logs.find(slog.LevelWarn, inbound)
 	require.Len(t, warns, 1, "one WARN until the interval passes")
 	require.Equal(t, "inbound", recordAttr(warns[0], "direction"))
+	require.Equal(t, "1", recordAttr(warns[0], "peers"))
 	require.Equal(t, DocsMissingPeerRoutes, recordAttr(warns[0], "docs"))
 
 	m.checkRouteAction(t0.Add(routeActionGrace + routeActionWarnEvery))

@@ -9,7 +9,7 @@ use indicatif::ProgressBar;
 use tabled::{settings::Style, Table};
 
 use crate::{
-    client::{route_action_problem, DaemonClient, RouteRecord},
+    client::{route_action_problem, DaemonClient, RouteRecord, DOCS_MISSING_PEER_ROUTES},
     helpers,
     ledger::LedgerClient,
     requirements::check_daemon,
@@ -101,16 +101,21 @@ async fn show_route_summary<D: DaemonClient, W: Write>(
         .with(Style::psql().remove_horizontals())
         .to_string();
     writeln!(out, "{table}")?;
+    let missing: u64 = summary.not_installed.iter().map(|g| g.count).sum();
     if let Some(problem) = route_action_problem(&summary.action) {
         writeln!(
             out,
             "\n⚠️  Missing peer routes: {problem}. Check that {} UDP 44880 is allowed on doublezero0.",
             summary.action
         )?;
-        if let Some(docs) = &summary.docs {
-            writeln!(out, "See {docs}")?;
-        }
+    } else if summary.action == "none" && missing == 1 {
+        writeln!(out, "\nThe route to 1 peer is not installed, so traffic to it uses the public internet. This host appears healthy and needs no action.")?;
+    } else if summary.action == "none" && missing > 1 {
+        writeln!(out, "\nRoutes to {missing} peers are not installed, so traffic to them uses the public internet. This host appears healthy and needs no action.")?;
+    } else {
+        return Ok(());
     }
+    writeln!(out, "See {DOCS_MISSING_PEER_ROUTES}")?;
     Ok(())
 }
 
@@ -269,7 +274,7 @@ mod tests {
 
     fn summary(action: &str, installed: u64, not_installed: Vec<RouteGroup>) -> RouteSummary {
         RouteSummary {
-            desired: installed + not_installed.iter().map(|g| g.count).sum::<u64>(),
+            peers: installed + not_installed.iter().map(|g| g.count).sum::<u64>(),
             installed,
             not_installed,
             action: action.to_string(),
@@ -340,9 +345,43 @@ mod tests {
         let output = run_status(v2_status("IBRL", Some(none)), false).unwrap();
         assert_eq!(
             output,
+            format!(
+                concat!(
+                    " Peers | Installed | Not Installed      | Action \n",
+                    " 12    | 9         | down (no reply): 3 | none   \n",
+                    "\n",
+                    "Routes to 3 peers are not installed, so traffic to them uses the public internet. ",
+                    "This host appears healthy and needs no action.\n",
+                    "See {}\n",
+                ),
+                DOCS
+            )
+        );
+
+        let one = summary("none", 4, vec![group("up", "held down", 1)]);
+        let output = run_status(v2_status("IBRL", Some(one)), false).unwrap();
+        assert_eq!(
+            output,
+            format!(
+                concat!(
+                    " Peers | Installed | Not Installed     | Action \n",
+                    " 5     | 4         | up (held down): 1 | none   \n",
+                    "\n",
+                    "The route to 1 peer is not installed, so traffic to it uses the public internet. ",
+                    "This host appears healthy and needs no action.\n",
+                    "See {}\n",
+                ),
+                DOCS
+            )
+        );
+
+        let all = summary("none", 5, vec![]);
+        let output = run_status(v2_status("IBRL", Some(all)), false).unwrap();
+        assert_eq!(
+            output,
             concat!(
-                " Desired | Installed | Not Installed      | Action \n",
-                " 12      | 9         | down (no reply): 3 | none   \n",
+                " Peers | Installed | Not Installed | Action \n",
+                " 5     | 5         |               | none   \n",
             )
         );
 
@@ -352,8 +391,8 @@ mod tests {
             output,
             format!(
                 concat!(
-                    " Desired | Installed | Not Installed       | Action  \n",
-                    " 12      | 0         | down (no reply): 12 | inbound \n",
+                    " Peers | Installed | Not Installed       | Action  \n",
+                    " 12    | 0         | down (no reply): 12 | inbound \n",
                     "\n",
                     "⚠️  Missing peer routes: this host receives no liveness probes from peers. ",
                     "Check that inbound UDP 44880 is allowed on doublezero0.\n",
@@ -373,8 +412,8 @@ mod tests {
             output,
             format!(
                 concat!(
-                    " Desired | Installed | Not Installed              | Action   \n",
-                    " 3       | 0         | down (timeout): 2, init: 1 | outbound \n",
+                    " Peers | Installed | Not Installed              | Action   \n",
+                    " 3     | 0         | down (timeout): 2, init: 1 | outbound \n",
                     "\n",
                     "⚠️  Missing peer routes: peers receive no liveness probes from this host. ",
                     "Check that outbound UDP 44880 is allowed on doublezero0.\n",
@@ -393,7 +432,7 @@ mod tests {
         assert_eq!(
             parsed,
             serde_json::json!({
-                "desired": 2,
+                "peers": 2,
                 "installed": 0,
                 "not_installed": [{"state": "down", "reason": "no reply", "count": 2}],
                 "action": "inbound",

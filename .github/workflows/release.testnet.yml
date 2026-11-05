@@ -160,7 +160,7 @@ jobs:
           BRANCH="release/testnet-v${VERSION}"
           ./scripts/bump-testnet-versions.sh "$VERSION"
           git checkout -b "$BRANCH"
-          git add ansible/inventory/testnet/group_vars/all.yml
+          git add ansible/inventory/testnet/group_vars/all/main.yml
           git commit -m "release: tn ${VERSION}"
           git push -f origin "$BRANCH"
           PR=$(gh pr list -R malbeclabs/infra --head "$BRANCH" --state open \

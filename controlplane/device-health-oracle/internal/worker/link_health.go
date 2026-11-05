@@ -42,8 +42,8 @@ const linkHealthRecentMaxAge = linkHealthSettleDelay + 15*time.Minute
 // LinkHealthCriterion evaluates link impairment from the link_rollup_5m table,
 // over the window its mode selects (RecoveryMode resolves it via LinkBurnIn).
 //
-// A bucket is bad when ISIS is down on a link that is not hard-drained, or when
-// both sides have samples and both report loss above LossThreshold. Both
+// A bucket is bad when ISIS is down on a link that is not hard-drained and was
+// not in the preceding bucket, or when both sides have samples and both report loss above LossThreshold. Both
 // directions are round trips over the same link, so real loss shows on both.
 // Loss on one side alone is the peer's telemetry agent: its TWAMP reflector
 // runs inside the agent, so a restart reads as lost probes on the far side.
@@ -126,6 +126,7 @@ func (c *LinkHealthCriterion) checkImpairment(ctx context.Context, link servicea
 		"bucketTs", r.BucketTs,
 		"isisDown", r.IsisDown,
 		"status", r.Status,
+		"prevStatus", r.PrevStatus,
 		"aLossPct", r.ALossPct,
 		"zLossPct", r.ZLossPct,
 		"aSamples", r.ASamples,
@@ -133,7 +134,7 @@ func (c *LinkHealthCriterion) checkImpairment(ctx context.Context, link servicea
 		"lossThreshold", c.lossThreshold)
 
 	// LinkHealthWindowAllClean's bad-bucket predicate mirrors these two checks.
-	if r.IsisDown && r.Status != linkStatusHardDrained {
+	if r.IsisDown && r.Status != linkStatusHardDrained && r.PrevStatus != linkStatusHardDrained {
 		return false, fmt.Sprintf("isis adjacency down (bucket=%s)", r.BucketTs.UTC().Format(time.RFC3339))
 	}
 	if r.ASamples > 0 && r.ZSamples > 0 && r.ALossPct > c.lossThreshold && r.ZLossPct > c.lossThreshold {

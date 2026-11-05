@@ -176,7 +176,8 @@ func TestLinkHealthRecent_ReturnsLatestBucket(t *testing.T) {
 		queryRowFunc: func(_ context.Context, query string, args ...any) driver.Row {
 			assert.Contains(t, query, `"testdb".link_rollup_5m`)
 			assert.Contains(t, query, "bucket_ts")
-			assert.Contains(t, query, "ORDER BY bucket_ts DESC, ingested_at DESC")
+			assert.Contains(t, query, "argMax(status, ingested_at)")
+			assert.Contains(t, query, "lagInFrame(status) OVER (ORDER BY bucket_ts) AS prev_status")
 			assert.Contains(t, query, "LIMIT 1")
 			// The bounds keep a link with no recent rows from scanning all history.
 			assert.Contains(t, query, "bucket_ts >= ?")
@@ -186,7 +187,7 @@ func TestLinkHealthRecent_ReturnsLatestBucket(t *testing.T) {
 			// and the dedup falls back to a stale version of it.
 			assert.Greater(t,
 				strings.Index(query, "provisioning = false"),
-				strings.Index(query, "ORDER BY bucket_ts DESC, ingested_at DESC"),
+				strings.Index(query, "GROUP BY bucket_ts"),
 				"provisioning must be filtered after the dedup, not in the inner WHERE")
 			assert.Len(t, args, 3)
 			assert.Equal(t, "linkABC", args[0])
@@ -197,10 +198,11 @@ func TestLinkHealthRecent_ReturnsLatestBucket(t *testing.T) {
 					*(dest[0].(*time.Time)) = bucketTs
 					*(dest[1].(*bool)) = true
 					*(dest[2].(*string)) = "activated"
-					*(dest[3].(*float64)) = 12.5
-					*(dest[4].(*float64)) = 0.0
-					*(dest[5].(*uint32)) = 30
-					*(dest[6].(*uint32)) = 28
+					*(dest[3].(*string)) = "hard-drained"
+					*(dest[4].(*float64)) = 12.5
+					*(dest[5].(*float64)) = 0.0
+					*(dest[6].(*uint32)) = 30
+					*(dest[7].(*uint32)) = 28
 					return nil
 				},
 			}
@@ -214,6 +216,7 @@ func TestLinkHealthRecent_ReturnsLatestBucket(t *testing.T) {
 	assert.Equal(t, bucketTs, r.BucketTs)
 	assert.True(t, r.IsisDown)
 	assert.Equal(t, "activated", r.Status)
+	assert.Equal(t, "hard-drained", r.PrevStatus)
 	assert.Equal(t, 12.5, r.ALossPct)
 	assert.Equal(t, 0.0, r.ZLossPct)
 	assert.Equal(t, uint32(30), r.ASamples)
@@ -281,7 +284,8 @@ func TestLinkHealthWindowAllClean_AllClean(t *testing.T) {
 			assert.Contains(t, query, "GROUP BY bucket_ts")
 			assert.Contains(t, query, "maxIf(bucket_ts, a_samples > 0 AND z_samples > 0)")
 			// Bad-bucket predicate: must match checkImpairment.
-			assert.Contains(t, query, "isis_down = true AND status != 'hard-drained'")
+			assert.Contains(t, query, "isis_down = true AND status != 'hard-drained' AND prev_status != 'hard-drained'")
+			assert.Contains(t, query, "lagInFrame(status) OVER (ORDER BY bucket_ts) AS prev_status")
 			assert.Contains(t, query, "a_samples > 0 AND z_samples > 0 AND a_loss_pct > ? AND z_loss_pct > ?")
 			assert.Contains(t, query, "countIf(a_samples > 0 AND z_samples > 0) AS total_buckets")
 			assert.Contains(t, query, "argMax(status, ingested_at)")

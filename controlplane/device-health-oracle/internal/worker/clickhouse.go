@@ -125,7 +125,10 @@ func (c *ClickHouseClient) InterfaceCountersCoverage(ctx context.Context, device
 
 // linkStatusHardDrained is the rollup's status value for a hard-drained link.
 // Hard drain sets isis passive, so isis_down reads true for as long as the link
-// stays drained and says nothing about the link itself.
+// stays drained and says nothing about the link itself. The bucket a drain ends
+// in is also affected: the rollup stamps a bucket with the status at its end but
+// sets isis_down if the adjacency was down at any point in it, so that bucket
+// reads as an undrained link with ISIS down.
 const linkStatusHardDrained = "hard-drained"
 
 // LinkHealthRecentResult is a rollup bucket's health fields, returned by
@@ -134,10 +137,12 @@ type LinkHealthRecentResult struct {
 	BucketTs time.Time
 	IsisDown bool
 	Status   string
-	ALossPct float64
-	ZLossPct float64
-	ASamples uint32
-	ZSamples uint32
+	// PrevStatus is the status of the link's preceding bucket.
+	PrevStatus string
+	ALossPct   float64
+	ZLossPct   float64
+	ASamples   uint32
+	ZSamples   uint32
 }
 
 // LinkHealthWindowResult summarises a recovery-window check. AllClean is true
@@ -163,8 +168,9 @@ type LinkHealthChecker interface {
 	LinkHealthRecent(ctx context.Context, linkPubkey string, start, end time.Time) (result LinkHealthRecentResult, found bool, err error)
 
 	// LinkHealthWindowAllClean returns true if no distinct non-provisioning
-	// bucket in [start, end] is bad: ISIS down on a link that is not hard-drained,
-	// or both sides sampled with loss above the threshold on both. Late-arriving
+	// bucket in [start, end] is bad: ISIS down on a link that is not hard-drained
+	// and was not in the preceding bucket, or both sides sampled with loss above
+	// the threshold on both. Late-arriving
 	// rows for the same bucket are deduplicated by ingested_at so a corrected
 	// re-write doesn't keep a link Impaired even after every distinct bucket
 	// reads as clean. Returns found=false when the window has no bucket with
@@ -176,22 +182,35 @@ type LinkHealthChecker interface {
 // in [start, end], deduplicated by selecting its most recently ingested row, or
 // found=false if that row has provisioning=true.
 func (c *ClickHouseClient) LinkHealthRecent(ctx context.Context, linkPubkey string, start, end time.Time) (LinkHealthRecentResult, bool, error) {
-	// The inner query resolves the link's newest bucket to its newest row
-	// (ReplacingMergeTree keeps every version until merge, so ordering by
-	// ingested_at is the dedup). The provisioning filter must sit outside it:
-	// in the WHERE clause it would run before the dedup, so a bucket whose
-	// latest row flips provisioning would fall back to a stale version.
-	// The table is ordered by (bucket_ts, link_pk), so without the bucket_ts
-	// bounds a link with no recent rows scans its whole history every tick.
+	// The innermost query resolves each bucket to its newest row (ReplacingMergeTree
+	// keeps every version until merge, so argMax on ingested_at is the dedup). The
+	// provisioning filter must sit outside it: in that WHERE clause it would run
+	// before the dedup, so a bucket whose latest row flips provisioning would fall
+	// back to a stale version. The table is ordered by (bucket_ts, link_pk), so
+	// without the bucket_ts bounds a link with no recent rows scans its whole
+	// history every tick. prev_status is empty when the range holds no earlier
+	// bucket, which takes two missed buckets at the moment a hard drain ends.
 	query := fmt.Sprintf(
-		`SELECT bucket_ts, isis_down, status, a_loss_pct, z_loss_pct, a_samples, z_samples
+		`SELECT bucket_ts, isis_down, status, prev_status, a_loss_pct, z_loss_pct, a_samples, z_samples
 		 FROM (
-		   SELECT bucket_ts, isis_down, status, a_loss_pct, z_loss_pct, a_samples, z_samples, provisioning
-		   FROM "%s".link_rollup_5m
-		   WHERE link_pk = ?
-		     AND bucket_ts >= ?
-		     AND bucket_ts <= ?
-		   ORDER BY bucket_ts DESC, ingested_at DESC
+		   SELECT *, lagInFrame(status) OVER (ORDER BY bucket_ts) AS prev_status
+		   FROM (
+		     SELECT
+		       bucket_ts,
+		       argMax(isis_down, ingested_at)     AS isis_down,
+		       argMax(status, ingested_at)        AS status,
+		       argMax(a_loss_pct, ingested_at)    AS a_loss_pct,
+		       argMax(z_loss_pct, ingested_at)    AS z_loss_pct,
+		       argMax(a_samples, ingested_at)     AS a_samples,
+		       argMax(z_samples, ingested_at)     AS z_samples,
+		       argMax(provisioning, ingested_at)  AS provisioning
+		     FROM "%s".link_rollup_5m
+		     WHERE link_pk = ?
+		       AND bucket_ts >= ?
+		       AND bucket_ts <= ?
+		     GROUP BY bucket_ts
+		   )
+		   ORDER BY bucket_ts DESC
 		   LIMIT 1
 		 )
 		 WHERE provisioning = false`,
@@ -199,7 +218,7 @@ func (c *ClickHouseClient) LinkHealthRecent(ctx context.Context, linkPubkey stri
 	)
 
 	var r LinkHealthRecentResult
-	err := c.conn.QueryRow(ctx, query, linkPubkey, start, end).Scan(&r.BucketTs, &r.IsisDown, &r.Status, &r.ALossPct, &r.ZLossPct, &r.ASamples, &r.ZSamples)
+	err := c.conn.QueryRow(ctx, query, linkPubkey, start, end).Scan(&r.BucketTs, &r.IsisDown, &r.Status, &r.PrevStatus, &r.ALossPct, &r.ZLossPct, &r.ASamples, &r.ZSamples)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return LinkHealthRecentResult{}, false, nil
@@ -216,27 +235,32 @@ func (c *ClickHouseClient) LinkHealthWindowAllClean(ctx context.Context, linkPub
 	// provisioning is carried through argMax and filtered after the GROUP BY,
 	// for the reason given in LinkHealthRecent: filtered in the WHERE clause it
 	// would pre-empt the dedup. The bad-bucket predicate mirrors checkImpairment.
+	// The window's first bucket has no prev_status, so if it ends a hard drain it
+	// reads as bad until the window moves past it, delaying recovery by one bucket.
 	query := fmt.Sprintf(
 		`SELECT
-		   countIf((isis_down = true AND status != '%s')
+		   countIf((isis_down = true AND status != '%[1]s' AND prev_status != '%[1]s')
 		     OR (a_samples > 0 AND z_samples > 0 AND a_loss_pct > ? AND z_loss_pct > ?)) AS bad_buckets,
 		   countIf(a_samples > 0 AND z_samples > 0) AS total_buckets,
 		   maxIf(bucket_ts, a_samples > 0 AND z_samples > 0) AS max_bucket_ts
 		 FROM (
-		   SELECT
-		     bucket_ts,
-		     argMax(isis_down, ingested_at)     AS isis_down,
-		     argMax(status, ingested_at)        AS status,
-		     argMax(a_loss_pct, ingested_at)    AS a_loss_pct,
-		     argMax(z_loss_pct, ingested_at)    AS z_loss_pct,
-		     argMax(a_samples, ingested_at)     AS a_samples,
-		     argMax(z_samples, ingested_at)     AS z_samples,
-		     argMax(provisioning, ingested_at)  AS provisioning
-		   FROM "%s".link_rollup_5m
-		   WHERE link_pk = ?
-		     AND bucket_ts >= ?
-		     AND bucket_ts <= ?
-		   GROUP BY bucket_ts
+		   SELECT *, lagInFrame(status) OVER (ORDER BY bucket_ts) AS prev_status
+		   FROM (
+		     SELECT
+		       bucket_ts,
+		       argMax(isis_down, ingested_at)     AS isis_down,
+		       argMax(status, ingested_at)        AS status,
+		       argMax(a_loss_pct, ingested_at)    AS a_loss_pct,
+		       argMax(z_loss_pct, ingested_at)    AS z_loss_pct,
+		       argMax(a_samples, ingested_at)     AS a_samples,
+		       argMax(z_samples, ingested_at)     AS z_samples,
+		       argMax(provisioning, ingested_at)  AS provisioning
+		     FROM "%[2]s".link_rollup_5m
+		     WHERE link_pk = ?
+		       AND bucket_ts >= ?
+		       AND bucket_ts <= ?
+		     GROUP BY bucket_ts
+		   )
 		 )
 		 WHERE provisioning = false`,
 		linkStatusHardDrained,

@@ -72,21 +72,28 @@ func TestLinkHealthCriterion_Impairment_ReadsSettledRecentBuckets(t *testing.T) 
 }
 
 // Hard drain sets isis passive, so isis_down is always true while hard-drained.
-// Counting it would hold the link Impaired forever and stall RFC-12 reactivation.
+// Counting it would hold the link Impaired forever and stall RFC-12 reactivation,
+// and counting the bucket the drain ends in would demote every undrained link.
 func TestLinkHealthCriterion_Impairment_IsisDownByStatus(t *testing.T) {
 	tests := []struct {
-		status   string
-		expected bool
+		name       string
+		status     string
+		prevStatus string
+		expected   bool
 	}{
-		{"activated", false},
-		{"soft-drained", false},
-		{"hard-drained", true},
+		{"activated", "activated", "activated", false},
+		{"soft-drained", "soft-drained", "soft-drained", false},
+		{"hard-drained", "hard-drained", "hard-drained", true},
+		{"hard drain starts", "hard-drained", "activated", true},
+		{"undrain to activated", "activated", "hard-drained", true},
+		{"undrain to soft-drained", "soft-drained", "hard-drained", true},
+		{"activated with no preceding bucket", "activated", "", false},
 	}
 	for _, tt := range tests {
-		t.Run(tt.status, func(t *testing.T) {
+		t.Run(tt.name, func(t *testing.T) {
 			checker := &mockLinkHealthChecker{
 				recentFunc: func(_ context.Context, _ string, _, _ time.Time) (LinkHealthRecentResult, bool, error) {
-					return LinkHealthRecentResult{BucketTs: freshBucket(), IsisDown: true, Status: tt.status, ASamples: 30, ZSamples: 30}, true, nil
+					return LinkHealthRecentResult{BucketTs: freshBucket(), IsisDown: true, Status: tt.status, PrevStatus: tt.prevStatus, ASamples: 30, ZSamples: 30}, true, nil
 				},
 			}
 			c := NewLinkHealthCriterion(LinkHealthModeImpairment, checker, 5.0, testLogger())

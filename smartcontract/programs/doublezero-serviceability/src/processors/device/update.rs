@@ -48,6 +48,9 @@ pub struct DeviceUpdateArgs {
     pub multicast_subscribers_count: Option<u16>,
     #[incremental(default = None)]
     pub multicast_publishers_count: Option<u16>,
+    /// `0.0.0.0` clears it.
+    #[incremental(default = None)]
+    pub agent_ip: Option<std::net::Ipv4Addr>,
 }
 
 impl fmt::Debug for DeviceUpdateArgs {
@@ -122,6 +125,9 @@ impl fmt::Debug for DeviceUpdateArgs {
                 "multicast_publishers_count: {:?}, ",
                 self.multicast_publishers_count
             )?;
+        }
+        if self.agent_ip.is_some() {
+            write!(f, "agent_ip: {:?}, ", self.agent_ip)?;
         }
         Ok(())
     }
@@ -312,6 +318,9 @@ pub fn process_update_device(
     }
     if let Some(public_ip) = value.public_ip {
         device.public_ip = public_ip;
+    }
+    if let Some(agent_ip) = value.agent_ip {
+        device.agent_ip = agent_ip;
     }
 
     let mut create_dz_prefixes_resources = false;

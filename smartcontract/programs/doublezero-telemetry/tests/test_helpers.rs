@@ -126,6 +126,7 @@ impl DeviceCreateArgsExt for DeviceCreateArgs {
             mgmt_vrf: String::default(),
             desired_status: Some(DeviceDesiredStatus::Activated),
             resource_count: 0,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }
     }
 }
@@ -1027,6 +1028,7 @@ impl ServiceabilityProgramHelper {
                 mgmt_vrf: device.mgmt_vrf,
                 desired_status: Some(DeviceDesiredStatus::Activated),
                 resource_count,
+                agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
             }),
             accounts,
         )

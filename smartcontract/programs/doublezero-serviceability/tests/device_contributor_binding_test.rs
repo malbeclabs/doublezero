@@ -146,6 +146,7 @@ async fn setup_device_with_two_contributors() -> BindingTestSetup {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -328,6 +329,54 @@ async fn test_update_device_foundation_may_use_any_contributor() {
         .await
         .unwrap();
     assert_eq!(device.max_users, 64);
+}
+
+#[tokio::test]
+async fn test_update_device_contributor_may_set_agent_ip() {
+    let mut s = setup_device_with_two_contributors().await;
+
+    // The foundation hands the device to the non-foundation contributor.
+    let recent_blockhash = s.banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut s.banks_client,
+        recent_blockhash,
+        s.program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            contributor_pk: Some(s.other_contributor_pubkey),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(s.device_pubkey, false),
+            AccountMeta::new(s.other_contributor_pubkey, false),
+            AccountMeta::new(s.globalstate_pubkey, false),
+        ],
+        &s.payer,
+    )
+    .await;
+
+    // That contributor's owner sets the agent IP without foundation rights.
+    let recent_blockhash = s.banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut s.banks_client,
+        recent_blockhash,
+        s.program_id,
+        DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
+            agent_ip: Some([37, 61, 209, 41].into()),
+            ..DeviceUpdateArgs::default()
+        }),
+        vec![
+            AccountMeta::new(s.device_pubkey, false),
+            AccountMeta::new(s.other_contributor_pubkey, false),
+            AccountMeta::new(s.globalstate_pubkey, false),
+        ],
+        &s.other_payer,
+    )
+    .await;
+
+    let device = get_device(&mut s.banks_client, s.device_pubkey)
+        .await
+        .unwrap();
+    assert_eq!(device.agent_ip, std::net::Ipv4Addr::new(37, 61, 209, 41));
 }
 
 #[tokio::test]

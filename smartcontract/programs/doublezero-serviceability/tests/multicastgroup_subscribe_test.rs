@@ -165,6 +165,7 @@ async fn setup_fixture() -> TestFixture {
                 doublezero_serviceability::state::device::DeviceDesiredStatus::Activated,
             ),
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

@@ -93,6 +93,7 @@ struct DeviceDisplay {
     pub cyoa_ips: Vec<String>,
     pub metrics_publisher: String,
     pub mgmt_vrf: String,
+    pub agent_ip: String,
     #[tabled(skip)]
     pub interfaces: Vec<InterfaceDisplay>,
     pub max_users: u16,
@@ -155,6 +156,7 @@ impl GetDeviceCliCommand {
                 .collect(),
             metrics_publisher: device.metrics_publisher_pk.to_string(),
             mgmt_vrf: device.mgmt_vrf,
+            agent_ip: crate::util::display_agent_ip(device.agent_ip),
             interfaces: device
                 .interfaces
                 .iter()

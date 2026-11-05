@@ -51,3 +51,12 @@ pub fn display_pubkey_short(pk: &Pubkey) -> String {
 pub fn display_string_vec(v: &[String]) -> String {
     v.join(", ")
 }
+
+/// A device's agent IP for display: empty when unset (`0.0.0.0`).
+pub fn display_agent_ip(ip: std::net::Ipv4Addr) -> String {
+    if ip.is_unspecified() {
+        String::new()
+    } else {
+        ip.to_string()
+    }
+}

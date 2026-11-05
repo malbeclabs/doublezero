@@ -129,6 +129,7 @@ async fn create_activated_device(
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -278,6 +279,7 @@ async fn test_builder_create_device() {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
             resource_count: 0,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         },
     );
     submit(&mut banks_client, &payer, ix)

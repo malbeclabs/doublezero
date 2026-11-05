@@ -39,6 +39,10 @@ pub struct DeviceCreateArgs {
     /// DzPrefixBlock per advertised prefix.
     #[incremental(default = 0)]
     pub resource_count: u8,
+    /// Public address the device's agents connect from, when it is neither
+    /// `public_ip` nor an interface address. `0.0.0.0` leaves it unset.
+    #[incremental(default = std::net::Ipv4Addr::UNSPECIFIED)]
+    pub agent_ip: std::net::Ipv4Addr,
 }
 
 impl fmt::Debug for DeviceCreateArgs {
@@ -46,7 +50,7 @@ impl fmt::Debug for DeviceCreateArgs {
         write!(
             f,
             "code: {}, device_type: {:?}, public_ip: {}, dz_prefixes: {}, \
-metrics_publisher_pk: {}, mgmt_vrf: {}, desired_status: {:?}, resource_count: {}",
+metrics_publisher_pk: {}, mgmt_vrf: {}, desired_status: {:?}, resource_count: {}, agent_ip: {}",
             self.code,
             self.device_type,
             self.public_ip,
@@ -55,6 +59,7 @@ metrics_publisher_pk: {}, mgmt_vrf: {}, desired_status: {:?}, resource_count: {}
             self.mgmt_vrf,
             self.desired_status,
             self.resource_count,
+            self.agent_ip,
         )
     }
 }
@@ -215,6 +220,7 @@ pub fn process_create_device(
         reserved_seats: 0,
         multicast_publishers_count: 0,
         max_multicast_publishers: 0, // Initially locked, must be set via device update
+        agent_ip: value.agent_ip,
         ..Default::default()
     };
 

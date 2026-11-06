@@ -16,6 +16,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jonboulle/clockwork"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -49,7 +50,10 @@ type fakeConfigMap struct {
 	cm        *ConfigMap // nil: not found
 	getErr    error
 	updateErr error
-	updates   int
+	// commitThenErr applies the update and then fails, as a timeout after the
+	// API server committed it does.
+	commitThenErr bool
+	updates       int
 }
 
 func (f *fakeConfigMap) Get(context.Context) (*ConfigMap, error) {
@@ -64,12 +68,12 @@ func (f *fakeConfigMap) Get(context.Context) (*ConfigMap, error) {
 }
 
 func (f *fakeConfigMap) Update(_ context.Context, cm *ConfigMap) error {
-	if f.updateErr != nil {
+	if f.updateErr != nil && !f.commitThenErr {
 		return f.updateErr
 	}
 	f.updates++
 	f.cm = cm
-	return nil
+	return f.updateErr
 }
 
 func (f *fakeConfigMap) gnmicMap(t *testing.T) GnmicAddressMap {
@@ -79,23 +83,30 @@ func (f *fakeConfigMap) gnmicMap(t *testing.T) GnmicAddressMap {
 	return m
 }
 
-// fakeIPList behaves as Cloudflare's list does: each item has an id, adding
-// an address already on the list updates its comment, and items are deleted
-// by id. ops records each write in order.
+// fakeIPList holds items with an id and a creation time, and deletes them by
+// id. Cloudflare's docs do not say what adding an address the list already
+// holds does, so the fake does what appendExisting says, never an update:
+// refuse the whole add (the default) or add a second item. ops records each
+// write in order.
 type fakeIPList struct {
-	items     []ListItem
-	itemsErr  error
-	addErr    error
-	deleteErr error
-	nextID    int
-	ops       []string
+	items          []ListItem
+	itemsErr       error
+	addErr         error
+	deleteErr      error
+	appendExisting bool
+	nextID         int
+	ops            []string
+}
+
+func (f *fakeIPList) newID() (string, string) {
+	f.nextID++
+	return fmt.Sprintf("item%d", f.nextID), fmt.Sprintf("2026-01-01T00:%02d:%02dZ", f.nextID/60, f.nextID%60)
 }
 
 func (f *fakeIPList) Items(context.Context) ([]ListItem, error) {
 	for i := range f.items {
 		if f.items[i].ID == "" {
-			f.nextID++
-			f.items[i].ID = fmt.Sprintf("item%d", f.nextID)
+			f.items[i].ID, f.items[i].CreatedOn = f.newID()
 		}
 	}
 	return append([]ListItem(nil), f.items...), f.itemsErr
@@ -107,17 +118,17 @@ func (f *fakeIPList) AddItems(_ context.Context, items []ListItem) error {
 	}
 	ips := make([]string, 0, len(items))
 	for _, it := range items {
-		ips = append(ips, it.IP)
 		if it.ID != "" {
 			return fmt.Errorf("added item %s carries id %s", it.IP, it.ID)
 		}
-		i := slices.IndexFunc(f.items, func(c ListItem) bool { k, _ := listKey(c.IP); return k == it.IP })
-		if i >= 0 {
-			f.items[i].Comment = it.Comment
-			continue
+		held := slices.ContainsFunc(f.items, func(c ListItem) bool { k, _ := listKey(c.IP); return k == it.IP })
+		if held && !f.appendExisting {
+			return fmt.Errorf("bulk operation failed: %s is already in the list", it.IP)
 		}
-		f.nextID++
-		it.ID = fmt.Sprintf("item%d", f.nextID)
+		ips = append(ips, it.IP)
+	}
+	for _, it := range items {
+		it.ID, it.CreatedOn = f.newID()
 		f.items = append(f.items, it)
 	}
 	f.ops = append(f.ops, "add "+strings.Join(ips, ","))
@@ -279,11 +290,13 @@ func TestPass_WritesOnlyWhenSomethingChanged(t *testing.T) {
 	assert.Equal(t, [2]int{2, 2}, [2]int{cmUpdates, cfReplaces})
 	assert.Equal(t, []string{"45.0.0.1", "45.0.0.2", "45.0.0.3", "45.0.0.9"}, h.cfIPs())
 
-	// Only a Cloudflare comment changes: only Cloudflare is written.
+	// Only a device code changes: the map is keyed on pubkeys, and Cloudflare
+	// keeps the old comment rather than send an address it already holds.
 	h.ledger.pd.Devices[3].Code = "dz9-renamed"
 	require.NoError(t, h.pass(t))
 	cmUpdates, cfReplaces = h.wrote()
-	assert.Equal(t, [2]int{2, 3}, [2]int{cmUpdates, cfReplaces})
+	assert.Equal(t, [2]int{2, 2}, [2]int{cmUpdates, cfReplaces})
+	assert.Contains(t, h.cfItems(), ListItem{IP: "45.0.0.9", Comment: "dz9"})
 }
 
 func TestPass_ReadFailuresWriteNothing(t *testing.T) {
@@ -663,11 +676,21 @@ func TestPass_UnlistedCallerLoggedOnce(t *testing.T) {
 }
 
 // A change adds what is missing and then deletes what left, by id: an
-// address that stays on the list is never deleted, even when its comment
-// changes.
+// address that stays on the list is never deleted or sent again, even when
+// its comment no longer matches. It holds whichever way Cloudflare treats an
+// address it already has.
 func TestPass_CloudflareAddsThenDeletesAndKeepsWhatStays(t *testing.T) {
+	for _, appendExisting := range []bool{false, true} {
+		t.Run(fmt.Sprintf("appendExisting=%v", appendExisting), func(t *testing.T) {
+			testCloudflareAddsThenDeletes(t, appendExisting)
+		})
+	}
+}
+
+func testCloudflareAddsThenDeletes(t *testing.T, appendExisting bool) {
 	devices := fleet(20)
 	h := newHarness(t, devices)
+	h.cf.appendExisting = appendExisting
 	require.NoError(t, h.pass(t))
 	idOf := func(ip string) string {
 		for _, it := range h.cf.items {
@@ -686,10 +709,39 @@ func TestPass_CloudflareAddsThenDeletesAndKeepsWhatStays(t *testing.T) {
 	devices[1].PublicIp = [4]uint8{45, 0, 1, 2}
 	require.NoError(t, h.pass(t))
 
-	assert.Equal(t, []string{"add 45.0.0.1,45.0.1.2", "delete " + goneID}, h.cf.ops)
+	assert.Equal(t, []string{"add 45.0.1.2", "delete " + goneID}, h.cf.ops)
 	assert.Equal(t, keepID, idOf("45.0.0.1"), "an address that stays keeps its item")
-	assert.Contains(t, h.cfItems(), ListItem{IP: "45.0.0.1", Comment: "dz1-renamed"})
+	assert.Contains(t, h.cfItems(), ListItem{IP: "45.0.0.1", Comment: "dz1"}, "a stale comment is left as it is")
 	assert.Len(t, h.cf.items, 20)
+	h.cf.ops = nil
+	require.NoError(t, h.pass(t))
+	assert.Empty(t, h.cf.ops, "a stale comment alone writes nothing")
+	assert.Equal(t, 0.0, h.external("cloudflare_list"), "a comment the sync left is not an outside edit")
+}
+
+// A list holding two items for one address converges to the oldest, and
+// never loses the address. The extra items are not removed addresses, so
+// they do not count against the removal limits.
+func TestPass_CloudflareDuplicatesKeepTheOldest(t *testing.T) {
+	h := newHarness(t, fleet(3))
+	h.cf.items = []ListItem{
+		{ID: "newer", IP: "45.0.0.1", Comment: "dz1", CreatedOn: "2026-02-01T00:00:00Z"},
+		{ID: "older", IP: "45.0.0.1/32", Comment: "by hand", CreatedOn: "2026-01-01T00:00:00Z"},
+		{ID: "newest", IP: "45.0.0.1", CreatedOn: "2026-03-01T00:00:00Z"},
+		{ID: "two", IP: "45.0.0.2", Comment: "dz2", CreatedOn: "2026-01-01T00:00:00Z"},
+		{ID: "three", IP: "45.0.0.3", Comment: "dz3", CreatedOn: "2026-01-01T00:00:00Z"},
+	}
+	require.NoError(t, h.pass(t))
+	assert.Equal(t, []string{"delete newer,newest"}, h.cf.ops)
+	ids := []string{}
+	for _, it := range h.cf.items {
+		ids = append(ids, it.ID)
+	}
+	assert.ElementsMatch(t, []string{"older", "two", "three"}, ids)
+	h.cf.ops = nil
+	require.NoError(t, h.pass(t))
+	assert.Empty(t, h.cf.ops)
+	assert.Equal(t, 0.0, h.external("cloudflare_list"), "the sync's own dedup is not an outside edit")
 }
 
 // A pass that finds the list changed since the previous pass left it counts
@@ -791,26 +843,39 @@ func TestPass_FirstPassAfterRestartCountsNoOutsideEdit(t *testing.T) {
 	assert.Equal(t, [2]float64{0, 1}, [2]float64{h.external("gnmic_map"), h.external("cloudflare_list")})
 }
 
-// A map update applies whole or not at all. A failed one is not an outside
-// edit, but an edit that made it fail (a 409 from a concurrent write) is.
-func TestPass_FailedGnmicMapWriteKeepsWhatThePassRead(t *testing.T) {
+// An update that returns an error may have been committed: a timeout after
+// the API server applied it. The next pass must not count the sync's own
+// write as an outside edit.
+func TestPass_ErroredGnmicMapWriteIsNotAnOutsideEdit(t *testing.T) {
 	devices := fleet(20)
 	h := newHarness(t, devices)
 	require.NoError(t, h.pass(t))
 	devices[1].PublicIp = [4]uint8{45, 0, 1, 2}
-	h.cm.updateErr = errors.New("HTTP 409")
+	h.cm.updateErr, h.cm.commitThenErr = context.DeadlineExceeded, true
 	require.Error(t, h.pass(t))
-	h.cm.updateErr = nil
+	h.cm.updateErr, h.cm.commitThenErr = nil, false
 	require.NoError(t, h.pass(t))
-	assert.Equal(t, 0.0, h.external("gnmic_map"), "the failed write changed nothing")
+	assert.Equal(t, 0.0, h.external("gnmic_map"))
 
-	devices[2].PublicIp = [4]uint8{45, 0, 1, 3}
-	h.cm.updateErr = errors.New("HTTP 409")
-	require.Error(t, h.pass(t))
-	h.cm.updateErr = nil
+	// The pass after that compares again.
 	h.cm.cm.Data["map.json"] = strings.Replace(h.cm.cm.Data["map.json"], `"45.0.0.1"`, `"45.0.0.1", "45.9.9.9"`, 1)
 	require.NoError(t, h.pass(t))
-	assert.Equal(t, 1.0, h.external("gnmic_map"), "the concurrent edit is counted")
+	assert.Equal(t, 1.0, h.external("gnmic_map"))
+}
+
+func TestCloudflareItems_TruncatesLongComments(t *testing.T) {
+	list := List{Devices: map[string]Device{}}
+	for i := range 200 {
+		list.Devices[pk(byte(i+1))] = Device{Code: fmt.Sprintf("dev%03d-é", i), Onchain: addrs("45.0.0.1")}
+	}
+	items := cloudflareItems(list)
+	require.Len(t, items, 1)
+	assert.LessOrEqual(t, len(items[0].Comment), maxCommentBytes)
+	assert.Greater(t, len(items[0].Comment), maxCommentBytes-2)
+	assert.True(t, utf8.ValidString(items[0].Comment), "cut at a character boundary")
+	assert.Equal(t, "short", truncateComment("short"))
+	// Byte 500 falls inside the two-byte é, so the cut moves back before it.
+	assert.Equal(t, strings.Repeat("a", 499), truncateComment(strings.Repeat("a", 499)+"é"))
 }
 
 // In dry run the sync writes nothing, so every change between passes is an

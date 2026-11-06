@@ -37,12 +37,21 @@ func TestParseExceptions_RejectsASecondDocument(t *testing.T) {
 		raw     string
 		wantErr string
 	}{
-		"entries after ---":      {one + "---\n" + two, "parsing exception file: it holds more than one YAML document (a second starts at line 2); merge them into one"},
-		"empty second document":  {one + "---\n", "parsing exception file: it holds more than one YAML document (a second starts at line 2); merge them into one"},
-		"broken second document": {one + "---\n[\n", "parsing exception file: yaml: line 3: did not find expected node content"},
+		"entries after ---":                        {one + "---\n" + two, "parsing exception file: it holds more than one YAML document (a second starts at line 2); merge them into one"},
+		"second document of comments then entries": {one + "---\n# more\n" + two, "parsing exception file: it holds more than one YAML document (a second starts at line 2); merge them into one"},
+		"third document after an empty one":        {one + "---\n---\n" + two, "parsing exception file: it holds more than one YAML document (a second starts at line 3); merge them into one"},
+		"a null with a tag":                        {one + "---\n!!str\n", "parsing exception file: it holds more than one YAML document (a second starts at line 2); merge them into one"},
+		"broken second document":                   {one + "---\n[\n", "parsing exception file: yaml: line 3: did not find expected node content"},
 	} {
 		_, err := ParseExceptions([]byte(tc.raw))
 		assert.EqualError(t, err, tc.wantErr, name)
+	}
+
+	// An empty document after the one, such as a trailing ---, holds nothing.
+	for _, tail := range []string{"---\n", "---\n# nothing\n", "---\n---\n", "...\n"} {
+		exc, err := ParseExceptions([]byte(two + tail))
+		require.NoError(t, err, tail)
+		assert.Len(t, exc.Exclusions, 1, tail)
 	}
 
 	// A leading --- starts the one document.

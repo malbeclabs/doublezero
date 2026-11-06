@@ -48,6 +48,8 @@ type Plan struct {
 	// delete.
 	cfAdd       []ListItem
 	cfDeleteIDs []string
+	// cfAfter is what the list holds once the write succeeds, by address.
+	cfAfter map[string]string
 }
 
 // Removed counts the entries a write would remove.

@@ -103,6 +103,10 @@ type MetadataTracker struct {
 	// UnresponsiveMarksMigrated records that the one-time reclassification in Load has
 	// run against this file, so a source failure marked later is not moved by it.
 	UnresponsiveMarksMigrated bool `json:"unresponsive_marks_migrated,omitempty"`
+
+	// ExportMarksSeeded records that the one-time seeding in Load has run against this
+	// file, or that the file never needed it because this build created it.
+	ExportMarksSeeded bool `json:"export_marks_seeded,omitempty"`
 }
 
 type UnresponsiveProbeEntry struct {
@@ -124,11 +128,8 @@ type MeasurementMeta struct {
 	TargetAttempts    int64 `json:"target_attempts,omitempty"`
 	TargetSuccesses   int64 `json:"target_successes,omitempty"`
 
-	// TargetLossCursor is the newest result timestamp already counted into the tallies.
-	// It is separate from the export cursor, which advances only past results carrying
-	// a latency: a timeout newer than the last success is refetched by every incremental
-	// query until a later success arrives, and counting those repeats would inflate the
-	// loss ratio for a target that is merely losing its most recent pings.
+	// TargetLossCursor is the newest result timestamp counted into the tallies. It gates
+	// counting only for a probe absent from Sources, which has no LastExportedAt to keep.
 	TargetLossCursor int64 `json:"target_loss_cursor,omitempty"`
 }
 
@@ -136,13 +137,21 @@ type SourceProbeMeta struct {
 	LocationCode   string `json:"location_code"`
 	ProbeID        int    `json:"probe_id"`
 	LastResponseAt int64  `json:"last_response_at,omitempty"`
+
+	// LastExportedAt is the newest result timestamp already consumed by a durable
+	// export for this probe, and is the per-probe exclusion boundary for the lookback
+	// fetch. Kept separate from LastResponseAt, which is liveness: tying liveness to a
+	// successful write would freeze every probe's mark during an exporter outage, and
+	// Step 4b would mark the whole fleet unresponsive an hour in.
+	LastExportedAt int64 `json:"last_exported_at,omitempty"`
 }
 
 func NewMeasurementState(filename string) *MeasurementState {
 	return &MeasurementState{
 		filename: filename,
 		tracker: &MetadataTracker{
-			Metadata: make(map[int]MeasurementMeta),
+			Metadata:          make(map[int]MeasurementMeta),
+			ExportMarksSeeded: true,
 		},
 	}
 }
@@ -177,6 +186,7 @@ func (ms *MeasurementState) Load() error {
 		UnresponsiveProbes        json.RawMessage          `json:"unresponsive_probes,omitempty"`
 		UnresponsiveTargets       []UnresponsiveProbeEntry `json:"unresponsive_targets,omitempty"`
 		UnresponsiveMarksMigrated bool                     `json:"unresponsive_marks_migrated,omitempty"`
+		ExportMarksSeeded         bool                     `json:"export_marks_seeded,omitempty"`
 	}
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&intermediate); err != nil {
@@ -187,6 +197,7 @@ func (ms *MeasurementState) Load() error {
 	tracker.Metadata = intermediate.Metadata
 	tracker.UnresponsiveTargets = intermediate.UnresponsiveTargets
 	tracker.UnresponsiveMarksMigrated = intermediate.UnresponsiveMarksMigrated
+	tracker.ExportMarksSeeded = intermediate.ExportMarksSeeded
 
 	// Try new format first: [{probe_id: N, marked_at: T}, ...]
 	if len(intermediate.UnresponsiveProbes) > 0 {
@@ -213,6 +224,11 @@ func (ms *MeasurementState) Load() error {
 	if !tracker.UnresponsiveMarksMigrated {
 		ms.migratedTargetMarks = migrateTargetMarks(&tracker)
 		tracker.UnresponsiveMarksMigrated = true
+	}
+
+	if !tracker.ExportMarksSeeded {
+		seedExportMarks(&tracker)
+		tracker.ExportMarksSeeded = true
 	}
 
 	ms.tracker = &tracker
@@ -264,6 +280,25 @@ func migrateTargetMarks(tracker *MetadataTracker) int {
 	}
 	tracker.UnresponsiveProbes = keptSources
 	return moved
+}
+
+// seedExportMarks gives each source the export mark a file from before LastExportedAt
+// could not record, so the first lookback does not re-export what that build wrote.
+//
+// That build advanced LastResponseAt for every fetched result but the cursor only past a
+// durable write, so only a success at or behind both is known to be written. Bounding by
+// the cursor can tally a timeout past it once more, which beats losing a sample. That
+// build did not screen probe-reported timestamps, so wall clock also bounds the mark.
+//
+// Load runs this once: afterwards LastResponseAt moves ahead of a failed write, and
+// reseeding from it would exclude that write's retry.
+func seedExportMarks(tracker *MetadataTracker) {
+	now := time.Now().Unix()
+	for _, meta := range tracker.Metadata {
+		for i, source := range meta.Sources {
+			meta.Sources[i].LastExportedAt = min(source.LastResponseAt, meta.LastExportAt, now)
+		}
+	}
 }
 
 // MigratedTargetMarks reports how many marks the last Load reclassified from the source
@@ -492,11 +527,33 @@ func (ms *MeasurementState) UpdateSourceProbeResponse(measurementID int, probeID
 	ms.tracker.Metadata[measurementID] = meta
 }
 
+// UpdateSourceProbeExported advances the probe's export mark, the boundary the next
+// lookback fetch excludes against.
+func (ms *MeasurementState) UpdateSourceProbeExported(measurementID int, probeID int, timestamp int64) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	meta, exists := ms.tracker.Metadata[measurementID]
+	if !exists {
+		return
+	}
+
+	for i, source := range meta.Sources {
+		if source.ProbeID == probeID {
+			if timestamp > source.LastExportedAt {
+				meta.Sources[i].LastExportedAt = timestamp
+			}
+			break
+		}
+	}
+	ms.tracker.Metadata[measurementID] = meta
+}
+
 // RecordTargetResults adds a batch of ping outcomes against a measurement's target
 // probe to the current window, starting one if none is open, and advances the loss
-// cursor to newestResult so the same outcomes are not counted twice.
+// cursor to newestResult.
 //
-// The caller is responsible for counting only results newer than TargetLossCursor.
+// The caller is responsible for not counting a result twice.
 func (ms *MeasurementState) RecordTargetResults(measurementID int, attempts, successes, newestResult, now int64) {
 	ms.mu.Lock()
 	defer ms.mu.Unlock()

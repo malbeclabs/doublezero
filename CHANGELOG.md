@@ -30,6 +30,8 @@ All notable changes to this project will be documented in this file.
   - The foundation check reads the program config and the serviceability global state only from their PDAs. An account at another address fails with `InvalidSeeds`.
 - RFCs
   - Add RFC-29, DoubleZero Edge for Builders.
+- Collector
+  - The RIPE Atlas export excludes results per source probe rather than per measurement and re-reads the hour behind the measurement cursor. The cursor could pass a slow probe's result for an interval, which was then never fetched, so the probe's `last_response_at` froze and Step 4b marked a healthy source unresponsive, changing that metro's source probe in every measurement it feeds. Each measurement's `exported_records` should now keep pace with its source count, and `result_count` runs well above it because it includes the lookback's replays. (malbeclabs/doublezero#4153)
 
 ## [v0.46.0](https://github.com/malbeclabs/doublezero/compare/client/v0.45.0...client/v0.46.0) - 2026-10-27
 

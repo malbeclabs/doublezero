@@ -377,7 +377,7 @@ func TestFilterStatusUpClients(t *testing.T) {
 			"client2": UserStatusUp,
 		}
 
-		result := FilterStatusUpClients(clients, batch, statuses)
+		result := FilterStatusUpClients(clients, batch, statuses, nil)
 
 		if len(result) != 2 {
 			t.Errorf("expected 2 clients, got %d", len(result))
@@ -395,7 +395,7 @@ func TestFilterStatusUpClients(t *testing.T) {
 			"client3": UserStatusUp,
 		}
 
-		result := FilterStatusUpClients(clients, batch, statuses)
+		result := FilterStatusUpClients(clients, batch, statuses, nil)
 
 		if len(result) != 1 {
 			t.Fatalf("expected 1 client, got %d", len(result))
@@ -415,7 +415,7 @@ func TestFilterStatusUpClients(t *testing.T) {
 			"client2": "disconnected",
 		}
 
-		result := FilterStatusUpClients(clients, batch, statuses)
+		result := FilterStatusUpClients(clients, batch, statuses, nil)
 
 		if len(result) != 1 {
 			t.Fatalf("expected 1 client, got %d", len(result))
@@ -435,7 +435,28 @@ func TestFilterStatusUpClients(t *testing.T) {
 			// client2 status missing (e.g., GetUserStatus failed)
 		}
 
-		result := FilterStatusUpClients(clients, batch, statuses)
+		result := FilterStatusUpClients(clients, batch, statuses, nil)
+
+		if len(result) != 1 {
+			t.Fatalf("expected 1 client, got %d", len(result))
+		}
+		if result[0].Host != "client1" {
+			t.Errorf("expected client1, got %s", result[0].Host)
+		}
+	})
+
+	t.Run("excludes clients whose connect failed even when status is up", func(t *testing.T) {
+		batch := map[string]*BatchResult{
+			"client1": {Device: dev1},
+			"client2": {Device: dev2},
+		}
+		statuses := map[string]string{
+			"client1": UserStatusUp,
+			"client2": UserStatusUp,
+		}
+		connectFailed := map[string]struct{}{"client2": {}}
+
+		result := FilterStatusUpClients(clients, batch, statuses, connectFailed)
 
 		if len(result) != 1 {
 			t.Fatalf("expected 1 client, got %d", len(result))

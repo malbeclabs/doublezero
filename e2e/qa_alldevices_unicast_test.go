@@ -388,16 +388,18 @@ func connectClientsAndWaitForRoutes(
 	batch map[string]*qa.BatchResult,
 ) []*qa.Client {
 	// Connect only clients whose device changed from previous batch
-	// Each goroutine must write only its own host's BatchResult.
+	// Each goroutine must write only its own host's BatchResult and connectFailed entry.
 	// Note: errors here must increment FailedTests so Success() returns false
+	connectFailed := make([]bool, len(clientsToConnect))
 	var wg sync.WaitGroup
-	for _, c := range clientsToConnect {
+	for i, c := range clientsToConnect {
 		wg.Add(1)
-		go func(c *qa.Client) {
+		go func(i int, c *qa.Client) {
 			defer wg.Done()
 			device := batch[c.Host].Device
 			err := c.ConnectUserUnicast_NoWait(ctx, device.Code)
 			if err != nil {
+				connectFailed[i] = true
 				log.Error("Failed to start connection", "client", c.Host, "device", device.Code, "error", err)
 				batch[c.Host].FailedTests++
 				if device.Ready() {
@@ -418,9 +420,15 @@ func connectClientsAndWaitForRoutes(
 					log.Warn("Ignoring status failure for device not ready for users", "device", device.Code, "status", device.Status, "maxUsers", device.MaxUsers)
 				}
 			}
-		}(c)
+		}(i, c)
 	}
 	wg.Wait()
+	connectFailedHosts := make(map[string]struct{})
+	for i, failed := range connectFailed {
+		if failed {
+			connectFailedHosts[clientsToConnect[i].Host] = struct{}{}
+		}
+	}
 
 	// Build list of clients with status "up" (both newly connected and previously connected)
 	statuses := make(map[string]string)
@@ -450,7 +458,7 @@ func connectClientsAndWaitForRoutes(
 			log.Warn("Client not up", "client", c.Host, "status", ibrl.SessionStatus)
 		}
 	}
-	connectedClients := qa.FilterStatusUpClients(allClients, batch, statuses)
+	connectedClients := qa.FilterStatusUpClients(allClients, batch, statuses, connectFailedHosts)
 
 	// Wait for routes between all connected clients
 	for _, c := range connectedClients {

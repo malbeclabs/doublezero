@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- fix(contributor-rewards): a snapshot stored before devices had `agent_ip` still loads, with each device's `agent_ip` read as unset (`0.0.0.0`)
+
 ## [0.7.0] - 2026-10-28
 
 - feat(contributor-rewards): the worker retries a failed merkle root posting 3 more times, one minute apart, before it reports the failure. The 3 retries share one grace-period wait, so `grace_period_max_wait_seconds` still limits the total wait

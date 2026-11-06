@@ -47,7 +47,6 @@ func TestQA_UnicastConnectivity(t *testing.T) {
 	})
 
 	// Connect users to any device without waiting for status.
-	// NOTE: We need to do this sequentially to avoid a DZ ledger race condition.
 	for _, client := range clients {
 		err := client.ConnectUserUnicast_AnyDevice_NoWait(ctx)
 		require.NoError(t, err, "failed to connect user")

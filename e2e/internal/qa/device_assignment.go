@@ -177,7 +177,8 @@ func FilterStatusUpClients(clients []*Client, batch map[string]*BatchResult, sta
 }
 
 // ComputeRouteTargets returns the IPs that a client should have routes to.
-// Excludes clients in the same exchange (no intra-exchange routing) and self.
+// Excludes self, clients in the same exchange (no intra-exchange routing), and
+// clients on a device that is not Ready, whose missing routes are not this client's failure.
 func ComputeRouteTargets(client *Client, connectedClients []*Client, batch map[string]*BatchResult, getIP func(*Client) net.IP) []net.IP {
 	clientExchange := batch[client.Host].Device.ExchangeCode
 	var targets []net.IP
@@ -186,6 +187,9 @@ func ComputeRouteTargets(client *Client, connectedClients []*Client, batch map[s
 			continue
 		}
 		if batch[other.Host].Device.ExchangeCode == clientExchange {
+			continue
+		}
+		if !batch[other.Host].Device.Ready() {
 			continue
 		}
 		if ip := getIP(other); ip != nil {

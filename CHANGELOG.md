@@ -31,6 +31,8 @@ All notable changes to this project will be documented in this file.
   - The foundation check reads the program config and the serviceability global state only from their PDAs. An account at another address fails with `InvalidSeeds`.
 - RFCs
   - Add RFC-29, DoubleZero Edge for Builders.
+- E2E/QA
+  - `TestQA_AllDevices_UnicastConnectivity` does not wait for routes to a host on a device that is not ready for users. Once the QA hosts can connect to such a device, a missing route to it would otherwise count against the waiting host's device.
 
 ## [v0.46.0](https://github.com/malbeclabs/doublezero/compare/client/v0.45.0...client/v0.46.0) - 2026-10-27
 

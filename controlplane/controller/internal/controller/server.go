@@ -1109,19 +1109,14 @@ func peerAddr(ctx context.Context) string {
 }
 
 // callerIP returns the gRPC caller's IP address without its port, or "" if it
-// cannot be determined from the request context.
+// cannot be determined from the request context. Both listeners are TCP, so
+// the peer is a host:port.
 func callerIP(ctx context.Context) string {
-	p, ok := peer.FromContext(ctx)
-	if !ok || p.Addr == nil {
+	host, _, err := net.SplitHostPort(peerAddr(ctx))
+	if err != nil {
 		return ""
 	}
-	if tcp, ok := p.Addr.(*net.TCPAddr); ok {
-		return tcp.IP.String()
-	}
-	if host, _, err := net.SplitHostPort(p.Addr.String()); err == nil {
-		return host
-	}
-	return ""
+	return host
 }
 
 // formatCIDR formats a 5-byte network block into CIDR notation

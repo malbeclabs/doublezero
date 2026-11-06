@@ -114,6 +114,10 @@ pub struct UserDisplay {
     pub client_ip: Ipv4Addr,
     pub dz_ip: Ipv4Addr,
     pub accesspass: String,
+    /// The address of the pass the user records, or of both candidate passes of a legacy user.
+    #[tabled(skip)]
+    #[serde(serialize_with = "serializer::serialize_pubkeylist_as_string")]
+    pub accesspass_pks: Vec<Pubkey>,
     pub tunnel_id: u16,
     pub tunnel_net: NetworkV4,
     pub tunnel_endpoint: Ipv4Addr,
@@ -167,12 +171,12 @@ impl ListUserCliCommand {
             users.retain(|(_, _, accesspasses)| {
                 accesspasses
                     .iter()
-                    .any(|accesspass| accesspass.accesspass_type == AccessPassType::Prepaid)
+                    .any(|(_, accesspass)| accesspass.accesspass_type == AccessPassType::Prepaid)
             });
         }
         if self.solana_validator {
             users.retain(|(_, _, accesspasses)| {
-                accesspasses.iter().any(|accesspass| {
+                accesspasses.iter().any(|(_, accesspass)| {
                     matches!(
                         accesspass.accesspass_type,
                         AccessPassType::SolanaValidator(_)
@@ -182,7 +186,7 @@ impl ListUserCliCommand {
         }
         if let Some(solana_identity_vec) = self.solana_identity {
             users.retain(|(_, _, accesspasses)| {
-                accesspasses.iter().any(|accesspass| {
+                accesspasses.iter().any(|(_, accesspass)| {
                     matches!(
                         &accesspass.accesspass_type,
                         AccessPassType::SolanaValidator(pk) if solana_identity_vec.contains(pk)
@@ -357,6 +361,7 @@ impl ListUserCliCommand {
                     client_ip: user.client_ip,
                     dz_ip: user.dz_ip,
                     accesspass: format_accesspasses(&accesspasses),
+                    accesspass_pks: accesspasses.iter().map(|(pk, _)| *pk).collect(),
                     tunnel_id: user.tunnel_id,
                     tunnel_net: user.tunnel_net,
                     tunnel_endpoint: user.tunnel_endpoint,
@@ -399,20 +404,20 @@ impl ListUserCliCommand {
     }
 }
 
-/// The access passes a user can be on. A user that records its pass in `accesspass_pk` has
-/// exactly that one. A legacy user records none, and the program accepts either of the payer's
-/// passes for it: the one at the user's client IP or the dynamic one at 0.0.0.0. Nothing onchain
-/// says which of the two it was created against, so when both exist both are returned, the
-/// client IP pass first. An empty result means the pass has been closed.
-fn user_accesspasses(
+/// The access passes a user can be on, with their addresses. A user that records its pass in
+/// `accesspass_pk` has exactly that one. A legacy user records none, and the program accepts
+/// either of the payer's passes for it: the one at the user's client IP or the dynamic one at
+/// 0.0.0.0. Nothing onchain says which of the two it was created against, so when both exist both
+/// are returned, the client IP pass first. An empty result means the pass has been closed.
+pub(crate) fn user_accesspasses(
     program_id: &Pubkey,
     user: &User,
     accesspasses: &HashMap<Pubkey, AccessPass>,
-) -> Vec<AccessPass> {
+) -> Vec<(Pubkey, AccessPass)> {
     if user.accesspass_pk != Pubkey::default() {
         return accesspasses
             .get(&user.accesspass_pk)
-            .cloned()
+            .map(|accesspass| (user.accesspass_pk, accesspass.clone()))
             .into_iter()
             .collect();
     }
@@ -424,21 +429,21 @@ fn user_accesspasses(
         candidates.push(dynamic_pk);
     }
     candidates
-        .iter()
-        .filter_map(|pk| accesspasses.get(pk))
-        .filter(|accesspass| accesspass.user_payer == user.owner)
-        .cloned()
+        .into_iter()
+        .filter_map(|pk| accesspasses.get(&pk).map(|accesspass| (pk, accesspass)))
+        .filter(|(_, accesspass)| accesspass.user_payer == user.owner)
+        .map(|(pk, accesspass)| (pk, accesspass.clone()))
         .collect()
 }
 
 /// Format the user's passes with the same type names `access-pass list` prints.
-fn format_accesspasses(accesspasses: &[AccessPass]) -> String {
+pub(crate) fn format_accesspasses(accesspasses: &[(Pubkey, AccessPass)]) -> String {
     if accesspasses.is_empty() {
         return "none".to_string();
     }
     accesspasses
         .iter()
-        .map(|accesspass| accesspass.accesspass_type.to_string())
+        .map(|(_, accesspass)| accesspass.accesspass_type.to_string())
         .collect::<Vec<_>>()
         .join(" or ")
 }
@@ -1007,7 +1012,11 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"tenant\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"user_type\":\"Multicast\",\"device_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast\":\"S:m_code\",\"publishers\":\"\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8\",\"device_name\":\"device1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"cyoa_type\":\"GREOverDIA\",\"client_ip\":\"1.2.3.4\",\"dz_ip\":\"2.3.4.5\",\"accesspass\":\"prepaid\",\"tunnel_id\":500,\"tunnel_net\":\"1.2.3.5/32\",\"tunnel_endpoint\":\"5.6.7.8\",\"status\":\"Activated\",\"bgp_status\":\"Unknown\",\"bgp_rtt_ns\":0,\"bgp_rtt\":\"-\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
+        let expected = "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"tenant\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"user_type\":\"Multicast\",\"device_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast\":\"S:m_code\",\"publishers\":\"\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8\",\"device_name\":\"device1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"cyoa_type\":\"GREOverDIA\",\"client_ip\":\"1.2.3.4\",\"dz_ip\":\"2.3.4.5\",\"accesspass\":\"prepaid\",\"tunnel_id\":500,\"tunnel_net\":\"1.2.3.5/32\",\"tunnel_endpoint\":\"5.6.7.8\",\"status\":\"Activated\",\"bgp_status\":\"Unknown\",\"bgp_rtt_ns\":0,\"bgp_rtt\":\"-\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n".replace(
+            "\"accesspass\":\"prepaid\",",
+            &format!("\"accesspass\":\"prepaid\",\"accesspass_pks\":\"{accesspass2_pubkey}\","),
+        );
+        assert_eq!(output_str, expected);
 
         let mut output = Vec::new();
         let res = block_on(
@@ -2177,12 +2186,12 @@ mod tests {
     }
 
     /// Run `user list --json-compact` over the given accounts and return each listed user's
-    /// `accesspass` cell, keyed by user account.
+    /// `accesspass` and `accesspass_pks` values, keyed by user account.
     fn listed_accesspasses(
         users: Vec<(Pubkey, User)>,
         accesspasses: Vec<(Pubkey, AccessPass)>,
         prepaid: bool,
-    ) -> HashMap<String, String> {
+    ) -> HashMap<String, (String, String)> {
         let mut client = create_test_client();
         client
             .expect_list_user()
@@ -2235,7 +2244,10 @@ mod tests {
             .map(|row| {
                 (
                     row["account"].as_str().unwrap().to_string(),
-                    row["accesspass"].as_str().unwrap().to_string(),
+                    (
+                        row["accesspass"].as_str().unwrap().to_string(),
+                        row["accesspass_pks"].as_str().unwrap().to_string(),
+                    ),
                 )
             })
             .collect()
@@ -2279,10 +2291,13 @@ mod tests {
             false,
         );
 
-        assert_eq!(listed[&ibrl_user_pk.to_string()], "prepaid");
+        assert_eq!(
+            listed[&ibrl_user_pk.to_string()],
+            ("prepaid".to_string(), prepaid_pk.to_string())
+        );
         assert_eq!(
             listed[&edge_seat_user_pk.to_string()],
-            "edge_seat: 0 feed(s)"
+            ("edge_seat: 0 feed(s)".to_string(), edge_seat_pk.to_string())
         );
     }
 
@@ -2312,7 +2327,10 @@ mod tests {
             false,
         );
 
-        assert_eq!(listed[&user_pk.to_string()], "none");
+        assert_eq!(
+            listed[&user_pk.to_string()],
+            ("none".to_string(), String::new())
+        );
     }
 
     #[test]
@@ -2345,7 +2363,10 @@ mod tests {
         let listed = listed_accesspasses(users.clone(), accesspasses.clone(), false);
         assert_eq!(
             listed[&user_pk.to_string()],
-            "prepaid or edge_seat: 0 feed(s)"
+            (
+                "prepaid or edge_seat: 0 feed(s)".to_string(),
+                format!("{prepaid_pk}, {edge_seat_pk}")
+            )
         );
 
         let listed = listed_accesspasses(users, accesspasses, true);

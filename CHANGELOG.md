@@ -19,10 +19,12 @@ All notable changes to this project will be documented in this file.
   - `doublezero-solana` 0.6.2. It makes `feeds validator-client-rewards claim` create the manager's 2Z token account when it is missing, so a new team manager does not run `spl-token create-account` first. (#4482)
   - `doublezero-solana` 0.6.1. It adds `feeds publisher-rewards status --node-id <ID>`, which shows a validator what the feed program paid it in each of the last three calendar months. (#4473)
 - Serviceability
+  - Every access pass type counts its unicast and multicast users. Before, only an EdgeSeat pass kept these counts, so prepaid and Solana validator passes always showed 0. Only an EdgeSeat pass enforces `max_unicast_users` and `max_multicast_users`, as before. A pass created before this change keeps its old counts until an admin corrects them. (malbeclabs/infra#2766)
   - User creation accepts only the per-IP user address.
   - Every instruction reads the global state only from the program's global state account. An account another program owns fails with `InvalidAccountOwner` (custom error 52), and an account at another address fails with `InvalidSeeds`.
   - `DeleteDevice` closes only the device's own resource accounts: its `TunnelIds` account, then its `DzPrefixBlock` accounts.
 - CLI
+  - `doublezero access-pass list` shows a cap in `unicast_users` and `multicast_users` only for an EdgeSeat pass, the one type that enforces it. Other types show the count alone, for example `1` in place of `0 / 1`.
   - `doublezero tenant list` shows an `administrators` column next to `owner`. `owner` is the key that created the tenant. The administrators are the keys that may set access passes for it, so the old output pointed operators at a key the program rejects. `--json` and `--json-compact` output gain an `administrators` string key that holds the keys joined by `, `, and `owner` is unchanged.
   - An IBRL `doublezero connect` with `--device` no longer refuses a payer on the QA allowlist when the named device is full or has `max_users=0`, because the program exempts that payer from device user limits. The device must still be an activated edge or hybrid device, and multicast connects are unchanged.
 - Client

@@ -14,6 +14,17 @@ import (
 
 var validDBName = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
+// MaxCallerRows bounds the caller read. Any address may send a device's
+// pubkey, so a flood of distinct callers could otherwise load an unbounded
+// result before the per-device cap applies. About 100 devices calling from 1
+// to 3 addresses each make about 300 rows, and the report keeps at most
+// MaxOffchainCallersPerDevice (8) offchain callers per device, about 800 in
+// all, so 10,000 is over ten times what the report can use and about 1 MB.
+// Reaching it fails the report rather than truncating it: a cut across
+// devices could drop a device's own address and report it missing. The list
+// does not depend on the report, so it is still written.
+const MaxCallerRows = 10_000
+
 // ClickHouseCallers reads controller_grpc_getconfig_success, which the
 // controller writes for every successful GetConfig. It needs only SELECT.
 type ClickHouseCallers struct {
@@ -55,11 +66,13 @@ func (c *ClickHouseCallers) Close() error { return c.conn.Close() }
 // carry an empty address and are left out. The query fails while the table
 // has no caller_ip column at all.
 func (c *ClickHouseCallers) RecentCalls(ctx context.Context, since time.Time) ([]Call, error) {
+	// One row past the limit tells a full result from one that was cut.
 	rows, err := c.conn.Query(ctx, fmt.Sprintf(
 		`SELECT device_pubkey, caller_ip, max(timestamp) AS last_seen
 		 FROM "%s".controller_grpc_getconfig_success
 		 WHERE timestamp >= ? AND caller_ip != ''
-		 GROUP BY device_pubkey, caller_ip`, c.db), since)
+		 GROUP BY device_pubkey, caller_ip
+		 LIMIT %d`, c.db, MaxCallerRows+1), since)
 	if err != nil {
 		return nil, fmt.Errorf("clickhouse query: %w", err)
 	}
@@ -67,6 +80,9 @@ func (c *ClickHouseCallers) RecentCalls(ctx context.Context, since time.Time) ([
 
 	var calls []Call
 	for rows.Next() {
+		if len(calls) == MaxCallerRows {
+			return nil, fmt.Errorf("caller read reached its limit of %d device and address pairs; the report is not built, and a flood of callers is the likely cause", MaxCallerRows)
+		}
 		var (
 			pubkey, callerIP string
 			lastSeen         time.Time

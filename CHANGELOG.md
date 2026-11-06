@@ -33,6 +33,8 @@ All notable changes to this project will be documented in this file.
   - The Go, TypeScript and Python serviceability SDKs read the device agent IP as `AgentIp`, `agentIp` and `agent_ip`. All zeros means unset. The Go SDK's device JSON always carries an `AgentIp` key, which is empty when the address is unset.
 - Geolocation
   - The foundation check reads the program config and the serviceability global state only from their PDAs. An account at another address fails with `InvalidSeeds`.
+- Telemetry
+  - Add `doublezero-telemetry-allowlist-sync`, which builds the device address list from the ledger and a reviewed exception file every 60 seconds and writes it to gnmic's address map ConfigMap and a Cloudflare IP list, only when either changed. It writes nothing on a failed or incomplete ledger read, never writes an empty list, and refuses a pass that removes more than 5 devices or 10% of the addresses unless `--allow-shrink-to` names that list. `--dry-run` writes nothing. It reads caller addresses from `controller_grpc_getconfig_success` and exports per-device gauges for the missing device and unlisted caller alerts.
 - RFCs
   - Add RFC-29, DoubleZero Edge for Builders.
 - E2E/QA

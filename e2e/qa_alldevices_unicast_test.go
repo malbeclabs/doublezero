@@ -147,6 +147,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		wg.Wait()
 	})
 
+	var connectFailedHosts map[string]struct{}
 	for batchNum := 0; batchNum < batchCount; batchNum++ {
 		batch := batchData[batchNum]
 
@@ -154,6 +155,10 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		// Clients keep their connection if assigned to the same device as the previous batch
 		// and still have status "up". This avoids unnecessary reconnection overhead.
 		getStatus := func(hostname string) (string, error) {
+			// After a failed connect, "up" can be the old tunnel's.
+			if _, failed := connectFailedHosts[hostname]; failed {
+				return "", nil
+			}
 			for _, c := range clients {
 				if c.Host == hostname {
 					statuses, err := c.GetUserStatuses(ctx)
@@ -179,7 +184,8 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		clientsToConnect := qa.DetermineClientsToConnect(batchNum, batchData, clients, getStatus)
 
 		t.Run(fmt.Sprintf("batch_%d", batchNum+1), func(t *testing.T) {
-			connectedClients := connectClientsAndWaitForRoutes(t, ctx, log, clientsToConnect, clients, batch)
+			var connectedClients []*qa.Client
+			connectedClients, connectFailedHosts = connectClientsAndWaitForRoutes(t, ctx, log, clientsToConnect, clients, batch)
 			if len(connectedClients) < 2 {
 				t.Fatalf("fewer than 2 clients connected (%d), cannot run connectivity tests", len(connectedClients))
 			}
@@ -386,7 +392,7 @@ func connectClientsAndWaitForRoutes(
 	clientsToConnect []*qa.Client,
 	allClients []*qa.Client,
 	batch map[string]*qa.BatchResult,
-) []*qa.Client {
+) ([]*qa.Client, map[string]struct{}) {
 	// Connect only clients whose device changed from previous batch
 	// Each goroutine must write only its own host's BatchResult and connectFailed entry.
 	// Note: errors here must increment FailedTests so Success() returns false
@@ -477,7 +483,7 @@ func connectClientsAndWaitForRoutes(
 		}
 	}
 
-	return connectedClients
+	return connectedClients, connectFailedHosts
 }
 
 func runConnectivitySubtests(

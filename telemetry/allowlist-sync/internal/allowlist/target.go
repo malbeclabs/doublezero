@@ -37,7 +37,17 @@ type Plan struct {
 	// the sync never writes, so a write removes them.
 	RemovedOther []string
 
+	// ExternalAdded and ExternalRemoved are items (a Cloudflare address, a
+	// gnmic map pubkey) the target gained, changed or lost since the previous
+	// pass of this process left it: a write the sync did not make.
+	ExternalAdded   []string
+	ExternalRemoved []string
+
 	list List
+	// cfAdd and cfDeleteIDs are the Cloudflare items to add and the ids to
+	// delete.
+	cfAdd       []ListItem
+	cfDeleteIDs []string
 }
 
 // Removed counts the entries a write would remove.
@@ -54,5 +64,51 @@ func diffAddrs(prev, next []netip.Addr) (added, removed []netip.Addr) {
 			removed = append(removed, a)
 		}
 	}
+	return added, removed
+}
+
+// lastSeen remembers what a target held when the previous pass of this
+// process left it: what that pass wrote, or what it read when it wrote
+// nothing. It is empty at start, so the first pass after a start compares
+// with nothing and finds no outside edit, and empty again after a write that
+// failed partway, which leaves the target in a state no pass recorded.
+type lastSeen struct {
+	items map[string]string
+}
+
+// observe records what a pass read and returns how it differs from what the
+// previous pass left.
+func (s *lastSeen) observe(now map[string]string) (added, removed []string) {
+	added, removed = diffItems(s.items, now)
+	s.items = now
+	return added, removed
+}
+
+// writing forgets the last state before a write, in case it fails partway.
+func (s *lastSeen) writing() { s.items = nil }
+
+// wrote records what a write that succeeded left the target holding.
+func (s *lastSeen) wrote(now map[string]string) { s.items = now }
+
+// diffItems names the items that differ between what the list held after the
+// previous pass and what it holds now: added holds items that are new or
+// whose comment changed, removed holds items that are gone. Nothing differs
+// when there was no previous pass to compare with.
+func diffItems(prev, now map[string]string) (added, removed []string) {
+	if prev == nil {
+		return nil, nil
+	}
+	for k, c := range now {
+		if pc, ok := prev[k]; !ok || pc != c {
+			added = append(added, k)
+		}
+	}
+	for k := range prev {
+		if _, ok := now[k]; !ok {
+			removed = append(removed, k)
+		}
+	}
+	slices.Sort(added)
+	slices.Sort(removed)
 	return added, removed
 }

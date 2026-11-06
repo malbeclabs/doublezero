@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/netip"
 	"slices"
+	"strings"
 )
 
 // ErrConfigMapNotFound is returned when gnmic's map ConfigMap does not exist.
@@ -38,6 +39,19 @@ type GnmicMapTarget struct {
 	Key string
 
 	current *ConfigMap // read by Plan, written by Apply in the same pass
+	seen    lastSeen
+}
+
+// gnmicItems is a map as items to compare passes by: each pubkey to its
+// addresses. Formatting is not compared, only what gnmic would read.
+func gnmicItems(m GnmicAddressMap) map[string]string {
+	out := make(map[string]string, len(m))
+	for pk, ips := range m {
+		ips = slices.Clone(ips)
+		slices.Sort(ips)
+		out[pk] = strings.Join(ips, " ")
+	}
+	return out
 }
 
 func (t *GnmicMapTarget) Name() string { return "gnmic_map" }
@@ -86,19 +100,22 @@ func (t *GnmicMapTarget) Plan(ctx context.Context, list List) (Plan, error) {
 	}
 	slices.Sort(removedDevices)
 	prevAddrs = sortedUnique(prevAddrs)
+	externalAdded, externalRemoved := t.seen.observe(gnmicItems(prev))
 	added, removed := diffAddrs(prevAddrs, list.Addrs())
 
 	t.current = cm
 	return Plan{
-		Target:         t.Name(),
-		Changed:        raw != want,
-		TracksDevices:  true,
-		PrevDevices:    len(prev),
-		RemovedDevices: removedDevices,
-		PrevAddrs:      len(prevAddrs),
-		AddedAddrs:     added,
-		RemovedAddrs:   removed,
-		list:           list,
+		Target:          t.Name(),
+		Changed:         raw != want,
+		TracksDevices:   true,
+		PrevDevices:     len(prev),
+		RemovedDevices:  removedDevices,
+		PrevAddrs:       len(prevAddrs),
+		AddedAddrs:      added,
+		RemovedAddrs:    removed,
+		ExternalAdded:   externalAdded,
+		ExternalRemoved: externalRemoved,
+		list:            list,
 	}, nil
 }
 
@@ -117,5 +134,11 @@ func (t *GnmicMapTarget) Apply(ctx context.Context, plan Plan) error {
 	}
 	cm.Data[t.Key] = want
 	t.current = nil
-	return t.API.Update(ctx, &cm)
+	// An update applies whole or not at all, so a failed one leaves the map
+	// as Plan read it, and what Plan recorded still holds.
+	if err := t.API.Update(ctx, &cm); err != nil {
+		return err
+	}
+	t.seen.wrote(gnmicItems(plan.list.GnmicMap()))
+	return nil
 }

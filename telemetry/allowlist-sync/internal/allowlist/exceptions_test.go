@@ -14,20 +14,41 @@ func TestParseExceptions(t *testing.T) {
 	raw := `
 inclusions:
   - pubkey: ` + pk(1) + `
-    code: dz-fr5-sw01
-    address: 216.155.20.62
-    evidence: GetConfig capture on aws-mn-controller2, 2026-10-29
+    code: xyz01-sw01
+    address: 45.7.7.7
+    evidence: GetConfig capture from the controller
 exclusions:
   - pubkey: ` + pk(2) + `
-    code: fra-test-tve1
+    code: lab01-test01
     reason: test device
 `
 	exc, err := ParseExceptions([]byte(raw))
 	require.NoError(t, err)
 	assert.Equal(t, Exceptions{
-		Inclusions: []Inclusion{{Pubkey: pk(1), Code: "dz-fr5-sw01", Address: netip.MustParseAddr("216.155.20.62"), Evidence: "GetConfig capture on aws-mn-controller2, 2026-10-29"}},
-		Exclusions: []Exclusion{{Pubkey: pk(2), Code: "fra-test-tve1", Reason: "test device"}},
+		Inclusions: []Inclusion{{Pubkey: pk(1), Code: "xyz01-sw01", Address: netip.MustParseAddr("45.7.7.7"), Evidence: "GetConfig capture from the controller"}},
+		Exclusions: []Exclusion{{Pubkey: pk(2), Code: "lab01-test01", Reason: "test device"}},
 	}, exc)
+}
+
+func TestParseExceptions_RejectsASecondDocument(t *testing.T) {
+	one := "inclusions: []\n"
+	two := "exclusions:\n  - pubkey: " + pk(2) + "\n    code: lab01-test01\n    reason: test device\n"
+	for name, tc := range map[string]struct {
+		raw     string
+		wantErr string
+	}{
+		"entries after ---":      {one + "---\n" + two, "parsing exception file: it holds more than one YAML document (a second starts at line 2); merge them into one"},
+		"empty second document":  {one + "---\n", "parsing exception file: it holds more than one YAML document (a second starts at line 2); merge them into one"},
+		"broken second document": {one + "---\n[\n", "parsing exception file: yaml: line 3: did not find expected node content"},
+	} {
+		_, err := ParseExceptions([]byte(tc.raw))
+		assert.EqualError(t, err, tc.wantErr, name)
+	}
+
+	// A leading --- starts the one document.
+	exc, err := ParseExceptions([]byte("---\n" + two))
+	require.NoError(t, err)
+	assert.Equal(t, []Exclusion{{Pubkey: pk(2), Code: "lab01-test01", Reason: "test device"}}, exc.Exclusions)
 }
 
 func TestParseExceptions_EmptyFileHasNone(t *testing.T) {
@@ -48,22 +69,22 @@ func TestParseExceptions_Rejects(t *testing.T) {
 	}
 	cases := map[string]struct{ raw, err string }{
 		"unknown field": {"inclusion:\n  - pubkey: x\n", "parsing exception file: yaml: unmarshal errors:\n  line 1: field inclusion not found in type allowlist.Exceptions"},
-		"bad pubkey":    {inc("nope", "dz1", "8.8.8.8", "x"), `exception file: inclusion 0: pubkey "nope" is not a base58 32-byte key`},
-		"empty code":    {inc(pk(1), `""`, "8.8.8.8", "x"), "exception file: inclusion 0: device " + pk(1) + ": code is empty"},
+		"bad pubkey":    {inc("nope", "dz1", "45.10.0.8", "x"), `exception file: inclusion 0: pubkey "nope" is not a base58 32-byte key`},
+		"empty code":    {inc(pk(1), `""`, "45.10.0.8", "x"), "exception file: inclusion 0: device " + pk(1) + ": code is empty"},
 		"private address": {inc(pk(1), "dz1", "10.1.1.1", "x"),
 			`exception file: inclusion 0 (dz1): address "10.1.1.1" is not a global IPv4 address`},
 		"ipv6 address": {inc(pk(1), "dz1", `"2001:4860::1"`, "x"),
 			`exception file: inclusion 0 (dz1): address "2001:4860::1" is not a global IPv4 address`},
 		"missing address": {"inclusions:\n  - pubkey: " + pk(1) + "\n    code: dz1\n    evidence: x\n",
 			`exception file: inclusion 0 (dz1): address "invalid IP" is not a global IPv4 address`},
-		"no evidence": {inc(pk(1), "dz1", "8.8.8.8", `""`),
+		"no evidence": {inc(pk(1), "dz1", "45.10.0.8", `""`),
 			"exception file: inclusion 0 (dz1): evidence is empty; name the capture or log that showed the address"},
-		"two inclusions for one device": {inc(pk(1), "dz1", "8.8.8.8", "x") + "  - pubkey: " + pk(1) + "\n    code: dz1\n    address: 8.8.4.4\n    evidence: x\n",
+		"two inclusions for one device": {inc(pk(1), "dz1", "45.10.0.8", "x") + "  - pubkey: " + pk(1) + "\n    code: dz1\n    address: 45.10.0.4\n    evidence: x\n",
 			"exception file: inclusion 1 (dz1): device " + pk(1) + " has more than one inclusion; the file holds one per device"},
 		"no reason": {exc(pk(1), "dz1", `""`), "exception file: exclusion 0 (dz1): reason is empty"},
 		"excluded twice": {exc(pk(1), "dz1", "x") + "  - pubkey: " + pk(1) + "\n    code: dz1\n    reason: y\n",
 			"exception file: exclusion 1 (dz1): device " + pk(1) + " is excluded twice"},
-		"included and excluded": {inc(pk(1), "dz1", "8.8.8.8", "x") + exc(pk(1), "dz1", "y"),
+		"included and excluded": {inc(pk(1), "dz1", "45.10.0.8", "x") + exc(pk(1), "dz1", "y"),
 			"exception file: exclusion 0 (dz1): device " + pk(1) + " is both included and excluded"},
 	}
 	for name, tc := range cases {

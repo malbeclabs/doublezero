@@ -26,7 +26,7 @@ func TestBuild_StatusDecidesLiveness(t *testing.T) {
 	}
 	for _, tc := range statuses {
 		t.Run(tc.status.String(), func(t *testing.T) {
-			b := mustBuild(t, []serviceability.Device{dev(1, "dz1", tc.status, "8.8.8.8")}, Exceptions{})
+			b := mustBuild(t, []serviceability.Device{dev(1, "dz1", tc.status, "45.10.0.8")}, Exceptions{})
 			_, listed := b.List.Devices[pk(1)]
 			assert.Equal(t, tc.live, listed)
 			assert.Equal(t, map[string]string{pk(1): "dz1"}, b.Codes)
@@ -56,19 +56,19 @@ func TestBuild_PrivatePublicIPIsSkipped(t *testing.T) {
 
 func TestBuild_AgentIPIsListed(t *testing.T) {
 	set := dev(1, "dz1", serviceability.DeviceStatusActivated, "45.1.1.1")
-	set.AgentIp = [4]uint8{37, 61, 209, 41}
+	set.AgentIp = [4]uint8{45, 11, 0, 1}
 	unset := dev(2, "dz2", serviceability.DeviceStatusActivated, "45.1.1.2")
 	b := mustBuild(t, []serviceability.Device{set, unset}, Exceptions{})
-	assert.Equal(t, addrs("37.61.209.41", "45.1.1.1"), b.List.Devices[pk(1)].Addrs())
+	assert.Equal(t, addrs("45.1.1.1", "45.11.0.1"), b.List.Devices[pk(1)].Addrs())
 	assert.Equal(t, addrs("45.1.1.2"), b.List.Devices[pk(2)].Addrs(), "0.0.0.0 is unset and never listed")
 }
 
 func TestBuild_InclusionAddsAddress(t *testing.T) {
-	devices := []serviceability.Device{dev(1, "dz-fr5-sw01", serviceability.DeviceStatusActivated, "89.222.118.225")}
-	exc := Exceptions{Inclusions: []Inclusion{{Pubkey: pk(1), Code: "dz-fr5-sw01", Address: netip.MustParseAddr("216.155.20.62"), Evidence: "capture"}}}
+	devices := []serviceability.Device{dev(1, "xyz01-sw01", serviceability.DeviceStatusActivated, "45.6.6.6")}
+	exc := Exceptions{Inclusions: []Inclusion{{Pubkey: pk(1), Code: "xyz01-sw01", Address: netip.MustParseAddr("45.7.7.7"), Evidence: "capture"}}}
 	b := mustBuild(t, devices, exc)
-	assert.Equal(t, Device{Code: "dz-fr5-sw01", Onchain: addrs("89.222.118.225"), Included: addrs("216.155.20.62")}, b.List.Devices[pk(1)])
-	assert.Equal(t, addrs("89.222.118.225", "216.155.20.62"), b.List.Devices[pk(1)].Addrs())
+	assert.Equal(t, Device{Code: "xyz01-sw01", Onchain: addrs("45.6.6.6"), Included: addrs("45.7.7.7")}, b.List.Devices[pk(1)])
+	assert.Equal(t, addrs("45.6.6.6", "45.7.7.7"), b.List.Devices[pk(1)].Addrs())
 	assert.Empty(t, b.Review)
 }
 
@@ -94,11 +94,11 @@ func TestBuild_UnusedInclusions(t *testing.T) {
 func TestBuild_ExclusionKeepsDeviceOff(t *testing.T) {
 	devices := []serviceability.Device{
 		dev(1, "keep", serviceability.DeviceStatusActivated, "45.1.1.1"),
-		dev(2, "fra-test-tve1", serviceability.DeviceStatusActivated, "178.241.19.43", "178.241.19.44/32"),
+		dev(2, "lab01-test01", serviceability.DeviceStatusActivated, "45.12.0.3", "45.12.0.4/32"),
 		dev(3, "deleting", serviceability.DeviceStatusDeleting, "45.3.3.3"),
 	}
 	exc := Exceptions{Exclusions: []Exclusion{
-		{Pubkey: pk(2), Code: "fra-test-tve1", Reason: "fake device"},
+		{Pubkey: pk(2), Code: "lab01-test01", Reason: "fake device"},
 		{Pubkey: pk(3), Code: "deleting", Reason: "x"},
 		{Pubkey: pk(4), Code: "gone", Reason: "x"},
 	}}
@@ -169,12 +169,12 @@ func TestList_GnmicMapAndDigest(t *testing.T) {
 
 func TestIsGlobalIPv4(t *testing.T) {
 	for s, want := range map[string]bool{
-		"8.8.8.8": true, "137.239.195.54": true,
+		"45.10.0.8": true, "45.10.0.54": true,
 		"0.0.0.0": false, "0.1.2.3": false, "10.1.1.1": false, "172.16.1.1": false, "192.168.1.1": false,
 		"127.0.0.1": false, "169.254.1.1": false, "100.64.0.1": false, "100.127.255.255": false,
 		"100.128.0.1": true, "192.0.0.1": false, "192.0.2.1": false, "198.51.100.1": false,
 		"203.0.113.1": false, "224.0.0.1": false, "240.0.0.1": false, "255.255.255.255": false,
-		"2001:db8::1": false, "::ffff:8.8.8.8": false,
+		"2001:db8::1": false, "::ffff:45.10.0.8": false,
 	} {
 		assert.Equal(t, want, isGlobalIPv4(netip.MustParseAddr(s)), s)
 	}

@@ -11,6 +11,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -78,24 +79,68 @@ func (f *fakeConfigMap) gnmicMap(t *testing.T) GnmicAddressMap {
 	return m
 }
 
+// fakeIPList behaves as Cloudflare's list does: each item has an id, adding
+// an address already on the list updates its comment, and items are deleted
+// by id. ops records each write in order.
 type fakeIPList struct {
-	items      []ListItem
-	itemsErr   error
-	replaceErr error
-	replaces   int
+	items     []ListItem
+	itemsErr  error
+	addErr    error
+	deleteErr error
+	nextID    int
+	ops       []string
 }
 
 func (f *fakeIPList) Items(context.Context) ([]ListItem, error) {
+	for i := range f.items {
+		if f.items[i].ID == "" {
+			f.nextID++
+			f.items[i].ID = fmt.Sprintf("item%d", f.nextID)
+		}
+	}
 	return append([]ListItem(nil), f.items...), f.itemsErr
 }
 
-func (f *fakeIPList) ReplaceItems(_ context.Context, items []ListItem) error {
-	if f.replaceErr != nil {
-		return f.replaceErr
+func (f *fakeIPList) AddItems(_ context.Context, items []ListItem) error {
+	if f.addErr != nil {
+		return f.addErr
 	}
-	f.replaces++
-	f.items = items
+	ips := make([]string, 0, len(items))
+	for _, it := range items {
+		ips = append(ips, it.IP)
+		if it.ID != "" {
+			return fmt.Errorf("added item %s carries id %s", it.IP, it.ID)
+		}
+		i := slices.IndexFunc(f.items, func(c ListItem) bool { k, _ := listKey(c.IP); return k == it.IP })
+		if i >= 0 {
+			f.items[i].Comment = it.Comment
+			continue
+		}
+		f.nextID++
+		it.ID = fmt.Sprintf("item%d", f.nextID)
+		f.items = append(f.items, it)
+	}
+	f.ops = append(f.ops, "add "+strings.Join(ips, ","))
 	return nil
+}
+
+func (f *fakeIPList) DeleteItems(_ context.Context, ids []string) error {
+	if f.deleteErr != nil {
+		return f.deleteErr
+	}
+	f.items = slices.DeleteFunc(f.items, func(c ListItem) bool { return slices.Contains(ids, c.ID) })
+	f.ops = append(f.ops, "delete "+strings.Join(ids, ","))
+	return nil
+}
+
+// cfItems is the list as IP and comment, without the ids.
+func (h *harness) cfItems() []ListItem {
+	out := make([]ListItem, 0, len(h.cf.items))
+	for _, it := range h.cf.items {
+		out = append(out, ListItem{IP: it.IP, Comment: it.Comment})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].IP < out[j].IP })
+	return out
 }
 
 type harness struct {
@@ -103,10 +148,13 @@ type harness struct {
 	callers *fakeCallers
 	cm      *fakeConfigMap
 	cf      *fakeIPList
-	metrics *Metrics
-	clock   *clockwork.FakeClock
-	excPath string
-	cfg     Config
+	// cmTarget and cfTarget are kept across passes, as the sync's own are.
+	cmTarget *GnmicMapTarget
+	cfTarget *CloudflareTarget
+	metrics  *Metrics
+	clock    *clockwork.FakeClock
+	excPath  string
+	cfg      Config
 }
 
 var t0 = time.Date(2026, 11, 6, 12, 0, 0, 0, time.UTC)
@@ -131,6 +179,7 @@ func newHarness(t *testing.T, devices []serviceability.Device) *harness {
 		clock:   clockwork.NewFakeClockAt(t0),
 		excPath: filepath.Join(t.TempDir(), "exceptions.yaml"),
 	}
+	h.restart()
 	h.writeExceptions(t, "")
 	h.cfg = Config{
 		Log:            slog.New(slog.NewTextHandler(io.Discard, nil)),
@@ -155,7 +204,7 @@ func (h *harness) writeExceptions(t *testing.T, raw string) {
 func (h *harness) pass(t *testing.T) error {
 	t.Helper()
 	cfg := h.cfg
-	cfg.Targets = []Target{&GnmicMapTarget{API: h.cm, Key: "map.json"}, &CloudflareTarget{API: h.cf}}
+	cfg.Targets = []Target{h.cmTarget, h.cfTarget}
 	s, err := New(cfg)
 	require.NoError(t, err)
 	return s.Pass(context.Background())
@@ -170,7 +219,22 @@ func (h *harness) cfIPs() []string {
 	return out
 }
 
-func (h *harness) wrote() (int, int) { return h.cm.updates, h.cf.replaces }
+// restart gives the harness new targets, which remember nothing, as after a
+// process start.
+func (h *harness) restart() {
+	h.cmTarget = &GnmicMapTarget{API: h.cm, Key: "map.json"}
+	h.cfTarget = &CloudflareTarget{API: h.cf}
+}
+
+// external reads external_changes_total for one target.
+func (h *harness) external(target string) float64 {
+	return testutil.ToFloat64(h.metrics.ExternalChanges.WithLabelValues(target))
+}
+
+// wrote counts the writes to the map, and the passes that wrote Cloudflare.
+func (h *harness) wrote() (int, int) {
+	return h.cm.updates, int(testutil.ToFloat64(h.metrics.Writes.WithLabelValues("cloudflare_list")))
+}
 
 func counter(c *prometheus.CounterVec, label string) float64 {
 	return testutil.ToFloat64(c.WithLabelValues(label))
@@ -188,7 +252,7 @@ func TestPass_WritesBothTargets(t *testing.T) {
 	assert.Equal(t, GnmicAddressMap{pk(1): {"45.1.1.1", "45.1.1.9"}, pk(2): {"45.2.2.2"}}, h.cm.gnmicMap(t))
 	assert.Equal(t, "kept", h.cm.cm.Data["other"], "other keys survive")
 	assert.JSONEq(t, `{"name":"gnmic-device-addresses","resourceVersion":"7"}`, string(h.cm.cm.Metadata), "metadata, and so resourceVersion, is sent back")
-	assert.Equal(t, []ListItem{{IP: "45.1.1.1", Comment: "dz1"}, {IP: "45.1.1.9", Comment: "dz1"}, {IP: "45.2.2.2", Comment: "dz2"}}, h.cf.items)
+	assert.Equal(t, []ListItem{{IP: "45.1.1.1", Comment: "dz1"}, {IP: "45.1.1.9", Comment: "dz1"}, {IP: "45.2.2.2", Comment: "dz2"}}, h.cfItems())
 	assert.Equal(t, float64(t0.Unix()), testutil.ToFloat64(h.metrics.LastSuccess))
 	assert.Equal(t, 1.0, counter(h.metrics.Writes, "gnmic_map"))
 	assert.Equal(t, 1.0, counter(h.metrics.Writes, "cloudflare_list"))
@@ -408,13 +472,13 @@ func TestPass_FailedWriteIsRetriedNextPass(t *testing.T) {
 
 func TestPass_ReportFailureDoesNotBlockTheList(t *testing.T) {
 	h := newHarness(t, fleet(2))
-	h.callers.calls = []Call{{DevicePubkey: pk(1), CallerIP: netip.MustParseAddr("8.8.8.8"), LastSeen: t0}}
+	h.callers.calls = []Call{{DevicePubkey: pk(1), CallerIP: netip.MustParseAddr("198.51.100.8"), LastSeen: t0}}
 	require.NoError(t, h.pass(t))
 	assert.Equal(t, t0.Add(-24*time.Hour), h.callers.since)
 	offchain := `
 # HELP doublezero_telemetry_allowlist_sync_offchain_caller_last_seen_timestamp_seconds Newest call per device and calling address the ledger does not hold for that device.
 # TYPE doublezero_telemetry_allowlist_sync_offchain_caller_last_seen_timestamp_seconds gauge
-doublezero_telemetry_allowlist_sync_offchain_caller_last_seen_timestamp_seconds{caller_ip="8.8.8.8",code="dz1",listed="false",pubkey="` + pk(1) + `"} 1.7939664e+09
+doublezero_telemetry_allowlist_sync_offchain_caller_last_seen_timestamp_seconds{caller_ip="198.51.100.8",code="dz1",listed="false",pubkey="` + pk(1) + `"} 1.7939664e+09
 `
 	require.NoError(t, testutil.CollectAndCompare(h.metrics.OffchainCaller, strings.NewReader(offchain)))
 
@@ -596,4 +660,195 @@ func TestPass_UnlistedCallerLoggedOnce(t *testing.T) {
 	require.NoError(t, s.Pass(context.Background()))
 	require.NoError(t, s.Pass(context.Background()))
 	assert.Equal(t, 1, strings.Count(buf.String(), "device calls from an address not on its entry"))
+}
+
+// A change adds what is missing and then deletes what left, by id: an
+// address that stays on the list is never deleted, even when its comment
+// changes.
+func TestPass_CloudflareAddsThenDeletesAndKeepsWhatStays(t *testing.T) {
+	devices := fleet(20)
+	h := newHarness(t, devices)
+	require.NoError(t, h.pass(t))
+	idOf := func(ip string) string {
+		for _, it := range h.cf.items {
+			if it.IP == ip {
+				return it.ID
+			}
+		}
+		return ""
+	}
+	keepID, goneID := idOf("45.0.0.1"), idOf("45.0.0.2")
+	require.NotEmpty(t, keepID)
+	h.cf.ops = nil
+
+	// dz1 is renamed (a comment change), dz2 moves to a new address.
+	devices[0].Code = "dz1-renamed"
+	devices[1].PublicIp = [4]uint8{45, 0, 1, 2}
+	require.NoError(t, h.pass(t))
+
+	assert.Equal(t, []string{"add 45.0.0.1,45.0.1.2", "delete " + goneID}, h.cf.ops)
+	assert.Equal(t, keepID, idOf("45.0.0.1"), "an address that stays keeps its item")
+	assert.Contains(t, h.cfItems(), ListItem{IP: "45.0.0.1", Comment: "dz1-renamed"})
+	assert.Len(t, h.cf.items, 20)
+}
+
+// A pass that finds the list changed since the previous pass left it counts
+// an outside edit, once, whatever it then writes.
+func TestPass_CountsCloudflareEditsTheSyncDidNotMake(t *testing.T) {
+	h := newHarness(t, fleet(20))
+	ext := func() float64 { return h.external("cloudflare_list") }
+
+	// The first pass has no previous pass to compare with.
+	h.cf.items = []ListItem{{IP: "45.0.0.1", Comment: "set by hand"}}
+	require.NoError(t, h.pass(t))
+	assert.Equal(t, 0.0, ext())
+	require.NoError(t, h.pass(t))
+	assert.Equal(t, 0.0, ext(), "the sync's own write is not an outside edit")
+
+	// Someone adds an item: counted, and the sync removes it.
+	h.cf.items = append(h.cf.items, ListItem{IP: "45.9.9.9", Comment: "by hand"})
+	require.NoError(t, h.pass(t))
+	assert.Equal(t, 1.0, ext())
+	assert.NotContains(t, h.cfIPs(), "45.9.9.9")
+	require.NoError(t, h.pass(t))
+	assert.Equal(t, 1.0, ext(), "the next pass finds the list as the sync left it")
+
+	// Someone deletes an item, or edits a comment: each counts.
+	h.cf.items = h.cf.items[1:]
+	require.NoError(t, h.pass(t))
+	assert.Equal(t, 2.0, ext())
+	h.cf.items[0].Comment = "edited"
+	require.NoError(t, h.pass(t))
+	assert.Equal(t, 3.0, ext())
+
+	// A refused pass still counts the edit it found.
+	for i := range 5 {
+		h.cf.items = append(h.cf.items, ListItem{IP: fmt.Sprintf("45.9.8.%d", i+1)})
+	}
+	var refused *RefusedError
+	require.ErrorAs(t, h.pass(t), &refused)
+	assert.Equal(t, 4.0, ext())
+	assert.Equal(t, 0.0, h.external("gnmic_map"), "each target counts its own edits")
+}
+
+// gnmic's map is counted the same way: by what gnmic would read, per pubkey.
+func TestPass_CountsGnmicMapEditsTheSyncDidNotMake(t *testing.T) {
+	devices := fleet(20)
+	devices[0].AgentIp = [4]uint8{45, 0, 2, 1}
+	h := newHarness(t, devices)
+	require.NoError(t, h.pass(t))
+	require.NoError(t, h.pass(t))
+	assert.Equal(t, 0.0, h.external("gnmic_map"))
+
+	edit := func(f func(m GnmicAddressMap)) {
+		m := h.cm.gnmicMap(t)
+		f(m)
+		raw, err := RenderGnmicMap(m)
+		require.NoError(t, err)
+		h.cm.cm.Data["map.json"] = raw
+	}
+	// An operator adds an address to a device's entry.
+	edit(func(m GnmicAddressMap) { m[pk(1)] = append(m[pk(1)], "45.9.9.9") })
+	require.NoError(t, h.pass(t))
+	assert.Equal(t, 1.0, h.external("gnmic_map"))
+	assert.Equal(t, []string{"45.0.0.1", "45.0.2.1"}, h.cm.gnmicMap(t)[pk(1)], "the sync puts the entry back")
+	require.NoError(t, h.pass(t))
+	assert.Equal(t, 1.0, h.external("gnmic_map"))
+
+	// Reordering a device's addresses is not an edit: gnmic reads a set.
+	edit(func(m GnmicAddressMap) { slices.Reverse(m[pk(1)]) })
+	require.NoError(t, h.pass(t))
+	assert.Equal(t, 1.0, h.external("gnmic_map"))
+
+	// A formatting change gnmic reads the same is not an edit.
+	h.cm.cm.Data["map.json"] = strings.ReplaceAll(h.cm.cm.Data["map.json"], "\n  ", "\n    ")
+	require.NoError(t, h.pass(t))
+	assert.Equal(t, 1.0, h.external("gnmic_map"))
+
+	// An operator deletes a device's entry.
+	edit(func(m GnmicAddressMap) { delete(m, pk(2)) })
+	require.NoError(t, h.pass(t))
+	assert.Equal(t, 2.0, h.external("gnmic_map"))
+	assert.Equal(t, 0.0, h.external("cloudflare_list"))
+}
+
+// After a start the sync remembers nothing, so its first pass counts no
+// outside edit, whatever it finds and whatever it writes. The pass after it
+// compares again.
+func TestPass_FirstPassAfterRestartCountsNoOutsideEdit(t *testing.T) {
+	h := newHarness(t, fleet(20))
+	require.NoError(t, h.pass(t))
+
+	h.restart()
+	h.cf.items = append(h.cf.items, ListItem{IP: "45.9.9.9"})
+	h.cm.cm.Data["map.json"] = strings.Replace(h.cm.cm.Data["map.json"], `"45.0.0.1"`, `"45.0.0.1", "45.9.9.9"`, 1)
+	require.NoError(t, h.pass(t))
+	assert.Equal(t, [2]float64{0, 0}, [2]float64{h.external("gnmic_map"), h.external("cloudflare_list")})
+	assert.NotContains(t, h.cfIPs(), "45.9.9.9", "the first pass still writes the list")
+
+	h.cf.items = append(h.cf.items, ListItem{IP: "45.9.9.8"})
+	require.NoError(t, h.pass(t))
+	assert.Equal(t, [2]float64{0, 1}, [2]float64{h.external("gnmic_map"), h.external("cloudflare_list")})
+}
+
+// A map update applies whole or not at all. A failed one is not an outside
+// edit, but an edit that made it fail (a 409 from a concurrent write) is.
+func TestPass_FailedGnmicMapWriteKeepsWhatThePassRead(t *testing.T) {
+	devices := fleet(20)
+	h := newHarness(t, devices)
+	require.NoError(t, h.pass(t))
+	devices[1].PublicIp = [4]uint8{45, 0, 1, 2}
+	h.cm.updateErr = errors.New("HTTP 409")
+	require.Error(t, h.pass(t))
+	h.cm.updateErr = nil
+	require.NoError(t, h.pass(t))
+	assert.Equal(t, 0.0, h.external("gnmic_map"), "the failed write changed nothing")
+
+	devices[2].PublicIp = [4]uint8{45, 0, 1, 3}
+	h.cm.updateErr = errors.New("HTTP 409")
+	require.Error(t, h.pass(t))
+	h.cm.updateErr = nil
+	h.cm.cm.Data["map.json"] = strings.Replace(h.cm.cm.Data["map.json"], `"45.0.0.1"`, `"45.0.0.1", "45.9.9.9"`, 1)
+	require.NoError(t, h.pass(t))
+	assert.Equal(t, 1.0, h.external("gnmic_map"), "the concurrent edit is counted")
+}
+
+// In dry run the sync writes nothing, so every change between passes is an
+// outside edit.
+func TestPass_DryRunCountsCloudflareEdits(t *testing.T) {
+	h := newHarness(t, fleet(20))
+	require.NoError(t, h.pass(t))
+	h.cf.ops = nil
+	h.cfg.DryRun = true
+	require.NoError(t, h.pass(t))
+	assert.Equal(t, 0.0, h.external("cloudflare_list"))
+	h.cf.items = append(h.cf.items, ListItem{IP: "45.9.9.9"})
+	require.NoError(t, h.pass(t))
+	assert.Equal(t, 1.0, h.external("cloudflare_list"))
+	assert.Empty(t, h.cf.ops)
+}
+
+// A write that fails partway leaves a list no pass recorded, so the next pass
+// does not count what it finds as an outside edit.
+func TestPass_PartialCloudflareWriteIsNotAnOutsideEdit(t *testing.T) {
+	devices := fleet(20)
+	h := newHarness(t, devices)
+	require.NoError(t, h.pass(t))
+	devices[1].PublicIp = [4]uint8{45, 0, 1, 2}
+	h.cf.deleteErr = errors.New("HTTP 500")
+	require.Error(t, h.pass(t))
+	assert.Equal(t, []string{"add 45.0.1.2"}, h.cf.ops[len(h.cf.ops)-1:], "the add landed before the delete failed")
+	h.cf.deleteErr = nil
+	require.NoError(t, h.pass(t))
+	assert.Equal(t, 0.0, h.external("cloudflare_list"))
+	assert.NotContains(t, h.cfIPs(), "45.0.0.2")
+}
+
+func TestCloudflareTarget_RefusesToEmptyTheList(t *testing.T) {
+	cf := &fakeIPList{items: []ListItem{{IP: "45.0.0.1"}}}
+	target := &CloudflareTarget{API: cf}
+	p, err := target.Plan(context.Background(), List{})
+	require.NoError(t, err)
+	assert.EqualError(t, target.Apply(context.Background(), p), "refusing to empty the cloudflare list")
+	assert.Empty(t, cf.ops)
 }

@@ -161,11 +161,15 @@ func DetermineClientsToConnect(
 }
 
 // FilterStatusUpClients returns clients that are in the batch and have status "up".
-// statuses maps hostname to session status.
-func FilterStatusUpClients(clients []*Client, batch map[string]*BatchResult, statuses map[string]string) []*Client {
+// statuses maps hostname to session status. A host in connectFailed is left out,
+// since its "up" can be the old tunnel's.
+func FilterStatusUpClients(clients []*Client, batch map[string]*BatchResult, statuses map[string]string, connectFailed map[string]struct{}) []*Client {
 	var connected []*Client
 	for _, c := range clients {
 		if _, inBatch := batch[c.Host]; !inBatch {
+			continue
+		}
+		if _, failed := connectFailed[c.Host]; failed {
 			continue
 		}
 		if !IsStatusUp(statuses[c.Host]) {

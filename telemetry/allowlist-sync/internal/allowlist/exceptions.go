@@ -65,18 +65,35 @@ func ParseExceptions(raw []byte) (Exceptions, error) {
 		return Exceptions{}, fmt.Errorf("parsing exception file: %w", err)
 	}
 	// The file is one document. Entries after a "---" line would otherwise be
-	// dropped with no error, and a dropped exclusion lists that device.
-	var next yaml.Node
-	if err := dec.Decode(&next); !errors.Is(err, io.EOF) {
+	// dropped with no error, and a dropped exclusion lists that device. An
+	// empty document after it, such as a trailing "---", holds nothing.
+	for {
+		var next yaml.Node
+		err := dec.Decode(&next)
+		if errors.Is(err, io.EOF) {
+			break
+		}
 		if err != nil {
 			return Exceptions{}, fmt.Errorf("parsing exception file: %w", err)
 		}
-		return Exceptions{}, fmt.Errorf("parsing exception file: it holds more than one YAML document (a second starts at line %d); merge them into one", next.Line)
+		if !emptyDocument(&next) {
+			return Exceptions{}, fmt.Errorf("parsing exception file: it holds more than one YAML document (a second starts at line %d); merge them into one", next.Line)
+		}
 	}
 	if err := exc.validate(); err != nil {
 		return Exceptions{}, fmt.Errorf("exception file: %w", err)
 	}
 	return exc, nil
+}
+
+// emptyDocument reports whether a decoded document holds nothing: no node,
+// or a null scalar with no tag of its own.
+func emptyDocument(n *yaml.Node) bool {
+	if len(n.Content) == 0 {
+		return true
+	}
+	c := n.Content[0]
+	return len(n.Content) == 1 && c.Kind == yaml.ScalarNode && c.Tag == "!!null" && c.Value == ""
 }
 
 func (e Exceptions) validate() error {

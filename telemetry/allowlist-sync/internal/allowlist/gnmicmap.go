@@ -134,8 +134,10 @@ func (t *GnmicMapTarget) Apply(ctx context.Context, plan Plan) error {
 	}
 	cm.Data[t.Key] = want
 	t.current = nil
-	// An update applies whole or not at all, so a failed one leaves the map
-	// as Plan read it, and what Plan recorded still holds.
+	// An update that returns an error may still have been committed (a
+	// timeout after the API server applied it), so the next pass compares
+	// with nothing rather than count the sync's own write as an outside edit.
+	t.seen.writing()
 	if err := t.API.Update(ctx, &cm); err != nil {
 		return err
 	}

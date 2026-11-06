@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/jonboulle/clockwork"
 )
@@ -23,14 +24,34 @@ type ListItem struct {
 	ID      string `json:"id,omitempty"`
 	IP      string `json:"ip"`
 	Comment string `json:"comment,omitempty"`
+	// CreatedOn is Cloudflare's RFC 3339 creation time, set on items read
+	// from Cloudflare. Of two items for one address, the older one stays.
+	CreatedOn string `json:"created_on,omitempty"`
+}
+
+// maxCommentBytes is Cloudflare's limit on an item's comment (500
+// characters). A comment is cut to it in bytes, at a character boundary, so
+// an address many devices share cannot fail the write.
+const maxCommentBytes = 500
+
+func truncateComment(s string) string {
+	if len(s) <= maxCommentBytes {
+		return s
+	}
+	cut := maxCommentBytes
+	for cut > 0 && !utf8.RuneStart(s[cut]) {
+		cut--
+	}
+	return s[:cut]
 }
 
 // IPListAPI reads one Cloudflare IP list and adds or deletes its items. Each
 // write returns once Cloudflare has finished the operation.
 type IPListAPI interface {
 	Items(ctx context.Context) ([]ListItem, error)
-	// AddItems adds items. An address already on the list keeps its item and
-	// takes the new comment.
+	// AddItems adds items for addresses the list does not hold. The sync
+	// never sends an address the list already holds, because Cloudflare's API
+	// docs do not say whether that updates, duplicates or is refused.
 	AddItems(ctx context.Context, items []ListItem) error
 	// DeleteItems deletes the items with these ids.
 	DeleteItems(ctx context.Context, ids []string) error
@@ -39,9 +60,9 @@ type IPListAPI interface {
 // CloudflareTarget keeps the Cloudflare IP list (spec section 3) equal to the
 // list. Each item's comment names the devices that hold the address.
 //
-// It writes the difference, never the whole list: it adds the missing items
-// (and re-adds an item whose comment changed), then deletes the items that
-// left the list by id. Cloudflare's docs do not say whether "Update all list
+// It writes the difference, never the whole list: it adds the items for
+// missing addresses, then deletes by id the items that left the list and all
+// but the oldest item of an address held twice. Cloudflare's docs do not say whether "Update all list
 // items", which removes every item and then adds the new ones, is atomic for
 // the rules that read the list, so an address that stays on the list is never
 // taken out of it.
@@ -65,7 +86,7 @@ func cloudflareItems(list List) []ListItem {
 	for _, a := range list.Addrs() {
 		c := codes[a]
 		slices.Sort(c)
-		items = append(items, ListItem{IP: a.String(), Comment: strings.Join(slices.Compact(c), " ")})
+		items = append(items, ListItem{IP: a.String(), Comment: truncateComment(strings.Join(slices.Compact(c), " "))})
 	}
 	return items
 }
@@ -95,6 +116,9 @@ func (t *CloudflareTarget) Plan(ctx context.Context, list List) (Plan, error) {
 	var prevAddrs []netip.Addr
 	var other, deleteIDs []string
 	have := make(map[string]string, len(current))
+	// kept is the one item per wanted address that stays: the oldest, when
+	// the list holds more than one for it.
+	kept := make(map[string]ListItem, len(current))
 	for _, it := range current {
 		key, single := listKey(it.IP)
 		have[key] = it.Comment
@@ -108,12 +132,32 @@ func (t *CloudflareTarget) Plan(ctx context.Context, list List) (Plan, error) {
 		}
 		if !wanted[key] {
 			deleteIDs = append(deleteIDs, it.ID)
+			continue
 		}
+		k, dup := kept[key]
+		switch {
+		case !dup:
+			kept[key] = it
+		case it.CreatedOn != "" && (k.CreatedOn == "" || it.CreatedOn < k.CreatedOn):
+			deleteIDs = append(deleteIDs, k.ID)
+			kept[key] = it
+		default:
+			deleteIDs = append(deleteIDs, it.ID)
+		}
+	}
+	// An address already on the list is never sent again, so nothing here
+	// depends on what Cloudflare does with an address it holds. A comment that
+	// no longer names the address's devices stays as it is: comments are for
+	// people reading the dashboard, and no rule reads them.
+	after := make(map[string]string, len(want))
+	for k, it := range kept {
+		after[k] = it.Comment
 	}
 	var add []ListItem
 	for _, it := range want {
-		if c, ok := have[it.IP]; !ok || c != it.Comment {
+		if _, ok := kept[it.IP]; !ok {
 			add = append(add, it)
+			after[it.IP] = it.Comment
 		}
 	}
 
@@ -132,6 +176,7 @@ func (t *CloudflareTarget) Plan(ctx context.Context, list List) (Plan, error) {
 		list:            list,
 		cfAdd:           add,
 		cfDeleteIDs:     deleteIDs,
+		cfAfter:         after,
 	}, nil
 }
 
@@ -152,11 +197,7 @@ func (t *CloudflareTarget) Apply(ctx context.Context, plan Plan) error {
 			return err
 		}
 	}
-	wrote := make(map[string]string)
-	for _, it := range cloudflareItems(plan.list) {
-		wrote[it.IP] = it.Comment
-	}
-	t.seen.wrote(wrote)
+	t.seen.wrote(plan.cfAfter)
 	return nil
 }
 

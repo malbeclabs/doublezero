@@ -25,8 +25,11 @@ use solana_client::{
 };
 use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{
+    hash::Hash,
+    instruction::Instruction,
     pubkey::Pubkey,
     signature::{Keypair, Signature, Signer},
+    transaction::VersionedTransaction,
 };
 use solana_system_interface::instruction as system_instruction;
 use tracing::info;
@@ -35,6 +38,95 @@ use url::Url;
 use crate::{
     BILLING_RECEIPT_SEED_PREFIX, BillingReceipt, Error, Result, TenantBillingInfo, new_transaction,
 };
+
+/// Builds a DoubleZero Ledger transaction: the serviceability compute-budget prelude (protocol-max
+/// compute-unit limit and heap frame) followed by `instructions`. The serviceability program
+/// allocates from the heap frame the transaction requests, and runs on the default 32 KiB without
+/// one.
+fn new_serviceability_transaction(
+    instructions: &[Instruction],
+    signers: &[&Keypair],
+    recent_blockhash: Hash,
+) -> VersionedTransaction {
+    let mut ixs = serviceability_instruction::compute_budget_prelude().to_vec();
+    ixs.extend_from_slice(instructions);
+    new_transaction(&ixs, signers, recent_blockhash)
+}
+
+fn billing_receipt_seeds<'a>(tenant_pda: &'a Pubkey, epoch_bytes: &'a [u8; 8]) -> [&'a [u8]; 3] {
+    [
+        BILLING_RECEIPT_SEED_PREFIX,
+        tenant_pda.as_ref(),
+        epoch_bytes,
+    ]
+}
+
+/// Size of the record account that holds `receipt`.
+fn billing_receipt_record_space(
+    payer_key: &Pubkey,
+    tenant_pda: &Pubkey,
+    receipt: &BillingReceipt,
+) -> Result<usize> {
+    let epoch_bytes = receipt.dz_epoch.to_le_bytes();
+    let seeds = billing_receipt_seeds(tenant_pda, &epoch_bytes);
+    let serialized = borsh::to_vec(receipt)?;
+    Ok(
+        doublezero_sdk::record::instruction::InitializeRecordInstructions::new(
+            payer_key,
+            &seeds,
+            serialized.len(),
+        )
+        .total_space,
+    )
+}
+
+/// Creates the record account holding `receipt`, funded with `rent_lamports`, and records the
+/// receipt's epoch on the tenant, all in one transaction.
+fn billing_receipt_instructions(
+    serviceability_id: &Pubkey,
+    payer_key: &Pubkey,
+    tenant_pda: &Pubkey,
+    receipt: &BillingReceipt,
+    rent_lamports: u64,
+) -> Result<Vec<Instruction>> {
+    let epoch_bytes = receipt.dz_epoch.to_le_bytes();
+    let seeds = billing_receipt_seeds(tenant_pda, &epoch_bytes);
+    let serialized = borsh::to_vec(receipt)?;
+
+    // Record account creation instructions (allocate, assign, initialize)
+    let init = doublezero_sdk::record::instruction::InitializeRecordInstructions::new(
+        payer_key,
+        &seeds,
+        serialized.len(),
+    );
+
+    // Transfer rent lamports
+    let record_key = doublezero_sdk::record::pubkey::create_record_key(payer_key, &seeds);
+    let transfer_ix = system_instruction::transfer(payer_key, &record_key, rent_lamports);
+
+    // Write receipt data
+    let write_ix = record_instruction::write(&record_key, payer_key, 0, &serialized);
+
+    // Update epoch (UpdatePaymentStatus with last_deduction_dz_epoch)
+    let epoch_ix = serviceability_instruction::tenant::update_payment_status(
+        serviceability_id,
+        payer_key,
+        tenant_pda,
+        UpdatePaymentStatusArgs {
+            payment_status: TenantPaymentStatus::Paid as u8,
+            last_deduction_dz_epoch: Some(receipt.dz_epoch),
+        },
+    );
+
+    Ok(vec![
+        init.allocate,
+        init.assign,
+        transfer_ix,
+        init.initialize,
+        write_ix,
+        epoch_ix,
+    ])
+}
 
 /// Timeout for `send_and_confirm_transaction` calls to prevent the polling
 /// loop from stalling on slow RPC confirmations.
@@ -186,7 +278,8 @@ impl DzRpcClient {
         );
         let signer = &self.payer;
         let recent_blockhash = self.client.get_latest_blockhash().await?;
-        let transaction = new_transaction(&[set_pass_ix], &[signer], recent_blockhash);
+        let transaction =
+            new_serviceability_transaction(&[set_pass_ix], &[signer], recent_blockhash);
 
         let signature = self
             .client
@@ -217,7 +310,7 @@ impl DzRpcClient {
         );
         let signer = &self.payer;
         let recent_blockhash = self.client.get_latest_blockhash().await?;
-        let transaction = new_transaction(&[ix], &[signer], recent_blockhash);
+        let transaction = new_serviceability_transaction(&[ix], &[signer], recent_blockhash);
 
         let signature = tokio::time::timeout(
             SEND_AND_CONFIRM_TIMEOUT,
@@ -302,7 +395,7 @@ impl DzRpcClient {
         );
         let signer = &self.payer;
         let recent_blockhash = self.client.get_latest_blockhash().await?;
-        let transaction = new_transaction(&[ix], &[signer], recent_blockhash);
+        let transaction = new_serviceability_transaction(&[ix], &[signer], recent_blockhash);
 
         let signature = tokio::time::timeout(
             SEND_AND_CONFIRM_TIMEOUT,
@@ -335,58 +428,23 @@ impl DzRpcClient {
         tenant_pda: &Pubkey,
         receipt: &BillingReceipt,
     ) -> Result<Signature> {
-        let epoch_bytes = receipt.dz_epoch.to_le_bytes();
-        let seeds: &[&[u8]] = &[
-            BILLING_RECEIPT_SEED_PREFIX,
-            tenant_pda.as_ref(),
-            &epoch_bytes,
-        ];
-        let payer_key = self.payer.pubkey();
-        let serialized = borsh::to_vec(receipt)?;
-
-        // Record account creation instructions (allocate, assign, initialize)
-        let init = doublezero_sdk::record::instruction::InitializeRecordInstructions::new(
-            &payer_key,
-            seeds,
-            serialized.len(),
-        );
-
-        // Transfer rent lamports
-        let record_key = doublezero_sdk::record::pubkey::create_record_key(&payer_key, seeds);
+        let space = billing_receipt_record_space(&self.payer.pubkey(), tenant_pda, receipt)?;
         let rent_lamports = self
             .client
-            .get_minimum_balance_for_rent_exemption(init.total_space)
+            .get_minimum_balance_for_rent_exemption(space)
             .await?;
-        let transfer_ix = system_instruction::transfer(&payer_key, &record_key, rent_lamports);
-
-        // Write receipt data
-        let write_ix = record_instruction::write(&record_key, &payer_key, 0, &serialized);
-
-        // Update epoch (UpdatePaymentStatus with last_deduction_dz_epoch)
-        let epoch_ix = serviceability_instruction::tenant::update_payment_status(
+        let instructions = billing_receipt_instructions(
             &self.serviceability_id,
-            &payer_key,
+            &self.payer.pubkey(),
             tenant_pda,
-            UpdatePaymentStatusArgs {
-                payment_status: TenantPaymentStatus::Paid as u8,
-                last_deduction_dz_epoch: Some(receipt.dz_epoch),
-            },
-        );
+            receipt,
+            rent_lamports,
+        )?;
 
         let signer = &self.payer;
         let recent_blockhash = self.client.get_latest_blockhash().await?;
-        let transaction = new_transaction(
-            &[
-                init.allocate,
-                init.assign,
-                transfer_ix,
-                init.initialize,
-                write_ix,
-                epoch_ix,
-            ],
-            &[signer],
-            recent_blockhash,
-        );
+        let transaction =
+            new_serviceability_transaction(&instructions, &[signer], recent_blockhash);
 
         let signature = tokio::time::timeout(
             SEND_AND_CONFIRM_TIMEOUT,
@@ -415,5 +473,74 @@ impl DzRpcClient {
     pub async fn get_current_dz_epoch(&self) -> Result<u64> {
         let epoch_info = self.client.get_epoch_info().await?;
         Ok(epoch_info.epoch.saturating_sub(1))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Largest serialized transaction the cluster accepts (`PACKET_DATA_SIZE`).
+    const PACKET_DATA_SIZE: usize = 1232;
+
+    fn receipt(tenant: Pubkey) -> BillingReceipt {
+        BillingReceipt {
+            tenant,
+            dz_epoch: u64::MAX,
+            amount: u64::MAX,
+            sol_tx_sig: [0xff; 64],
+        }
+    }
+
+    #[test]
+    fn serviceability_transactions_start_with_the_compute_budget_prelude() {
+        let payer = Keypair::new();
+        let ix = serviceability_instruction::tenant::update_payment_status(
+            &Pubkey::new_unique(),
+            &payer.pubkey(),
+            &Pubkey::new_unique(),
+            UpdatePaymentStatusArgs {
+                payment_status: TenantPaymentStatus::Paid as u8,
+                last_deduction_dz_epoch: None,
+            },
+        );
+        let tx = new_serviceability_transaction(
+            std::slice::from_ref(&ix),
+            &[&payer],
+            Hash::new_unique(),
+        );
+
+        let message = &tx.message;
+        let instructions = message.instructions();
+        let prelude = serviceability_instruction::compute_budget_prelude();
+        assert_eq!(instructions.len(), prelude.len() + 1);
+        for (compiled, expected) in instructions.iter().zip(prelude.iter()) {
+            assert_eq!(
+                message.static_account_keys()[compiled.program_id_index as usize],
+                expected.program_id
+            );
+            assert_eq!(compiled.data, expected.data);
+        }
+        assert_eq!(instructions[prelude.len()].data, ix.data);
+    }
+
+    /// The billing receipt is the largest transaction this client sends; it must still fit in a
+    /// packet with the prelude in front.
+    #[test]
+    fn billing_receipt_transaction_with_prelude_fits_in_a_packet() {
+        let payer = Keypair::new();
+        let tenant = Pubkey::new_unique();
+        let instructions = billing_receipt_instructions(
+            &Pubkey::new_unique(),
+            &payer.pubkey(),
+            &tenant,
+            &receipt(tenant),
+            u64::MAX,
+        )
+        .unwrap();
+        let tx = new_serviceability_transaction(&instructions, &[&payer], Hash::new_unique());
+
+        let size = bincode::serialized_size(&tx).unwrap() as usize;
+        assert!(size <= PACKET_DATA_SIZE, "{size} > {PACKET_DATA_SIZE}");
     }
 }

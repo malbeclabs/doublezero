@@ -117,9 +117,26 @@ use solana_program::{
     pubkey::Pubkey,
 };
 
-// Program entrypoint
+// Program entrypoint: `solana_program::entrypoint!` minus its default global allocator, which is
+// fixed at 32 KiB and ignores the transaction's heap-frame request. `crate::heap` installs the
+// program's own.
 #[cfg(not(feature = "no-entrypoint"))]
-solana_program::entrypoint!(process_instruction);
+mod program_entrypoint {
+    /// # Safety
+    ///
+    /// Called only by the runtime, with `input` pointing at the serialized instruction.
+    #[no_mangle]
+    pub unsafe extern "C" fn entrypoint(input: *mut u8) -> u64 {
+        let (program_id, accounts, instruction_data) =
+            unsafe { solana_program::entrypoint::deserialize(input) };
+        match super::process_instruction(program_id, &accounts, instruction_data) {
+            Ok(()) => solana_program::entrypoint::SUCCESS,
+            Err(error) => error.into(),
+        }
+    }
+
+    solana_program::custom_panic_default!();
+}
 
 // Function to route instructions to the correct handler
 pub fn process_instruction(

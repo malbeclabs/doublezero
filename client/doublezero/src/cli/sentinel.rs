@@ -4,7 +4,9 @@ use clap::{Args, Subcommand};
 use doublezero_sdk::{DZClient, UserType};
 use doublezero_sentinel::{
     dz_ledger_reader::{self, DzDeviceInfo, DzLedgerReader, DzUser, RpcDzLedgerReader},
-    dz_ledger_writer::build_create_multicast_publisher_instructions,
+    dz_ledger_writer::{
+        build_create_multicast_publisher_instructions, with_compute_budget_prelude,
+    },
     multicast_create::{find_candidates, CandidateFilters},
     multicast_find::{apply_filters, FindFilters},
     nearest_device::{device_proximity_score, find_nearest_device_for_multicast},
@@ -901,7 +903,8 @@ async fn send_instruction(
         .get_latest_blockhash()
         .map_err(|e| eyre::eyre!("failed to get blockhash for {label}: {e}"))?;
 
-    let mut tx = Transaction::new_with_payer(ixs, Some(&payer.pubkey()));
+    let mut tx =
+        Transaction::new_with_payer(&with_compute_budget_prelude(ixs), Some(&payer.pubkey()));
     tx.sign(&[payer], blockhash);
 
     let sig = rpc_client

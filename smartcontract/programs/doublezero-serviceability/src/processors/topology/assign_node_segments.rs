@@ -1,6 +1,6 @@
 use crate::{
     authorize::{authorize, split_trailing_permission},
-    error::DoubleZeroError,
+    error::{DoubleZeroError, Validate},
     pda::{get_globalstate_pda, get_resource_extension_pda, get_topology_pda},
     processors::{resource::allocate_id, validation::validate_program_account},
     resource::ResourceType,
@@ -30,6 +30,9 @@ pub type TopologyBackfillArgs = AssignTopologyNodeSegmentsArgs;
 
 /// Assign FlexAlgoNodeSegment entries on Vpnv4 loopbacks for a topology.
 /// Idempotent — skips loopbacks that already have an entry for this topology.
+/// A device the new segments would grow past `MAX_DEVICE_ACCOUNT_SIZE` is skipped
+/// and logged rather than failing the instruction, so one full device does not
+/// stop the backfill of the others.
 ///
 /// Accounts layout:
 /// [0]    topology PDA        (readonly — must already exist)
@@ -127,6 +130,7 @@ pub fn process_assign_topology_node_segments(
     let topology_key = topology_account.key;
     let mut backfilled_count: usize = 0;
     let mut skipped_count: usize = 0;
+    let mut too_large_count: usize = 0;
 
     // Allocate new IDs for loopbacks missing this topology's segment.
     for device_account in device_accounts {
@@ -135,46 +139,75 @@ pub fn process_assign_topology_node_segments(
             device_account.key
         );
         let mut device = Device::try_from(&device_account.data.borrow()[..])?;
-        let mut modified = false;
         // `interfaces` is the source of truth for `flex_algo_node_segments`.
         // The custom Device serializer projects `interfaces` to the legacy
         // on-disk slot as V2, which intentionally drops segments — so we don't
         // mirror the change into the legacy in-memory vec here.
-        for idx in 0..device.interfaces.len() {
-            let new_iface = &device.interfaces[idx];
-            if new_iface.loopback_type != LoopbackType::Vpnv4 {
+        let mut missing: Vec<usize> = Vec::new();
+        for (idx, iface) in device.interfaces.iter().enumerate() {
+            if iface.loopback_type != LoopbackType::Vpnv4 {
                 continue;
             }
-            if new_iface
+            if iface
                 .flex_algo_node_segments
                 .iter()
                 .any(|s| &s.topology == topology_key)
             {
                 skipped_count += 1;
-                continue;
+            } else {
+                missing.push(idx);
             }
-            // Allocate a fresh SR ID. Skip (keep as allocated) any ID that
-            // conflicts with an existing base node_segment_idx — those IDs
-            // remain marked used in the resource to avoid future collisions.
+        }
+        if missing.is_empty() {
+            continue;
+        }
+
+        // Add the segments with a placeholder id first. node_segment_idx is fixed-width, so this
+        // is the size the account will have. A device the segments would grow past
+        // MAX_DEVICE_ACCOUNT_SIZE is left unchanged, before any id is allocated for it, so it
+        // does not fail the whole batch and the devices after it are still backfilled. Running
+        // this again once the device has been trimmed fills it in.
+        for &idx in &missing {
+            device.interfaces[idx]
+                .flex_algo_node_segments
+                .push(FlexAlgoNodeSegment {
+                    topology: *topology_key,
+                    node_segment_idx: 0,
+                });
+        }
+        let new_len = borsh::object_length(&device)?;
+        if device
+            .validate_account_size(device_account.data_len(), new_len)
+            .is_err()
+        {
+            msg!(
+                "AssignTopologyNodeSegments: skipping device {}: {} segment(s) would grow it past the device size cap",
+                device_account.key,
+                missing.len()
+            );
+            too_large_count += 1;
+            continue;
+        }
+
+        // Allocate a fresh SR ID for each. Skip (keep as allocated) any ID that
+        // conflicts with an existing base node_segment_idx — those IDs
+        // remain marked used in the resource to avoid future collisions.
+        for &idx in &missing {
             let node_segment_idx = allocate_id(segment_routing_ids_account)?;
-            let segment = FlexAlgoNodeSegment {
-                topology: *topology_key,
-                node_segment_idx,
-            };
-            device.interfaces[idx].flex_algo_node_segments.push(segment);
-            modified = true;
-            backfilled_count += 1;
+            if let Some(segment) = device.interfaces[idx].flex_algo_node_segments.last_mut() {
+                segment.node_segment_idx = node_segment_idx;
+            }
         }
-        if modified {
-            try_acc_write(&device, device_account, payer_account, accounts)?;
-        }
+        backfilled_count += missing.len();
+        try_acc_write(&device, device_account, payer_account, accounts)?;
     }
 
     msg!(
-        "AssignTopologyNodeSegments: '{}' — {} loopback(s) backfilled, {} already had segment",
+        "AssignTopologyNodeSegments: '{}' — {} loopback(s) backfilled, {} already had segment, {} device(s) skipped at the size cap",
         value.name,
         backfilled_count,
-        skipped_count
+        skipped_count,
+        too_large_count
     );
     Ok(())
 }

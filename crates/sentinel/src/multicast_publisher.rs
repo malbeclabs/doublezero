@@ -29,7 +29,9 @@ use url::Url;
 
 use crate::{
     dz_ledger_reader::DzUser,
-    dz_ledger_writer::build_create_multicast_publisher_instructions,
+    dz_ledger_writer::{
+        build_create_multicast_publisher_instructions, with_compute_budget_prelude,
+    },
     error::{rpc_with_retry, Result, SentinelError},
     tunnel_endpoint::{select_tunnel_endpoint_for_user, DeviceEndpoints},
 };
@@ -311,14 +313,15 @@ impl<D: MulticastDzLedgerClient, V: ValidatorListReader> MulticastPublisherSenti
 // Helpers
 // ---------------------------------------------------------------------------
 
+/// Builds a serviceability transaction: the compute-budget prelude followed by `instructions`.
 fn new_transaction(
     instructions: &[Instruction],
     signers: &[&Keypair],
     recent_blockhash: Hash,
 ) -> Result<VersionedTransaction> {
-    let message =
-        Message::try_compile(&signers[0].pubkey(), instructions, &[], recent_blockhash)
-            .map_err(|e| SentinelError::Deserialize(format!("compile transaction message: {e}")))?;
+    let instructions = with_compute_budget_prelude(instructions);
+    let message = Message::try_compile(&signers[0].pubkey(), &instructions, &[], recent_blockhash)
+        .map_err(|e| SentinelError::Deserialize(format!("compile transaction message: {e}")))?;
 
     VersionedTransaction::try_new(VersionedMessage::V0(message), signers)
         .map_err(|e| SentinelError::Deserialize(format!("sign transaction: {e}")))
@@ -649,6 +652,51 @@ mod tests {
     use solana_sdk::pubkey::Pubkey;
 
     use super::*;
+
+    /// Every transaction this sentinel sends carries the compute-budget prelude, and the largest,
+    /// CreateSubscribeUser with one DzPrefixBlock per device prefix, still fits in a packet.
+    #[test]
+    fn new_transaction_prepends_prelude_and_fits_in_a_packet() {
+        let payer = Keypair::new();
+        let user = DzUser {
+            owner: Pubkey::new_unique(),
+            ..make_ibrl_user([10, 0, 0, 1], Pubkey::new_unique())
+        };
+        // More dz_prefixes than any device has today.
+        let dz_prefix_count = 8;
+        let ixs = build_create_multicast_publisher_instructions(
+            &Pubkey::new_unique(),
+            &payer.pubkey(),
+            &user.owner,
+            &Pubkey::new_unique(),
+            &user,
+            Ipv4Addr::new(45, 33, 101, 1),
+            dz_prefix_count,
+        )
+        .unwrap();
+        let prelude = doublezero_serviceability_instruction::compute_budget_prelude();
+
+        for ix in [ixs.set_access_pass, ixs.add_allowlist, ixs.create_user] {
+            let tx =
+                new_transaction(std::slice::from_ref(&ix), &[&payer], Hash::new_unique()).unwrap();
+            let message = &tx.message;
+            let compiled = message.instructions();
+            assert_eq!(compiled.len(), prelude.len() + 1);
+            for (c, expected) in compiled.iter().zip(prelude.iter()) {
+                assert_eq!(
+                    message.static_account_keys()[c.program_id_index as usize],
+                    expected.program_id
+                );
+                assert_eq!(c.data, expected.data);
+            }
+            assert_eq!(compiled[prelude.len()].data, ix.data);
+
+            // One compact-u16 signature count, the signature, then the message.
+            let size = 1 + 64 * tx.signatures.len() + message.serialize().len();
+            // PACKET_DATA_SIZE, the largest transaction the cluster accepts.
+            assert!(size <= 1232, "{size} bytes");
+        }
+    }
 
     fn make_ibrl_user(ip: [u8; 4], device_pk: Pubkey) -> DzUser {
         DzUser {

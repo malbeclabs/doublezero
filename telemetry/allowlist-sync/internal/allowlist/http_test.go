@@ -94,27 +94,31 @@ func TestCloudflareIPList_ItemsPages(t *testing.T) {
 		assert.Equal(t, "/accounts/acct/rules/lists/list/items", r.URL.Path)
 		assert.Equal(t, "500", r.URL.Query().Get("per_page"))
 		if r.URL.Query().Get("cursor") == "" {
-			cfOK(w, []ListItem{{IP: "45.0.0.1", Comment: "dz1"}}, "page2")
+			cfOK(w, []ListItem{{ID: "i1", IP: "45.0.0.1", Comment: "dz1"}}, "page2")
 			return
 		}
 		assert.Equal(t, "page2", r.URL.Query().Get("cursor"))
-		cfOK(w, []ListItem{{IP: "45.0.0.2"}}, "")
+		cfOK(w, []ListItem{{ID: "i2", IP: "45.0.0.2"}}, "")
 	})
 	items, err := c.Items(context.Background())
 	require.NoError(t, err)
-	assert.Equal(t, []ListItem{{IP: "45.0.0.1", Comment: "dz1"}, {IP: "45.0.0.2"}}, items)
+	assert.Equal(t, []ListItem{{ID: "i1", IP: "45.0.0.1", Comment: "dz1"}, {ID: "i2", IP: "45.0.0.2"}}, items)
 }
 
-func TestCloudflareIPList_ReplacePollsTheBulkOperation(t *testing.T) {
+// cfBulk serves one write method on the items path and polls op1, reporting
+// pending, then running, then completed. It records the write's body.
+func cfBulk(t *testing.T, method string) (*CloudflareIPList, func() ([]byte, int)) {
+	t.Helper()
 	var mu sync.Mutex
-	var put []byte
+	var body []byte
 	polls := 0
 	c := newTestCloudflare(t, func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
 		switch {
-		case r.Method == http.MethodPut && r.URL.Path == "/accounts/acct/rules/lists/list/items":
-			put, _ = io.ReadAll(r.Body)
+		case r.Method == method && r.URL.Path == "/accounts/acct/rules/lists/list/items":
+			assert.Equal(t, "application/json", r.Header.Get("Content-Type"))
+			body, _ = io.ReadAll(r.Body)
 			cfOK(w, map[string]string{"operation_id": "op1"}, "")
 		case r.Method == http.MethodGet && r.URL.Path == "/accounts/acct/rules/lists/bulk_operations/op1":
 			polls++
@@ -127,36 +131,59 @@ func TestCloudflareIPList_ReplacePollsTheBulkOperation(t *testing.T) {
 			t.Errorf("unexpected %s %s", r.Method, r.URL.Path)
 		}
 	})
-	require.NoError(t, c.ReplaceItems(context.Background(), []ListItem{{IP: "45.0.0.1", Comment: "dz1"}}))
-	assert.JSONEq(t, `[{"ip":"45.0.0.1","comment":"dz1"}]`, string(put))
+	return c, func() ([]byte, int) {
+		mu.Lock()
+		defer mu.Unlock()
+		return body, polls
+	}
+}
+
+func TestCloudflareIPList_AddPostsAndPollsTheBulkOperation(t *testing.T) {
+	c, got := cfBulk(t, http.MethodPost)
+	require.NoError(t, c.AddItems(context.Background(), []ListItem{{IP: "45.0.0.1", Comment: "dz1"}}))
+	body, polls := got()
+	assert.JSONEq(t, `[{"ip":"45.0.0.1","comment":"dz1"}]`, string(body))
 	assert.Equal(t, 3, polls)
 }
 
-func TestCloudflareIPList_ReplaceErrors(t *testing.T) {
+func TestCloudflareIPList_DeleteSendsIDsAndPollsTheBulkOperation(t *testing.T) {
+	c, got := cfBulk(t, http.MethodDelete)
+	require.NoError(t, c.DeleteItems(context.Background(), []string{"i1", "i2"}))
+	body, polls := got()
+	assert.JSONEq(t, `{"items":[{"id":"i1"},{"id":"i2"}]}`, string(body))
+	assert.Equal(t, 3, polls)
+
+	assert.EqualError(t, c.DeleteItems(context.Background(), []string{"i1", ""}), "deleting cloudflare list items: an item has no id")
+}
+
+func TestCloudflareIPList_WriteErrors(t *testing.T) {
 	c := newTestCloudflare(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPut {
+		if r.Method != http.MethodGet {
 			cfOK(w, map[string]string{"operation_id": "op1"}, "")
 			return
 		}
 		cfOK(w, map[string]string{"status": "failed", "error": "list item limit exceeded"}, "")
 	})
-	assert.EqualError(t, c.ReplaceItems(context.Background(), []ListItem{{IP: "45.0.0.1"}}),
+	assert.EqualError(t, c.AddItems(context.Background(), []ListItem{{IP: "45.0.0.1"}}),
 		"cloudflare bulk operation op1 failed: list item limit exceeded")
-	assert.EqualError(t, c.ReplaceItems(context.Background(), nil), "refusing to replace the cloudflare list with no items")
+	assert.EqualError(t, c.DeleteItems(context.Background(), []string{"i1"}),
+		"cloudflare bulk operation op1 failed: list item limit exceeded")
 
 	denied := newTestCloudflare(t, func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 		_, _ = w.Write([]byte(`{"success":false,"errors":[{"code":10000,"message":"Authentication error"}]}`))
 	})
-	assert.EqualError(t, denied.ReplaceItems(context.Background(), []ListItem{{IP: "45.0.0.1"}}),
-		"replacing cloudflare list items: HTTP 403: [{10000 Authentication error}]")
+	assert.EqualError(t, denied.AddItems(context.Background(), []ListItem{{IP: "45.0.0.1"}}),
+		"adding cloudflare list items: HTTP 403: [{10000 Authentication error}]")
+	assert.EqualError(t, denied.DeleteItems(context.Background(), []string{"i1"}),
+		"deleting cloudflare list items: HTTP 403: [{10000 Authentication error}]")
 	_, err := denied.Items(context.Background())
 	assert.EqualError(t, err, "listing cloudflare list items: HTTP 403: [{10000 Authentication error}]")
 }
 
 func TestCloudflareIPList_PollStopsAtDeadline(t *testing.T) {
 	c := newTestCloudflare(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodPut {
+		if r.Method == http.MethodPost {
 			cfOK(w, map[string]string{"operation_id": "op1"}, "")
 			return
 		}
@@ -164,7 +191,7 @@ func TestCloudflareIPList_PollStopsAtDeadline(t *testing.T) {
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
-	err := c.ReplaceItems(ctx, []ListItem{{IP: "45.0.0.1"}})
+	err := c.AddItems(ctx, []ListItem{{IP: "45.0.0.1"}})
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
 }
 

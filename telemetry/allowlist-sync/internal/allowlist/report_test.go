@@ -22,7 +22,7 @@ func TestBuildReport(t *testing.T) {
 		dev(5, "deleting", serviceability.DeviceStatusDeleting, "45.5.5.5"),
 	}
 	exc := Exceptions{
-		Inclusions: []Inclusion{{Pubkey: pk(2), Code: "mgmt-vrf", Address: netip.MustParseAddr("216.155.20.62"), Evidence: "x"}},
+		Inclusions: []Inclusion{{Pubkey: pk(2), Code: "mgmt-vrf", Address: netip.MustParseAddr("45.7.7.7"), Evidence: "x"}},
 		Exclusions: []Exclusion{{Pubkey: pk(4), Code: "excluded", Reason: "x"}},
 	}
 	b := mustBuild(t, devices, exc)
@@ -30,21 +30,21 @@ func TestBuildReport(t *testing.T) {
 	calls := []Call{
 		{DevicePubkey: pk(1), CallerIP: netip.MustParseAddr("45.1.1.9"), LastSeen: t0},
 		{DevicePubkey: pk(1), CallerIP: netip.MustParseAddr("45.1.1.1"), LastSeen: t0.Add(-time.Hour)},
-		{DevicePubkey: pk(1), CallerIP: netip.MustParseAddr("8.8.8.8"), LastSeen: t0.Add(time.Minute)}, // not the device
-		{DevicePubkey: pk(2), CallerIP: netip.MustParseAddr("216.155.20.62"), LastSeen: t0},            // open exception
-		{DevicePubkey: pk(4), CallerIP: netip.MustParseAddr("9.9.9.9"), LastSeen: t0},                  // excluded
-		{DevicePubkey: pk(5), CallerIP: netip.MustParseAddr("9.9.9.5"), LastSeen: t0},                  // not live
-		{DevicePubkey: pk(9), CallerIP: netip.MustParseAddr("9.9.9.6"), LastSeen: t0},                  // not on the ledger
+		{DevicePubkey: pk(1), CallerIP: netip.MustParseAddr("198.51.100.8"), LastSeen: t0.Add(time.Minute)}, // not the device
+		{DevicePubkey: pk(2), CallerIP: netip.MustParseAddr("45.7.7.7"), LastSeen: t0},                      // open exception
+		{DevicePubkey: pk(4), CallerIP: netip.MustParseAddr("198.51.100.9"), LastSeen: t0},                  // excluded
+		{DevicePubkey: pk(5), CallerIP: netip.MustParseAddr("198.51.100.5"), LastSeen: t0},                  // not live
+		{DevicePubkey: pk(9), CallerIP: netip.MustParseAddr("198.51.100.6"), LastSeen: t0},                  // not on the ledger
 	}
 	r := BuildReport(b, calls)
 
 	assert.Equal(t, []OffchainCaller{
-		{Pubkey: pk(1), Code: "onchain", CallerIP: netip.MustParseAddr("8.8.8.8"), LastSeen: t0.Add(time.Minute), Listed: false},
-		{Pubkey: pk(2), Code: "mgmt-vrf", CallerIP: netip.MustParseAddr("216.155.20.62"), LastSeen: t0, Listed: true},
-		{Pubkey: pk(9), Code: "", CallerIP: netip.MustParseAddr("9.9.9.6"), LastSeen: t0, Listed: false},
+		{Pubkey: pk(1), Code: "onchain", CallerIP: netip.MustParseAddr("198.51.100.8"), LastSeen: t0.Add(time.Minute), Listed: false},
+		{Pubkey: pk(2), Code: "mgmt-vrf", CallerIP: netip.MustParseAddr("45.7.7.7"), LastSeen: t0, Listed: true},
+		{Pubkey: pk(9), Code: "", CallerIP: netip.MustParseAddr("198.51.100.6"), LastSeen: t0, Listed: false},
 	}, r.Offchain)
 	assert.Equal(t, map[string]time.Time{
-		pk(1): t0, // the newest call from its own addresses, not the 8.8.8.8 one
+		pk(1): t0, // the newest call from its own addresses, not the 198.51.100.8 one
 		pk(2): t0,
 		pk(3): {}, // live, never called
 	}, r.LastListedCall)

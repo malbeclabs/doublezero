@@ -72,7 +72,7 @@ func (l List) Digest() string {
 // for that pubkey from, sorted. For example:
 //
 //	{
-//	  "7xK...": ["137.239.195.54", "137.239.195.130"]
+//	  "<device pubkey>": ["192.0.2.10", "192.0.2.11"]
 //	}
 //
 // A pubkey with no entry is refused. This is the one place the format is

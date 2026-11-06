@@ -18,13 +18,13 @@ import (
 //
 //	inclusions:
 //	  - pubkey: <device pubkey>
-//	    code: dz-fr5-sw01
-//	    address: 216.155.20.62
-//	    evidence: GetConfig capture on aws-mn-controller2, 2026-10-29
+//	    code: xyz01-sw01
+//	    address: <global IPv4 address>
+//	    evidence: <the capture or log that showed the address>
 //	exclusions:
 //	  - pubkey: <device pubkey>
-//	    code: fra-test-tve1
-//	    reason: test device, public_ip registered to another company
+//	    code: lab01-test01
+//	    reason: <why the device stays off the list>
 type Exceptions struct {
 	// Inclusions are addresses a device calls from that the ledger does not
 	// hold yet. One entry per device.
@@ -63,6 +63,15 @@ func ParseExceptions(raw []byte) (Exceptions, error) {
 	dec.KnownFields(true)
 	if err := dec.Decode(&exc); err != nil && !errors.Is(err, io.EOF) {
 		return Exceptions{}, fmt.Errorf("parsing exception file: %w", err)
+	}
+	// The file is one document. Entries after a "---" line would otherwise be
+	// dropped with no error, and a dropped exclusion lists that device.
+	var next yaml.Node
+	if err := dec.Decode(&next); !errors.Is(err, io.EOF) {
+		if err != nil {
+			return Exceptions{}, fmt.Errorf("parsing exception file: %w", err)
+		}
+		return Exceptions{}, fmt.Errorf("parsing exception file: it holds more than one YAML document (a second starts at line %d); merge them into one", next.Line)
 	}
 	if err := exc.validate(); err != nil {
 		return Exceptions{}, fmt.Errorf("exception file: %w", err)

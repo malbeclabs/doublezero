@@ -45,8 +45,10 @@ type Config struct {
 	// CallerWindow is how far back the report reads calls: a live device with
 	// no call from its own addresses in it reads 0.
 	CallerWindow time.Duration
-	// Targets are applied in order. gnmic's map goes first: gnmic refuses a
-	// pubkey with no entry (spec section 5, step 3).
+	// Targets are written in order, gnmic's map first: gnmic refuses a pubkey
+	// with no entry (spec section 5, step 3). A failed write does not stop
+	// the next target: Cloudflare is still written when the map write fails,
+	// and the failed target is written again on the next pass.
 	Targets []Target
 
 	Interval    time.Duration
@@ -166,6 +168,11 @@ func (s *Syncer) Pass(ctx context.Context) error {
 		p, err := t.Plan(ctx, list)
 		if err != nil {
 			return fail("read_"+t.Name(), err)
+		}
+		if len(p.ExternalAdded) > 0 || len(p.ExternalRemoved) > 0 {
+			m.ExternalChanges.WithLabelValues(p.Target).Inc()
+			s.cfg.Log.Warn("target changed since the last pass by a write the sync did not make",
+				"target", p.Target, "added_or_changed", p.ExternalAdded, "removed", p.ExternalRemoved)
 		}
 		plans = append(plans, p)
 	}

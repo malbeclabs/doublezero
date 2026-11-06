@@ -21,7 +21,7 @@ use std::net::Ipv4Addr;
 mod test_helpers;
 use test_helpers::*;
 
-const INVALID_AGENT_IP: u32 = 134;
+const INVALID_AGENT_IP: u32 = 135;
 
 /// Addresses that are not public IPv4: unspecified "this network", private,
 /// CGNAT, loopback, link-local, IETF, documentation, multicast, reserved and
@@ -42,8 +42,8 @@ const NOT_PUBLIC: [Ipv4Addr; 13] = [
     Ipv4Addr::BROADCAST,
 ];
 
-const AGENT_IP: Ipv4Addr = Ipv4Addr::new(37, 61, 209, 41);
-const OTHER_AGENT_IP: Ipv4Addr = Ipv4Addr::new(37, 61, 213, 128);
+const AGENT_IP: Ipv4Addr = Ipv4Addr::new(5, 6, 7, 8);
+const OTHER_AGENT_IP: Ipv4Addr = Ipv4Addr::new(2, 3, 4, 5);
 
 fn assert_custom_error(result: Result<(), BanksClientError>, expected: u32, context: &str) {
     match result {
@@ -113,7 +113,7 @@ fn create_args(agent_ip: Ipv4Addr) -> DoubleZeroInstruction {
     DoubleZeroInstruction::CreateDevice(DeviceCreateArgs {
         code: "dz1".to_string(),
         device_type: DeviceType::Hybrid,
-        public_ip: [8, 8, 8, 8].into(),
+        public_ip: [1, 2, 3, 4].into(),
         dz_prefixes: "110.1.0.0/23".parse().unwrap(),
         metrics_publisher_pk: Pubkey::default(),
         mgmt_vrf: "mgmt".to_string(),

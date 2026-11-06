@@ -361,7 +361,7 @@ async fn test_update_device_contributor_may_set_agent_ip() {
         recent_blockhash,
         s.program_id,
         DoubleZeroInstruction::UpdateDevice(DeviceUpdateArgs {
-            agent_ip: Some([37, 61, 209, 41].into()),
+            agent_ip: Some([5, 6, 7, 8].into()),
             ..DeviceUpdateArgs::default()
         }),
         vec![
@@ -376,7 +376,7 @@ async fn test_update_device_contributor_may_set_agent_ip() {
     let device = get_device(&mut s.banks_client, s.device_pubkey)
         .await
         .unwrap();
-    assert_eq!(device.agent_ip, std::net::Ipv4Addr::new(37, 61, 209, 41));
+    assert_eq!(device.agent_ip, std::net::Ipv4Addr::new(5, 6, 7, 8));
 }
 
 #[tokio::test]

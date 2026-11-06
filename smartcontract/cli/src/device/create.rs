@@ -302,7 +302,7 @@ mod tests {
                 metrics_publisher: Pubkey::default(),
                 mgmt_vrf: "default".to_string(),
                 desired_status: None,
-                agent_ip: Some([37, 61, 209, 41].into()),
+                agent_ip: Some([5, 6, 7, 8].into()),
             }))
             .returning(move |_| Ok((signature, pda_pubkey)));
 
@@ -321,7 +321,7 @@ mod tests {
                 metrics_publisher: Some(Pubkey::default().to_string()),
                 mgmt_vrf: "default".to_string(),
                 desired_status: None,
-                agent_ip: Some([37, 61, 209, 41].into()),
+                agent_ip: Some([5, 6, 7, 8].into()),
                 wait: false,
             }
             .execute(&ctx, &client, &mut output),
@@ -482,7 +482,7 @@ mod tests {
             "--exchange",
             "xlax",
             "--public-ip",
-            "8.8.8.8",
+            "1.2.3.4",
             "--dz-prefixes",
             "110.1.0.0/23",
         ];
@@ -494,24 +494,26 @@ mod tests {
     fn test_cli_device_create_agent_ip_flag() {
         assert_eq!(parse_create(&[]).unwrap().agent_ip, None);
         assert_eq!(
-            parse_create(&["--agent-ip", "37.61.209.41"])
-                .unwrap()
-                .agent_ip,
-            Some([37, 61, 209, 41].into())
+            parse_create(&["--agent-ip", "5.6.7.8"]).unwrap().agent_ip,
+            Some([5, 6, 7, 8].into())
         );
-        for bad in [
-            "10.0.0.1",
-            "192.168.1.1",
-            "127.0.0.1",
-            "100.64.0.1",
-            "0.0.0.0",
-            "224.0.0.1",
-            "nope",
+        for (bad, why) in [
+            ("10.0.0.1", "not a public IPv4 address: 10.0.0.1"),
+            ("192.168.1.1", "not a public IPv4 address: 192.168.1.1"),
+            ("127.0.0.1", "not a public IPv4 address: 127.0.0.1"),
+            ("100.64.0.1", "not a public IPv4 address: 100.64.0.1"),
+            ("0.0.0.0", "not a public IPv4 address: 0.0.0.0"),
+            ("224.0.0.1", "not a public IPv4 address: 224.0.0.1"),
+            ("203.0.113.9", "not a public IPv4 address: 203.0.113.9"),
+            ("nope", "invalid IPv4 address: nope"),
         ] {
-            assert!(
-                parse_create(&["--agent-ip", bad]).is_err(),
-                "--agent-ip {bad} must be rejected"
+            let err = parse_create(&["--agent-ip", bad]).unwrap_err();
+            assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::ValueValidation,
+                "--agent-ip {bad}"
             );
+            assert!(err.to_string().contains(why), "--agent-ip {bad}: {err}");
         }
     }
 }

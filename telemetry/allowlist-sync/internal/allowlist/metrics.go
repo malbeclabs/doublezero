@@ -40,6 +40,9 @@ type Metrics struct {
 	// calling address the ledger does not hold for that device. listed="false"
 	// is an address on no entry for that device, which needs a person.
 	OffchainCaller *prometheus.GaugeVec
+	// OffchainCallersDropped is how many offchain callers the last report left
+	// out over the per-device limit.
+	OffchainCallersDropped prometheus.Gauge
 	// LastListedCall is, per live device that is not excluded, the newest call
 	// from one of its own listed addresses as a Unix time, or 0 when it made
 	// none in the caller window.
@@ -85,6 +88,10 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Name: metricPrefix + "offchain_caller_last_seen_timestamp_seconds",
 			Help: "Newest call per device and calling address the ledger does not hold for that device.",
 		}, []string{"pubkey", "code", "caller_ip", "listed"}),
+		OffchainCallersDropped: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: metricPrefix + "offchain_callers_dropped",
+			Help: "Offchain callers the last report left out over the per-device limit, newest kept.",
+		}),
 		LastListedCall: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name: metricPrefix + "device_last_listed_call_timestamp_seconds",
 			Help: "Newest call from a device's own listed addresses, 0 when none in the caller window.",
@@ -95,7 +102,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	}
 	reg.MustRegister(m.BuildInfo, m.LastSuccess, m.DryRun, m.RefusedPasses, m.Errors, m.Writes,
 		m.LiveDevice, m.ListedAddresses, m.ListedDevices, m.ExceptionReview,
-		m.OffchainCaller, m.LastListedCall, m.ReportLastSuccess)
+		m.OffchainCaller, m.OffchainCallersDropped, m.LastListedCall, m.ReportLastSuccess)
 	return m
 }
 
@@ -114,6 +121,7 @@ func (m *Metrics) setBuilt(b Built) {
 
 func (m *Metrics) setReport(b Built, r Report) {
 	m.OffchainCaller.Reset()
+	m.OffchainCallersDropped.Set(float64(r.OffchainDropped))
 	for _, c := range r.Offchain {
 		m.OffchainCaller.WithLabelValues(c.Pubkey, c.Code, c.CallerIP.String(), strconv.FormatBool(c.Listed)).Set(unixOrZero(c.LastSeen))
 	}

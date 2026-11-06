@@ -19,6 +19,10 @@ const (
 	MaxRemovedAddrsPercent = 10
 )
 
+// DefaultReportTimeout bounds the caller address read, so a ClickHouse that
+// accepts the connection and stalls cannot use up the pass and stop the list.
+const DefaultReportTimeout = 20 * time.Second
+
 // Refusal reasons, the refused_passes_total label.
 const (
 	RefusedEmpty          = "empty_list"
@@ -47,6 +51,9 @@ type Config struct {
 
 	Interval    time.Duration
 	PassTimeout time.Duration
+	// ReportTimeout bounds the caller address read; zero means
+	// DefaultReportTimeout.
+	ReportTimeout time.Duration
 	// DryRun computes and logs each pass's changes and writes nothing.
 	DryRun bool
 	// AllowShrinkTo is the digest of one list that may be applied although a
@@ -57,6 +64,9 @@ type Config struct {
 
 type Syncer struct {
 	cfg Config
+	// warned holds the unlisted callers already logged, so each is logged once
+	// while it keeps calling, not on every pass.
+	warned map[string]bool
 }
 
 func New(cfg Config) (*Syncer, error) {
@@ -77,6 +87,9 @@ func New(cfg Config) (*Syncer, error) {
 		dryRun = 1
 	}
 	cfg.Metrics.DryRun.Set(dryRun)
+	if cfg.ReportTimeout <= 0 {
+		cfg.ReportTimeout = DefaultReportTimeout
+	}
 	return &Syncer{cfg: cfg}, nil
 }
 
@@ -219,7 +232,9 @@ func checkRemovals(p Plan) *RefusedError {
 
 func (s *Syncer) report(ctx context.Context, b Built) {
 	now := s.cfg.Clock.Now()
-	calls, err := s.cfg.Callers.RecentCalls(ctx, now.Add(-s.cfg.CallerWindow))
+	rctx, cancel := context.WithTimeout(ctx, s.cfg.ReportTimeout)
+	defer cancel()
+	calls, err := s.cfg.Callers.RecentCalls(rctx, now.Add(-s.cfg.CallerWindow))
 	if err != nil {
 		// The report gauges keep their last values; report_last_success
 		// says how old they are.
@@ -230,10 +245,20 @@ func (s *Syncer) report(ctx context.Context, b Built) {
 	r := BuildReport(b, calls)
 	s.cfg.Metrics.setReport(b, r)
 	s.cfg.Metrics.ReportLastSuccess.Set(unixOrZero(now))
+	warned := make(map[string]bool)
 	for _, c := range r.Offchain {
-		if !c.Listed {
+		if c.Listed {
+			continue
+		}
+		key := c.Pubkey + "|" + c.CallerIP.String()
+		if !s.warned[key] {
 			s.cfg.Log.Warn("device calls from an address not on its entry", "pubkey", c.Pubkey, "code", c.Code, "caller_ip", c.CallerIP, "last_seen", c.LastSeen)
 		}
+		warned[key] = true
+	}
+	s.warned = warned
+	if r.OffchainDropped > 0 {
+		s.cfg.Log.Warn("calling addresses over the per-device limit left out of the report", "dropped", r.OffchainDropped, "limit", MaxOffchainCallersPerDevice)
 	}
 }
 

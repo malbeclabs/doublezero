@@ -638,6 +638,7 @@ func TestCallerIP(t *testing.T) {
 		{"ipv4", peer.NewContext(context.Background(), &peer.Peer{Addr: &net.TCPAddr{IP: net.ParseIP("203.0.113.7"), Port: 51234}}), "203.0.113.7"},
 		{"ipv6", peer.NewContext(context.Background(), &peer.Peer{Addr: &net.TCPAddr{IP: net.ParseIP("2001:db8::1"), Port: 51234}}), "2001:db8::1"},
 		{"no peer", context.Background(), ""},
+		{"peer with no port", peer.NewContext(context.Background(), &peer.Peer{Addr: &net.UnixAddr{Name: "/run/controller.sock", Net: "unix"}}), ""},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

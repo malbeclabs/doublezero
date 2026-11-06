@@ -4,12 +4,14 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"google.golang.org/grpc/peer"
 )
 
 // logEntry captures a single log call for test assertions.
@@ -67,6 +69,32 @@ type fakeConn struct {
 	sendErr    error
 	execErrOn  string // substring of a query whose Exec should fail
 	execErr    error
+	execs      []string
+	// hasCallerIP is what the system.columns lookup for caller_ip reports.
+	hasCallerIP bool
+	queryErr    error
+}
+
+// fakeRow implements driver.Row for the count() lookup the writer runs.
+type fakeRow struct {
+	driver.Row
+	n   uint64
+	err error
+}
+
+func (r *fakeRow) Scan(dest ...any) error {
+	if r.err != nil {
+		return r.err
+	}
+	*dest[0].(*uint64) = r.n
+	return nil
+}
+
+func (c *fakeConn) QueryRow(_ context.Context, _ string, _ ...any) driver.Row {
+	if c.hasCallerIP {
+		return &fakeRow{n: 1, err: c.queryErr}
+	}
+	return &fakeRow{err: c.queryErr}
 }
 
 func (c *fakeConn) PrepareBatch(_ context.Context, query string, _ ...driver.PrepareBatchOption) (driver.Batch, error) {
@@ -80,6 +108,7 @@ func (c *fakeConn) PrepareBatch(_ context.Context, query string, _ ...driver.Pre
 }
 
 func (c *fakeConn) Exec(_ context.Context, query string, _ ...any) error {
+	c.execs = append(c.execs, query)
 	if c.execErrOn != "" && strings.Contains(query, c.execErrOn) {
 		return c.execErr
 	}
@@ -94,6 +123,7 @@ func newTestWriter(conn clickhouse.Conn) (*ClickhouseWriter, *capturingHandler) 
 		db:              "testdb",
 		build:           Build{Version: "v1.2.3", Commit: "abc123", Date: "2026-01-01"},
 		eventsEnabled:   true,
+		callerIPEnabled: true,
 		versionsEnabled: true,
 	}, h
 }
@@ -104,7 +134,7 @@ func TestFlushSuccessResetsCounterAndPreservesColumnOrder(t *testing.T) {
 	cw.consecutiveErrors = 2
 
 	ts := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
-	cw.Record(getConfigEvent{Timestamp: ts, DevicePubkey: "dev1"})
+	cw.Record(getConfigEvent{Timestamp: ts, DevicePubkey: "dev1", CallerIP: "203.0.113.7"})
 	cw.RecordVersion(agentVersionReport{
 		DevicePubkey: "dev1",
 		UpdatedAt:    ts,
@@ -119,6 +149,14 @@ func TestFlushSuccessResetsCounterAndPreservesColumnOrder(t *testing.T) {
 	}
 	if len(conn.batches) != 2 {
 		t.Fatalf("prepared %d batches, want 2", len(conn.batches))
+	}
+
+	// Event row values must line up with the INSERT column list.
+	if want := `(timestamp, device_pubkey, caller_ip)`; !strings.Contains(conn.prepared[0], want) {
+		t.Fatalf("events INSERT = %q, want column list %q", conn.prepared[0], want)
+	}
+	if rows := conn.batches[0].rows; len(rows) != 1 || len(rows[0]) != 3 || rows[0][0] != ts || rows[0][1] != "dev1" || rows[0][2] != "203.0.113.7" {
+		t.Fatalf("events batch rows = %v, want [[%v dev1 203.0.113.7]]", conn.batches[0].rows, ts)
 	}
 
 	// Version row values must line up with the INSERT column list.
@@ -280,6 +318,118 @@ func TestCreateTablesDegradesPerTable(t *testing.T) {
 	}
 	if cw.eventsEnabled || cw.versionsEnabled {
 		t.Error("expected both streams disabled when no table is usable")
+	}
+}
+
+func TestCreateTablesWritesEventsWithoutCallerIPWhenAlterFails(t *testing.T) {
+	conn := &fakeConn{execErrOn: "ADD COLUMN IF NOT EXISTS caller_ip", execErr: errors.New("ACCESS_DENIED")}
+	cw, h := newTestWriter(conn)
+
+	if err := cw.CreateTables(context.Background()); err != nil {
+		t.Fatalf("CreateTables returned %v, want nil", err)
+	}
+	if !cw.eventsEnabled || cw.callerIPEnabled || !cw.versionsEnabled {
+		t.Errorf("enabled flags = (events=%v, callerIP=%v, versions=%v), want (true, false, true)", cw.eventsEnabled, cw.callerIPEnabled, cw.versionsEnabled)
+	}
+	if len(h.entries) != 1 || h.entries[0].Level != slog.LevelError {
+		t.Errorf("expected one ERROR log for the failed ALTER, got %+v", h.entries)
+	}
+
+	ts := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
+	cw.Record(getConfigEvent{Timestamp: ts, DevicePubkey: "dev1", CallerIP: "203.0.113.7"})
+	cw.flush(context.Background())
+	if len(conn.prepared) != 1 || !strings.Contains(conn.prepared[0], "(timestamp, device_pubkey)") {
+		t.Fatalf("events INSERT = %v, want the two-column list", conn.prepared)
+	}
+	if rows := conn.batches[0].rows; len(rows) != 1 || len(rows[0]) != 2 {
+		t.Fatalf("events batch rows = %v, want one row of 2 values", rows)
+	}
+
+	// A table that could not be created is not altered.
+	conn.execErrOn = "CREATE TABLE"
+	conn.execs = nil
+	_ = cw.CreateTables(context.Background())
+	for _, q := range conn.execs {
+		if strings.Contains(q, "ALTER TABLE") {
+			t.Errorf("ALTER ran although the getconfig table could not be created: %q", q)
+		}
+	}
+	if cw.callerIPEnabled {
+		t.Error("expected caller_ip disabled when the getconfig table could not be created")
+	}
+}
+
+func TestCreateTablesCallerIPColumn(t *testing.T) {
+	alters := func(c *fakeConn) int {
+		n := 0
+		for _, q := range c.execs {
+			if strings.Contains(q, "ALTER TABLE") {
+				n++
+			}
+		}
+		return n
+	}
+
+	// A table without the column gets it added, and events use it.
+	conn := &fakeConn{}
+	cw, _ := newTestWriter(conn)
+	cw.callerIPEnabled = false
+	if err := cw.CreateTables(context.Background()); err != nil {
+		t.Fatalf("CreateTables returned %v", err)
+	}
+	if alters(conn) != 1 || !cw.callerIPEnabled {
+		t.Errorf("missing column: alters=%d callerIPEnabled=%v, want 1 and true", alters(conn), cw.callerIPEnabled)
+	}
+	// A table the controller creates has the column from the start.
+	for _, q := range conn.execs {
+		if strings.Contains(q, "CREATE TABLE IF NOT EXISTS") && strings.Contains(q, "controller_grpc_getconfig_success") && !strings.Contains(q, "caller_ip") {
+			t.Errorf("getconfig CREATE has no caller_ip column: %q", q)
+		}
+	}
+	cw.Record(getConfigEvent{DevicePubkey: "dev1", CallerIP: "203.0.113.7"})
+	cw.flush(context.Background())
+	if len(conn.prepared) != 1 || !strings.Contains(conn.prepared[0], "(timestamp, device_pubkey, caller_ip)") {
+		t.Errorf("events INSERT = %v, want the three-column list", conn.prepared)
+	}
+
+	// A table that has the column is not altered, so no ALTER grant is needed.
+	conn = &fakeConn{hasCallerIP: true, execErrOn: "ALTER TABLE", execErr: errors.New("ACCESS_DENIED")}
+	cw, h := newTestWriter(conn)
+	cw.callerIPEnabled = false
+	if err := cw.CreateTables(context.Background()); err != nil {
+		t.Fatalf("CreateTables returned %v", err)
+	}
+	if alters(conn) != 0 || !cw.callerIPEnabled || len(h.entries) != 0 {
+		t.Errorf("existing column: alters=%d callerIPEnabled=%v logs=%+v, want 0, true, none", alters(conn), cw.callerIPEnabled, h.entries)
+	}
+
+	// A failed lookup leaves the column off and logs it.
+	conn = &fakeConn{queryErr: errors.New("ACCESS_DENIED")}
+	cw, h = newTestWriter(conn)
+	if err := cw.CreateTables(context.Background()); err != nil {
+		t.Fatalf("CreateTables returned %v", err)
+	}
+	if alters(conn) != 0 || cw.callerIPEnabled || len(h.entries) != 1 || h.entries[0].Level != slog.LevelError {
+		t.Errorf("failed lookup: alters=%d callerIPEnabled=%v logs=%+v, want 0, false, one ERROR", alters(conn), cw.callerIPEnabled, h.entries)
+	}
+}
+
+func TestCallerIP(t *testing.T) {
+	tests := []struct {
+		name string
+		ctx  context.Context
+		want string
+	}{
+		{"ipv4", peer.NewContext(context.Background(), &peer.Peer{Addr: &net.TCPAddr{IP: net.ParseIP("203.0.113.7"), Port: 51234}}), "203.0.113.7"},
+		{"ipv6", peer.NewContext(context.Background(), &peer.Peer{Addr: &net.TCPAddr{IP: net.ParseIP("2001:db8::1"), Port: 51234}}), "2001:db8::1"},
+		{"no peer", context.Background(), ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := callerIP(tt.ctx); got != tt.want {
+				t.Errorf("callerIP = %q, want %q", got, tt.want)
+			}
+		})
 	}
 }
 

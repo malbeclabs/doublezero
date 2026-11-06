@@ -1090,6 +1090,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		c.clickhouse.Record(getConfigEvent{
 			Timestamp:    reqStart,
 			DevicePubkey: req.GetPubkey(),
+			CallerIP:     callerIP(ctx),
 		})
 		c.clickhouse.RecordVersion(agentVersionReport{
 			DevicePubkey: req.GetPubkey(),
@@ -1109,6 +1110,22 @@ func peerAddr(ctx context.Context) string {
 		return p.Addr.String()
 	}
 	return "unknown"
+}
+
+// callerIP returns the gRPC caller's IP address without its port, or "" if it
+// cannot be determined from the request context.
+func callerIP(ctx context.Context) string {
+	p, ok := peer.FromContext(ctx)
+	if !ok || p.Addr == nil {
+		return ""
+	}
+	if tcp, ok := p.Addr.(*net.TCPAddr); ok {
+		return tcp.IP.String()
+	}
+	if host, _, err := net.SplitHostPort(p.Addr.String()); err == nil {
+		return host
+	}
+	return ""
 }
 
 // formatCIDR formats a 5-byte network block into CIDR notation

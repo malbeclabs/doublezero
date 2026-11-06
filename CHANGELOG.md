@@ -65,6 +65,8 @@ All notable changes to this project will be documented in this file.
   - `doublezerod` tells the user when missing peer routes need their action: in active liveness mode, no session has been up for 2 minutes while a desired route is missing from the kernel. It logs a WARN that names which direction of UDP 44880 on `doublezero0` to check and links the troubleshooting docs, repeats it every 15 minutes, and logs an Info line when it clears. `/v2/status` carries a route summary for the IBRL service, which the new `doublezero routes status` shows. `doublezero status` warns only when action is needed. `doublezero routes` shows `no reply` instead of `none` for a peer that never answered, and `held down` while a route waits out its hold-down.
 - SDK
   - The Go, TypeScript and Python serviceability SDKs read the device agent IP as `AgentIp`, `agentIp` and `agent_ip`. All zeros means unset. The Go SDK's device JSON always carries an `AgentIp` key, which is empty when the address is unset.
+- Controller
+  - Each `controller_grpc_getconfig_success` row records `caller_ip`, the address the request came from. On startup the controller adds the column to a table that lacks it, which needs `ALTER ADD COLUMN` on that table once: grant it, or add the column by hand, before deploying. Without either, events are written without the column and an `ERROR` is logged.
 - Geolocation
   - The foundation check reads the program config and the serviceability global state only from their PDAs. An account at another address fails with `InvalidSeeds`.
 - RFCs

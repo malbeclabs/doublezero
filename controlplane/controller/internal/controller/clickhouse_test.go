@@ -6,11 +6,13 @@ import (
 	"log/slog"
 	"net"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
 	"github.com/ClickHouse/clickhouse-go/v2/lib/driver"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"google.golang.org/grpc/peer"
 )
 
@@ -22,13 +24,22 @@ type logEntry struct {
 
 // capturingHandler is a slog.Handler that records log entries.
 type capturingHandler struct {
+	mu      sync.Mutex
 	entries []logEntry
 }
 
 func (h *capturingHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
 func (h *capturingHandler) Handle(_ context.Context, r slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.entries = append(h.entries, logEntry{Level: r.Level, Message: r.Message})
 	return nil
+}
+
+func (h *capturingHandler) snapshot() []logEntry {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return append([]logEntry(nil), h.entries...)
 }
 func (h *capturingHandler) WithAttrs(_ []slog.Attr) slog.Handler { return h }
 func (h *capturingHandler) WithGroup(_ string) slog.Handler      { return h }
@@ -59,9 +70,11 @@ func (b *fakeBatch) Send() error {
 }
 func (b *fakeBatch) Close() error { return nil }
 
-// fakeConn implements driver.Conn for the methods the writer uses.
+// fakeConn implements driver.Conn for the methods the writer uses. mu guards
+// every field, since the schema retry loop runs on its own goroutine.
 type fakeConn struct {
 	driver.Conn
+	mu         sync.Mutex
 	prepared   []string
 	batches    []*fakeBatch
 	prepareErr error
@@ -73,6 +86,22 @@ type fakeConn struct {
 	// hasCallerIP is what the system.columns lookup for caller_ip reports.
 	hasCallerIP bool
 	queryErr    error
+	// queries and queryArgs record each QueryRow call.
+	queries   []string
+	queryArgs [][]any
+}
+
+// set changes the fake's behaviour under its lock.
+func (c *fakeConn) set(f func(c *fakeConn)) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	f(c)
+}
+
+func (c *fakeConn) execsSnapshot() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]string(nil), c.execs...)
 }
 
 // fakeRow implements driver.Row for the count() lookup the writer runs.
@@ -90,7 +119,11 @@ func (r *fakeRow) Scan(dest ...any) error {
 	return nil
 }
 
-func (c *fakeConn) QueryRow(_ context.Context, _ string, _ ...any) driver.Row {
+func (c *fakeConn) QueryRow(_ context.Context, query string, args ...any) driver.Row {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.queries = append(c.queries, query)
+	c.queryArgs = append(c.queryArgs, args)
 	if c.hasCallerIP {
 		return &fakeRow{n: 1, err: c.queryErr}
 	}
@@ -98,6 +131,8 @@ func (c *fakeConn) QueryRow(_ context.Context, _ string, _ ...any) driver.Row {
 }
 
 func (c *fakeConn) PrepareBatch(_ context.Context, query string, _ ...driver.PrepareBatchOption) (driver.Batch, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.prepared = append(c.prepared, query)
 	if c.prepareErr != nil {
 		return nil, c.prepareErr
@@ -108,6 +143,8 @@ func (c *fakeConn) PrepareBatch(_ context.Context, query string, _ ...driver.Pre
 }
 
 func (c *fakeConn) Exec(_ context.Context, query string, _ ...any) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.execs = append(c.execs, query)
 	if c.execErrOn != "" && strings.Contains(query, c.execErrOn) {
 		return c.execErr
@@ -126,6 +163,29 @@ func newTestWriter(conn clickhouse.Conn) (*ClickhouseWriter, *capturingHandler) 
 		callerIPEnabled: true,
 		versionsEnabled: true,
 	}, h
+}
+
+// newSchemaTestWriter returns a writer as NewClickhouseWriter does, with
+// every write off until CreateTables enables it, and fast schema retries.
+func newSchemaTestWriter(conn clickhouse.Conn) (*ClickhouseWriter, *capturingHandler) {
+	cw, h := newTestWriter(conn)
+	cw.eventsEnabled, cw.callerIPEnabled, cw.versionsEnabled = false, false, false
+	cw.schemaRetryMin, cw.schemaRetryMax = time.Millisecond, 4*time.Millisecond
+	return cw, h
+}
+
+// errAddCallerIP is the message logged when caller_ip cannot be added.
+const errAddCallerIP = "error adding caller_ip to getconfig table, writing getconfig events without it"
+
+// enabled reads the three write flags under the writer's lock.
+func (cw *ClickhouseWriter) enabled() (events, callerIP, versions bool) {
+	cw.mu.Lock()
+	defer cw.mu.Unlock()
+	return cw.eventsEnabled, cw.callerIPEnabled, cw.versionsEnabled
+}
+
+func writeGauge(write string) float64 {
+	return testutil.ToFloat64(clickhouseWriteEnabled.WithLabelValues(write))
 }
 
 func TestFlushSuccessResetsCounterAndPreservesColumnOrder(t *testing.T) {
@@ -292,16 +352,22 @@ func TestFlushVersionsDeduplicatesPerDevice(t *testing.T) {
 
 func TestCreateTablesDegradesPerTable(t *testing.T) {
 	conn := &fakeConn{execErrOn: "controller_agent_versions", execErr: errors.New("ACCESS_DENIED")}
-	cw, h := newTestWriter(conn)
+	cw, h := newSchemaTestWriter(conn)
+	cw.schemaRetryMin, cw.schemaRetryMax = time.Hour, time.Hour
 
-	if err := cw.CreateTables(context.Background()); err != nil {
+	if err := cw.CreateTables(t.Context()); err != nil {
 		t.Fatalf("CreateTables returned %v, want nil when one table is usable", err)
 	}
-	if !cw.eventsEnabled || cw.versionsEnabled {
-		t.Errorf("enabled flags = (events=%v, versions=%v), want (true, false)", cw.eventsEnabled, cw.versionsEnabled)
+	if events, _, versions := cw.enabled(); !events || versions {
+		t.Errorf("enabled flags = (events=%v, versions=%v), want (true, false)", events, versions)
 	}
-	if len(h.entries) != 1 || h.entries[0].Level != slog.LevelError {
-		t.Errorf("expected one ERROR log for the failed table, got %+v", h.entries)
+	want := []logEntry{{slog.LevelError, "error creating agent_versions table, disabling version writes"}}
+	if got := h.snapshot(); len(got) != 1 || got[0] != want[0] {
+		t.Errorf("logs = %+v, want %+v", got, want)
+	}
+	if writeGauge(writeGetConfigEvents) != 1 || writeGauge(writeCallerIP) != 1 || writeGauge(writeAgentVersions) != 0 {
+		t.Errorf("write gauges = (events=%v, caller_ip=%v, versions=%v), want (1, 1, 0)",
+			writeGauge(writeGetConfigEvents), writeGauge(writeCallerIP), writeGauge(writeAgentVersions))
 	}
 
 	// The disabled stream must not buffer; the enabled one must.
@@ -312,27 +378,37 @@ func TestCreateTablesDegradesPerTable(t *testing.T) {
 	}
 
 	// Both tables failing disables everything and surfaces an error.
-	conn.execErrOn = "CREATE TABLE"
-	if err := cw.CreateTables(context.Background()); err == nil {
+	conn = &fakeConn{execErrOn: "CREATE TABLE", execErr: errors.New("ACCESS_DENIED")}
+	cw, _ = newSchemaTestWriter(conn)
+	if err := cw.CreateTables(t.Context()); err == nil {
 		t.Error("CreateTables returned nil, want error when no table is usable")
 	}
-	if cw.eventsEnabled || cw.versionsEnabled {
-		t.Error("expected both streams disabled when no table is usable")
+	if events, callerIP, versions := cw.enabled(); events || callerIP || versions {
+		t.Error("expected every write disabled when no table is usable")
+	}
+	for _, w := range []string{writeGetConfigEvents, writeCallerIP, writeAgentVersions} {
+		if writeGauge(w) != 0 {
+			t.Errorf("write gauge %s = %v, want 0", w, writeGauge(w))
+		}
 	}
 }
 
 func TestCreateTablesWritesEventsWithoutCallerIPWhenAlterFails(t *testing.T) {
 	conn := &fakeConn{execErrOn: "ADD COLUMN IF NOT EXISTS caller_ip", execErr: errors.New("ACCESS_DENIED")}
-	cw, h := newTestWriter(conn)
+	cw, h := newSchemaTestWriter(conn)
+	cw.schemaRetryMin, cw.schemaRetryMax = time.Hour, time.Hour
 
-	if err := cw.CreateTables(context.Background()); err != nil {
+	if err := cw.CreateTables(t.Context()); err != nil {
 		t.Fatalf("CreateTables returned %v, want nil", err)
 	}
-	if !cw.eventsEnabled || cw.callerIPEnabled || !cw.versionsEnabled {
-		t.Errorf("enabled flags = (events=%v, callerIP=%v, versions=%v), want (true, false, true)", cw.eventsEnabled, cw.callerIPEnabled, cw.versionsEnabled)
+	if events, callerIP, versions := cw.enabled(); !events || callerIP || !versions {
+		t.Errorf("enabled flags = (events=%v, callerIP=%v, versions=%v), want (true, false, true)", events, callerIP, versions)
 	}
-	if len(h.entries) != 1 || h.entries[0].Level != slog.LevelError {
-		t.Errorf("expected one ERROR log for the failed ALTER, got %+v", h.entries)
+	if got := h.snapshot(); len(got) != 1 || got[0] != (logEntry{slog.LevelError, errAddCallerIP}) {
+		t.Errorf("logs = %+v, want one ERROR %q", got, errAddCallerIP)
+	}
+	if writeGauge(writeCallerIP) != 0 {
+		t.Errorf("caller_ip write gauge = %v, want 0", writeGauge(writeCallerIP))
 	}
 
 	ts := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
@@ -346,15 +422,16 @@ func TestCreateTablesWritesEventsWithoutCallerIPWhenAlterFails(t *testing.T) {
 	}
 
 	// A table that could not be created is not altered.
-	conn.execErrOn = "CREATE TABLE"
-	conn.execs = nil
-	_ = cw.CreateTables(context.Background())
-	for _, q := range conn.execs {
+	conn = &fakeConn{execErrOn: "controller_grpc_getconfig_success", execErr: errors.New("ACCESS_DENIED")}
+	cw, _ = newSchemaTestWriter(conn)
+	cw.schemaRetryMin, cw.schemaRetryMax = time.Hour, time.Hour
+	_ = cw.CreateTables(t.Context())
+	for _, q := range conn.execsSnapshot() {
 		if strings.Contains(q, "ALTER TABLE") {
 			t.Errorf("ALTER ran although the getconfig table could not be created: %q", q)
 		}
 	}
-	if cw.callerIPEnabled {
+	if _, callerIP, _ := cw.enabled(); callerIP {
 		t.Error("expected caller_ip disabled when the getconfig table could not be created")
 	}
 }
@@ -362,7 +439,7 @@ func TestCreateTablesWritesEventsWithoutCallerIPWhenAlterFails(t *testing.T) {
 func TestCreateTablesCallerIPColumn(t *testing.T) {
 	alters := func(c *fakeConn) int {
 		n := 0
-		for _, q := range c.execs {
+		for _, q := range c.execsSnapshot() {
 			if strings.Contains(q, "ALTER TABLE") {
 				n++
 			}
@@ -372,16 +449,26 @@ func TestCreateTablesCallerIPColumn(t *testing.T) {
 
 	// A table without the column gets it added, and events use it.
 	conn := &fakeConn{}
-	cw, _ := newTestWriter(conn)
-	cw.callerIPEnabled = false
-	if err := cw.CreateTables(context.Background()); err != nil {
+	cw, _ := newSchemaTestWriter(conn)
+	if err := cw.CreateTables(t.Context()); err != nil {
 		t.Fatalf("CreateTables returned %v", err)
 	}
-	if alters(conn) != 1 || !cw.callerIPEnabled {
-		t.Errorf("missing column: alters=%d callerIPEnabled=%v, want 1 and true", alters(conn), cw.callerIPEnabled)
+	if _, callerIP, _ := cw.enabled(); alters(conn) != 1 || !callerIP {
+		t.Errorf("missing column: alters=%d callerIPEnabled=%v, want 1 and true", alters(conn), callerIP)
+	}
+	if writeGauge(writeCallerIP) != 1 {
+		t.Errorf("caller_ip write gauge = %v, want 1", writeGauge(writeCallerIP))
+	}
+	// The lookup is filtered on this database, table and column.
+	wantQuery := `SELECT count() FROM system.columns WHERE database = ? AND table = 'controller_grpc_getconfig_success' AND name = 'caller_ip'`
+	if len(conn.queries) != 1 || conn.queries[0] != wantQuery {
+		t.Errorf("column lookup = %q, want [%q]", conn.queries, wantQuery)
+	}
+	if len(conn.queryArgs) != 1 || len(conn.queryArgs[0]) != 1 || conn.queryArgs[0][0] != "testdb" {
+		t.Errorf("column lookup args = %v, want [[testdb]]", conn.queryArgs)
 	}
 	// A table the controller creates has the column from the start.
-	for _, q := range conn.execs {
+	for _, q := range conn.execsSnapshot() {
 		if strings.Contains(q, "CREATE TABLE IF NOT EXISTS") && strings.Contains(q, "controller_grpc_getconfig_success") && !strings.Contains(q, "caller_ip") {
 			t.Errorf("getconfig CREATE has no caller_ip column: %q", q)
 		}
@@ -394,23 +481,134 @@ func TestCreateTablesCallerIPColumn(t *testing.T) {
 
 	// A table that has the column is not altered, so no ALTER grant is needed.
 	conn = &fakeConn{hasCallerIP: true, execErrOn: "ALTER TABLE", execErr: errors.New("ACCESS_DENIED")}
-	cw, h := newTestWriter(conn)
-	cw.callerIPEnabled = false
-	if err := cw.CreateTables(context.Background()); err != nil {
+	cw, h := newSchemaTestWriter(conn)
+	if err := cw.CreateTables(t.Context()); err != nil {
 		t.Fatalf("CreateTables returned %v", err)
 	}
-	if alters(conn) != 0 || !cw.callerIPEnabled || len(h.entries) != 0 {
-		t.Errorf("existing column: alters=%d callerIPEnabled=%v logs=%+v, want 0, true, none", alters(conn), cw.callerIPEnabled, h.entries)
+	if _, callerIP, _ := cw.enabled(); alters(conn) != 0 || !callerIP || len(h.snapshot()) != 0 {
+		t.Errorf("existing column: alters=%d callerIPEnabled=%v logs=%+v, want 0, true, none", alters(conn), callerIP, h.snapshot())
 	}
 
 	// A failed lookup leaves the column off and logs it.
 	conn = &fakeConn{queryErr: errors.New("ACCESS_DENIED")}
-	cw, h = newTestWriter(conn)
-	if err := cw.CreateTables(context.Background()); err != nil {
+	cw, h = newSchemaTestWriter(conn)
+	cw.schemaRetryMin, cw.schemaRetryMax = time.Hour, time.Hour
+	if err := cw.CreateTables(t.Context()); err != nil {
 		t.Fatalf("CreateTables returned %v", err)
 	}
-	if alters(conn) != 0 || cw.callerIPEnabled || len(h.entries) != 1 || h.entries[0].Level != slog.LevelError {
-		t.Errorf("failed lookup: alters=%d callerIPEnabled=%v logs=%+v, want 0, false, one ERROR", alters(conn), cw.callerIPEnabled, h.entries)
+	got := h.snapshot()
+	if _, callerIP, _ := cw.enabled(); alters(conn) != 0 || callerIP || len(got) != 1 || got[0] != (logEntry{slog.LevelError, errAddCallerIP}) {
+		t.Errorf("failed lookup: alters=%d callerIPEnabled=%v logs=%+v, want 0, false, one ERROR %q", alters(conn), callerIP, got, errAddCallerIP)
+	}
+}
+
+// eventually polls cond until it holds or a second passes.
+func eventually(t *testing.T, cond func() bool) bool {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return true
+		}
+		time.Sleep(time.Millisecond)
+	}
+	return cond()
+}
+
+func TestCreateTablesRetriesFailedStepsUntilTheySucceed(t *testing.T) {
+	// The lookup fails and the versions table cannot be created at startup.
+	conn := &fakeConn{queryErr: errors.New("connection reset"), execErrOn: "controller_agent_versions", execErr: errors.New("ACCESS_DENIED")}
+	cw, h := newSchemaTestWriter(conn)
+
+	if err := cw.CreateTables(t.Context()); err != nil {
+		t.Fatalf("CreateTables returned %v", err)
+	}
+	if _, callerIP, versions := cw.enabled(); callerIP || versions {
+		t.Fatalf("after startup: callerIP=%v versions=%v, want both false", callerIP, versions)
+	}
+
+	// Retries keep failing at WARN without enabling anything.
+	if !eventually(t, func() bool { return len(h.snapshot()) >= 4 }) {
+		t.Fatalf("no retries logged: %+v", h.snapshot())
+	}
+	for _, e := range h.snapshot()[2:] {
+		if e.Level != slog.LevelWarn {
+			t.Errorf("retry logged %+v, want WARN", e)
+		}
+	}
+
+	// Once ClickHouse recovers, the retry enables both and stops.
+	conn.set(func(c *fakeConn) { c.queryErr, c.execErrOn = nil, "" })
+	if !eventually(t, func() bool { _, c, v := cw.enabled(); return c && v }) {
+		t.Fatal("caller_ip and versions not enabled after the failures cleared")
+	}
+	if writeGauge(writeCallerIP) != 1 || writeGauge(writeAgentVersions) != 1 {
+		t.Errorf("write gauges = (caller_ip=%v, versions=%v), want (1, 1)", writeGauge(writeCallerIP), writeGauge(writeAgentVersions))
+	}
+	if !eventually(t, func() bool {
+		got := h.snapshot()
+		return got[len(got)-1].Level == slog.LevelInfo
+	}) {
+		t.Fatal("no INFO line when the retry succeeded")
+	}
+	n := len(conn.execsSnapshot())
+	time.Sleep(20 * time.Millisecond)
+	if got := len(conn.execsSnapshot()); got != n {
+		t.Errorf("retry loop kept running after success: %d execs, then %d", n, got)
+	}
+}
+
+func TestCreateTablesRetryStopsWithContext(t *testing.T) {
+	conn := &fakeConn{queryErr: errors.New("connection reset")}
+	cw, _ := newSchemaTestWriter(conn)
+	ctx, cancel := context.WithCancel(t.Context())
+	if err := cw.CreateTables(ctx); err != nil {
+		t.Fatalf("CreateTables returned %v", err)
+	}
+	cancel()
+	time.Sleep(10 * time.Millisecond)
+	conn.mu.Lock()
+	n := len(conn.queries)
+	conn.mu.Unlock()
+	time.Sleep(20 * time.Millisecond)
+	conn.mu.Lock()
+	defer conn.mu.Unlock()
+	if len(conn.queries) != n {
+		t.Errorf("retry loop kept running after ctx ended: %d lookups, then %d", n, len(conn.queries))
+	}
+}
+
+func TestCreateTablesRunsOnceForBothListeners(t *testing.T) {
+	conn := &fakeConn{queryErr: errors.New("connection reset")}
+	cw, h := newSchemaTestWriter(conn)
+	cw.schemaRetryMin, cw.schemaRetryMax = time.Hour, time.Hour
+
+	var wg sync.WaitGroup
+	errs := make([]error, 2)
+	for i := range errs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errs[i] = cw.CreateTables(t.Context())
+		}()
+	}
+	wg.Wait()
+	for i, err := range errs {
+		if err != nil {
+			t.Errorf("listener %d: CreateTables returned %v", i, err)
+		}
+	}
+	creates := 0
+	for _, q := range conn.execsSnapshot() {
+		if strings.Contains(q, "CREATE TABLE") {
+			creates++
+		}
+	}
+	conn.mu.Lock()
+	lookups := len(conn.queries)
+	conn.mu.Unlock()
+	if creates != 2 || lookups != 1 || len(h.snapshot()) != 1 {
+		t.Errorf("two listeners ran %d CREATEs, %d lookups and logged %d lines, want 2, 1 and 1", creates, lookups, len(h.snapshot()))
 	}
 }
 

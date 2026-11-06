@@ -66,7 +66,7 @@ All notable changes to this project will be documented in this file.
 - SDK
   - The Go, TypeScript and Python serviceability SDKs read the device agent IP as `AgentIp`, `agentIp` and `agent_ip`. All zeros means unset. The Go SDK's device JSON always carries an `AgentIp` key, which is empty when the address is unset.
 - Controller
-  - Each `controller_grpc_getconfig_success` row records `caller_ip`, the address the request came from. On startup the controller adds the column to a table that lacks it, which needs `ALTER ADD COLUMN` on that table once: grant it, or add the column by hand, before deploying. Without either, events are written without the column and an `ERROR` is logged.
+  - Each `controller_grpc_getconfig_success` row records `caller_ip`, the address the request came from. On startup the controller adds the column to a table that lacks it, which needs `ALTER ADD COLUMN` on that table once: grant it, or add the column by hand, before deploying. Without either, events are written without the column, an `ERROR` is logged, and the controller retries until it can add it. A failed `CREATE TABLE` is retried the same way instead of waiting for a restart. `controller_clickhouse_write_enabled{write}` is 1 while `getconfig_events`, `caller_ip` or `agent_versions` is being written.
 - Geolocation
   - The foundation check reads the program config and the serviceability global state only from their PDAs. An account at another address fails with `InvalidSeeds`.
 - RFCs

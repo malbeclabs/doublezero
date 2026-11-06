@@ -12,6 +12,7 @@ All notable changes to this project will be documented in this file.
 ### Changes
 
 - CI
+  - `release.testnet` stages `ansible/inventory/testnet/group_vars/all/main.yml` in infra, where `bump-testnet-versions.sh` now writes the testnet version pins, so the pin PR still opens.
   - The SDK compatibility test reads mainnet through the `SOLANA_MAINNET_RPC_URL` repository secret, because the public Solana RPC blocks GitHub runner addresses.
 - Go
   - Every Go binary in the main module, `doublezerod` included, opens plain TCP listeners instead of MPTCP listeners. Go 1.24 and later turn MPTCP on for listeners by default, and the module now turns it off with `godebug multipathtcp=0`.

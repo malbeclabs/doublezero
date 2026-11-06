@@ -389,8 +389,8 @@ pub fn create_user_core(
         }
     }
 
-    // Enforce per-category seat caps (EdgeSeat only; no-op otherwise). On error the processor
-    // returns before any account is written, so no state is persisted.
+    // Count the user on the pass by category, and enforce the per-category caps on an EdgeSeat
+    // pass. On error the processor returns before any account is written, so no state is persisted.
     accesspass.try_add_user(user_type)?;
 
     // All validations passed - now update counters

@@ -255,6 +255,8 @@ fn generate_ix_fixtures(dir: &Path) {
             mgmt_vrf: "mgmt".into(),
             desired_status: None,
             resource_count: 0,
+            // Non-zero so the fixture pins agent_ip's position at the end of the args.
+            agent_ip: Ipv4Addr::new(203, 0, 113, 9),
         },
     );
     write_ix_fixture(dir, "create_device", &create_device);
@@ -661,6 +663,7 @@ fn canonical_device() -> (
         reserved_seats: 3,
         multicast_publishers_count: 1,
         max_multicast_publishers: 10,
+        agent_ip: [203, 0, 113, 9].into(),
     };
 
     (val, owner, location_pk, exchange_pk, metrics_publisher_pk, contributor_pk, topology_pk)
@@ -785,6 +788,7 @@ fn canonical_device_fields(
         FieldValue { name: "NewInterface1NodeSegmentIdx".into(), value: "200".into(), typ: "u16".into() },
         FieldValue { name: "NewInterface1UserTunnelEndpoint".into(), value: "true".into(), typ: "bool".into() },
         FieldValue { name: "NewInterface1FlexAlgoNodeSegmentsLen".into(), value: "0".into(), typ: "u32".into() },
+        FieldValue { name: "AgentIp".into(), value: "203.0.113.9".into(), typ: "ipv4".into() },
     ]
 }
 
@@ -881,6 +885,7 @@ fn generate_device_legacy(dir: &Path) {
         reserved_seats: 3,
         multicast_publishers_count: 1,
         max_multicast_publishers: 10,
+        agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
     };
 
     // Bypass Device::serialize so we don't write the trailing interfaces vec —
@@ -1009,6 +1014,7 @@ fn generate_device_legacy(dir: &Path) {
             FieldValue { name: "NewInterface1NodeSegmentIdx".into(), value: "200".into(), typ: "u16".into() },
             FieldValue { name: "NewInterface1UserTunnelEndpoint".into(), value: "true".into(), typ: "bool".into() },
             FieldValue { name: "NewInterface1FlexAlgoNodeSegmentsLen".into(), value: "0".into(), typ: "u32".into() },
+            FieldValue { name: "AgentIp".into(), value: "0.0.0.0".into(), typ: "ipv4".into() },
         ],
     };
 
@@ -1017,7 +1023,7 @@ fn generate_device_legacy(dir: &Path) {
 
 /// Same on-disk shape as `device.bin`, but the **last** trailing-vec element is doctored
 /// with `version = 5` (a hypothetical future version) and `size += 8`, with 8 trailing
-/// `0xAB` filler bytes appended at end-of-file. SDK readers consume the known body fields
+/// `0xAB` filler bytes after its body, before `agent_ip`. SDK readers consume the known body fields
 /// then `seek(start + size)` over the junk — exercising the constant-time skip path.
 const FUTURE_VERSION: u8 = 5;
 const FUTURE_VERSION_JUNK: usize = 8;
@@ -1028,18 +1034,18 @@ fn generate_device_future_version(dir: &Path) {
 
     let mut data = borsh::to_vec(&val).unwrap();
 
-    // The trailing vec elements are written contiguously at end-of-buffer; the last
-    // element ends exactly at buf.len(). Locate its size+version header by subtracting
-    // the precomputed on-disk size.
+    // The trailing vec elements are written contiguously, followed only by the 4-byte
+    // agent_ip. Locate the last element's size+version header by subtracting both.
     let last = val.interfaces.last().expect("non-empty");
     let last_size = last.compute_on_disk_size().unwrap();
     let new_last_size = last_size + FUTURE_VERSION_JUNK as u16;
-    let last_start = data.len() - last_size as usize;
+    let body_end = data.len() - 4;
+    let last_start = body_end - last_size as usize;
 
-    // Bump size and version in place, then append junk bytes after the body.
+    // Bump size and version in place, then insert junk bytes after the body, before agent_ip.
     data[last_start..last_start + 2].copy_from_slice(&new_last_size.to_le_bytes());
     data[last_start + 2] = FUTURE_VERSION;
-    data.extend(std::iter::repeat_n(0xAB, FUTURE_VERSION_JUNK));
+    data.splice(body_end..body_end, std::iter::repeat_n(0xAB, FUTURE_VERSION_JUNK));
 
     let size0 = val.interfaces[0].compute_on_disk_size().unwrap();
 

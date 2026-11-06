@@ -93,6 +93,7 @@ impl MigrateUnicastCountsCliCommand {
                 max_multicast_publishers: None,
                 multicast_subscribers_count: None,
                 multicast_publishers_count: None,
+                agent_ip: None,
             });
             match result {
                 Ok(sig) => {

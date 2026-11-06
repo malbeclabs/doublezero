@@ -257,6 +257,12 @@ fn apply_serviceability_json_compat_migrations(serviceability: &mut Value) {
                     migrate_interface_to_flat(interface);
                 }
             }
+
+            // `agent_ip` was appended after `interfaces`. A snapshot from before it reads
+            // as unset, the value onchain/Borsh deserialization uses for the absent tail.
+            device
+                .entry("agent_ip")
+                .or_insert_with(|| Value::String("0.0.0.0".to_string()));
         }
     }
 }

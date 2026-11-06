@@ -196,6 +196,7 @@ async fn setup_user_onchain_allocation_test(
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -442,6 +443,7 @@ async fn setup_user_infra_without_user(
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

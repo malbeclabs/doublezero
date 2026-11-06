@@ -242,6 +242,7 @@ class TestFixtureDevice:
         assert dev.code == "dz1"
         assert dev.mgmt_vrf == "mgmt"
         assert dev.public_ip == ipaddress.IPv4Address("203.0.113.1").packed
+        assert dev.agent_ip == ipaddress.IPv4Address("203.0.113.9").packed
         assert dev.index == 7
 
 
@@ -290,6 +291,8 @@ class TestFixtureDeviceLegacy:
         assert dev.interfaces[0].loopback_type.value == 1  # Vpnv4
         assert dev.interfaces[1].name == "Ethernet1"
         assert dev.interfaces[1].user_tunnel_endpoint is True
+        # Written before agent_ip existed: reads as unset.
+        assert dev.agent_ip == b"\x00" * 4
 
 
 class TestFixtureDeviceFutureVersion:
@@ -317,6 +320,8 @@ class TestFixtureDeviceFutureVersion:
         assert ni1.size == _expected_new_interface_size(ni1) + 8
         assert ni1.name == "Ethernet1"
         assert ni1.user_tunnel_endpoint is True
+        # agent_ip follows the skipped junk.
+        assert dev.agent_ip == bytes([203, 0, 113, 9])
 
 
 class TestFixtureLink:

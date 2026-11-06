@@ -924,6 +924,7 @@ mod tests {
                 mgmt_vrf: "mgmt".to_string(),
                 desired_status: None,
                 resource_count: 0,
+                agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
             }),
             "CreateDevice",
         );
@@ -949,6 +950,7 @@ mod tests {
                 max_multicast_publishers: None,
                 multicast_subscribers_count: None,
                 multicast_publishers_count: None,
+                agent_ip: None,
             }),
             "UpdateDevice",
         );

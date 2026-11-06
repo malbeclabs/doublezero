@@ -219,7 +219,8 @@ func onchainAddrs(d serviceability.Device) []netip.Addr {
 		// IpNet is address then prefix length; only the address counts.
 		add(netip.AddrFrom4([4]byte(iface.IpNet[:4])))
 	}
-	add(agentIP(d))
+	// agent_ip: 0.0.0.0 means unset, which is not global and so never listed.
+	add(netip.AddrFrom4(d.AgentIp))
 	return sortedUnique(out)
 }
 

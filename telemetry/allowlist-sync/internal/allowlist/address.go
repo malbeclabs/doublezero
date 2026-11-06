@@ -2,7 +2,6 @@ package allowlist
 
 import (
 	"net/netip"
-	"reflect"
 )
 
 // isGlobalIPv4 reports whether addr may go on the list: a global IPv4 address.
@@ -34,28 +33,4 @@ var nonGlobalIPv4 = []netip.Prefix{
 	netip.MustParsePrefix("198.51.100.0/24"), // documentation
 	netip.MustParsePrefix("203.0.113.0/24"),  // documentation
 	netip.MustParsePrefix("240.0.0.0/4"),     // reserved, which holds broadcast
-}
-
-// agentIP returns the device's agent_ip, the address its agents connect from
-// when that is neither public_ip nor an interface address (spec section 6).
-//
-// The serviceability Go SDK on main has no AgentIp field yet. It arrives with
-// the agent_ip change to the Device account, as `AgentIp [4]uint8`. Until then
-// this reads the field by name, so the sync picks it up without a code change
-// whichever lands first. Once the SDK has it, replace the body with
-// `netip.AddrFrom4(d.AgentIp)` and take a serviceability.Device.
-func agentIP(device any) netip.Addr {
-	v := reflect.ValueOf(device)
-	if v.Kind() != reflect.Struct {
-		return netip.Addr{}
-	}
-	f := v.FieldByName("AgentIp")
-	if !f.IsValid() {
-		return netip.Addr{}
-	}
-	ip, ok := f.Interface().([4]uint8)
-	if !ok {
-		return netip.Addr{}
-	}
-	return netip.AddrFrom4(ip)
 }

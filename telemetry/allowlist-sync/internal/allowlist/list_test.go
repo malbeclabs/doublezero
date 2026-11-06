@@ -54,14 +54,13 @@ func TestBuild_PrivatePublicIPIsSkipped(t *testing.T) {
 	assert.Equal(t, addrs("45.2.2.2"), b.List.Devices[pk(1)].Addrs())
 }
 
-// agentIP reads a field the SDK on main does not have yet; these stand in for
-// the Device before and after it does.
-func TestAgentIP(t *testing.T) {
-	type withField struct{ AgentIp [4]uint8 }
-	type withoutField struct{ PublicIp [4]uint8 }
-	assert.Equal(t, netip.MustParseAddr("37.61.209.41"), agentIP(withField{AgentIp: [4]uint8{37, 61, 209, 41}}))
-	assert.Equal(t, netip.MustParseAddr("0.0.0.0"), agentIP(withField{}), "unset reads 0.0.0.0, which is not global and so never listed")
-	assert.Equal(t, netip.Addr{}, agentIP(withoutField{PublicIp: [4]uint8{8, 8, 8, 8}}))
+func TestBuild_AgentIPIsListed(t *testing.T) {
+	set := dev(1, "dz1", serviceability.DeviceStatusActivated, "45.1.1.1")
+	set.AgentIp = [4]uint8{37, 61, 209, 41}
+	unset := dev(2, "dz2", serviceability.DeviceStatusActivated, "45.1.1.2")
+	b := mustBuild(t, []serviceability.Device{set, unset}, Exceptions{})
+	assert.Equal(t, addrs("37.61.209.41", "45.1.1.1"), b.List.Devices[pk(1)].Addrs())
+	assert.Equal(t, addrs("45.1.1.2"), b.List.Devices[pk(2)].Addrs(), "0.0.0.0 is unset and never listed")
 }
 
 func TestBuild_InclusionAddsAddress(t *testing.T) {

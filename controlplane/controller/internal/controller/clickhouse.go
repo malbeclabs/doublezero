@@ -15,6 +15,10 @@ import (
 type getConfigEvent struct {
 	Timestamp    time.Time
 	DevicePubkey string
+	// CallerIP is the address the request came from, without its port. Any
+	// caller may send any pubkey, so it is an address that used the pubkey, not
+	// proof that it is the device.
+	CallerIP string
 }
 
 // agentVersionReport is the caller-supplied part of a version row. The
@@ -54,6 +58,7 @@ type ClickhouseWriter struct {
 	events            []getConfigEvent
 	versions          []versionEvent
 	eventsEnabled     bool
+	callerIPEnabled   bool
 	versionsEnabled   bool
 	consecutiveErrors int
 }
@@ -118,13 +123,22 @@ func (cw *ClickhouseWriter) CreateTables(ctx context.Context) error {
 	eventsErr := cw.conn.Exec(ctx, fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS "%s".controller_grpc_getconfig_success (
 			timestamp DateTime64(3),
-			device_pubkey LowCardinality(String)
+			device_pubkey LowCardinality(String),
+			caller_ip LowCardinality(String) DEFAULT ''
 		) ENGINE = MergeTree
 		PARTITION BY toYYYYMM(timestamp)
 		ORDER BY (timestamp, device_pubkey)
 	`, cw.db))
 	if eventsErr != nil {
 		cw.log.Error("error creating getconfig table, disabling getconfig event writes", "error", eventsErr)
+	}
+
+	var callerIPErr error
+	if eventsErr == nil {
+		callerIPErr = cw.ensureCallerIPColumn(ctx)
+		if callerIPErr != nil {
+			cw.log.Error("error adding caller_ip to getconfig table, writing getconfig events without it", "error", callerIPErr)
+		}
 	}
 
 	versionsErr := cw.conn.Exec(ctx, fmt.Sprintf(`
@@ -146,6 +160,7 @@ func (cw *ClickhouseWriter) CreateTables(ctx context.Context) error {
 
 	cw.mu.Lock()
 	cw.eventsEnabled = eventsErr == nil
+	cw.callerIPEnabled = eventsErr == nil && callerIPErr == nil
 	cw.versionsEnabled = versionsErr == nil
 	cw.mu.Unlock()
 
@@ -153,6 +168,26 @@ func (cw *ClickhouseWriter) CreateTables(ctx context.Context) error {
 		return fmt.Errorf("error creating tables: %w; %w", eventsErr, versionsErr)
 	}
 	return nil
+}
+
+// ensureCallerIPColumn adds caller_ip to a getconfig table created before the
+// column existed. It runs the ALTER only when the column is missing: ClickHouse
+// checks the ALTER ADD COLUMN grant before it evaluates IF NOT EXISTS, so an
+// unconditional ALTER would need that grant on every startup.
+func (cw *ClickhouseWriter) ensureCallerIPColumn(ctx context.Context) error {
+	var n uint64
+	if err := cw.conn.QueryRow(ctx,
+		`SELECT count() FROM system.columns WHERE database = ? AND table = 'controller_grpc_getconfig_success' AND name = 'caller_ip'`,
+		cw.db,
+	).Scan(&n); err != nil {
+		return fmt.Errorf("error checking for caller_ip column: %w", err)
+	}
+	if n > 0 {
+		return nil
+	}
+	return cw.conn.Exec(ctx, fmt.Sprintf(
+		`ALTER TABLE "%s".controller_grpc_getconfig_success ADD COLUMN IF NOT EXISTS caller_ip LowCardinality(String) DEFAULT ''`, cw.db,
+	))
 }
 
 func (cw *ClickhouseWriter) Record(event getConfigEvent) {
@@ -214,6 +249,7 @@ func (cw *ClickhouseWriter) flush(ctx context.Context) {
 	cw.events = nil
 	versions := cw.versions
 	cw.versions = nil
+	callerIP := cw.callerIPEnabled
 	cw.mu.Unlock()
 
 	if len(events) == 0 && len(versions) == 0 {
@@ -221,7 +257,7 @@ func (cw *ClickhouseWriter) flush(ctx context.Context) {
 	}
 	ok := true
 	if len(events) > 0 {
-		ok = cw.flushEvents(ctx, events) && ok
+		ok = cw.flushEvents(ctx, events, callerIP) && ok
 	}
 	if len(versions) > 0 {
 		ok = cw.flushVersions(ctx, versions) && ok
@@ -237,16 +273,24 @@ func (cw *ClickhouseWriter) flush(ctx context.Context) {
 	cw.mu.Unlock()
 }
 
-func (cw *ClickhouseWriter) flushEvents(ctx context.Context, events []getConfigEvent) bool {
+func (cw *ClickhouseWriter) flushEvents(ctx context.Context, events []getConfigEvent, callerIP bool) bool {
+	columns := "(timestamp, device_pubkey)"
+	if callerIP {
+		columns = "(timestamp, device_pubkey, caller_ip)"
+	}
 	batch, err := cw.conn.PrepareBatch(ctx, fmt.Sprintf(
-		`INSERT INTO "%s".controller_grpc_getconfig_success (timestamp, device_pubkey)`, cw.db,
+		`INSERT INTO "%s".controller_grpc_getconfig_success %s`, cw.db, columns,
 	))
 	if err != nil {
 		cw.logFlushError("error preparing clickhouse batch", err)
 		return false
 	}
 	for _, e := range events {
-		if err := batch.Append(e.Timestamp, e.DevicePubkey); err != nil {
+		row := []any{e.Timestamp, e.DevicePubkey}
+		if callerIP {
+			row = append(row, e.CallerIP)
+		}
+		if err := batch.Append(row...); err != nil {
 			// An Append error is systematic (wrong arity or types), so don't
 			// send a partial batch.
 			_ = batch.Close()

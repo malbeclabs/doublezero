@@ -6,7 +6,10 @@ import (
 	"time"
 
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/testutil"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestBuildReport(t *testing.T) {
@@ -57,4 +60,26 @@ func TestBuildReport_AnotherDevicesAddressIsNotListed(t *testing.T) {
 	r := BuildReport(b, []Call{{DevicePubkey: pk(1), CallerIP: netip.MustParseAddr("45.2.2.2"), LastSeen: t0}})
 	assert.Equal(t, []OffchainCaller{{Pubkey: pk(1), Code: "a", CallerIP: netip.MustParseAddr("45.2.2.2"), LastSeen: t0}}, r.Offchain)
 	assert.Equal(t, map[string]time.Time{pk(1): {}, pk(2): {}}, r.LastListedCall)
+}
+
+// Any caller may send a device's pubkey from any address, so the report keeps
+// the newest MaxOffchainCallersPerDevice per device and counts the rest.
+func TestBuildReport_CapsOffchainCallersPerDevice(t *testing.T) {
+	b := Build([]serviceability.Device{dev(1, "dz1", serviceability.DeviceStatusActivated, "45.0.0.1")}, Exceptions{})
+	var calls []Call
+	for i := 0; i < MaxOffchainCallersPerDevice+2; i++ {
+		calls = append(calls, Call{DevicePubkey: pk(1), CallerIP: netip.AddrFrom4([4]byte{198, 18, 0, byte(i + 1)}), LastSeen: t0.Add(time.Duration(i) * time.Minute)})
+	}
+	r := BuildReport(b, calls)
+	require.Len(t, r.Offchain, MaxOffchainCallersPerDevice)
+	assert.Equal(t, 2, r.OffchainDropped)
+	assert.Equal(t, netip.AddrFrom4([4]byte{198, 18, 0, byte(MaxOffchainCallersPerDevice + 2)}), r.Offchain[0].CallerIP, "newest first")
+	m := NewMetrics(prometheus.NewRegistry())
+	m.setReport(b, r)
+	assert.Equal(t, float64(2), testutil.ToFloat64(m.OffchainCallersDropped))
+	assert.Equal(t, MaxOffchainCallersPerDevice, testutil.CollectAndCount(m.OffchainCaller))
+	for _, c := range r.Offchain {
+		assert.NotEqual(t, netip.MustParseAddr("198.18.0.1"), c.CallerIP, "the oldest are dropped")
+		assert.NotEqual(t, netip.MustParseAddr("198.18.0.2"), c.CallerIP, "the oldest are dropped")
+	}
 }

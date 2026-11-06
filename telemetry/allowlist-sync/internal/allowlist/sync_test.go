@@ -1,6 +1,7 @@
 package allowlist
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -516,4 +517,83 @@ func TestGnmicMapTarget_ApplyNeedsAFreshPlan(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, target.Apply(context.Background(), plan))
 	assert.EqualError(t, target.Apply(context.Background(), plan), "apply without a plan", "a second apply would reuse the old resourceVersion")
+}
+
+// fleet3 returns n Activated devices with three addresses each.
+func fleet3(n int) []serviceability.Device {
+	out := make([]serviceability.Device, n)
+	for i := range out {
+		out[i] = dev(byte(i+1), fmt.Sprintf("dz%d", i+1), serviceability.DeviceStatusActivated,
+			fmt.Sprintf("45.0.%d.1", i+1), fmt.Sprintf("45.1.%d.1/31", i+1), fmt.Sprintf("45.2.%d.1/32", i+1))
+	}
+	return out
+}
+
+// A device still live but left with no global address is refused by gnmic as
+// surely as one that is gone, so it counts toward the device limit. Emptying 8
+// of 100 three-address devices removes 8% of addresses, under the address limit.
+func TestPass_DeviceLeftWithNoAddressCountsAsRemoved(t *testing.T) {
+	h := newHarness(t, fleet3(100))
+	require.NoError(t, h.pass(t))
+	for i := 0; i < MaxRemovedDevices+3; i++ {
+		d := &h.ledger.pd.Devices[i]
+		d.PublicIp = ip4("10.0.0.1")
+		d.Interfaces = nil
+	}
+	var refused *RefusedError
+	require.ErrorAs(t, h.pass(t), &refused)
+	assert.Equal(t, RefusedTooManyDevices, refused.Reason)
+	assert.Equal(t, []string{"45.0.1.1", "45.1.1.1", "45.2.1.1"}, h.cm.gnmicMap(t)[pk(1)], "the map keeps the device's addresses")
+}
+
+type hungCallers struct{}
+
+// ctxConfigMap fails a read once its context is done, as the Kubernetes client does.
+type ctxConfigMap struct{ *fakeConfigMap }
+
+func (c ctxConfigMap) Get(ctx context.Context) (*ConfigMap, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return c.fakeConfigMap.Get(ctx)
+}
+
+func (hungCallers) RecentCalls(ctx context.Context, _ time.Time) ([]Call, error) {
+	<-ctx.Done()
+	return nil, ctx.Err()
+}
+
+// A ClickHouse that stalls costs the report, never the list.
+func TestPass_HungCallerReadDoesNotStopTheList(t *testing.T) {
+	h := newHarness(t, fleet(3))
+	h.cfg.Callers = hungCallers{}
+	h.cfg.ReportTimeout = 50 * time.Millisecond
+	cfg := h.cfg
+	cfg.Targets = []Target{&GnmicMapTarget{API: ctxConfigMap{h.cm}, Key: "map.json"}, &CloudflareTarget{API: h.cf}}
+	s, err := New(cfg)
+	require.NoError(t, err)
+	// The pass deadline is longer than the report's: without the report's own
+	// deadline the stalled read would use up the pass and the map read would fail.
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	require.NoError(t, s.Pass(ctx))
+	cmWrites, cfWrites := h.wrote()
+	assert.Equal(t, 1, cmWrites)
+	assert.Equal(t, 1, cfWrites)
+	assert.Equal(t, float64(1), counter(h.metrics.Errors, "report"))
+}
+
+// An unlisted caller is logged once while it keeps calling, not on every pass.
+func TestPass_UnlistedCallerLoggedOnce(t *testing.T) {
+	h := newHarness(t, fleet(1))
+	h.callers.calls = []Call{{DevicePubkey: pk(1), CallerIP: netip.MustParseAddr("198.18.0.1"), LastSeen: t0}}
+	var buf bytes.Buffer
+	h.cfg.Log = slog.New(slog.NewTextHandler(&buf, nil))
+	cfg := h.cfg
+	cfg.Targets = []Target{&GnmicMapTarget{API: h.cm, Key: "map.json"}, &CloudflareTarget{API: h.cf}}
+	s, err := New(cfg)
+	require.NoError(t, err)
+	require.NoError(t, s.Pass(context.Background()))
+	require.NoError(t, s.Pass(context.Background()))
+	assert.Equal(t, 1, strings.Count(buf.String(), "device calls from an address not on its entry"))
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/netip"
 	"slices"
+	"strings"
 	"time"
 )
 
@@ -41,7 +42,15 @@ type Report struct {
 	// from one of its own listed addresses. A device with no such call in the
 	// window has the zero time.
 	LastListedCall map[string]time.Time
+	// OffchainDropped counts offchain callers left out because their device
+	// already had MaxOffchainCallersPerDevice newer ones.
+	OffchainDropped int
 }
+
+// MaxOffchainCallersPerDevice caps the offchain callers reported per device
+// pubkey, newest first. Any caller may send a device's pubkey from any address,
+// so without it each source address would add a metric series.
+const MaxOffchainCallersPerDevice = 8
 
 // BuildReport compares the calls against the list. It covers the listed
 // devices, and pubkeys that are not on the ledger at all, whose every caller is
@@ -74,5 +83,25 @@ func BuildReport(b Built, calls []Call) Report {
 			Listed:   listed && slices.Contains(dev.Included, c.CallerIP),
 		})
 	}
+	slices.SortFunc(r.Offchain, func(a, b OffchainCaller) int {
+		if a.Pubkey != b.Pubkey {
+			return strings.Compare(a.Pubkey, b.Pubkey)
+		}
+		if c := b.LastSeen.Compare(a.LastSeen); c != 0 {
+			return c
+		}
+		return a.CallerIP.Compare(b.CallerIP)
+	})
+	kept := r.Offchain[:0]
+	perDevice := make(map[string]int)
+	for _, c := range r.Offchain {
+		if perDevice[c.Pubkey] >= MaxOffchainCallersPerDevice {
+			r.OffchainDropped++
+			continue
+		}
+		perDevice[c.Pubkey]++
+		kept = append(kept, c)
+	}
+	r.Offchain = kept
 	return r
 }

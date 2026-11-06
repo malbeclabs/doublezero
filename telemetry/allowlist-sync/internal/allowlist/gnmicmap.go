@@ -71,7 +71,9 @@ func (t *GnmicMapTarget) Plan(ctx context.Context, list List) (Plan, error) {
 	var prevAddrs []netip.Addr
 	var removedDevices []string
 	for pk, ips := range prev {
-		if _, ok := list.Devices[pk]; !ok {
+		// A device still listed but left with no address is refused by gnmic
+		// as surely as one that is gone, so it counts toward the limit too.
+		if d, ok := list.Devices[pk]; !ok || (len(d.Addrs()) == 0 && len(ips) > 0) {
 			removedDevices = append(removedDevices, pk)
 		}
 		for _, ip := range ips {

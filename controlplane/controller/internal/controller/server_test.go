@@ -17,6 +17,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/test/bufconn"
 
 	"github.com/gagliardetto/solana-go"
@@ -611,6 +612,20 @@ func TestGetConfig(t *testing.T) {
 			}
 			if diff := cmp.Diff(string(want), got.GetConfig()); diff != "" {
 				t.Errorf("GetConfig mismatch in fixture %s (-want +got): %s\n", test.Want, diff)
+			}
+
+			// The ClickHouse event carries the caller's address without its port.
+			cw, _ := newTestWriter(&fakeConn{})
+			controller.clickhouse = cw
+			peerCtx := peer.NewContext(ctx, &peer.Peer{Addr: &net.TCPAddr{IP: net.ParseIP("203.0.113.7"), Port: 51234}})
+			if _, err := controller.GetConfig(peerCtx, &pb.ConfigRequest{Pubkey: test.Pubkey}); err != nil {
+				t.Fatalf("error while fetching config directly: %v", err)
+			}
+			if len(cw.events) != 1 {
+				t.Fatalf("ClickHouse events = %+v, want one", cw.events)
+			}
+			if got := cw.events[0]; got.Timestamp.IsZero() || got != (getConfigEvent{Timestamp: got.Timestamp, DevicePubkey: test.Pubkey, CallerIP: "203.0.113.7"}) {
+				t.Errorf("ClickHouse event = %+v, want a timestamped event for %s from 203.0.113.7", got, test.Pubkey)
 			}
 		})
 	}

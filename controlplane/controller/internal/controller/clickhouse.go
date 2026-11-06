@@ -15,6 +15,10 @@ import (
 type getConfigEvent struct {
 	Timestamp    time.Time
 	DevicePubkey string
+	// CallerIP is the address the request came from, without its port. Any
+	// caller may send any pubkey, so it is an address that used the pubkey, not
+	// proof that it is the device.
+	CallerIP string
 }
 
 // agentVersionReport is the caller-supplied part of a version row. The
@@ -54,9 +58,26 @@ type ClickhouseWriter struct {
 	events            []getConfigEvent
 	versions          []versionEvent
 	eventsEnabled     bool
+	callerIPEnabled   bool
 	versionsEnabled   bool
 	consecutiveErrors int
+
+	// schemaOnce makes the schema step single-flight: both listeners call
+	// CreateTables, the first runs it and starts at most one retry loop, and
+	// the second waits for that first attempt.
+	schemaOnce sync.Once
+	// schemaRetryMin and schemaRetryMax bound the delay between retries of
+	// the schema steps that failed at startup.
+	schemaRetryMin time.Duration
+	schemaRetryMax time.Duration
 }
+
+// Retry delays for a schema step that failed at startup: a missing grant or a
+// transient error must not leave a table or caller_ip off until a restart.
+const (
+	defaultSchemaRetryMin = 30 * time.Second
+	defaultSchemaRetryMax = 10 * time.Minute
+)
 
 // consecutiveErrorThreshold is the number of consecutive flush failures
 // before escalating from WARN to ERROR level logging.
@@ -99,35 +120,101 @@ func NewClickhouseWriter(log *slog.Logger, addr, db, user, pass string, disableT
 	if err != nil {
 		return nil, fmt.Errorf("error opening clickhouse connection: %w", err)
 	}
+	// An unreachable ClickHouse is not fatal: CreateTables fails its steps
+	// and retries them until ClickHouse answers.
 	if err := conn.Ping(context.Background()); err != nil {
-		return nil, fmt.Errorf("error pinging clickhouse: %w", err)
+		log.Warn("error pinging clickhouse; the schema steps will retry", "error", err)
 	}
 	return &ClickhouseWriter{
-		conn:  conn,
-		log:   log,
-		db:    db,
-		build: build,
+		conn:           conn,
+		log:            log,
+		db:             db,
+		build:          build,
+		schemaRetryMin: defaultSchemaRetryMin,
+		schemaRetryMax: defaultSchemaRetryMax,
 	}, nil
 }
 
 // CreateTables creates the tables the writer needs and enables writes
 // per-table, so a single failing CREATE (e.g. a missing per-table GRANT on an
 // upgraded deployment) disables only that table's writes instead of the whole
-// writer. An error is returned only when no table is usable.
-func (cw *ClickhouseWriter) CreateTables(ctx context.Context) error {
-	eventsErr := cw.conn.Exec(ctx, fmt.Sprintf(`
+// writer. Every step that failed, including both tables when ClickHouse is
+// unreachable, is retried in the background until it succeeds or ctx ends.
+// Until then Record and RecordVersion drop what a disabled table would hold.
+//
+// Both listeners share one writer and call this. It runs once: the second
+// caller waits for the first attempt, and there is one retry loop.
+func (cw *ClickhouseWriter) CreateTables(ctx context.Context) {
+	cw.schemaOnce.Do(func() {
+		if cw.ensureSchema(ctx, slog.LevelError) {
+			go cw.retrySchema(ctx)
+		}
+	})
+}
+
+// retrySchema re-runs the schema steps that have not succeeded yet, with a
+// doubling delay between attempts, until they all succeed or ctx ends.
+func (cw *ClickhouseWriter) retrySchema(ctx context.Context) {
+	delay := cw.schemaRetryMin
+	for {
+		t := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			t.Stop()
+			return
+		case <-t.C:
+		}
+		if !cw.ensureSchema(ctx, slog.LevelWarn) {
+			cw.log.Info("clickhouse schema steps that failed at startup now succeeded; all writes enabled")
+			return
+		}
+		delay = min(2*delay, cw.schemaRetryMax)
+	}
+}
+
+// ensureSchema runs each schema step that has not succeeded yet, logs each
+// failure at level, and enables the writes whose steps succeeded. It reports
+// whether any step is still pending. It holds no lock across I/O: Record runs
+// on the GetConfig path.
+func (cw *ClickhouseWriter) ensureSchema(ctx context.Context, level slog.Level) bool {
+	logFailure := func(msg string, err error) {
+		// A step cut short by shutdown is not a failure worth a line.
+		if ctx.Err() == nil {
+			cw.log.Log(ctx, level, msg, "error", err)
+		}
+	}
+	cw.mu.Lock()
+	events, callerIP, versions := cw.eventsEnabled, cw.callerIPEnabled, cw.versionsEnabled
+	cw.mu.Unlock()
+
+	var eventsErr, versionsErr error
+	if !events {
+		eventsErr = cw.conn.Exec(ctx, fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS "%s".controller_grpc_getconfig_success (
 			timestamp DateTime64(3),
-			device_pubkey LowCardinality(String)
+			device_pubkey LowCardinality(String),
+			caller_ip LowCardinality(String) DEFAULT ''
 		) ENGINE = MergeTree
 		PARTITION BY toYYYYMM(timestamp)
 		ORDER BY (timestamp, device_pubkey)
 	`, cw.db))
-	if eventsErr != nil {
-		cw.log.Error("error creating getconfig table, disabling getconfig event writes", "error", eventsErr)
+		if eventsErr != nil {
+			logFailure("error creating getconfig table, disabling getconfig event writes", eventsErr)
+		}
+		events = eventsErr == nil
 	}
 
-	versionsErr := cw.conn.Exec(ctx, fmt.Sprintf(`
+	// A table that could not be created is not altered.
+	if events && !callerIP {
+		if err := cw.ensureCallerIPColumn(ctx); err != nil {
+			logFailure("error adding caller_ip to getconfig table, writing getconfig events without it", err)
+		} else {
+			callerIP = true
+		}
+	}
+
+	if !versions {
+		versionsErr = cw.conn.Exec(ctx, fmt.Sprintf(`
 		CREATE TABLE IF NOT EXISTS "%s".controller_agent_versions (
 			device_pubkey LowCardinality(String),
 			updated_at DateTime64(3),
@@ -140,19 +227,42 @@ func (cw *ClickhouseWriter) CreateTables(ctx context.Context) error {
 		) ENGINE = ReplacingMergeTree(updated_at)
 		ORDER BY device_pubkey
 	`, cw.db))
-	if versionsErr != nil {
-		cw.log.Error("error creating agent_versions table, disabling version writes", "error", versionsErr)
+		if versionsErr != nil {
+			logFailure("error creating agent_versions table, disabling version writes", versionsErr)
+		}
+		versions = versionsErr == nil
 	}
 
 	cw.mu.Lock()
-	cw.eventsEnabled = eventsErr == nil
-	cw.versionsEnabled = versionsErr == nil
+	cw.eventsEnabled = events
+	cw.callerIPEnabled = callerIP
+	cw.versionsEnabled = versions
 	cw.mu.Unlock()
+	setWriteEnabled(writeGetConfigEvents, events)
+	setWriteEnabled(writeCallerIP, callerIP)
+	setWriteEnabled(writeAgentVersions, versions)
 
-	if eventsErr != nil && versionsErr != nil {
-		return fmt.Errorf("error creating tables: %w; %w", eventsErr, versionsErr)
+	return !events || !callerIP || !versions
+}
+
+// ensureCallerIPColumn adds caller_ip to a getconfig table created before the
+// column existed. It runs the ALTER only when the column is missing: ClickHouse
+// checks the ALTER ADD COLUMN grant before it evaluates IF NOT EXISTS, so an
+// unconditional ALTER would need that grant on every startup.
+func (cw *ClickhouseWriter) ensureCallerIPColumn(ctx context.Context) error {
+	var n uint64
+	if err := cw.conn.QueryRow(ctx,
+		`SELECT count() FROM system.columns WHERE database = ? AND table = 'controller_grpc_getconfig_success' AND name = 'caller_ip'`,
+		cw.db,
+	).Scan(&n); err != nil {
+		return fmt.Errorf("error checking for caller_ip column: %w", err)
 	}
-	return nil
+	if n > 0 {
+		return nil
+	}
+	return cw.conn.Exec(ctx, fmt.Sprintf(
+		`ALTER TABLE "%s".controller_grpc_getconfig_success ADD COLUMN IF NOT EXISTS caller_ip LowCardinality(String) DEFAULT ''`, cw.db,
+	))
 }
 
 func (cw *ClickhouseWriter) Record(event getConfigEvent) {
@@ -214,6 +324,7 @@ func (cw *ClickhouseWriter) flush(ctx context.Context) {
 	cw.events = nil
 	versions := cw.versions
 	cw.versions = nil
+	callerIP := cw.callerIPEnabled
 	cw.mu.Unlock()
 
 	if len(events) == 0 && len(versions) == 0 {
@@ -221,7 +332,7 @@ func (cw *ClickhouseWriter) flush(ctx context.Context) {
 	}
 	ok := true
 	if len(events) > 0 {
-		ok = cw.flushEvents(ctx, events) && ok
+		ok = cw.flushEvents(ctx, events, callerIP) && ok
 	}
 	if len(versions) > 0 {
 		ok = cw.flushVersions(ctx, versions) && ok
@@ -237,16 +348,24 @@ func (cw *ClickhouseWriter) flush(ctx context.Context) {
 	cw.mu.Unlock()
 }
 
-func (cw *ClickhouseWriter) flushEvents(ctx context.Context, events []getConfigEvent) bool {
+func (cw *ClickhouseWriter) flushEvents(ctx context.Context, events []getConfigEvent, callerIP bool) bool {
+	columns := "(timestamp, device_pubkey)"
+	if callerIP {
+		columns = "(timestamp, device_pubkey, caller_ip)"
+	}
 	batch, err := cw.conn.PrepareBatch(ctx, fmt.Sprintf(
-		`INSERT INTO "%s".controller_grpc_getconfig_success (timestamp, device_pubkey)`, cw.db,
+		`INSERT INTO "%s".controller_grpc_getconfig_success %s`, cw.db, columns,
 	))
 	if err != nil {
 		cw.logFlushError("error preparing clickhouse batch", err)
 		return false
 	}
 	for _, e := range events {
-		if err := batch.Append(e.Timestamp, e.DevicePubkey); err != nil {
+		row := []any{e.Timestamp, e.DevicePubkey}
+		if callerIP {
+			row = append(row, e.CallerIP)
+		}
+		if err := batch.Append(row...); err != nil {
 			// An Append error is systematic (wrong arity or types), so don't
 			// send a partial batch.
 			_ = batch.Close()

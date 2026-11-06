@@ -355,9 +355,7 @@ func TestCreateTablesDegradesPerTable(t *testing.T) {
 	cw, h := newSchemaTestWriter(conn)
 	cw.schemaRetryMin, cw.schemaRetryMax = time.Hour, time.Hour
 
-	if err := cw.CreateTables(t.Context()); err != nil {
-		t.Fatalf("CreateTables returned %v, want nil when one table is usable", err)
-	}
+	cw.CreateTables(t.Context())
 	if events, _, versions := cw.enabled(); !events || versions {
 		t.Errorf("enabled flags = (events=%v, versions=%v), want (true, false)", events, versions)
 	}
@@ -377,12 +375,12 @@ func TestCreateTablesDegradesPerTable(t *testing.T) {
 		t.Errorf("buffers = (events=%d, versions=%d), want (1, 0)", len(cw.events), len(cw.versions))
 	}
 
-	// Both tables failing disables everything and surfaces an error.
+	// Both tables failing disables everything, and the writer drops what it
+	// is given until a retry succeeds.
 	conn = &fakeConn{execErrOn: "CREATE TABLE", execErr: errors.New("ACCESS_DENIED")}
 	cw, _ = newSchemaTestWriter(conn)
-	if err := cw.CreateTables(t.Context()); err == nil {
-		t.Error("CreateTables returned nil, want error when no table is usable")
-	}
+	cw.schemaRetryMin, cw.schemaRetryMax = time.Hour, time.Hour
+	cw.CreateTables(t.Context())
 	if events, callerIP, versions := cw.enabled(); events || callerIP || versions {
 		t.Error("expected every write disabled when no table is usable")
 	}
@@ -391,6 +389,43 @@ func TestCreateTablesDegradesPerTable(t *testing.T) {
 			t.Errorf("write gauge %s = %v, want 0", w, writeGauge(w))
 		}
 	}
+	cw.Record(getConfigEvent{DevicePubkey: "dev1"})
+	cw.RecordVersion(agentVersionReport{DevicePubkey: "dev1", AgentVersion: "v0.9.0"})
+	if len(cw.events) != 0 || len(cw.versions) != 0 {
+		t.Errorf("buffers = (events=%d, versions=%d), want (0, 0)", len(cw.events), len(cw.versions))
+	}
+}
+
+// ClickHouse unreachable at startup fails every step. The writer is kept and
+// retries until ClickHouse answers, then writes everything.
+func TestCreateTablesRecoversWhenEveryStepFailed(t *testing.T) {
+	conn := &fakeConn{execErrOn: "CREATE TABLE", execErr: errors.New("connection refused"), queryErr: errors.New("connection refused")}
+	cw, _ := newSchemaTestWriter(conn)
+	cw.CreateTables(t.Context())
+	if events, callerIP, versions := cw.enabled(); events || callerIP || versions {
+		t.Fatal("expected every write disabled while ClickHouse is unreachable")
+	}
+	conn.set(func(c *fakeConn) { c.execErrOn, c.queryErr = "", nil })
+	if !eventually(t, func() bool { e, c, v := cw.enabled(); return e && c && v }) {
+		t.Fatal("writes not enabled after ClickHouse came back")
+	}
+	for _, w := range []string{writeGetConfigEvents, writeCallerIP, writeAgentVersions} {
+		if writeGauge(w) != 1 {
+			t.Errorf("write gauge %s = %v, want 1", w, writeGauge(w))
+		}
+	}
+}
+
+// A retry cut short by shutdown logs nothing.
+func TestCreateTablesRetryIsQuietAtShutdown(t *testing.T) {
+	conn := &fakeConn{queryErr: errors.New("connection refused")}
+	cw, h := newSchemaTestWriter(conn)
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	cw.ensureSchema(ctx, slog.LevelWarn)
+	if got := h.snapshot(); len(got) != 0 {
+		t.Errorf("logs after shutdown = %+v, want none", got)
+	}
 }
 
 func TestCreateTablesWritesEventsWithoutCallerIPWhenAlterFails(t *testing.T) {
@@ -398,9 +433,7 @@ func TestCreateTablesWritesEventsWithoutCallerIPWhenAlterFails(t *testing.T) {
 	cw, h := newSchemaTestWriter(conn)
 	cw.schemaRetryMin, cw.schemaRetryMax = time.Hour, time.Hour
 
-	if err := cw.CreateTables(t.Context()); err != nil {
-		t.Fatalf("CreateTables returned %v, want nil", err)
-	}
+	cw.CreateTables(t.Context())
 	if events, callerIP, versions := cw.enabled(); !events || callerIP || !versions {
 		t.Errorf("enabled flags = (events=%v, callerIP=%v, versions=%v), want (true, false, true)", events, callerIP, versions)
 	}
@@ -425,7 +458,7 @@ func TestCreateTablesWritesEventsWithoutCallerIPWhenAlterFails(t *testing.T) {
 	conn = &fakeConn{execErrOn: "controller_grpc_getconfig_success", execErr: errors.New("ACCESS_DENIED")}
 	cw, _ = newSchemaTestWriter(conn)
 	cw.schemaRetryMin, cw.schemaRetryMax = time.Hour, time.Hour
-	_ = cw.CreateTables(t.Context())
+	cw.CreateTables(t.Context())
 	for _, q := range conn.execsSnapshot() {
 		if strings.Contains(q, "ALTER TABLE") {
 			t.Errorf("ALTER ran although the getconfig table could not be created: %q", q)
@@ -450,9 +483,7 @@ func TestCreateTablesCallerIPColumn(t *testing.T) {
 	// A table without the column gets it added, and events use it.
 	conn := &fakeConn{}
 	cw, _ := newSchemaTestWriter(conn)
-	if err := cw.CreateTables(t.Context()); err != nil {
-		t.Fatalf("CreateTables returned %v", err)
-	}
+	cw.CreateTables(t.Context())
 	if _, callerIP, _ := cw.enabled(); alters(conn) != 1 || !callerIP {
 		t.Errorf("missing column: alters=%d callerIPEnabled=%v, want 1 and true", alters(conn), callerIP)
 	}
@@ -482,9 +513,7 @@ func TestCreateTablesCallerIPColumn(t *testing.T) {
 	// A table that has the column is not altered, so no ALTER grant is needed.
 	conn = &fakeConn{hasCallerIP: true, execErrOn: "ALTER TABLE", execErr: errors.New("ACCESS_DENIED")}
 	cw, h := newSchemaTestWriter(conn)
-	if err := cw.CreateTables(t.Context()); err != nil {
-		t.Fatalf("CreateTables returned %v", err)
-	}
+	cw.CreateTables(t.Context())
 	if _, callerIP, _ := cw.enabled(); alters(conn) != 0 || !callerIP || len(h.snapshot()) != 0 {
 		t.Errorf("existing column: alters=%d callerIPEnabled=%v logs=%+v, want 0, true, none", alters(conn), callerIP, h.snapshot())
 	}
@@ -493,9 +522,7 @@ func TestCreateTablesCallerIPColumn(t *testing.T) {
 	conn = &fakeConn{queryErr: errors.New("ACCESS_DENIED")}
 	cw, h = newSchemaTestWriter(conn)
 	cw.schemaRetryMin, cw.schemaRetryMax = time.Hour, time.Hour
-	if err := cw.CreateTables(t.Context()); err != nil {
-		t.Fatalf("CreateTables returned %v", err)
-	}
+	cw.CreateTables(t.Context())
 	got := h.snapshot()
 	if _, callerIP, _ := cw.enabled(); alters(conn) != 0 || callerIP || len(got) != 1 || got[0] != (logEntry{slog.LevelError, errAddCallerIP}) {
 		t.Errorf("failed lookup: alters=%d callerIPEnabled=%v logs=%+v, want 0, false, one ERROR %q", alters(conn), callerIP, got, errAddCallerIP)
@@ -520,9 +547,7 @@ func TestCreateTablesRetriesFailedStepsUntilTheySucceed(t *testing.T) {
 	conn := &fakeConn{queryErr: errors.New("connection reset"), execErrOn: "controller_agent_versions", execErr: errors.New("ACCESS_DENIED")}
 	cw, h := newSchemaTestWriter(conn)
 
-	if err := cw.CreateTables(t.Context()); err != nil {
-		t.Fatalf("CreateTables returned %v", err)
-	}
+	cw.CreateTables(t.Context())
 	if _, callerIP, versions := cw.enabled(); callerIP || versions {
 		t.Fatalf("after startup: callerIP=%v versions=%v, want both false", callerIP, versions)
 	}
@@ -562,9 +587,7 @@ func TestCreateTablesRetryStopsWithContext(t *testing.T) {
 	conn := &fakeConn{queryErr: errors.New("connection reset")}
 	cw, _ := newSchemaTestWriter(conn)
 	ctx, cancel := context.WithCancel(t.Context())
-	if err := cw.CreateTables(ctx); err != nil {
-		t.Fatalf("CreateTables returned %v", err)
-	}
+	cw.CreateTables(ctx)
 	cancel()
 	time.Sleep(10 * time.Millisecond)
 	conn.mu.Lock()
@@ -584,20 +607,14 @@ func TestCreateTablesRunsOnceForBothListeners(t *testing.T) {
 	cw.schemaRetryMin, cw.schemaRetryMax = time.Hour, time.Hour
 
 	var wg sync.WaitGroup
-	errs := make([]error, 2)
-	for i := range errs {
+	for range 2 {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			errs[i] = cw.CreateTables(t.Context())
+			cw.CreateTables(t.Context())
 		}()
 	}
 	wg.Wait()
-	for i, err := range errs {
-		if err != nil {
-			t.Errorf("listener %d: CreateTables returned %v", i, err)
-		}
-	}
 	creates := 0
 	for _, q := range conn.execsSnapshot() {
 		if strings.Contains(q, "CREATE TABLE") {

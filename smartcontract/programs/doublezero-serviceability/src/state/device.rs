@@ -1920,11 +1920,11 @@ mod test_device_interfaces_vec {
         let mut forged_bytes = Vec::with_capacity(prefix_len + new_trailing.len() + 4);
         forged_bytes.extend_from_slice(&bytes[..prefix_len]);
         forged_bytes.extend_from_slice(&new_trailing);
-        forged_bytes.extend_from_slice(&[37, 61, 209, 41]);
+        forged_bytes.extend_from_slice(&[203, 0, 113, 9]);
 
         let decoded = Device::try_from(&forged_bytes[..]).unwrap();
         // agent_ip follows the skipped junk.
-        assert_eq!(decoded.agent_ip, Ipv4Addr::new(37, 61, 209, 41));
+        assert_eq!(decoded.agent_ip, Ipv4Addr::new(203, 0, 113, 9));
         assert_eq!(decoded.interfaces.len(), 2);
         assert_eq!(decoded.interfaces[0].version, 5);
         assert_eq!(decoded.interfaces[0].name, "Switch1/1/0");
@@ -1985,16 +1985,16 @@ mod test_device_interfaces_vec {
 
     #[test]
     fn test_state_device_agent_ip_roundtrip() {
-        let val = agent_ip_test_device(Ipv4Addr::new(37, 61, 209, 41));
+        let val = agent_ip_test_device(Ipv4Addr::new(203, 0, 113, 9));
         let data = borsh::to_vec(&val).unwrap();
-        assert_eq!(&data[data.len() - 4..], &[37, 61, 209, 41]);
+        assert_eq!(&data[data.len() - 4..], &[203, 0, 113, 9]);
         assert_eq!(Device::try_from(&data[..]).unwrap(), val);
     }
 
     #[test]
     fn test_state_device_agent_ip_absent_on_older_account() {
         // An account written before agent_ip existed ends at the interfaces vec.
-        let val = agent_ip_test_device(Ipv4Addr::new(37, 61, 209, 41));
+        let val = agent_ip_test_device(Ipv4Addr::new(203, 0, 113, 9));
         let data = borsh::to_vec(&val).unwrap();
         let decoded = Device::try_from(&data[..data.len() - 4]).unwrap();
         assert_eq!(
@@ -2008,11 +2008,12 @@ mod test_device_interfaces_vec {
 
     #[test]
     fn test_state_device_validate_agent_ip() {
-        // Unset and global addresses pass.
+        // Unset and global addresses pass. A documentation-range address is
+        // not global, so a placeholder stands in for a real one here.
         agent_ip_test_device(Ipv4Addr::UNSPECIFIED)
             .validate()
             .unwrap();
-        agent_ip_test_device(Ipv4Addr::new(37, 61, 209, 41))
+        agent_ip_test_device(Ipv4Addr::new(5, 6, 7, 8))
             .validate()
             .unwrap();
         // Anything else that is not global fails.
@@ -2021,6 +2022,7 @@ mod test_device_interfaces_vec {
             Ipv4Addr::new(127, 0, 0, 1),
             Ipv4Addr::new(100, 64, 0, 1),
             Ipv4Addr::new(0, 1, 2, 3),
+            Ipv4Addr::new(203, 0, 113, 9),
         ] {
             assert_eq!(
                 agent_ip_test_device(ip).validate(),

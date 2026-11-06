@@ -36,7 +36,7 @@ mod tests {
 
     #[test]
     fn test_validate_public_ipv4_accepts_global() {
-        for val in ["37.61.209.41", "8.8.8.8", "1.1.1.1"] {
+        for val in ["1.2.3.4", "5.6.7.8", "2.3.4.5"] {
             assert_eq!(validate_public_ipv4(val), Ok(val.parse().unwrap()), "{val}");
         }
     }
@@ -60,7 +60,10 @@ mod tests {
             "240.0.0.1",
             "255.255.255.255",
         ] {
-            assert!(validate_public_ipv4(val).is_err(), "{val} must be rejected");
+            assert_eq!(
+                validate_public_ipv4(val),
+                Err(format!("not a public IPv4 address: {val}"))
+            );
         }
     }
 
@@ -68,15 +71,15 @@ mod tests {
     fn test_validate_public_ipv4_rejects_malformed() {
         for val in [
             "",
-            "37.61.209",
-            "37.61.209.256",
+            "192.0.2",
+            "192.0.2.256",
             "2001:db8::1",
-            "37.61.209.41/32",
+            "192.0.2.1/32",
             "host",
         ] {
-            assert!(
-                validate_public_ipv4(val).is_err(),
-                "{val:?} must be rejected"
+            assert_eq!(
+                validate_public_ipv4(val),
+                Err(format!("invalid IPv4 address: {val}"))
             );
         }
     }

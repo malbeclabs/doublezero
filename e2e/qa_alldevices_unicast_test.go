@@ -388,35 +388,39 @@ func connectClientsAndWaitForRoutes(
 	batch map[string]*qa.BatchResult,
 ) []*qa.Client {
 	// Connect only clients whose device changed from previous batch
+	// Each goroutine must write only its own host's BatchResult.
 	// Note: errors here must increment FailedTests so Success() returns false
+	var wg sync.WaitGroup
 	for _, c := range clientsToConnect {
-		device := batch[c.Host].Device
-		err := c.ConnectUserUnicast_NoWait(ctx, device.Code)
-		if err != nil {
-			log.Error("Failed to start connection", "client", c.Host, "device", device.Code, "error", err)
-			batch[c.Host].FailedTests++
-			if device.Ready() {
-				t.Logf("DEVICE FAILURE: failed to connect client %s to device %s: %v", c.Host, device.Code, err)
-			} else {
-				log.Warn("Ignoring connection failure for device not ready for users", "device", device.Code, "status", device.Status, "maxUsers", device.MaxUsers)
+		wg.Add(1)
+		go func(c *qa.Client) {
+			defer wg.Done()
+			device := batch[c.Host].Device
+			err := c.ConnectUserUnicast_NoWait(ctx, device.Code)
+			if err != nil {
+				log.Error("Failed to start connection", "client", c.Host, "device", device.Code, "error", err)
+				batch[c.Host].FailedTests++
+				if device.Ready() {
+					t.Logf("DEVICE FAILURE: failed to connect client %s to device %s: %v", c.Host, device.Code, err)
+				} else {
+					log.Warn("Ignoring connection failure for device not ready for users", "device", device.Code, "status", device.Status, "maxUsers", device.MaxUsers)
+				}
+				return
 			}
-		}
-	}
 
-	// Wait for status up for clients that reconnected
-	for _, c := range clientsToConnect {
-		device := batch[c.Host].Device
-		err := c.WaitForStatusUp(ctx)
-		if err != nil {
-			log.Error("Client failed to reach status up", "client", c.Host, "error", err)
-			batch[c.Host].FailedTests++
-			if device.Ready() {
-				t.Logf("DEVICE FAILURE: failed to wait for status for client %s: %v", c.Host, err)
-			} else {
-				log.Warn("Ignoring status failure for device not ready for users", "device", device.Code, "status", device.Status, "maxUsers", device.MaxUsers)
+			err = c.WaitForStatusUp(ctx)
+			if err != nil {
+				log.Error("Client failed to reach status up", "client", c.Host, "error", err)
+				batch[c.Host].FailedTests++
+				if device.Ready() {
+					t.Logf("DEVICE FAILURE: failed to wait for status for client %s: %v", c.Host, err)
+				} else {
+					log.Warn("Ignoring status failure for device not ready for users", "device", device.Code, "status", device.Status, "maxUsers", device.MaxUsers)
+				}
 			}
-		}
+		}(c)
 	}
+	wg.Wait()
 
 	// Build list of clients with status "up" (both newly connected and previously connected)
 	statuses := make(map[string]string)

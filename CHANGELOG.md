@@ -33,6 +33,7 @@ All notable changes to this project will be documented in this file.
   - Add RFC-29, DoubleZero Edge for Builders.
 - E2E/QA
   - `TestQA_AllDevices_UnicastConnectivity` does not wait for routes to a host on a device that is not ready for users. Once the QA hosts can connect to such a device, a missing route to it would otherwise count against the waiting host's device.
+  - `TestQA_AllDevices_UnicastConnectivity` connects each batch's hosts in parallel, and a host whose connect fails no longer waits out the 90-second status timeout. Mainnet-beta runs took 71 to 120 minutes and had started to hit the 120-minute test timeout.
 
 ## [v0.46.0](https://github.com/malbeclabs/doublezero/compare/client/v0.45.0...client/v0.46.0) - 2026-10-27
 

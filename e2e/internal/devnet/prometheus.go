@@ -18,7 +18,7 @@ import (
 )
 
 const (
-	prometheusImage        = "ghcr.io/malbeclabs/dz-e2e/prometheus:v2.54.1"
+	prometheusImage        = "mirror.gcr.io/prom/prometheus:v2.54.1@sha256:f6639335d34a77d9d9db382b92eeb7fc00934be8eae81dbc03b31cfe90411a94"
 	prometheusInternalPort = 9090
 )
 

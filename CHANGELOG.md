@@ -70,6 +70,8 @@ All notable changes to this project will be documented in this file.
   - `doublezerod` tells the user when missing peer routes need their action: in active liveness mode, no session has been up for 2 minutes while a desired route is missing from the kernel. It logs a WARN that names which direction of UDP 44880 on `doublezero0` to check and links the troubleshooting docs, repeats it every 15 minutes, and logs an Info line when it clears. `/v2/status` carries a route summary for the IBRL service, which the new `doublezero routes status` shows. `doublezero status` warns only when action is needed. `doublezero routes` shows `no reply` instead of `none` for a peer that never answered, and `held down` while a route waits out its hold-down.
 - Geolocation
   - The foundation check reads the program config and the serviceability global state only from their PDAs. An account at another address fails with `InvalidSeeds`.
+- Telemetry
+  - Add `doublezero-telemetry-allowlist-sync`, which builds the device address list from the ledger and a reviewed exception file every 60 seconds and writes it to gnmic's address map ConfigMap and a Cloudflare IP list, only when either changed. It writes nothing on a failed or incomplete ledger read, never writes an empty list, and refuses a pass that removes more than 5 devices or 10% of the addresses unless `--allow-shrink-to` names that list. `--dry-run` writes nothing. It reads caller addresses from `controller_grpc_getconfig_success` and exports per-device gauges for the missing device and unlisted caller alerts.
 - RFCs
   - Add RFC-29, DoubleZero Edge for Builders.
 - E2E/QA

@@ -22,6 +22,8 @@ All notable changes to this project will be documented in this file.
 - CLI
   - `doublezero device delete` no longer reads the device's shred-subscription `DeviceHistory` account first. The program is closed, so a device it marks enabled can no longer be disabled there, and the check refused to delete it.
   - `doublezero disconnect` no longer tells the user to run `doublezero-solana shreds withdraw` for a user that the shred oracle manages.
+- E2E/QA
+  - The QA agent drops the `FeedEnable`, `FeedSeatPrice`, `FeedSeatPay`, `FeedSeatWithdraw` and `GetWalletPubkey` RPCs, and the QA client drops its Solana RPC failover pool and the `SOLANA_RPC_FALLBACK_URLS` and `QA_SOLANA_RPC_*` variables it read. Only the settlement test that #4248 removed used them.
 
 ## [v0.47.0](https://github.com/malbeclabs/doublezero/compare/client/v0.46.0...client/v0.47.0) - 2026-11-06
 

@@ -3020,7 +3020,7 @@ dependencies = [
 
 [[package]]
 name = "doublezero-ledger-sentinel"
-version = "0.2.5"
+version = "0.2.7"
 dependencies = [
  "anyhow",
  "async-trait",

@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CI
+  - The Solana fork test no longer loads the shred-subscription program or runs the `doublezero-solana shreds` commands, because the program was closed on mainnet on 2026-11-05. The fork loader drops `--synthetic-validator-client-rewards-manager`.
+
 ## [v0.47.0](https://github.com/malbeclabs/doublezero/compare/client/v0.46.0...client/v0.47.0) - 2026-11-06
 
 ### Breaking

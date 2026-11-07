@@ -6,6 +6,9 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- CLI
+  - `doublezero-solana` drops the `shreds` command group, including `shreds withdraw`, `shreds publisher-rewards` and `shreds validator-client-rewards`. The shred-subscription program it called is closed on Solana mainnet-beta and devnet, so every `shreds` command failed. The `feeds` commands serve the feed subscription program that replaced it.
+
 ### Changes
 
 - CI

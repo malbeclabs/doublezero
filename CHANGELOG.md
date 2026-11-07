@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
   - `doublezero-solana` drops the `shreds` command group, including `shreds withdraw`, `shreds publisher-rewards` and `shreds validator-client-rewards`. The shred-subscription program it called is closed on Solana mainnet-beta and devnet, so every `shreds` command failed. The `feeds` commands serve the feed subscription program that replaced it.
 - SDK
   - The offchain Rust SDK (`doublezero-solana-sdk`) drops its `shred_subscription` module. `environment_usdc_token_mint_key` returns the same USDC mints as before.
+  - The Go `sdk/shreds/go` package keeps only the feed subscription program's `FeedProgramID`, `FeedDistribution` and `DeserializeFeedDistribution`, and `NewRPCClient`. It drops the shred-subscription program's `Client`, `ProgramID`, `SolanaRPCURLs`, account types, discriminators and PDA helpers, and its fetch example.
 
 ### Changes
 

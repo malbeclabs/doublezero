@@ -11,6 +11,8 @@ All notable changes to this project will be documented in this file.
 - SDK
   - The offchain Rust SDK (`doublezero-solana-sdk`) drops its `shred_subscription` module. `environment_usdc_token_mint_key` returns the same USDC mints as before.
   - The Go `sdk/shreds/go` package keeps only the feed subscription program's `FeedProgramID`, `FeedDistribution` and `DeserializeFeedDistribution`, and `NewRPCClient`. It drops the shred-subscription program's `Client`, `ProgramID`, `SolanaRPCURLs`, account types, discriminators and PDA helpers, and its fetch example.
+- Config
+  - The Rust config drops `Environment::shred_subscription_config` and `ShredSubscriptionConfig`, and no longer reads `DZ_SHRED_SOLANA_RPC_URL`. The Go `NetworkConfig` drops `ShredSubscriptionProgramID` and `USDCMint`, and the matching per-environment constants go with them.
 
 ### Changes
 

@@ -14,23 +14,17 @@ const (
 
 	MainnetRevenueDistributionProgramID = "dzrevZC94tBLwuHw1dyynZxaXTWyp7yocsinyEVPtt4"
 	MainnetGeolocationProgramID         = "8H7nS6eZiuf7rGQtz3PPz2q9m4eJRL37PPM678KHnspG"
-	MainnetShredSubscriptionProgramID   = "dzshrr3yL57SB13sJPYHYo3TV8Bo1i1FxkyrZr3bKNE"
-	MainnetUSDCMint                     = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
 	// Testnet constants.
-	TestnetLedgerPublicRPCURL         = "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16"
-	TestnetServiceabilityProgramID    = "DZtnuQ839pSaDMFG5q1ad2V95G82S5EC4RrB3Ndw2Heb"
-	TestnetTelemetryProgramID         = "3KogTMmVxc5eUHtjZnwm136H5P8tvPwVu4ufbGPvM7p1"
-	TestnetInternetLatencyCollectorPK = "DtkyktXDfywXqEupfdsPtGZnFK6zCjJmpHjGq9X6uzCa"
-	TestnetDeviceLocalASN             = 65342
-	TestnetSolanaRPC                  = "https://api.testnet.solana.com"
-	TestnetTelemetryFlowIngestURL     = "http://telemetry-flow-in.testnet.doublezero.xyz"
-	TestnetTelemetryStateIngestURL    = "https://telemetry-state-in-testnet.doublezero.xyz"
-	TestnetGeolocationProgramID       = "3AG2BCA7gAm47Q6xZzPQcUUYvnBjxAvPKnPz919cxHF4"
-	TestnetShredSubscriptionProgramID = "dzshrr3yL57SB13sJPYHYo3TV8Bo1i1FxkyrZr3bKNE"
-	// Testnet shred-subscription runs on Solana devnet, so settlement uses the
-	// Solana devnet USDC mint (not the DZ ledger testnet mint).
-	TestnetUSDCMint                      = "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU"
+	TestnetLedgerPublicRPCURL            = "https://doublezerolocalnet.rpcpool.com/8a4fd3f4-0977-449f-88c7-63d4b0f10f16"
+	TestnetServiceabilityProgramID       = "DZtnuQ839pSaDMFG5q1ad2V95G82S5EC4RrB3Ndw2Heb"
+	TestnetTelemetryProgramID            = "3KogTMmVxc5eUHtjZnwm136H5P8tvPwVu4ufbGPvM7p1"
+	TestnetInternetLatencyCollectorPK    = "DtkyktXDfywXqEupfdsPtGZnFK6zCjJmpHjGq9X6uzCa"
+	TestnetDeviceLocalASN                = 65342
+	TestnetSolanaRPC                     = "https://api.testnet.solana.com"
+	TestnetTelemetryFlowIngestURL        = "http://telemetry-flow-in.testnet.doublezero.xyz"
+	TestnetTelemetryStateIngestURL       = "https://telemetry-state-in-testnet.doublezero.xyz"
+	TestnetGeolocationProgramID          = "3AG2BCA7gAm47Q6xZzPQcUUYvnBjxAvPKnPz919cxHF4"
 	TestnetTelemetryGNMITunnelServerAddr = "gnmic-testnet.doublezero.xyz:443"
 
 	// Devnet constants.
@@ -42,8 +36,6 @@ const (
 	DevnetTelemetryFlowIngestURL        = "http://telemetry-flow-in.devnet.doublezero.xyz"
 	DevnetTelemetryStateIngestURL       = "https://telemetry-state-in-devnet.doublezero.xyz"
 	DevnetGeolocationProgramID          = "EXUUFfAjjuXnaBtsAMLsJX18ynnNHPwtkmk33bLVVoCm"
-	DevnetShredSubscriptionProgramID    = ""
-	DevnetUSDCMint                      = ""
 	DevnetTelemetryGNMITunnelServerAddr = "gnmic-devnet.doublezero.xyz:443"
 
 	// Localnet constants.
@@ -56,7 +48,5 @@ const (
 	LocalnetTelemetryFlowIngestURL        = "http://localhost:8911"
 	LocalnetTelemetryStateIngestURL       = "http://localhost:8911"
 	LocalnetGeolocationProgramID          = "36WA9nUCsJaAQL5h44WYoLezDpocy8Q71NZbtrUN8DyC"
-	LocalnetShredSubscriptionProgramID    = ""
-	LocalnetUSDCMint                      = ""
 	LocalnetTelemetryGNMITunnelServerAddr = "localhost:50051"
 )

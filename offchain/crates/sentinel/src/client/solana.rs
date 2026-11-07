@@ -549,8 +549,19 @@ mod test {
 
     #[tokio::test]
     async fn test_is_scheduled_leader_other_rpc_error_propagates() {
-        let scheduled = is_scheduled_leader(Err(JSON_RPC_SERVER_ERROR_NODE_UNHEALTHY)).await;
-        assert!(matches!(scheduled, Err(Error::RpcClient(_))));
+        let error = is_scheduled_leader(Err(JSON_RPC_SERVER_ERROR_NODE_UNHEALTHY))
+            .await
+            .unwrap_err();
+        let Error::RpcClient(client_error) = error else {
+            panic!("expected an RPC client error, got {error:?}");
+        };
+        assert!(matches!(
+            client_error.kind(),
+            ClientErrorKind::RpcError(RpcError::RpcResponseError {
+                code: JSON_RPC_SERVER_ERROR_NODE_UNHEALTHY,
+                ..
+            })
+        ));
     }
 
     #[test]

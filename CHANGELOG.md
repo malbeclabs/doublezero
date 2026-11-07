@@ -19,6 +19,9 @@ All notable changes to this project will be documented in this file.
   - The offchain sentinel treats the `getLeaderSchedule` error -32022, which Agave 4.4 returns for an identity with no slots in the epoch, as not scheduled, like the empty schedule earlier versions return. Against 4.4 RPC nodes, access requests with backup IDs failed on every poll and were never granted, and a primary with no slots failed instead of being rejected. `doublezero-solana passport find-validator`, `request-validator-access` and `prepare-validator-access` use the same check, so they now treat such a node as not scheduled instead of failing.
 - Release
   - `doublezero-sentinel` 0.2.7. It carries the -32022 fix above, and the Solana 3.0 migration, the static musl binary and the move to rustls that landed since 0.2.6.
+- CLI
+  - `doublezero device delete` no longer reads the device's shred-subscription `DeviceHistory` account first. The program is closed, so a device it marks enabled can no longer be disabled there, and the check refused to delete it.
+  - `doublezero disconnect` no longer tells the user to run `doublezero-solana shreds withdraw` for a user that the shred oracle manages.
 
 ## [v0.47.0](https://github.com/malbeclabs/doublezero/compare/client/v0.46.0...client/v0.47.0) - 2026-11-06
 

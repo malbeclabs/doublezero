@@ -150,11 +150,9 @@ impl Disconnect {
             if user.owner != payer {
                 if user.owner == feed_authority {
                     // User is managed by the shred oracle.
-                    // The validator must withdraw via doublezero-solana first.
                     writeln!(
                         out,
-                        "⚠️  User {pubkey} is managed by the shred oracle (owner: {}). \
-                         Use `doublezero-solana shreds withdraw` to disconnect.",
+                        "⚠️  User {pubkey} is managed by the shred oracle (owner: {}).",
                         user.owner,
                     )?;
                 } else {

@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- fix(sentinel): treat the `getLeaderSchedule` error -32022, which Agave 4.4 returns for an identity with no slots in the epoch, as not scheduled, like the empty schedule earlier versions return. Against 4.4 RPC nodes, access requests with backup IDs failed on every poll and were never granted.
 - migrate to Solana 3.0: workspace `solana-*` crates and `solana-sdk` move to the 3.0 line, `solana-program-test` to 3.0.12, and the doublezero SDK git-deps repin from `client/v0.27.1` to the malbeclabs/doublezero#3830 merge revision (malbeclabs/infra#1853)
 - release artifact now builds as a static `x86_64-unknown-linux-musl` binary (malbeclabs/infra#1853)
 - TLS for HTTP clients moves from openssl to rustls; trust roots are the bundled webpki Mozilla set plus the host OS certificate store, so OS-installed private CAs remain trusted (malbeclabs/infra#1853)

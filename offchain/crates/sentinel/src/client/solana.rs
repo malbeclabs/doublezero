@@ -21,12 +21,14 @@ use doublezero_program_tools::{
 use mockall::automock;
 use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::{
+    client_error::ClientErrorKind,
     nonblocking::rpc_client::RpcClient,
     rpc_config::{
         RpcAccountInfoConfig, RpcLeaderScheduleConfig, RpcProgramAccountsConfig,
         RpcTransactionConfig,
     },
     rpc_filter::{Memcmp, RpcFilterType},
+    rpc_request::RpcError,
 };
 use solana_commitment_config::{CommitmentConfig, CommitmentLevel};
 use solana_compute_budget_interface::ComputeBudgetInstruction;
@@ -51,6 +53,9 @@ const ACCESS_REQUEST_ACCOUNT_INDEX: usize = 2;
 const SEND_AND_CONFIRM_TIMEOUT: Duration = Duration::from_secs(60);
 
 const SLOTS_PER_EPOCH: u64 = 432_000;
+
+// Defined in Agave 4.4 `custom_error`, but not in the workspace's Solana 3.0 crates.
+const JSON_RPC_SERVER_ERROR_LEADER_SCHEDULE_IDENTITY_NOT_FOUND: i64 = -32022;
 
 #[automock]
 #[async_trait]
@@ -328,10 +333,25 @@ impl SolRpcClient {
                 ..Default::default()
             };
 
-            let schedule = self
+            let schedule = match self
                 .client
                 .get_leader_schedule_with_config(Some(slot), config)
-                .await?;
+                .await
+            {
+                // Agave 4.4 returns this error where earlier versions returned an empty schedule.
+                Err(err)
+                    if matches!(
+                        err.kind(),
+                        ClientErrorKind::RpcError(RpcError::RpcResponseError {
+                            code: JSON_RPC_SERVER_ERROR_LEADER_SCHEDULE_IDENTITY_NOT_FOUND,
+                            ..
+                        })
+                    ) =>
+                {
+                    return Ok(false);
+                }
+                result => result?,
+            };
 
             // Bail out early if there is either no leader schedule or this
             // validator has no slot indices.
@@ -453,7 +473,85 @@ impl Iterator for PreviousEpochSlots {
 
 #[cfg(test)]
 mod test {
+    use serde_json::{Value, json};
+    use solana_client::{
+        client_error::Result as ClientResult,
+        rpc_client::RpcClientConfig,
+        rpc_custom_error::JSON_RPC_SERVER_ERROR_NODE_UNHEALTHY,
+        rpc_request::{RpcRequest, RpcResponseErrorData},
+        rpc_sender::{RpcSender, RpcTransportStats},
+    };
+
     use super::*;
+
+    // Answers getLeaderSchedule with the given response, or with an RPC error of the given code.
+    struct LeaderScheduleSender(std::result::Result<Value, i64>);
+
+    #[async_trait]
+    impl RpcSender for LeaderScheduleSender {
+        async fn send(&self, request: RpcRequest, _params: Value) -> ClientResult<Value> {
+            match request {
+                RpcRequest::GetSlot => Ok(json!(1)),
+                RpcRequest::GetLeaderSchedule => self.0.clone().map_err(|code| {
+                    RpcError::RpcResponseError {
+                        code,
+                        message: String::new(),
+                        data: RpcResponseErrorData::Empty,
+                    }
+                    .into()
+                }),
+                _ => panic!("unexpected request {request}"),
+            }
+        }
+
+        fn get_transport_stats(&self) -> RpcTransportStats {
+            RpcTransportStats::default()
+        }
+
+        fn url(&self) -> String {
+            String::new()
+        }
+    }
+
+    async fn is_scheduled_leader(
+        leader_schedule_response: std::result::Result<Value, i64>,
+    ) -> Result<bool> {
+        let client = SolRpcClient {
+            client: RpcClient::new_sender(
+                LeaderScheduleSender(leader_schedule_response),
+                RpcClientConfig::default(),
+            ),
+            payer: Arc::new(Keypair::new()),
+        };
+        client.is_scheduled_leader(&Pubkey::new_unique(), 1).await
+    }
+
+    #[tokio::test]
+    async fn test_is_scheduled_leader_identity_not_found_is_not_scheduled() {
+        let scheduled = is_scheduled_leader(Err(
+            JSON_RPC_SERVER_ERROR_LEADER_SCHEDULE_IDENTITY_NOT_FOUND,
+        ))
+        .await;
+        assert!(!scheduled.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_is_scheduled_leader_empty_schedule_is_not_scheduled() {
+        assert!(!is_scheduled_leader(Ok(Value::Null)).await.unwrap());
+        assert!(!is_scheduled_leader(Ok(json!({}))).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_is_scheduled_leader_with_slots_is_scheduled() {
+        let schedule = json!({ Pubkey::new_unique().to_string(): [0, 1, 2, 3] });
+        assert!(is_scheduled_leader(Ok(schedule)).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn test_is_scheduled_leader_other_rpc_error_propagates() {
+        let scheduled = is_scheduled_leader(Err(JSON_RPC_SERVER_ERROR_NODE_UNHEALTHY)).await;
+        assert!(matches!(scheduled, Err(Error::RpcClient(_))));
+    }
 
     #[test]
     fn test_reverse_iter() {

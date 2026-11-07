@@ -8,6 +8,8 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - `doublezero-solana` drops the `shreds` command group, including `shreds withdraw`, `shreds publisher-rewards` and `shreds validator-client-rewards`. The shred-subscription program it called is closed on Solana mainnet-beta and devnet, so every `shreds` command failed. The `feeds` commands serve the feed subscription program that replaced it.
+- SDK
+  - The offchain Rust SDK (`doublezero-solana-sdk`) drops its `shred_subscription` module. `environment_usdc_token_mint_key` returns the same USDC mints as before.
 
 ### Changes
 

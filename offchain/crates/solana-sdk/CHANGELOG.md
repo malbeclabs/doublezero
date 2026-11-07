@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- remove the `shred_subscription` module, because the shred-subscription program is closed on Solana mainnet-beta and devnet. `environment_usdc_token_mint_key` returns the same USDC mints as before.
 - `feed_subscription`: add the `ConfigureFeedPublisherRewards` instruction with its `ValidatorOffchainAuthorization` and account list, the `ConfigureFeedPublisherRewardsAuthMessage` a validator identity signs offchain, the `FeedPublishersRewardToken` enabled flag, and the `FeedPublisherRewards` and `FeedPublishersRewardToken` PDA helpers (malbeclabs/infra#3109)
 - `feed_subscription`: add the `ClaimFeedValidatorClientRewards` instruction with its account list, the `FeedDistribution` feed key and month, the `ProgramConfig` oracle key, and the `find_claim_holding_address` and `find_feed_distribution_journal_address` PDA helpers (malbeclabs/infra#3206)
 - add the `feed_subscription` module, a copy of the feed subscription program's `ProgramConfig` flags, `ValidatorClientRewards` account, PDA helpers and `ConfigureValidatorClientRewardsProportion` instruction with its account list, for offchain consumers (malbeclabs/infra#2805)

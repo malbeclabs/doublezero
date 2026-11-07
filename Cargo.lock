@@ -3494,7 +3494,6 @@ dependencies = [
  "solana-program-pack",
  "solana-sdk",
  "solana-sdk-ids",
- "spl-associated-token-account-interface",
  "spl-token-interface",
  "svm-hash",
  "tempfile",

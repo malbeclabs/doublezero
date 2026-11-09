@@ -49,6 +49,7 @@ All notable changes to this project will be documented in this file.
   - Every instruction reads the global state only from the program's global state account. An account another program owns fails with `InvalidAccountOwner` (custom error 52), and an account at another address fails with `InvalidSeeds`.
   - `DeleteDevice` closes only the device's own resource accounts: its `TunnelIds` account, then its `DzPrefixBlock` accounts.
 - CLI
+  - `doublezero user delete` and `doublezero access-pass close` take `--accesspass-type` as an optional flag. Without it, `user delete` deletes the user from the pass the user records, and `access-pass close` reads the pass, prints its type as `--accesspass-type` spells it, and closes it as that type. With it, each command refuses a pass of another type, as before. (malbeclabs/infra#2766)
   - `doublezero tenant list` shows an `administrators` column next to `owner`. `owner` is the key that created the tenant. The administrators are the keys that may set access passes for it, so the old output pointed operators at a key the program rejects. `--json` and `--json-compact` output gain an `administrators` string key that holds the keys joined by `, `, and `owner` is unchanged.
   - An IBRL `doublezero connect` with `--device` no longer refuses a payer on the QA allowlist when the named device is full or has `max_users=0`, because the program exempts that payer from device user limits. The device must still be an activated edge or hybrid device, and multicast connects are unchanged.
 - Client

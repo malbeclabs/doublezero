@@ -416,3 +416,39 @@ func TestFixtureGlobalStateLegacyNoIpVerifier(t *testing.T) {
 	assert.Equal(t, fixtureFieldValue(t, meta, "FeedAuthorityPk"), base58.Encode(gs.FeedAuthorityPK[:]))
 	assert.Equal(t, [32]byte{}, gs.IpVerifierAuthorityPK)
 }
+
+func TestFixtureMulticastGroup(t *testing.T) {
+	data, meta := loadFixture(t, "multicast_group")
+	require.Equal(t, "MulticastGroup", meta.Name)
+
+	var mg serviceability.MulticastGroup
+	serviceability.DeserializeMulticastGroup(serviceability.NewByteReader(data), &mg)
+
+	assert.Equal(t, fixtureFieldValue(t, meta, "Owner"), base58.Encode(mg.Owner[:]))
+	assert.Equal(t, uint8(247), mg.BumpSeed)
+	assert.Equal(t, fixtureFieldValue(t, meta, "TenantPk"), base58.Encode(mg.TenantPubKey[:]))
+	assert.Equal(t, [4]uint8{239, 1, 1, 1}, mg.MulticastIp)
+	assert.Equal(t, uint64(1000000000), mg.MaxBandwidth)
+	assert.Equal(t, "demo", mg.Code)
+	assert.Equal(t, uint32(2), mg.PublisherCount)
+	assert.Equal(t, uint32(10), mg.SubscriberCount)
+	assert.Equal(t, fixtureFieldValue(t, meta, "BondRef"), base58.Encode(mg.BondRef[:]))
+	assert.True(t, mg.Private)
+	assert.Equal(t, uint32(2), mg.MaxPublishers)
+	assert.Equal(t, uint32(10), mg.MaxSubscribers)
+}
+
+// A group written before the private flag and the caps existed ends 9 bytes earlier. It decodes as
+// a group that is not private and has no caps.
+func TestFixtureMulticastGroupBeforePrivateCaps(t *testing.T) {
+	data, meta := loadFixture(t, "multicast_group")
+	old := data[:len(data)-9]
+
+	var mg serviceability.MulticastGroup
+	serviceability.DeserializeMulticastGroup(serviceability.NewByteReader(old), &mg)
+
+	assert.Equal(t, fixtureFieldValue(t, meta, "BondRef"), base58.Encode(mg.BondRef[:]))
+	assert.False(t, mg.Private)
+	assert.Equal(t, uint32(0), mg.MaxPublishers)
+	assert.Equal(t, uint32(0), mg.MaxSubscribers)
+}

@@ -1124,6 +1124,8 @@ export interface AccessPass {
   tenantAllowlist: PublicKey[];
   unicastUserCount: number;
   maxUnicastUsers: number;
+  // The program names this field public_multicast_user_count. It leaves out the users that
+  // joined only private groups.
   multicastUserCount: number;
   maxMulticastUsers: number;
 }

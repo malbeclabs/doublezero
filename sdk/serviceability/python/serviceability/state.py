@@ -1105,6 +1105,8 @@ class AccessPass:
     tenant_allowlist: list[Pubkey] = field(default_factory=list)
     unicast_user_count: int = 0
     max_unicast_users: int = 1
+    # The program names this field public_multicast_user_count. It leaves out the users that
+    # joined only private groups.
     multicast_user_count: int = 0
     max_multicast_users: int = 1
 

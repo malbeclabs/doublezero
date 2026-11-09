@@ -189,8 +189,10 @@ fn apply_serviceability_json_compat_migrations(serviceability: &mut Value) {
             access_pass
                 .entry("max_unicast_users")
                 .or_insert_with(|| Value::Number(1.into()));
+            // The Rust field is `public_multicast_user_count`, and its JSON name stays
+            // `multicast_user_count`.
             access_pass
-                .entry("public_multicast_user_count")
+                .entry("multicast_user_count")
                 .or_insert_with(|| Value::Number(0.into()));
             access_pass
                 .entry("max_multicast_users")

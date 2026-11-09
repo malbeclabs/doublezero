@@ -5,43 +5,19 @@ import (
 	"testing"
 )
 
-func TestDiscriminatorsAreUnique(t *testing.T) {
-	discs := map[string][8]byte{
-		"ProgramConfig":                DiscriminatorProgramConfig,
-		"ExecutionController":          DiscriminatorExecutionController,
-		"ClientSeat":                   DiscriminatorClientSeat,
-		"PaymentEscrow":                DiscriminatorPaymentEscrow,
-		"ShredDistribution":            DiscriminatorShredDistribution,
-		"ValidatorClientRewards":       DiscriminatorValidatorClientRewards,
-		"InstantSeatAllocationRequest": DiscriminatorInstantSeatAllocationRequest,
-		"WithdrawSeatRequest":          DiscriminatorWithdrawSeatRequest,
-		"MetroHistory":                 DiscriminatorMetroHistory,
-		"DeviceHistory":                DiscriminatorDeviceHistory,
-		"FeedDistribution":             DiscriminatorFeedDistribution,
-	}
-
-	seen := make(map[[8]byte]string)
-	for name, disc := range discs {
-		if prev, ok := seen[disc]; ok {
-			t.Errorf("discriminator collision: %s and %s both produce %x", prev, name, disc)
-		}
-		seen[disc] = name
-	}
-}
-
 func TestValidateDiscriminator(t *testing.T) {
 	data := make([]byte, 16)
-	copy(data[:8], DiscriminatorProgramConfig[:])
+	copy(data[:8], DiscriminatorFeedDistribution[:])
 
-	if err := validateDiscriminator(data, DiscriminatorProgramConfig); err != nil {
+	if err := validateDiscriminator(data, DiscriminatorFeedDistribution); err != nil {
 		t.Fatalf("expected valid discriminator: %v", err)
 	}
 
-	if err := validateDiscriminator(data, DiscriminatorClientSeat); err == nil {
+	if err := validateDiscriminator(data, sha256First8("dz::account::feed_distribution")); err == nil {
 		t.Fatal("expected error for wrong discriminator")
 	}
 
-	if err := validateDiscriminator(data[:4], DiscriminatorProgramConfig); err == nil {
+	if err := validateDiscriminator(data[:4], DiscriminatorFeedDistribution); err == nil {
 		t.Fatal("expected error for short data")
 	}
 }

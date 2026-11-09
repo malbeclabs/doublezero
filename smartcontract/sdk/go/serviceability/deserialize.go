@@ -318,7 +318,15 @@ func DeserializeUser(reader *ByteReader, user *User) {
 	// slice (the 28 leftover zero bytes are ignored as trailing data). ReadPubkeySlice returns nil
 	// on EOF, so accounts predating the slot deserialize with the field absent — len 0 either way.
 	user.FeedPks = reader.ReadPubkeySlice()
-	user.AccessPassPubKey = reader.ReadPubkey()
+	// When fewer than 32 bytes remain, the program skips the rest of the account. It then reads
+	// holds_pass_seat as true. An account in the old feed_pk layout ends with 28 zero bytes here.
+	user.HoldsPassSeat = true
+	if reader.Remaining() >= 32 {
+		user.AccessPassPubKey = reader.ReadPubkey()
+		if reader.Remaining() >= 1 {
+			user.HoldsPassSeat = reader.ReadU8() != 0
+		}
+	}
 	// Note: user.PubKey is set separately in client.go after deserialization
 }
 
@@ -337,6 +345,9 @@ func DeserializeMulticastGroup(reader *ByteReader, mg *MulticastGroup) {
 	// Zero for a group an admin created, and for any group created before the field existed:
 	// ReadPubkey returns zero bytes at EOF.
 	mg.BondRef = reader.ReadPubkey()
+	mg.Private = reader.ReadU8() != 0
+	mg.MaxPublishers = reader.ReadU32()
+	mg.MaxSubscribers = reader.ReadU32()
 }
 
 func DeserializeTenant(reader *ByteReader, tenant *Tenant) {

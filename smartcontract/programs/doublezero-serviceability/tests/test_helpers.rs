@@ -1175,6 +1175,9 @@ pub fn multicast_group(owner: Pubkey, bond_ref: Pubkey) -> Vec<u8> {
         publisher_count: 0,
         subscriber_count: 0,
         bond_ref,
+        private: false,
+        max_publishers: 0,
+        max_subscribers: 0,
     })
     .unwrap()
 }

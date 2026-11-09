@@ -194,8 +194,11 @@ pub fn process_delete_user(
     }
 
     accesspass.connection_count = accesspass.connection_count.saturating_sub(1);
-    // Release the per-category seat (EdgeSeat only; no-op otherwise).
-    accesspass.remove_user(user.user_type);
+    // Release the per-category seat (EdgeSeat only; no-op otherwise). A user that joined only a
+    // private group did not take this seat, so it has nothing to release.
+    if user.holds_pass_seat {
+        accesspass.release_pass_seat(user.user_type);
+    }
     // Release every feed-scoped seat this user consumed at connect. The feeds are read from the
     // User (recorded when the seats were ticked), so each release is bound to exactly that seat
     // and cannot be misdirected to another metro's feed by a caller-supplied account.

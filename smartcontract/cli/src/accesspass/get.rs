@@ -269,6 +269,9 @@ mod tests {
             publisher_count: 1,
             subscriber_count: 5,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         };
 
         let accesspass = AccessPass {
@@ -475,6 +478,9 @@ mod tests {
             publisher_count: 0,
             subscriber_count: 1,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         };
 
         client

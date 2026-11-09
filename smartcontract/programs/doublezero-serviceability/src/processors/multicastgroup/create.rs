@@ -196,6 +196,9 @@ pub fn process_create_multicastgroup(
         subscriber_count: 0,
         // Zero on the admin path, which is what marks a group an admin created.
         bond_ref: value.bond_ref,
+        private: false,
+        max_publishers: 0,
+        max_subscribers: 0,
     };
 
     try_acc_create(

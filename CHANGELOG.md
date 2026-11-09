@@ -16,6 +16,15 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Serviceability
+  - A multicast group has a `private` flag and `max_publishers` and `max_subscribers` caps, and `UpdateMulticastGroup` sets them with `MULTICAST_ADMIN`. A cap of 0 means no cap, and the caps apply only to a private group. A role past a cap fails with `MulticastGroupMaxPublishersExceeded` (134) or `MulticastGroupMaxSubscribersExceeded` (135). A group created before this change decodes as not private with no caps. (malbeclabs/infra#3706)
+  - On an edge_seat pass, `CreateSubscribeUser` lets a user join a private group without a feed. The group must be on the pass allowlist, and the user does not count against the pass-wide multicast cap.
+  - A user has a `holds_pass_seat` bit that records whether it raised the pass-wide multicast count. `SubscribeFeed` raises the count for a private group user that joins its first feed, and `DeleteUser` lowers the count only when the bit is set. A user created before this change decodes the missing bit as true.
+  - `try_add_user`, `remove_user`, `try_add_feed_user` and `remove_feed_user` on the access pass are now `try_take_pass_seat`, `release_pass_seat`, `try_take_feed_seat` and `release_feed_seat`. `enforce_feed_metro_gate` and `check_feed_metro_coverage` are now `take_feed_seat` and `check_feed_covers_group`.
+- CLI
+  - `doublezero multicast group update` takes `--private`, `--max-publishers` and `--max-subscribers`, and `doublezero multicast group get` shows them. Bare `doublezero connect` no longer skips the multicast leg at a full pass-wide multicast cap when the pass has no feeds and every allowlisted group is private.
+- SDK
+  - The Go, Python and TypeScript serviceability readers decode the group's `private` flag and caps and the user's `holds_pass_seat`. `doublezero-contributor-rewards` defaults the new fields in older JSON snapshots.
 - CI
   - The Solana fork test no longer loads the shred-subscription program or runs the `doublezero-solana shreds` commands, because the program was closed on mainnet on 2026-11-05. The fork loader drops `--synthetic-validator-client-rewards-manager`.
 - Offchain

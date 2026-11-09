@@ -91,6 +91,13 @@ pub fn process_subscribe_feed(
     }
     check_group_accounts(group_accounts, &expected)?;
 
+    // A user that joined only a private group did not raise the pass-wide multicast count. It
+    // raises the count here, because a feed user always counts against the pass-wide cap.
+    if !ctx.user.holds_pass_seat {
+        ctx.accesspass.try_take_pass_seat(ctx.user.user_type)?;
+        ctx.user.holds_pass_seat = true;
+    }
+
     apply_groups(
         program_id,
         accounts,
@@ -112,7 +119,7 @@ pub fn process_subscribe_feed(
             );
             return Err(DoubleZeroError::UserFeedLimitExceeded.into());
         }
-        ctx.accesspass.try_add_feed_user(feed_key)?;
+        ctx.accesspass.try_take_feed_seat(feed_key)?;
         ctx.user.feed_pks.push(*feed_key);
     }
 

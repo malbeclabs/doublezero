@@ -150,6 +150,9 @@ fn apply_serviceability_json_compat_migrations(serviceability: &mut Value) {
                 .or_insert_with(|| Value::Number(0.into()));
             user.entry("bgp_rtt_ns")
                 .or_insert_with(|| Value::Number(0.into()));
+            // infra#3706 appended `holds_pass_seat`. Every multicast user in an older snapshot
+            // raised the pass-wide count. The onchain decoder also reads a missing value as true.
+            user.entry("holds_pass_seat").or_insert(Value::Bool(true));
             // A snapshot from before infra#2114 carries the singular key, where the
             // default value meant the user held no feed. Fold it into the list so
             // both eras land on the shape the current struct reads. Like
@@ -221,6 +224,13 @@ fn apply_serviceability_json_compat_migrations(serviceability: &mut Value) {
             group.entry("bond_ref").or_insert_with(|| {
                 legacy_stake_ref.unwrap_or_else(|| Value::String(Pubkey::default().to_string()))
             });
+            group.entry("private").or_insert(Value::Bool(false));
+            group
+                .entry("max_publishers")
+                .or_insert_with(|| Value::Number(0.into()));
+            group
+                .entry("max_subscribers")
+                .or_insert_with(|| Value::Number(0.into()));
         }
     }
 
@@ -586,6 +596,24 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_user_holds_pass_seat_migration() {
+        let mut snapshot = json!({
+            "dz_serviceability": {
+                "users": {
+                    "legacy": {},
+                    "current": { "holds_pass_seat": false },
+                }
+            }
+        });
+
+        apply_json_compat_migrations(&mut snapshot);
+
+        let users = &snapshot["dz_serviceability"]["users"];
+        assert_eq!(users["legacy"]["holds_pass_seat"], json!(true));
+        assert_eq!(users["current"]["holds_pass_seat"], json!(false));
+    }
+
+    #[test]
     fn test_multicast_group_bond_ref_migration() {
         let bond_key = Pubkey::new_unique().to_string();
         let mut snapshot = json!({
@@ -600,10 +628,23 @@ mod tests {
         apply_json_compat_migrations(&mut snapshot);
 
         let groups = &snapshot["dz_serviceability"]["multicast_groups"];
-        assert_eq!(groups["legacy"], json!({ "bond_ref": bond_key }));
+        assert_eq!(
+            groups["legacy"],
+            json!({
+                "bond_ref": bond_key,
+                "private": false,
+                "max_publishers": 0,
+                "max_subscribers": 0,
+            })
+        );
         assert_eq!(
             groups["absent"],
-            json!({ "bond_ref": Pubkey::default().to_string() })
+            json!({
+                "bond_ref": Pubkey::default().to_string(),
+                "private": false,
+                "max_publishers": 0,
+                "max_subscribers": 0,
+            })
         );
     }
 }

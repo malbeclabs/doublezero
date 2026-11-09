@@ -1129,6 +1129,9 @@ mod tests {
                 subscriber_count: None,
                 use_onchain_allocation: false,
                 owner: None,
+                private: None,
+                max_publishers: None,
+                max_subscribers: None,
             }),
             "UpdateMulticastGroup",
         );

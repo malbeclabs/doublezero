@@ -61,6 +61,21 @@
       "name": "BondRef",
       "value": "8g1UhTictKSPZri4zXMu4dy4W7QsVJcMZtAEPENTAiNK",
       "typ": "pubkey"
+    },
+    {
+      "name": "Private",
+      "value": "true",
+      "typ": "bool"
+    },
+    {
+      "name": "MaxPublishers",
+      "value": "2",
+      "typ": "u32"
+    },
+    {
+      "name": "MaxSubscribers",
+      "value": "10",
+      "typ": "u32"
     }
   ]
 }

@@ -303,6 +303,9 @@ pub struct User {
         )
     )]
     pub accesspass_pk: Pubkey, // 32
+    // True when this user raised the pass-wide multicast count. DeleteUser lowers the count only
+    // when this is true. A user that joins only a private group does not raise the count.
+    pub holds_pass_seat: bool, // 1
 }
 
 impl Default for User {
@@ -332,6 +335,7 @@ impl Default for User {
             bgp_rtt_ns: 0,
             feed_pks: Vec::new(),
             accesspass_pk: Pubkey::default(),
+            holds_pass_seat: false,
         }
     }
 }
@@ -391,6 +395,8 @@ impl TryFrom<&[u8]> for User {
             // over are trailing data this decoder ignores. Accounts predating the slot default too.
             feed_pks: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
             accesspass_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            // Every multicast user created before this field existed raised the pass-wide count.
+            holds_pass_seat: BorshDeserialize::deserialize(&mut data).unwrap_or(true),
         };
 
         if out.account_type != AccountType::User {
@@ -532,7 +538,7 @@ impl User {
             return;
         }
         for feed_pk in &self.feed_pks {
-            accesspass.remove_feed_user(feed_pk);
+            accesspass.release_feed_seat(feed_pk);
         }
     }
 
@@ -621,6 +627,7 @@ mod tests {
             bgp_rtt_ns: 0,
             feed_pks: vec![Pubkey::new_unique(), Pubkey::new_unique()],
             accesspass_pk: Pubkey::new_unique(),
+            holds_pass_seat: false,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -629,8 +636,7 @@ mod tests {
         val.validate().unwrap();
         val2.validate().unwrap();
 
-        assert_eq!(val.feed_pks, val2.feed_pks);
-        assert_eq!(val.accesspass_pk, val2.accesspass_pk);
+        assert_eq!(val, val2);
 
         assert_eq!(
             borsh::object_length(&val).unwrap(),
@@ -678,6 +684,7 @@ mod tests {
             bgp_rtt_ns: 0,
             feed_pks: vec![],
             accesspass_pk: Pubkey::new_unique(),
+            holds_pass_seat: false,
         };
 
         let err = val.validate();
@@ -712,6 +719,7 @@ mod tests {
             bgp_rtt_ns: 0,
             feed_pks: vec![],
             accesspass_pk: Pubkey::new_unique(),
+            holds_pass_seat: false,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -745,6 +753,7 @@ mod tests {
             bgp_rtt_ns: 0,
             feed_pks: vec![],
             accesspass_pk: Pubkey::new_unique(),
+            holds_pass_seat: false,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -778,6 +787,7 @@ mod tests {
             bgp_rtt_ns: 0,
             feed_pks: vec![],
             accesspass_pk: Pubkey::new_unique(),
+            holds_pass_seat: false,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -811,6 +821,7 @@ mod tests {
             bgp_rtt_ns: 0,
             feed_pks: vec![],
             accesspass_pk: Pubkey::new_unique(),
+            holds_pass_seat: false,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -844,6 +855,7 @@ mod tests {
             bgp_rtt_ns: 0,
             feed_pks: vec![],
             accesspass_pk: Pubkey::new_unique(),
+            holds_pass_seat: false,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -878,6 +890,7 @@ mod tests {
             bgp_rtt_ns: 0,
             feed_pks: vec![],
             accesspass_pk: Pubkey::new_unique(),
+            holds_pass_seat: false,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -971,6 +984,7 @@ mod tests {
             bgp_rtt_ns: 0,
             feed_pks: vec![],
             accesspass_pk: Pubkey::new_unique(),
+            holds_pass_seat: false,
         }
     }
 
@@ -1116,6 +1130,7 @@ mod tests {
             bgp_rtt_ns: 0,
             feed_pks: vec![],
             accesspass_pk: Pubkey::new_unique(),
+            holds_pass_seat: false,
         };
 
         assert!(val.validate().is_ok());
@@ -1176,12 +1191,13 @@ mod tests {
             bgp_rtt_ns: 0,
             feed_pks: vec![],
             accesspass_pk: Pubkey::new_unique(),
+            holds_pass_seat: false,
         };
         let data = borsh::to_vec(&user).unwrap();
         // Remove tunnel_flags (1) + bgp_status (1) + last_bgp_up_at (8) + last_bgp_reported_at (8)
-        // + bgp_rtt_ns (8) + feed_pks length prefix (4) + accesspass_pk (32) to simulate an old
-        // account that predates all of them.
-        let old_data = &data[..data.len() - 62];
+        // + bgp_rtt_ns (8) + feed_pks length prefix (4) + accesspass_pk (32) + holds_pass_seat (1)
+        // to simulate an old account that predates all of them.
+        let old_data = &data[..data.len() - 63];
         let deserialized = User::try_from(old_data).unwrap();
         assert_eq!(
             deserialized.tunnel_flags, 0,
@@ -1238,6 +1254,7 @@ mod tests {
             bgp_rtt_ns: 0,
             feed_pks: vec![],
             accesspass_pk: Pubkey::new_unique(),
+            holds_pass_seat: false,
         };
         let data = borsh::to_vec(&user).unwrap();
         let deserialized = User::try_from(&data[..]).unwrap();
@@ -1352,6 +1369,7 @@ mod tests {
             bgp_rtt_ns: 0,
             feed_pks: vec![],
             accesspass_pk: Pubkey::new_unique(),
+            holds_pass_seat: false,
         }
     }
 
@@ -1462,5 +1480,44 @@ mod tests {
         accesspass.accesspass_type = AccessPassType::SolanaValidator(validator);
         user.try_activate(&mut accesspass).unwrap();
         assert_eq!(user.validator_pubkey, validator);
+    }
+
+    #[test]
+    fn test_holds_pass_seat_defaults_to_true_for_old_accounts() {
+        let user = User {
+            user_type: UserType::Multicast,
+            accesspass_pk: Pubkey::new_unique(),
+            holds_pass_seat: false,
+            ..User::default()
+        };
+        let data = borsh::to_vec(&user).unwrap();
+        let old_data = &data[..data.len() - 1];
+
+        let decoded = User::try_from(old_data).unwrap();
+        assert_eq!(
+            decoded,
+            User {
+                holds_pass_seat: true,
+                ..user
+            }
+        );
+    }
+
+    #[test]
+    fn test_holds_pass_seat_defaults_to_true_for_the_feed_pk_layout() {
+        let user = User {
+            user_type: UserType::Multicast,
+            ..User::default()
+        };
+        let data = borsh::to_vec(&user).unwrap();
+        // The layout from before `feed_pks` and `accesspass_pk` ends with a 32-byte `feed_pk` that
+        // holds zeros. Cut the new tail (4 + 32 + 1 bytes) and append that slot.
+        let mut old_data = data[..data.len() - 37].to_vec();
+        old_data.extend([0u8; 32]);
+
+        let decoded = User::try_from(&old_data[..]).unwrap();
+        assert!(decoded.feed_pks.is_empty());
+        assert_eq!(decoded.accesspass_pk, Pubkey::default());
+        assert!(decoded.holds_pass_seat);
     }
 }

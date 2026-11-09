@@ -79,6 +79,7 @@ pub fn create_user_core(
     tunnel_endpoint: Ipv4Addr,
     is_publisher: bool,
     owner_override: Option<Pubkey>,
+    take_pass_seat: bool,
     ip_proof: Option<&IpOwnershipProof>,
 ) -> Result<Option<CreateUserCoreResult>, ProgramError> {
     // Check if the payer is a signer
@@ -391,7 +392,9 @@ pub fn create_user_core(
 
     // Enforce per-category seat caps (EdgeSeat only; no-op otherwise). On error the processor
     // returns before any account is written, so no state is persisted.
-    accesspass.try_add_user(user_type)?;
+    if take_pass_seat {
+        accesspass.try_take_pass_seat(user_type)?;
+    }
 
     // All validations passed - now update counters
     accesspass.connection_count += 1;
@@ -458,6 +461,7 @@ pub fn create_user_core(
         // Feeds are joined post-creation via SubscribeFeed, or by CreateSubscribeUser's gate.
         feed_pks: vec![],
         accesspass_pk: *core.accesspass_account.key,
+        holds_pass_seat: take_pass_seat,
     };
 
     Ok(Some(CreateUserCoreResult {

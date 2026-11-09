@@ -35,6 +35,15 @@ pub struct UpdateMulticastGroupCliCommand {
     /// Updated owner pubkey for the multicast group
     #[arg(long, value_parser = validate_pubkey)]
     pub owner: Option<String>,
+    /// Mark the multicast group as private (true or false)
+    #[arg(long)]
+    pub private: Option<bool>,
+    /// Maximum number of publishers on the multicast group (0 means no cap)
+    #[arg(long)]
+    pub max_publishers: Option<u32>,
+    /// Maximum number of subscribers on the multicast group (0 means no cap)
+    #[arg(long)]
+    pub max_subscribers: Option<u32>,
     /// Wait for the multicast group to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -68,6 +77,9 @@ impl UpdateMulticastGroupCliCommand {
                     s.parse().unwrap()
                 }
             }),
+            private: self.private,
+            max_publishers: self.max_publishers,
+            max_subscribers: self.max_subscribers,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -124,6 +136,9 @@ mod tests {
             publisher_count: 5,
             subscriber_count: 10,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         }
     }
 
@@ -288,6 +303,9 @@ mod tests {
                 publisher_count: Some(5),
                 subscriber_count: Some(10),
                 owner: None,
+                private: None,
+                max_publishers: None,
+                max_subscribers: None,
             }))
             .returning(move |_| Ok(signature));
 
@@ -302,6 +320,9 @@ mod tests {
                 publisher_count: Some(5),
                 subscriber_count: Some(10),
                 owner: None,
+                private: None,
+                max_publishers: None,
+                max_subscribers: None,
                 wait: false,
             }
             .execute(&ctx, &client, &mut output),
@@ -339,6 +360,9 @@ mod tests {
                 publisher_count: None,
                 subscriber_count: None,
                 owner: Some(explicit_owner),
+                private: None,
+                max_publishers: None,
+                max_subscribers: None,
             }))
             .returning(move |_| Ok(signature));
 
@@ -353,6 +377,9 @@ mod tests {
                 publisher_count: None,
                 subscriber_count: None,
                 owner: Some(explicit_owner.to_string()),
+                private: None,
+                max_publishers: None,
+                max_subscribers: None,
                 wait: false,
             }
             .execute(&ctx, &client, &mut output),
@@ -391,6 +418,9 @@ mod tests {
                 publisher_count: None,
                 subscriber_count: None,
                 owner: Some(payer),
+                private: None,
+                max_publishers: None,
+                max_subscribers: None,
             }))
             .returning(move |_| Ok(signature));
 
@@ -405,6 +435,9 @@ mod tests {
                 publisher_count: None,
                 subscriber_count: None,
                 owner: Some("me".to_string()),
+                private: None,
+                max_publishers: None,
+                max_subscribers: None,
                 wait: false,
             }
             .execute(&ctx, &client, &mut output),

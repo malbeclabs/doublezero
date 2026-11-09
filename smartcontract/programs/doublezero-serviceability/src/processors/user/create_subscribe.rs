@@ -25,11 +25,11 @@ use super::{
 };
 use crate::{
     processors::{
-        feed::{check_feed_metro_coverage, enforce_feed_metro_gate},
+        feed::{check_feed_covers_group, take_feed_seat},
         multicastgroup::subscribe::{check_mgroup_allowlists, update_user_multicastgroup_roles},
         validation::validate_program_account,
     },
-    state::accesspass::AccessPassType,
+    state::{accesspass::AccessPassType, multicastgroup::MulticastGroup},
 };
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone)]
@@ -164,6 +164,8 @@ pub fn process_create_subscribe_user(
 
     msg!("process_create_subscribe_user({:?})", value);
 
+    let mgroup_is_private = MulticastGroup::try_from(mgroup_account)?.private;
+
     let core_accounts = CreateUserCoreAccounts {
         user_account,
         device_account,
@@ -191,6 +193,8 @@ pub fn process_create_subscribe_user(
         value.tunnel_endpoint,
         value.publisher,
         owner_override,
+        // A private group user does not count against the pass-wide multicast cap.
+        !mgroup_is_private,
         value.ip_proof.as_ref(),
     )?
     else {
@@ -199,16 +203,20 @@ pub fn process_create_subscribe_user(
         return Err(ProgramError::AccountAlreadyInitialized);
     };
 
-    // EdgeSeat multicast metro gate: the group must be joinable via a feed on the pass serving the
-    // device's metro; that feed's seat is ticked and recorded on the User so delete releases it.
-    // Feed-gated joins skip the subscriber allowlist; the publisher allowlist always applies, since
-    // a feed sells receive only.
-    let feed_gated = matches!(
-        result.accesspass.accesspass_type,
-        AccessPassType::EdgeSeat(_)
-    ) && value.user_type == UserType::Multicast;
+    // On an edge_seat pass, a multicast user joins a group through a feed on the pass.
+    // `take_feed_seat` checks that the feed serves the metro of the device and lists the
+    // group. It takes a seat on that feed, and the user records the feed so DeleteUser can release it.
+    // A feed seat lets the user subscribe without the subscriber allowlist. It does not let the
+    // user publish, so a publisher must always be on the publisher allowlist. A private group has
+    // no feed, so its subscribers must also be on the subscriber allowlist.
+    let feed_gated = !mgroup_is_private
+        && matches!(
+            result.accesspass.accesspass_type,
+            AccessPassType::EdgeSeat(_)
+        )
+        && value.user_type == UserType::Multicast;
     if feed_gated {
-        let feed_key = enforce_feed_metro_gate(
+        let feed_key = take_feed_seat(
             program_id,
             &mut result.accesspass,
             &result.device.exchange_pk,
@@ -233,13 +241,9 @@ pub fn process_create_subscribe_user(
         value.subscriber,
     )?;
 
-    // Subscribe the extra groups, each authorized exactly like the primary: the
-    // publisher allowlist always applies, and the subscriber role comes from the
-    // allowlist unless the feed metro gate covers it — extra groups on EdgeSeat
-    // passes get a coverage-only check against the same feed (a feed carries a
-    // group set; the seat is per-user-per-feed and was ticked once by the gate
-    // above). Any failure aborts the whole instruction: no user account,
-    // counters, or seat tick survive a partial batch.
+    // Each extra group follows the same rules as the main group. The user already holds its
+    // feed seat, so `check_feed_covers_group` only checks that the same feed lists the group.
+    // Any failure aborts the whole instruction.
     for extra_group_account in extra_group_accounts {
         validate_program_account!(
             *extra_group_account,
@@ -247,8 +251,10 @@ pub fn process_create_subscribe_user(
             writable = true,
             "MulticastGroup"
         );
-        if feed_gated {
-            check_feed_metro_coverage(
+        let extra_group_is_private = MulticastGroup::try_from(*extra_group_account)?.private;
+        let extra_feed_gated = feed_gated && !extra_group_is_private;
+        if extra_feed_gated {
+            check_feed_covers_group(
                 program_id,
                 &result.accesspass,
                 &result.device.exchange_pk,
@@ -260,7 +266,7 @@ pub fn process_create_subscribe_user(
             &result.accesspass,
             extra_group_account.key,
             value.publisher,
-            value.subscriber && !feed_gated,
+            value.subscriber && !extra_feed_gated,
         )?;
         let extra_result = update_user_multicastgroup_roles(
             extra_group_account,

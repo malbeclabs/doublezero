@@ -358,8 +358,8 @@ impl AccessPass {
     ///
     /// The multicast cap counts users on the pass, bare ones included (reachable since #4110);
     /// how many users each purchased feed admits is capped separately by its [`FeedSeat`]
-    /// (see [`Self::try_add_feed_user`]).
-    pub fn try_add_user(&mut self, user_type: UserType) -> Result<(), DoubleZeroError> {
+    /// (see [`Self::try_take_feed_seat`]).
+    pub fn try_take_pass_seat(&mut self, user_type: UserType) -> Result<(), DoubleZeroError> {
         if !matches!(self.accesspass_type, AccessPassType::EdgeSeat(_)) {
             return Ok(());
         }
@@ -382,8 +382,8 @@ impl AccessPass {
     }
 
     /// Release a seat held by a user. EdgeSeat-only: no-op for all other access-pass types. Does NOT
-    /// touch `connection_count`. Feed seats are released separately (see [`Self::remove_feed_user`]).
-    pub fn remove_user(&mut self, user_type: UserType) {
+    /// touch `connection_count`. Feed seats are released separately (see [`Self::release_feed_seat`]).
+    pub fn release_pass_seat(&mut self, user_type: UserType) {
         if !matches!(self.accesspass_type, AccessPassType::EdgeSeat(_)) {
             return;
         }
@@ -412,7 +412,7 @@ impl AccessPass {
     /// Tick the matching feed seat's `current_users` against its `max_users`. Returns
     /// `FeedNotOnAccessPass` if the pass carries no seat for `feed_key`, or `FeedSeatFull` if the
     /// feed cap is full.
-    pub fn try_add_feed_user(&mut self, feed_key: &Pubkey) -> Result<(), DoubleZeroError> {
+    pub fn try_take_feed_seat(&mut self, feed_key: &Pubkey) -> Result<(), DoubleZeroError> {
         match self.feed_seat_mut(feed_key) {
             Some(seat) => {
                 if seat.current_users >= seat.max_users {
@@ -426,7 +426,7 @@ impl AccessPass {
     }
 
     /// Release a seat held against `feed_key`. No-op if the feed is not on the pass.
-    pub fn remove_feed_user(&mut self, feed_key: &Pubkey) {
+    pub fn release_feed_seat(&mut self, feed_key: &Pubkey) {
         if let Some(seat) = self.feed_seat_mut(feed_key) {
             seat.current_users = seat.current_users.saturating_sub(1);
         }
@@ -697,25 +697,25 @@ mod tests {
         let mut ap = test_accesspass(AccessPassType::EdgeSeat(vec![]));
 
         // Unicast: per-category cap is enforced (cap is 2).
-        ap.try_add_user(UserType::IBRL).unwrap();
-        ap.try_add_user(UserType::EdgeFiltering).unwrap();
+        ap.try_take_pass_seat(UserType::IBRL).unwrap();
+        ap.try_take_pass_seat(UserType::EdgeFiltering).unwrap();
         assert_eq!(ap.unicast_user_count, 2);
         assert_eq!(
-            ap.try_add_user(UserType::IBRL).unwrap_err(),
+            ap.try_take_pass_seat(UserType::IBRL).unwrap_err(),
             DoubleZeroError::AccessPassMaxUnicastUsersExceeded
         );
 
         // Multicast: the pass-level cap counts users, bare ones included (cap is 1).
-        ap.try_add_user(UserType::Multicast).unwrap();
+        ap.try_take_pass_seat(UserType::Multicast).unwrap();
         assert_eq!(ap.multicast_user_count, 1);
         assert_eq!(
-            ap.try_add_user(UserType::Multicast).unwrap_err(),
+            ap.try_take_pass_seat(UserType::Multicast).unwrap_err(),
             DoubleZeroError::AccessPassMaxMulticastUsersExceeded
         );
 
-        ap.remove_user(UserType::IBRL);
+        ap.release_pass_seat(UserType::IBRL);
         assert_eq!(ap.unicast_user_count, 1);
-        ap.remove_user(UserType::Multicast);
+        ap.release_pass_seat(UserType::Multicast);
         assert_eq!(ap.multicast_user_count, 0);
 
         // connection_count is never touched by the seat helpers.
@@ -748,29 +748,29 @@ mod tests {
         ]));
 
         // feed_a admits 2 then rejects.
-        ap.try_add_feed_user(&feed_a).unwrap();
-        ap.try_add_feed_user(&feed_a).unwrap();
+        ap.try_take_feed_seat(&feed_a).unwrap();
+        ap.try_take_feed_seat(&feed_a).unwrap();
         assert_eq!(ap.feed_seats()[0].current_users, 2);
         assert_eq!(
-            ap.try_add_feed_user(&feed_a).unwrap_err(),
+            ap.try_take_feed_seat(&feed_a).unwrap_err(),
             DoubleZeroError::FeedSeatFull
         );
 
         // feed_b is independent.
-        ap.try_add_feed_user(&feed_b).unwrap();
+        ap.try_take_feed_seat(&feed_b).unwrap();
         assert_eq!(ap.feed_seats()[1].current_users, 1);
 
         // Unknown feed → FeedNotOnAccessPass.
         assert_eq!(
-            ap.try_add_feed_user(&Pubkey::new_unique()).unwrap_err(),
+            ap.try_take_feed_seat(&Pubkey::new_unique()).unwrap_err(),
             DoubleZeroError::FeedNotOnAccessPass
         );
 
         // Release frees a seat; saturating.
-        ap.remove_feed_user(&feed_a);
+        ap.release_feed_seat(&feed_a);
         assert_eq!(ap.feed_seats()[0].current_users, 1);
-        ap.remove_feed_user(&feed_b);
-        ap.remove_feed_user(&feed_b);
+        ap.release_feed_seat(&feed_b);
+        ap.release_feed_seat(&feed_b);
         assert_eq!(ap.feed_seats()[1].current_users, 0);
     }
 
@@ -784,11 +784,11 @@ mod tests {
             ap.max_unicast_users = 0;
             ap.max_multicast_users = 0;
             // Even with zero caps, non-EdgeSeat passes admit any user and never increment counters.
-            ap.try_add_user(UserType::IBRL).unwrap();
-            ap.try_add_user(UserType::Multicast).unwrap();
+            ap.try_take_pass_seat(UserType::IBRL).unwrap();
+            ap.try_take_pass_seat(UserType::Multicast).unwrap();
             assert_eq!(ap.unicast_user_count, 0);
             assert_eq!(ap.multicast_user_count, 0);
-            ap.remove_user(UserType::IBRL);
+            ap.release_pass_seat(UserType::IBRL);
             assert_eq!(ap.unicast_user_count, 0);
         }
     }

@@ -145,7 +145,7 @@ pub fn process_unsubscribe_feed(
 
     for (feed_key, _) in &targets {
         if ctx.user.feed_pks.contains(feed_key) {
-            ctx.accesspass.remove_feed_user(feed_key);
+            ctx.accesspass.release_feed_seat(feed_key);
             ctx.user.feed_pks.retain(|k| k != feed_key);
         }
     }

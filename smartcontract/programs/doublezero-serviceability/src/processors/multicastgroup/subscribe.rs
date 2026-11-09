@@ -114,6 +114,17 @@ pub fn update_user_multicastgroup_roles(
     match publisher {
         true => {
             if !user.publishers.contains(mgroup_account.key) {
+                if mgroup.private
+                    && mgroup.max_publishers > 0
+                    && mgroup.publisher_count >= mgroup.max_publishers
+                {
+                    msg!(
+                        "Multicast group publishers at cap: count={}, max={}",
+                        mgroup.publisher_count,
+                        mgroup.max_publishers
+                    );
+                    return Err(DoubleZeroError::MulticastGroupMaxPublishersExceeded.into());
+                }
                 let was_empty = user.publishers.is_empty();
                 mgroup.publisher_count = mgroup.publisher_count.saturating_add(1);
                 user.publishers.push(*mgroup_account.key);
@@ -137,6 +148,17 @@ pub fn update_user_multicastgroup_roles(
     match subscriber {
         true => {
             if !user.subscribers.contains(mgroup_account.key) {
+                if mgroup.private
+                    && mgroup.max_subscribers > 0
+                    && mgroup.subscriber_count >= mgroup.max_subscribers
+                {
+                    msg!(
+                        "Multicast group subscribers at cap: count={}, max={}",
+                        mgroup.subscriber_count,
+                        mgroup.max_subscribers
+                    );
+                    return Err(DoubleZeroError::MulticastGroupMaxSubscribersExceeded.into());
+                }
                 mgroup.subscriber_count = mgroup.subscriber_count.saturating_add(1);
                 user.subscribers.push(*mgroup_account.key);
             }

@@ -126,7 +126,7 @@ additive and backward-compatible and are **not** gated.
 4. `connect` resolves the node's public IP, looks up the AccessPass with the UNSPECIFIED-first lookup
    (section B) and finds the dynamic EdgeSeat pass at `accesspass(UNSPECIFIED, C)`, then submits a
    `create_user` transaction paid by the funded service keypair `C`.
-5. Onchain, `create_user_core` invokes `accesspass.try_add_user(Multicast)`, which enforces
+5. Onchain, `create_user_core` invokes `accesspass.try_take_pass_seat(Multicast)`, which enforces
    `multicast_user_count < max_multicast_users` because the pass is `EdgeSeat`, and writes the `User`
    (`owner = C`).
 6. The Feed Oracle's reconcile loop (section E.2) fetches all `User` accounts on the DoubleZero ledger,
@@ -183,7 +183,7 @@ Add two methods:
 
 ```rust
 // EdgeSeat passes count and enforce per category; all other types are a no-op and succeed.
-pub fn try_add_user(&mut self, user_type: UserType) -> Result<(), DoubleZeroError> {
+pub fn try_take_pass_seat(&mut self, user_type: UserType) -> Result<(), DoubleZeroError> {
     if let AccessPassType::EdgeSeat(_) = self.accesspass_type {
         if user_type == UserType::Multicast {
             if self.multicast_user_count >= self.max_multicast_users {
@@ -200,7 +200,7 @@ pub fn try_add_user(&mut self, user_type: UserType) -> Result<(), DoubleZeroErro
     Ok(())
 }
 
-pub fn remove_user(&mut self, user_type: UserType) {
+pub fn release_pass_seat(&mut self, user_type: UserType) {
     if let AccessPassType::EdgeSeat(_) = self.accesspass_type {
         if user_type == UserType::Multicast {
             self.multicast_user_count = self.multicast_user_count.saturating_sub(1);
@@ -219,7 +219,7 @@ distinct from the device-scoped `MaxUnicastUsersExceeded` so failures are attrib
 **Hook points** (already present in the code):
 
 - `processors/user/create_core.rs` increments `connection_count` and sets status when all validations
-  pass (the line `accesspass.connection_count += 1`). Call `accesspass.try_add_user(user_type)?` next to
+  pass (the line `accesspass.connection_count += 1`). Call `accesspass.try_take_pass_seat(user_type)?` next to
   it, so the per-category cap is checked before the user is written. The same function already derives
   both `accesspass(client_ip, owner)` and `accesspass(UNSPECIFIED, owner)` and accepts either, and
   validates `accesspass.user_payer == effective_owner`. This RFC also removes the block here that locked
@@ -228,7 +228,7 @@ distinct from the device-scoped `MaxUnicastUsersExceeded` so failures are attrib
   is not set. Seat passes set `allow_multiple_ip`, so they admit any source IP; non-seat passes keep their
   exact-IP binding.
 - `processors/user/delete.rs` decrements `connection_count` with `saturating_sub(1)`. Call
-  `accesspass.remove_user(user_type)` alongside it.
+  `accesspass.release_pass_seat(user_type)` alongside it.
 
 **Instruction args.** `SetAccessPassArgs` in `processors/accesspass/set.rs` already derives
 `BorshDeserializeIncremental`; add `max_unicast_users` and `max_multicast_users` with
@@ -457,7 +457,7 @@ in (3) landed together in doublezero-shreds PR 465.
   disconnects, and moves passively, by reconciling ledger `User` accounts. This is the main reason the
   design prefers passive reconciliation over the earlier oracle `/user/create` endpoint, which carried an
   observed-source-IP replay window (see Alternatives Considered).
-- **Cap enforcement is onchain.** `try_add_user` runs inside `create_user_core`, so the per-category
+- **Cap enforcement is onchain.** `try_take_pass_seat` runs inside `create_user_core`, so the per-category
   limit holds regardless of how the user-create transaction is submitted.
 - **USDC custody.** The ticket holds USDC in a program token PDA whose authority is the ticket PDA; only
   program instructions move it, and the on-account `usdc_balance` ledger is debited in the same

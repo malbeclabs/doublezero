@@ -413,6 +413,9 @@ pub(crate) mod fixtures {
             publisher_count: 0,
             subscriber_count: 0,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         }
     }
 
@@ -485,6 +488,7 @@ pub(crate) mod fixtures {
             bgp_rtt_ns: 0,
             feed_pks: vec![],
             accesspass_pk: Pubkey::new_unique(),
+            holds_pass_seat: false,
         }
     }
 

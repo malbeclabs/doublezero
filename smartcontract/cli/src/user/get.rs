@@ -286,6 +286,9 @@ mod tests {
             publisher_count: 0,
             subscriber_count: 1,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         };
 
         let user = User {
@@ -458,6 +461,7 @@ mod tests {
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
             accesspass_pk: Pubkey::new_unique(),
+            holds_pass_seat: false,
         };
 
         let mgroup = MulticastGroup {
@@ -473,6 +477,9 @@ mod tests {
             publisher_count: 0,
             subscriber_count: 1,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         };
 
         let feed = Feed {

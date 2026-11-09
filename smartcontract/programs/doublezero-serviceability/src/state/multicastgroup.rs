@@ -84,6 +84,9 @@ pub struct MulticastGroup {
     /// admin, so the allowlist processors give it less than they give the owner of an admin-created
     /// group. It also lets cleanup find a bond's groups once the bond is gone.
     pub bond_ref: Pubkey, // 32
+    pub private: bool,             // 1
+    pub max_publishers: u32,       // 4, 0 means no cap
+    pub max_subscribers: u32,      // 4, 0 means no cap
 }
 
 impl fmt::Display for MulticastGroup {
@@ -102,7 +105,10 @@ impl fmt::Display for MulticastGroup {
                 code: \"{}\", \
                 publisher_count: {}, \
                 subscriber_count: {}, \
-                bond_ref: {} \
+                bond_ref: {}, \
+                private: {}, \
+                max_publishers: {}, \
+                max_subscribers: {} \
             }}",
             self.account_type,
             self.owner,
@@ -115,7 +121,10 @@ impl fmt::Display for MulticastGroup {
             self.code,
             self.publisher_count,
             self.subscriber_count,
-            self.bond_ref
+            self.bond_ref,
+            self.private,
+            self.max_publishers,
+            self.max_subscribers
         )
     }
 }
@@ -135,6 +144,9 @@ impl Default for MulticastGroup {
             publisher_count: 0,
             subscriber_count: 0,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         }
     }
 }
@@ -156,6 +168,9 @@ impl TryFrom<&[u8]> for MulticastGroup {
             publisher_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             subscriber_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             bond_ref: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            private: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            max_publishers: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            max_subscribers: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::MulticastGroup {
@@ -257,6 +272,9 @@ mod tests {
             publisher_count: 0,
             subscriber_count: 0,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -273,13 +291,40 @@ mod tests {
             ..MulticastGroup::default()
         };
         let data = borsh::to_vec(&val).unwrap();
-        let old = &data[..data.len() - 32];
+        let old = &data[..data.len() - 32 - 9];
 
         let decoded = MulticastGroup::try_from(old).unwrap();
         assert_eq!(
             decoded,
             MulticastGroup {
                 bond_ref: Pubkey::default(),
+                ..val
+            }
+        );
+    }
+
+    /// Every group created before the private flag and the caps existed is 9 bytes short. It must
+    /// still decode as a group that is not private and has no caps.
+    #[test]
+    fn test_state_multicastgroup_decodes_the_layout_before_private_caps() {
+        let val = MulticastGroup {
+            code: "old".to_string(),
+            bond_ref: Pubkey::new_unique(),
+            private: true,
+            max_publishers: 2,
+            max_subscribers: 10,
+            ..MulticastGroup::default()
+        };
+        let data = borsh::to_vec(&val).unwrap();
+        let old = &data[..data.len() - 9];
+
+        let decoded = MulticastGroup::try_from(old).unwrap();
+        assert_eq!(
+            decoded,
+            MulticastGroup {
+                private: false,
+                max_publishers: 0,
+                max_subscribers: 0,
                 ..val
             }
         );
@@ -300,6 +345,9 @@ mod tests {
             publisher_count: 5,
             subscriber_count: 10,
             bond_ref: Pubkey::new_unique(),
+            private: true,
+            max_publishers: 2,
+            max_subscribers: 10,
         };
 
         let data = borsh::to_vec(&val).unwrap();

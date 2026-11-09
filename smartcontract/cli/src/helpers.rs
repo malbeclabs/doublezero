@@ -100,6 +100,23 @@ pub fn resolve_multicastgroup_pk<C: CliCommand>(client: &C, input: &str) -> eyre
         .wrap_err_with(|| format!("Multicast group not found: {input}"))
 }
 
+/// Resolve a `--group` argument of a feed. A feed cannot list a private group, because a seat on
+/// the feed would then admit a host that is not on the group's allowlist.
+pub fn resolve_feed_group_pk<C: CliCommand>(client: &C, input: &str) -> eyre::Result<Pubkey> {
+    let (pubkey, group) = client
+        .get_multicastgroup(GetMulticastGroupCommand {
+            pubkey_or_code: input.to_string(),
+        })
+        .wrap_err_with(|| format!("Multicast group not found: {input}"))?;
+    if group.private {
+        eyre::bail!(
+            "multicast group {} is private, so a feed cannot list it",
+            group.code
+        );
+    }
+    Ok(pubkey)
+}
+
 /// Resolve a `--pubkey`/`--code` argument to the contributor's on-chain pubkey.
 pub fn resolve_contributor_pk<C: CliCommand>(
     client: &C,

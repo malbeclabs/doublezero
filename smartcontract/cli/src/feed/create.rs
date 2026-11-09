@@ -1,6 +1,6 @@
 use crate::{
     doublezerocommand::CliCommand,
-    helpers::{resolve_exchange_pk, resolve_multicastgroup_pk},
+    helpers::{resolve_exchange_pk, resolve_feed_group_pk},
     validators::{validate_code, validate_parse_bandwidth, validate_pubkey_or_code},
 };
 use clap::Args;
@@ -75,7 +75,7 @@ impl CreateFeedCliCommand {
         let groups = self
             .groups
             .iter()
-            .map(|g| resolve_multicastgroup_pk(client, g))
+            .map(|g| resolve_feed_group_pk(client, g))
             .collect::<eyre::Result<Vec<_>>>()?;
 
         // clap requires --spec-id and --committed-rate with --bond-ref; this only turns that into
@@ -296,6 +296,51 @@ mod tests {
         assert_eq!(
             String::from_utf8(output).unwrap(),
             format!("Signature: {signature}\n")
+        );
+    }
+
+    #[test]
+    fn test_cli_feed_create_refuses_a_private_group() {
+        let mut client = create_test_client();
+        client.expect_check_requirements().returning(|_| Ok(()));
+
+        let exchange_pk = Pubkey::from_str_const("GYhQDKuESrasNZGyhMJhGYFtbzNijYhcrN9poSqCQVah");
+        let exchange = test_exchange("xchi");
+        client
+            .expect_get_exchange()
+            .returning(move |_| Ok((exchange_pk, exchange.clone())));
+        let group_pk = Pubkey::new_unique();
+        client.expect_get_multicastgroup().returning(move |_| {
+            Ok((
+                group_pk,
+                doublezero_sdk::MulticastGroup {
+                    code: "private-e2e".to_string(),
+                    private: true,
+                    ..Default::default()
+                },
+            ))
+        });
+        client.expect_create_feed().never();
+
+        let err = block_on(
+            CreateFeedCliCommand {
+                code: "solana-shreds-full".to_string(),
+                name: "solana-shreds-full-ewr".to_string(),
+                exchange: exchange_pk.to_string(),
+                groups: vec!["private-e2e".to_string()],
+                chain: FeedChain::Unspecified,
+                bond_ref: None,
+                spec_id: None,
+                sla_hash: None,
+                committed_rate: None,
+                builder: None,
+            }
+            .execute(&cli_context_default_for_tests(), &client, &mut Vec::new()),
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "multicast group private-e2e is private, so a feed cannot list it"
         );
     }
 

@@ -7,8 +7,9 @@ use crate::{
 };
 use clap::Args;
 use doublezero_cli_core::CliContext;
-use doublezero_sdk::commands::multicastgroup::{
-    get::GetMulticastGroupCommand, update::UpdateMulticastGroupCommand,
+use doublezero_sdk::commands::{
+    feed::list::ListFeedCommand,
+    multicastgroup::{get::GetMulticastGroupCommand, update::UpdateMulticastGroupCommand},
 };
 use std::{
     io::{BufRead, Write},
@@ -69,6 +70,22 @@ impl UpdateMulticastGroupCliCommand {
 
         // The users already on the group keep the seats they hold on the pass-wide multicast cap of
         // their access pass. Only a user that joins later follows the new private flag.
+        if self.private == Some(true) && !mgroup.private {
+            let mut feeds: Vec<String> = client
+                .list_feed(ListFeedCommand {})?
+                .into_iter()
+                .filter(|(_, feed)| feed.groups.contains(&pubkey))
+                .map(|(feed_pk, feed)| format!("{} ({feed_pk})", feed.name))
+                .collect();
+            feeds.sort();
+            if !feeds.is_empty() {
+                eyre::bail!(
+                    "multicast group {} is listed by feed(s) {}. Remove it from those feeds before you mark it private",
+                    mgroup.code,
+                    feeds.join(", ")
+                );
+            }
+        }
         if let Some(private) = self.private {
             let members = mgroup.publisher_count + mgroup.subscriber_count;
             if private != mgroup.private && members > 0 {
@@ -480,6 +497,9 @@ mod tests {
         client
             .expect_get_multicastgroup()
             .returning(move |_| Ok((pda_pubkey, multicastgroup.clone())));
+        client
+            .expect_list_feed()
+            .returning(|_| Ok(std::collections::HashMap::new()));
         client.expect_update_multicastgroup().never();
 
         let mut output = Vec::new();
@@ -508,6 +528,56 @@ mod tests {
         assert_eq!(
             String::from_utf8(output).unwrap(),
             "Multicast group test has 5 publisher(s) and 10 subscriber(s). Their access passes keep the multicast user counts they have now until these users disconnect.\nSet private to true? [y/N]: Aborted.\n"
+        );
+    }
+
+    #[test]
+    fn test_cli_multicastgroup_update_private_refuses_a_group_that_a_feed_lists() {
+        let mut client = create_test_client();
+        let (pda_pubkey, _) = get_multicastgroup_pda(&client.get_program_id(), 1);
+        let multicastgroup = make_multicastgroup(pda_pubkey);
+        let feed_pk = Pubkey::new_unique();
+        client.expect_check_requirements().returning(|_| Ok(()));
+        client
+            .expect_get_multicastgroup()
+            .returning(move |_| Ok((pda_pubkey, multicastgroup.clone())));
+        client.expect_list_feed().returning(move |_| {
+            Ok(std::collections::HashMap::from([(
+                feed_pk,
+                doublezero_sdk::Feed {
+                    name: "solana-shreds-full-ewr".to_string(),
+                    groups: vec![pda_pubkey],
+                    ..Default::default()
+                },
+            )]))
+        });
+        client.expect_update_multicastgroup().never();
+
+        let err = block_on(
+            UpdateMulticastGroupCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                code: None,
+                multicast_ip: None,
+                max_bandwidth: None,
+                publisher_count: None,
+                subscriber_count: None,
+                owner: None,
+                private: Some(true),
+                max_publishers: None,
+                max_subscribers: None,
+                wait: false,
+            }
+            .execute(
+                &cli_context_default_for_tests(),
+                &client,
+                &mut Vec::new(),
+                &mut "y\n".as_bytes(),
+            ),
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            format!("multicast group test is listed by feed(s) solana-shreds-full-ewr ({feed_pk}). Remove it from those feeds before you mark it private")
         );
     }
 }

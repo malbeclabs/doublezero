@@ -42,7 +42,12 @@ impl CloseAccessPassCliCommand {
                         eyre::eyre!("Account {} is not an access pass: {e}", self.pubkey)
                     })?;
                 let kind = AccessPassKind::from(&accesspass.accesspass_type);
-                writeln!(out, "Access pass {} is {kind}", self.pubkey)?;
+                writeln!(
+                    out,
+                    "Access pass {} is {}",
+                    self.pubkey,
+                    CliAccessPassType::from(kind)
+                )?;
                 kind
             }
         };
@@ -205,7 +210,7 @@ mod tests {
         assert_eq!(
             String::from_utf8(output).unwrap(),
             format!(
-                "Access pass {accesspass_pubkey} is solana_validator\nSignature: {signature}\n"
+                "Access pass {accesspass_pubkey} is solana-validator\nSignature: {signature}\n"
             )
         );
     }
@@ -236,7 +241,10 @@ mod tests {
             .execute(&cli_context_default_for_tests(), &client, &mut output),
         );
         let err = res.expect_err("a non-pass account must be refused");
-        assert!(err.to_string().contains("is not an access pass"), "{err}");
+        assert_eq!(
+            err.to_string(),
+            format!("Account {pubkey} is not an access pass: Invalid Account Type")
+        );
     }
 
     #[test]

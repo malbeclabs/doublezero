@@ -14,6 +14,7 @@ use doublezero_sdk::commands::{
     user::get::GetUserCommand,
 };
 use doublezero_serviceability::state::accountdata::AccountData;
+use eyre::WrapErr;
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::{collections::HashMap, io::Write, net::Ipv4Addr, str::FromStr};
@@ -94,10 +95,23 @@ impl GetUserCliCommand {
         // Read only the passes the user can be on, then pick among them as `user list` does.
         let mut candidates = HashMap::new();
         if user.accesspass_pk != Pubkey::default() {
-            if let Ok(AccountData::AccessPass(accesspass)) =
-                client.get_account_data(user.accesspass_pk)
-            {
-                candidates.insert(user.accesspass_pk, accesspass);
+            // `get_multiple_accounts` reports a closed pass as `None` and a failed read as `Err`,
+            // as `GetAccessPassCommand` does. A failed RPC read or decode then fails the command
+            // instead of printing `none`.
+            let account = client
+                .get_multiple_accounts(vec![user.accesspass_pk])?
+                .into_iter()
+                .next()
+                .flatten()
+                .filter(|account| account.owner == client.get_program_id());
+            if let Some(account) = account {
+                if let AccountData::AccessPass(accesspass) =
+                    AccountData::try_from(&account.data[..]).wrap_err_with(|| {
+                        format!("decoding the AccessPass at {}", user.accesspass_pk)
+                    })?
+                {
+                    candidates.insert(user.accesspass_pk, accesspass);
+                }
             }
         } else {
             for client_ip in [user.client_ip, Ipv4Addr::UNSPECIFIED] {
@@ -111,11 +125,18 @@ impl GetUserCliCommand {
         }
         let accesspasses = user_accesspasses(&client.get_program_id(), &user, &candidates);
         if accesspasses.is_empty() {
-            tracing::warn!(
-                client_ip = %user.client_ip,
-                payer = %user.owner,
-                "no access pass found for user"
-            );
+            if user.accesspass_pk != Pubkey::default() {
+                tracing::warn!(
+                    accesspass = %user.accesspass_pk,
+                    "the access pass the user records is closed"
+                );
+            } else {
+                tracing::warn!(
+                    client_ip = %user.client_ip,
+                    payer = %user.owner,
+                    "no access pass found for user"
+                );
+            }
         }
         let multicast_groups = client.list_multicastgroup(ListMulticastGroupCommand {})?;
         let tenants = client.list_tenant(ListTenantCommand {})?;
@@ -226,7 +247,6 @@ mod tests {
         pda::{get_accesspass_pda, get_user_old_pda},
         state::{
             accesspass::{AccessPass, AccessPassKind, AccessPassStatus, AccessPassType},
-            accountdata::AccountData,
             device::{DeviceDesiredStatus, DeviceHealth, DeviceStatus, DeviceType},
             tenant::{Tenant, TenantBillingConfig, TenantPaymentStatus},
         },
@@ -531,14 +551,16 @@ mod tests {
             device2_pk: Pubkey::default(),
         };
 
+        let recorded_pk = user.accesspass_pk;
         client
             .expect_get_user()
             .with(predicate::eq(GetUserCommand { pubkey: pda_pubkey }))
             .returning(move |_| Ok((pda_pubkey, user.clone())));
         // The user records a pass that has since been closed.
         client
-            .expect_get_account_data()
-            .returning(|pk| Err(eyre::eyre!("AccountNotFound: pubkey={pk}")));
+            .expect_get_multiple_accounts()
+            .with(predicate::eq(vec![recorded_pk]))
+            .returning(|_| Ok(vec![None]));
         client
             .expect_list_multicastgroup()
             .with(predicate::eq(ListMulticastGroupCommand {}))
@@ -778,10 +800,17 @@ mod tests {
             .expect_get_user()
             .with(predicate::eq(GetUserCommand { pubkey: user_pk }))
             .returning(move |_| Ok((user_pk, user.clone())));
+        let program_id = client.get_program_id();
         client
-            .expect_get_account_data()
-            .with(predicate::eq(prepaid_pk))
-            .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
+            .expect_get_multiple_accounts()
+            .with(predicate::eq(vec![prepaid_pk]))
+            .returning(move |_| {
+                Ok(vec![Some(Account {
+                    data: borsh::to_vec(&accesspass).unwrap(),
+                    owner: program_id,
+                    ..Account::default()
+                })])
+            });
         client.expect_get_accesspass().times(0);
         client
             .expect_list_multicastgroup()
@@ -805,5 +834,40 @@ mod tests {
         let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
         assert_eq!(json["accesspass"], "prepaid");
         assert_eq!(json["accesspass_pks"], prepaid_pk.to_string());
+    }
+
+    #[test]
+    fn test_cli_user_get_fails_when_the_recorded_pass_read_fails() {
+        // A failed RPC read must not print `none`, which an operator would read as a closed pass.
+        let mut client = create_test_client();
+        let user_pk = Pubkey::new_unique();
+        let user = User {
+            account_type: AccountType::User,
+            user_type: UserType::IBRL,
+            client_ip: [10, 0, 0, 1].into(),
+            owner: Pubkey::new_unique(),
+            status: UserStatus::Activated,
+            accesspass_pk: Pubkey::new_unique(),
+            ..Default::default()
+        };
+
+        client
+            .expect_get_user()
+            .with(predicate::eq(GetUserCommand { pubkey: user_pk }))
+            .returning(move |_| Ok((user_pk, user.clone())));
+        client
+            .expect_get_multiple_accounts()
+            .returning(|_| Err(eyre::eyre!("rpc timeout")));
+
+        let mut output = Vec::new();
+        let res = block_on(
+            GetUserCliCommand {
+                pubkey: user_pk.to_string(),
+                json: true,
+            }
+            .execute(&cli_context_default_for_tests(), &client, &mut output),
+        );
+        assert!(res.unwrap_err().to_string().contains("rpc timeout"));
+        assert!(output.is_empty());
     }
 }

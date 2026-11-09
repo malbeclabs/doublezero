@@ -2,8 +2,9 @@ use crate::{
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
 };
+use chrono::Utc;
 use clap::Args;
-use doublezero_cli_core::CliContext;
+use doublezero_cli_core::{validators::validate_pubkey, CliContext};
 use doublezero_sdk::{
     commands::{
         accesspass::{
@@ -35,7 +36,7 @@ use std::{
 pub struct RemoveFeedAccessPassCliCommand {
     #[arg(long)]
     pub client_ip: Option<Ipv4Addr>,
-    #[arg(long)]
+    #[arg(long, value_parser = validate_pubkey)]
     pub user_payer: String,
     #[arg(long)]
     pub feed: String,
@@ -80,8 +81,14 @@ impl RemoveFeedAccessPassCliCommand {
         let feed_pk = resolve_feed(&self.feed, seats, &feeds)?;
         let seated = seats.iter().any(|s| s.feed_key == feed_pk);
         let remaining: Vec<&FeedSeat> = seats.iter().filter(|s| s.feed_key != feed_pk).collect();
+        let now = Utc::now().timestamp();
+        for seat in &remaining {
+            check_kept_seat(accesspass_pk, seat, &feeds, now)?;
+        }
+        let provisions: Vec<FeedSeatProvision> =
+            remaining.iter().map(|seat| kept_seat(seat, now)).collect();
         let max_multicast_users = u16::try_from(
-            remaining
+            provisions
                 .iter()
                 .map(|s| u32::from(s.max_users))
                 .sum::<u32>(),
@@ -137,17 +144,7 @@ impl RemoveFeedAccessPassCliCommand {
             let signature = client.set_accesspass_feeds(SetAccessPassFeedsCommand {
                 client_ip,
                 user_payer,
-                feeds: remaining
-                    .iter()
-                    .map(|seat| FeedSeatProvision {
-                        feed_key: seat.feed_key,
-                        max_users: seat.max_users,
-                        max_future_users: seat.max_future_users,
-                        anniversary_day: seat.anniversary_day,
-                        window_end: seat.window_end,
-                        terminates_at: seat.terminates_at,
-                    })
-                    .collect(),
+                feeds: provisions,
             })?;
             writeln!(
                 out,
@@ -202,6 +199,57 @@ impl RemoveFeedAccessPassCliCommand {
         }
 
         Ok(())
+    }
+}
+
+/// Refuses a seat that the command sends back unchanged when that seat ended or names a deleted
+/// feed. `SetAccessPassFeeds` refuses the whole request in both cases, so this check names the
+/// seat before the plan.
+pub(super) fn check_kept_seat(
+    accesspass_pk: Pubkey,
+    seat: &FeedSeat,
+    feeds: &HashMap<Pubkey, Feed>,
+    now: i64,
+) -> eyre::Result<()> {
+    if !feeds.contains_key(&seat.feed_key) {
+        eyre::bail!(
+            "access pass {accesspass_pk} has a seat for feed {}, which no longer exists. Remove that seat first with `doublezero access-pass remove-feed --feed {}`",
+            seat.feed_key,
+            seat.feed_key
+        );
+    }
+    if seat.terminates_at <= now {
+        eyre::bail!(
+            "the seat for feed {} on access pass {accesspass_pk} ended at {}. Remove that seat first with `doublezero access-pass remove-feed --feed {}`",
+            seat.feed_key,
+            chrono::DateTime::from_timestamp(seat.terminates_at, 0)
+                .map_or(seat.terminates_at.to_string(), |end| end.to_rfc3339()),
+            seat.feed_key
+        );
+    }
+    Ok(())
+}
+
+/// Returns a seat to send back unchanged. When its window_end passed, the seat takes the switch
+/// the oracle makes at window_end: the cap becomes max_future_users and window_end becomes
+/// terminates_at. The multicast user cap then matches the cap the program stores.
+pub(super) fn kept_seat(seat: &FeedSeat, now: i64) -> FeedSeatProvision {
+    let past_window = seat.window_end <= now;
+    FeedSeatProvision {
+        feed_key: seat.feed_key,
+        max_users: if past_window {
+            seat.max_future_users
+        } else {
+            seat.max_users
+        },
+        max_future_users: seat.max_future_users,
+        anniversary_day: seat.anniversary_day,
+        window_end: if past_window {
+            seat.terminates_at
+        } else {
+            seat.window_end
+        },
+        terminates_at: seat.terminates_at,
     }
 }
 
@@ -498,9 +546,12 @@ mod tests {
         client
             .expect_get_accesspass()
             .returning(move |_| Ok(Some((accesspass_pk, pass.clone()))));
-        client
-            .expect_list_feed()
-            .returning(move |_| Ok(HashMap::from([(fra_pk, feed("fra", "FRA"))])));
+        client.expect_list_feed().returning(move |_| {
+            Ok(HashMap::from([
+                (fra_pk, feed("fra", "FRA")),
+                (lon_pk, feed("lon", "LON")),
+            ]))
+        });
         client.expect_list_user().times(1).returning(move |_| {
             Ok(HashMap::from([(
                 holder_pk,
@@ -527,9 +578,12 @@ mod tests {
         client
             .expect_get_accesspass()
             .returning(move |_| Ok(Some((accesspass_pk, pass.clone()))));
-        client
-            .expect_list_feed()
-            .returning(move |_| Ok(HashMap::from([(fra_pk, feed("fra", "FRA"))])));
+        client.expect_list_feed().returning(move |_| {
+            Ok(HashMap::from([
+                (fra_pk, feed("fra", "FRA")),
+                (lon_pk, feed("lon", "LON")),
+            ]))
+        });
         client.expect_list_user().returning(move |_| {
             Ok(HashMap::from([(
                 holder_pk,

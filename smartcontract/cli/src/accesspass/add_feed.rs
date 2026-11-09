@@ -1,11 +1,11 @@
 use crate::{
-    accesspass::remove_feed::{resolve_feed, tenant_for_cap_change},
+    accesspass::remove_feed::{check_kept_seat, kept_seat, resolve_feed, tenant_for_cap_change},
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
 };
 use chrono::{Datelike, NaiveDate, Utc};
 use clap::Args;
-use doublezero_cli_core::CliContext;
+use doublezero_cli_core::{validators::validate_pubkey, CliContext};
 use doublezero_sdk::commands::{
     accesspass::{
         get::GetAccessPassCommand,
@@ -14,7 +14,8 @@ use doublezero_sdk::commands::{
     },
     feed::list::ListFeedCommand,
 };
-use doublezero_serviceability::state::accesspass::AccessPassType;
+use doublezero_serviceability::state::{accesspass::AccessPassType, feed::FeedStatus};
+use eyre::WrapErr;
 use solana_sdk::pubkey::Pubkey;
 use std::{
     io::{BufRead, Write},
@@ -35,13 +36,13 @@ pub struct AddFeedAccessPassCliCommand {
     #[arg(long)]
     pub client_ip: Option<Ipv4Addr>,
     /// User payer of the access pass, or "me"
-    #[arg(long)]
+    #[arg(long, value_parser = validate_pubkey)]
     pub user_payer: String,
     /// Feed name or pubkey
     #[arg(long)]
     pub feed: String,
     /// Number of users the feed admits on this access pass
-    #[arg(long)]
+    #[arg(long, value_parser = clap::value_parser!(u8).range(1..))]
     pub max_users: u8,
     /// Day the seat ends, as YYYY-MM-DD in UTC. The seat ends at the start of that day
     #[arg(long)]
@@ -54,23 +55,22 @@ pub struct AddFeedAccessPassCliCommand {
 impl AddFeedAccessPassCliCommand {
     pub async fn execute<C: CliCommand, W: Write, R: BufRead>(
         self,
-        _ctx: &CliContext,
+        ctx: &CliContext,
         client: &C,
         out: &mut W,
         input: &mut R,
     ) -> eyre::Result<()> {
+        tracing::debug!(env = %ctx.env, user_payer = %self.user_payer, feed = %self.feed, "access-pass add-feed");
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        if self.max_users == 0 {
-            eyre::bail!("--max-users must be above 0");
-        }
+        let now = Utc::now().timestamp();
         let terminates_at = self
             .terminates_at
             .and_hms_opt(0, 0, 0)
             .expect("midnight is a valid time")
             .and_utc()
             .timestamp();
-        if terminates_at <= Utc::now().timestamp() {
+        if terminates_at <= now {
             eyre::bail!(
                 "--terminates-at {} is not in the future",
                 self.terminates_at
@@ -101,6 +101,27 @@ impl AddFeedAccessPassCliCommand {
 
         let feeds = client.list_feed(ListFeedCommand {})?;
         let feed_pk = resolve_feed(&self.feed, seats, &feeds)?;
+        let feed = feeds
+            .get(&feed_pk)
+            .ok_or_else(|| eyre::eyre!("feed {feed_pk} not found"))?;
+        let seated = seats.iter().find(|s| s.feed_key == feed_pk);
+        match seated {
+            Some(seat) if self.max_users < seat.current_users => eyre::bail!(
+                "feed {} has {} user(s) on access pass {accesspass_pk}, so --max-users must be at least {}",
+                feed.name,
+                seat.current_users,
+                seat.current_users
+            ),
+            None if feed.status != FeedStatus::Active => eyre::bail!(
+                "feed {} is {}, so it takes no new seat",
+                feed.name,
+                feed.status
+            ),
+            _ => {}
+        }
+        for seat in seats.iter().filter(|s| s.feed_key != feed_pk) {
+            check_kept_seat(accesspass_pk, seat, &feeds, now)?;
+        }
         let new_seat = FeedSeatProvision {
             feed_key: feed_pk,
             max_users: self.max_users,
@@ -109,21 +130,14 @@ impl AddFeedAccessPassCliCommand {
             window_end: terminates_at,
             terminates_at,
         };
-        let seated = seats.iter().any(|s| s.feed_key == feed_pk);
+        let seated = seated.is_some();
         let mut provisions: Vec<FeedSeatProvision> = seats
             .iter()
             .map(|seat| {
                 if seat.feed_key == feed_pk {
                     new_seat.clone()
                 } else {
-                    FeedSeatProvision {
-                        feed_key: seat.feed_key,
-                        max_users: seat.max_users,
-                        max_future_users: seat.max_future_users,
-                        anniversary_day: seat.anniversary_day,
-                        window_end: seat.window_end,
-                        terminates_at: seat.terminates_at,
-                    }
+                    kept_seat(seat, now)
                 }
             })
             .collect();
@@ -139,7 +153,7 @@ impl AddFeedAccessPassCliCommand {
         let cap_changes = max_multicast_users != accesspass.max_multicast_users;
         let tenant = tenant_for_cap_change(client, &accesspass, accesspass_pk, cap_changes)?;
 
-        let feed_name = feeds.get(&feed_pk).map_or("", |f| f.name.as_str());
+        let feed_name = feed.name.as_str();
         writeln!(out, "AccessPass PDA: {accesspass_pk}")?;
         if seated {
             writeln!(out, "Changing feed {feed_name} ({feed_pk})")?;
@@ -193,7 +207,8 @@ impl AddFeedAccessPassCliCommand {
                 tenant,
                 max_unicast_users: accesspass.max_unicast_users,
                 max_multicast_users,
-            })?;
+            })
+            .wrap_err("the feeds are set on the access pass. Run add-feed again with the same arguments to set the multicast user cap")?;
             writeln!(
                 out,
                 "Set max multicast users from {} to {max_multicast_users}: {signature}",
@@ -259,6 +274,7 @@ mod tests {
             code: "solana-shreds-full".to_string(),
             name: name.to_string(),
             exchange: Pubkey::new_unique(),
+            status: FeedStatus::Active,
             ..Default::default()
         }
     }
@@ -523,13 +539,10 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_accesspass_add_feed_refuses_zero_users_and_a_past_date() {
+    fn test_cli_accesspass_add_feed_refuses_a_past_date() {
         let mut client = create_test_client();
         client.expect_check_requirements().returning(|_| Ok(()));
         let user_payer = Pubkey::new_unique();
-
-        let err = run(&client, add(user_payer, "solana-shreds-full-ams", 0, false)).unwrap_err();
-        assert_eq!(err.to_string(), "--max-users must be above 0");
 
         let mut past = add(user_payer, "solana-shreds-full-ams", 2, false);
         past.terminates_at = NaiveDate::from_ymd_opt(2020, 1, 1).unwrap();
@@ -537,6 +550,154 @@ mod tests {
         assert_eq!(
             err.to_string(),
             "--terminates-at 2020-01-01 is not in the future"
+        );
+    }
+
+    #[test]
+    fn test_cli_accesspass_add_feed_sends_a_seat_past_its_window_end_with_its_future_cap() {
+        let mut client = create_test_client();
+        let user_payer = Pubkey::new_unique();
+        let (ams_pk, lon_pk) = (Pubkey::new_unique(), Pubkey::new_unique());
+        // The LON seat admitted 3 users until 2026-11-01 and admits 4 from then until 2030.
+        let lon_seat = FeedSeat {
+            max_future_users: 4,
+            window_end: 1_793_491_200,
+            ..seat(lon_pk, 3)
+        };
+        expect_pass_and_feeds(
+            &mut client,
+            user_payer,
+            Pubkey::new_unique(),
+            pass(
+                user_payer,
+                AccessPassType::EdgeSeat(vec![lon_seat.clone()]),
+                3,
+            ),
+            HashMap::from([
+                (ams_pk, feed("solana-shreds-full-ams")),
+                (lon_pk, feed("solana-shreds-full-lon")),
+            ]),
+        );
+
+        let mut seq = mockall::Sequence::new();
+        client
+            .expect_set_accesspass_feeds()
+            .with(predicate::eq(SetAccessPassFeedsCommand {
+                client_ip: Ipv4Addr::UNSPECIFIED,
+                user_payer,
+                feeds: vec![
+                    FeedSeatProvision {
+                        max_users: 4,
+                        window_end: lon_seat.terminates_at,
+                        ..provision(&lon_seat)
+                    },
+                    new_provision(ams_pk, 2),
+                ],
+            }))
+            .times(1)
+            .in_sequence(&mut seq)
+            .returning(|_| Ok(Signature::new_unique()));
+        expect_cap(&mut client, user_payer, 6, &mut seq);
+
+        let output = run(&client, add(user_payer, "solana-shreds-full-ams", 2, false)).unwrap();
+        assert!(
+            output.contains("Set max multicast users from 3 to 6"),
+            "{output}"
+        );
+    }
+
+    #[test]
+    fn test_cli_accesspass_add_feed_refuses_a_seat_that_ended_or_a_deleted_feed() {
+        let user_payer = Pubkey::new_unique();
+        let accesspass_pk = Pubkey::new_unique();
+        let (ams_pk, lon_pk) = (Pubkey::new_unique(), Pubkey::new_unique());
+
+        let mut client = create_test_client();
+        let ended = FeedSeat {
+            window_end: 1_700_000_000,
+            terminates_at: 1_700_000_000,
+            ..seat(lon_pk, 3)
+        };
+        expect_pass_and_feeds(
+            &mut client,
+            user_payer,
+            accesspass_pk,
+            pass(user_payer, AccessPassType::EdgeSeat(vec![ended]), 3),
+            HashMap::from([
+                (ams_pk, feed("solana-shreds-full-ams")),
+                (lon_pk, feed("solana-shreds-full-lon")),
+            ]),
+        );
+        let err = run(&client, add(user_payer, "solana-shreds-full-ams", 2, true)).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            format!("the seat for feed {lon_pk} on access pass {accesspass_pk} ended at 2023-11-14T22:13:20+00:00. Remove that seat first with `doublezero access-pass remove-feed --feed {lon_pk}`")
+        );
+
+        let mut client = create_test_client();
+        expect_pass_and_feeds(
+            &mut client,
+            user_payer,
+            accesspass_pk,
+            pass(
+                user_payer,
+                AccessPassType::EdgeSeat(vec![seat(lon_pk, 3)]),
+                3,
+            ),
+            HashMap::from([(ams_pk, feed("solana-shreds-full-ams"))]),
+        );
+        let err = run(&client, add(user_payer, "solana-shreds-full-ams", 2, true)).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            format!("access pass {accesspass_pk} has a seat for feed {lon_pk}, which no longer exists. Remove that seat first with `doublezero access-pass remove-feed --feed {lon_pk}`")
+        );
+    }
+
+    #[test]
+    fn test_cli_accesspass_add_feed_refuses_a_feed_that_is_not_active_or_a_cap_below_its_users() {
+        let user_payer = Pubkey::new_unique();
+        let accesspass_pk = Pubkey::new_unique();
+        let ams_pk = Pubkey::new_unique();
+
+        let mut client = create_test_client();
+        expect_pass_and_feeds(
+            &mut client,
+            user_payer,
+            accesspass_pk,
+            pass(user_payer, AccessPassType::EdgeSeat(vec![]), 0),
+            HashMap::from([(
+                ams_pk,
+                Feed {
+                    status: FeedStatus::Retiring,
+                    ..feed("solana-shreds-full-ams")
+                },
+            )]),
+        );
+        let err = run(&client, add(user_payer, "solana-shreds-full-ams", 2, true)).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "feed solana-shreds-full-ams is {}, so it takes no new seat",
+                FeedStatus::Retiring
+            )
+        );
+
+        let mut client = create_test_client();
+        let held = FeedSeat {
+            current_users: 3,
+            ..seat(ams_pk, 4)
+        };
+        expect_pass_and_feeds(
+            &mut client,
+            user_payer,
+            accesspass_pk,
+            pass(user_payer, AccessPassType::EdgeSeat(vec![held]), 4),
+            HashMap::from([(ams_pk, feed("solana-shreds-full-ams"))]),
+        );
+        let err = run(&client, add(user_payer, "solana-shreds-full-ams", 2, true)).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            format!("feed solana-shreds-full-ams has 3 user(s) on access pass {accesspass_pk}, so --max-users must be at least 3")
         );
     }
 }

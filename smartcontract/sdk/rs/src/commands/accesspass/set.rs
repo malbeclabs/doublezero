@@ -162,8 +162,9 @@ mod tests {
         assert!(res.is_ok());
     }
     /// A cap change on the pass at 10.0.0.1 must send that pass's tenant as both the current and
-    /// the new tenant, so the program leaves every tenant count as it was. The payer's 0.0.0.0
-    /// pass, with another tenant, must not be read: the mock answers only the exact address.
+    /// the new tenant. The command must not read the payer's 0.0.0.0 pass, which has another
+    /// tenant, so the mock answers only the exact address. The program still raises the count of
+    /// that tenant by 1, and malbeclabs/infra#3718 tracks that fix.
     #[test]
     fn test_commands_set_accesspass_reads_the_tenant_of_the_exact_pass() {
         let mut client = create_test_client();

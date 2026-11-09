@@ -194,7 +194,7 @@ pub fn process_delete_user(
     }
 
     accesspass.connection_count = accesspass.connection_count.saturating_sub(1);
-    // Release the per-category seat (EdgeSeat only; no-op otherwise).
+    // Uncount the user from the pass by category, on every pass type.
     accesspass.remove_user(user.user_type);
     // Release every feed-scoped seat this user consumed at connect. The feeds are read from the
     // User (recorded when the seats were ticked), so each release is bound to exactly that seat

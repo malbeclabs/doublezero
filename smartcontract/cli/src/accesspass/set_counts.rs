@@ -8,13 +8,26 @@ use doublezero_sdk::commands::accesspass::set_counts::SetAccessPassCountsCommand
 use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 
-/// Overwrite the user counts of an access pass with the users you counted on it. The program sets
+/// Replace the user counts of an access pass with the users you counted on it. The program sets
 /// `connections` to the sum of the two counts. Requires `ACCESS_PASS_ADMIN`.
+///
+/// The `--expected-*` flags are the counts the pass held when you counted its users. The command
+/// fails, and changes nothing, when the pass no longer holds them: a user connected or
+/// disconnected in between, so count again.
 #[derive(Args, Debug)]
 pub struct SetCountsAccessPassCliCommand {
     /// Access pass public key
     #[arg(long)]
     pub pubkey: Pubkey,
+    /// Connection count the pass holds now
+    #[arg(long)]
+    pub expected_connections: u16,
+    /// Unicast user count the pass holds now
+    #[arg(long)]
+    pub expected_unicast_users: u16,
+    /// Multicast user count the pass holds now
+    #[arg(long)]
+    pub expected_multicast_users: u16,
     /// Number of unicast users on the pass (IBRL, IBRL with an allocated IP, edge filtering)
     #[arg(long)]
     pub unicast_users: u16,
@@ -43,6 +56,30 @@ impl SetCountsAccessPassCliCommand {
             .get_account_data(self.pubkey)?
             .get_accesspass()
             .map_err(|e| eyre::eyre!("Account {} is not an access pass: {e}", self.pubkey))?;
+        // The program checks this too. Checking here first names the counts that changed
+        // without sending a transaction that is sure to fail.
+        let current = (
+            accesspass.connection_count,
+            accesspass.unicast_user_count,
+            accesspass.multicast_user_count,
+        );
+        let expected = (
+            self.expected_connections,
+            self.expected_unicast_users,
+            self.expected_multicast_users,
+        );
+        if current != expected {
+            eyre::bail!(
+                "Access pass {} has connections {}, unicast users {}, multicast users {}, not the expected {}, {}, {}. A user connected or disconnected since the count, so count again.",
+                self.pubkey,
+                current.0,
+                current.1,
+                current.2,
+                expected.0,
+                expected.1,
+                expected.2,
+            );
+        }
         writeln!(
             out,
             "Access pass {}: connections {} -> {connections}, unicast users {} -> {}, multicast users {} -> {}",
@@ -56,6 +93,9 @@ impl SetCountsAccessPassCliCommand {
 
         let signature = client.set_accesspass_counts(SetAccessPassCountsCommand {
             pubkey: self.pubkey,
+            expected_connection_count: self.expected_connections,
+            expected_unicast_user_count: self.expected_unicast_users,
+            expected_multicast_user_count: self.expected_multicast_users,
             unicast_user_count: self.unicast_users,
             multicast_user_count: self.multicast_users,
         })?;
@@ -123,6 +163,9 @@ mod tests {
             .expect_set_accesspass_counts()
             .with(predicate::eq(SetAccessPassCountsCommand {
                 pubkey,
+                expected_connection_count: 2,
+                expected_unicast_user_count: 0,
+                expected_multicast_user_count: 0,
                 unicast_user_count: 1,
                 multicast_user_count: 0,
             }))
@@ -133,6 +176,9 @@ mod tests {
         let res = block_on(
             SetCountsAccessPassCliCommand {
                 pubkey,
+                expected_connections: 2,
+                expected_unicast_users: 0,
+                expected_multicast_users: 0,
                 unicast_users: 1,
                 multicast_users: 0,
             }
@@ -166,6 +212,9 @@ mod tests {
         let err = block_on(
             SetCountsAccessPassCliCommand {
                 pubkey,
+                expected_connections: 0,
+                expected_unicast_users: 0,
+                expected_multicast_users: 0,
                 unicast_users: 0,
                 multicast_users: 0,
             }
@@ -190,6 +239,9 @@ mod tests {
         let err = block_on(
             SetCountsAccessPassCliCommand {
                 pubkey: Pubkey::new_unique(),
+                expected_connections: 0,
+                expected_unicast_users: 0,
+                expected_multicast_users: 0,
                 unicast_users: u16::MAX,
                 multicast_users: 1,
             }
@@ -197,5 +249,42 @@ mod tests {
         )
         .expect_err("a sum over u16 must be refused");
         assert!(err.to_string().contains("65535 or less"), "{err}");
+    }
+
+    #[test]
+    fn test_cli_access_pass_set_counts_refuses_stale_expected_counts() {
+        let mut client = create_test_client();
+        let pubkey = Pubkey::new_unique();
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_get_account_data()
+            .with(predicate::eq(pubkey))
+            .returning(|_| Ok(AccountData::AccessPass(stale_accesspass())));
+        client.expect_set_accesspass_counts().times(0);
+
+        let mut output = Vec::new();
+        let err = block_on(
+            SetCountsAccessPassCliCommand {
+                pubkey,
+                expected_connections: 1,
+                expected_unicast_users: 0,
+                expected_multicast_users: 0,
+                unicast_users: 0,
+                multicast_users: 0,
+            }
+            .execute(&cli_context_default_for_tests(), &client, &mut output),
+        )
+        .expect_err("stale expected counts must be refused");
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "Access pass {pubkey} has connections 2, unicast users 0, multicast users 0, not the expected 1, 0, 0. A user connected or disconnected since the count, so count again."
+            )
+        );
+        assert!(output.is_empty());
     }
 }

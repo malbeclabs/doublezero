@@ -471,7 +471,9 @@ impl DoubleZeroInstruction {
             133 => Ok(Self::DeleteOthersUser(UserDeleteArgs::try_from(rest).unwrap())),
             134 => Ok(Self::DeleteEdgeSeatUser(UserDeleteArgs::try_from(rest).unwrap())),
 
-            135 => Ok(Self::SetAccessPassCounts(SetAccessPassCountsArgs::try_from(rest).unwrap())),
+            135 => Ok(Self::SetAccessPassCounts(
+                SetAccessPassCountsArgs::try_from(rest).map_err(ProgramError::from)?,
+            )),
 
             _ => Err(ProgramError::InvalidInstructionData),
         }
@@ -1343,6 +1345,9 @@ mod tests {
         );
         test_instruction(
             DoubleZeroInstruction::SetAccessPassCounts(SetAccessPassCountsArgs {
+                expected_connection_count: 3,
+                expected_unicast_user_count: 1,
+                expected_multicast_user_count: 1,
                 unicast_user_count: 2,
                 multicast_user_count: 1,
             }),

@@ -433,11 +433,14 @@ mod tests {
             &payer,
             &accesspass,
             SetAccessPassCountsArgs {
+                expected_connection_count: 4,
+                expected_unicast_user_count: 3,
+                expected_multicast_user_count: 1,
                 unicast_user_count: 2,
                 multicast_user_count: 1,
             },
         );
-        assert_eq!(ix.data, [135, 2, 0, 1, 0]);
+        assert_eq!(ix.data, [135, 4, 0, 3, 0, 1, 0, 2, 0, 1, 0]);
         let (globalstate, _) = get_globalstate_pda(&pid);
         assert_eq!(
             ix.accounts,

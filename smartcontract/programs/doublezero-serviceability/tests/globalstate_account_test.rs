@@ -835,6 +835,9 @@ async fn set_access_pass_counts(env: &mut Env) -> Case {
     other_pass_case(
         env,
         DoubleZeroInstruction::SetAccessPassCounts(SetAccessPassCountsArgs {
+            expected_connection_count: 0,
+            expected_unicast_user_count: 0,
+            expected_multicast_user_count: 0,
             unicast_user_count: 1,
             multicast_user_count: 0,
         }),

@@ -4,13 +4,19 @@ use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 use crate::DoubleZeroClient;
 
-/// Overwrite the unicast and multicast user counts of an existing access pass. The program sets
+/// Replace the unicast and multicast user counts of an existing access pass. The program sets
 /// the connection count to their sum. Use it after counting the users on the pass offchain.
+///
+/// The `expected_*` fields are the counts read from the pass when the users were counted. The
+/// program refuses the write with `AccessPassCountsChanged` when the pass no longer holds them.
 ///
 /// Gated on `ACCESS_PASS_ADMIN`.
 #[derive(Debug, PartialEq, Clone)]
 pub struct SetAccessPassCountsCommand {
     pub pubkey: Pubkey,
+    pub expected_connection_count: u16,
+    pub expected_unicast_user_count: u16,
+    pub expected_multicast_user_count: u16,
     pub unicast_user_count: u16,
     pub multicast_user_count: u16,
 }
@@ -22,6 +28,9 @@ impl SetAccessPassCountsCommand {
             &client.get_payer(),
             &self.pubkey,
             SetAccessPassCountsArgs {
+                expected_connection_count: self.expected_connection_count,
+                expected_unicast_user_count: self.expected_unicast_user_count,
+                expected_multicast_user_count: self.expected_multicast_user_count,
                 unicast_user_count: self.unicast_user_count,
                 multicast_user_count: self.multicast_user_count,
             },
@@ -53,6 +62,9 @@ mod tests {
             &payer,
             &accesspass,
             SetAccessPassCountsArgs {
+                expected_connection_count: 2,
+                expected_unicast_user_count: 0,
+                expected_multicast_user_count: 0,
                 unicast_user_count: 3,
                 multicast_user_count: 1,
             },
@@ -65,6 +77,9 @@ mod tests {
 
         let res = SetAccessPassCountsCommand {
             pubkey: accesspass,
+            expected_connection_count: 2,
+            expected_unicast_user_count: 0,
+            expected_multicast_user_count: 0,
             unicast_user_count: 3,
             multicast_user_count: 1,
         }

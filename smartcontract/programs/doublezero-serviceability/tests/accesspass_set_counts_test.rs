@@ -27,6 +27,20 @@ use test_helpers::*;
 const CODE_NOT_ALLOWED: u32 = 8;
 const CODE_INVALID_ARGUMENT: u32 = 65;
 const CODE_ACCESS_PASS_IN_USE: u32 = 72;
+const CODE_ACCESS_PASS_COUNTS_CHANGED: u32 = 134;
+
+/// The counts `SetAccessPassCounts` compares against: connections, unicast users, multicast users.
+type Counts = (u16, u16, u16);
+
+fn set_counts_args(expected: Counts, unicast: u16, multicast: u16) -> SetAccessPassCountsArgs {
+    SetAccessPassCountsArgs {
+        expected_connection_count: expected.0,
+        expected_unicast_user_count: expected.1,
+        expected_multicast_user_count: expected.2,
+        unicast_user_count: unicast,
+        multicast_user_count: multicast,
+    }
+}
 
 fn assert_custom_error(result: Result<(), BanksClientError>, expected: u32, context: &str) {
     match result {
@@ -114,25 +128,50 @@ impl Env {
         ]
     }
 
+    /// The pass's current counts, which a fresh recount passes as the expected values.
+    async fn current_counts(&mut self, pass: Pubkey) -> Counts {
+        let ap = self.pass(pass).await.unwrap();
+        (
+            ap.connection_count,
+            ap.unicast_user_count,
+            ap.multicast_user_count,
+        )
+    }
+
+    /// Set the counts, expecting the values the pass holds now.
     async fn set_counts(&mut self, pass: Pubkey, unicast: u16, multicast: u16, signer: &Keypair) {
+        let expected = self.current_counts(pass).await;
         let accounts = self.set_counts_accounts(pass);
         execute_transaction(
             &mut self.banks_client,
             self.recent_blockhash,
             self.program_id,
-            DoubleZeroInstruction::SetAccessPassCounts(SetAccessPassCountsArgs {
-                unicast_user_count: unicast,
-                multicast_user_count: multicast,
-            }),
+            DoubleZeroInstruction::SetAccessPassCounts(set_counts_args(
+                expected, unicast, multicast,
+            )),
             accounts,
             signer,
         )
         .await;
     }
 
+    /// Like `set_counts`, for a call that must fail for a reason other than stale counts.
     async fn try_set_counts(
         &mut self,
         pass: Pubkey,
+        unicast: u16,
+        multicast: u16,
+        signer: &Keypair,
+    ) -> Result<(), BanksClientError> {
+        let expected = self.current_counts(pass).await;
+        self.try_set_counts_expecting(pass, expected, unicast, multicast, signer)
+            .await
+    }
+
+    async fn try_set_counts_expecting(
+        &mut self,
+        pass: Pubkey,
+        expected: Counts,
         unicast: u16,
         multicast: u16,
         signer: &Keypair,
@@ -142,10 +181,9 @@ impl Env {
             &mut self.banks_client,
             self.recent_blockhash,
             self.program_id,
-            DoubleZeroInstruction::SetAccessPassCounts(SetAccessPassCountsArgs {
-                unicast_user_count: unicast,
-                multicast_user_count: multicast,
-            }),
+            DoubleZeroInstruction::SetAccessPassCounts(set_counts_args(
+                expected, unicast, multicast,
+            )),
             accounts,
             signer,
         )
@@ -259,6 +297,42 @@ async fn test_set_access_pass_counts_refusals() {
     let ap = env.pass(pass).await.unwrap();
     assert_eq!(ap.status, AccessPassStatus::Requested);
     assert_eq!(ap, before);
+}
+
+/// A recount is a snapshot. If a user is created or deleted on the pass before the command lands,
+/// the expected counts no longer match, and the program refuses the write instead of losing that
+/// user from the counts. Each of the three expected values is checked on its own.
+#[tokio::test]
+async fn test_set_access_pass_counts_refuses_stale_expected_counts() {
+    let mut env = setup().await;
+    let payer = env.payer.insecure_clone();
+    let pass = env
+        .create_pass(
+            Ipv4Addr::new(100, 0, 0, 5),
+            Pubkey::new_unique(),
+            false,
+            &payer,
+        )
+        .await;
+    env.set_counts(pass, 2, 1, &payer).await;
+    let before = env.pass(pass).await.unwrap();
+    assert_eq!(env.current_counts(pass).await, (3, 2, 1));
+
+    for (stale, context) in [
+        ((2, 2, 1), "stale connection count"),
+        ((3, 1, 1), "stale unicast user count"),
+        ((3, 2, 0), "stale multicast user count"),
+    ] {
+        let result = env
+            .try_set_counts_expecting(pass, stale, 0, 0, &payer)
+            .await;
+        assert_custom_error(result, CODE_ACCESS_PASS_COUNTS_CHANGED, context);
+        assert_eq!(env.pass(pass).await.unwrap(), before, "{context}");
+    }
+
+    // The same write with the current counts goes through.
+    env.set_counts(pass, 0, 0, &payer).await;
+    assert_eq!(env.current_counts(pass).await, (0, 0, 0));
 }
 
 /// The feed authority holds ACCESS_PASS_ADMIN, so only the ownership guard stops it on a pass it

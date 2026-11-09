@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- fix(contributor-rewards): a snapshot taken before the serviceability program added the multicast group's `private` flag and caps and the user's `holds_pass_seat` still loads. The reader fills in a group that is not private with no caps, and a user with `holds_pass_seat` set (malbeclabs/infra#3706)
+
 ## [0.7.0] - 2026-10-28
 
 - feat(contributor-rewards): the worker retries a failed merkle root posting 3 more times, one minute apart, before it reports the failure. The 3 retries share one grace-period wait, so `grace_period_max_wait_seconds` still limits the total wait

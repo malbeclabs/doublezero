@@ -363,7 +363,7 @@ mod tests {
         let mut client = create_test_client();
         let user_payer = Pubkey::new_unique();
         let accesspass_pk = Pubkey::new_unique();
-        let (fra_pk, lon_pk) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let (ams_pk, lon_pk) = (Pubkey::new_unique(), Pubkey::new_unique());
         let lon_seat = seat(lon_pk, 3);
         expect_pass_and_feeds(
             &mut client,
@@ -375,8 +375,8 @@ mod tests {
                 3,
             ),
             HashMap::from([
-                (fra_pk, feed("Solana Shreds FRA")),
-                (lon_pk, feed("Solana Shreds LON")),
+                (ams_pk, feed("solana-shreds-full-ams")),
+                (lon_pk, feed("solana-shreds-full-lon")),
             ]),
         );
 
@@ -386,16 +386,16 @@ mod tests {
             .with(predicate::eq(SetAccessPassFeedsCommand {
                 client_ip: Ipv4Addr::UNSPECIFIED,
                 user_payer,
-                feeds: vec![provision(&lon_seat), new_provision(fra_pk, 2)],
+                feeds: vec![provision(&lon_seat), new_provision(ams_pk, 2)],
             }))
             .times(1)
             .in_sequence(&mut seq)
             .returning(|_| Ok(Signature::new_unique()));
         expect_cap(&mut client, user_payer, 5, &mut seq);
 
-        let output = run(&client, add(user_payer, "Solana Shreds FRA", 2, false)).unwrap();
+        let output = run(&client, add(user_payer, "solana-shreds-full-ams", 2, false)).unwrap();
         assert!(
-            output.contains(&format!("Adding feed Solana Shreds FRA ({fra_pk})")),
+            output.contains(&format!("Adding feed solana-shreds-full-ams ({ams_pk})")),
             "{output}"
         );
         assert!(
@@ -409,17 +409,17 @@ mod tests {
         let mut client = create_test_client();
         let user_payer = Pubkey::new_unique();
         let accesspass_pk = Pubkey::new_unique();
-        let fra_pk = Pubkey::new_unique();
+        let ams_pk = Pubkey::new_unique();
         expect_pass_and_feeds(
             &mut client,
             user_payer,
             accesspass_pk,
             pass(
                 user_payer,
-                AccessPassType::EdgeSeat(vec![seat(fra_pk, 2)]),
+                AccessPassType::EdgeSeat(vec![seat(ams_pk, 2)]),
                 2,
             ),
-            HashMap::from([(fra_pk, feed("Solana Shreds FRA"))]),
+            HashMap::from([(ams_pk, feed("solana-shreds-full-ams"))]),
         );
 
         let mut seq = mockall::Sequence::new();
@@ -428,16 +428,16 @@ mod tests {
             .with(predicate::eq(SetAccessPassFeedsCommand {
                 client_ip: Ipv4Addr::UNSPECIFIED,
                 user_payer,
-                feeds: vec![new_provision(fra_pk, 4)],
+                feeds: vec![new_provision(ams_pk, 4)],
             }))
             .times(1)
             .in_sequence(&mut seq)
             .returning(|_| Ok(Signature::new_unique()));
         expect_cap(&mut client, user_payer, 4, &mut seq);
 
-        let output = run(&client, add(user_payer, &fra_pk.to_string(), 4, false)).unwrap();
+        let output = run(&client, add(user_payer, &ams_pk.to_string(), 4, false)).unwrap();
         assert!(
-            output.contains(&format!("Changing feed Solana Shreds FRA ({fra_pk})")),
+            output.contains(&format!("Changing feed solana-shreds-full-ams ({ams_pk})")),
             "{output}"
         );
     }
@@ -446,16 +446,16 @@ mod tests {
     fn test_cli_accesspass_add_feed_dry_run_sends_nothing() {
         let mut client = create_test_client();
         let user_payer = Pubkey::new_unique();
-        let fra_pk = Pubkey::new_unique();
+        let ams_pk = Pubkey::new_unique();
         expect_pass_and_feeds(
             &mut client,
             user_payer,
             Pubkey::new_unique(),
             pass(user_payer, AccessPassType::EdgeSeat(vec![]), 0),
-            HashMap::from([(fra_pk, feed("Solana Shreds FRA"))]),
+            HashMap::from([(ams_pk, feed("solana-shreds-full-ams"))]),
         );
 
-        let output = run(&client, add(user_payer, "Solana Shreds FRA", 2, true)).unwrap();
+        let output = run(&client, add(user_payer, "solana-shreds-full-ams", 2, true)).unwrap();
         assert!(
             output.contains("Set max multicast users from 0 to 2"),
             "{output}"
@@ -470,16 +470,16 @@ mod tests {
     fn test_cli_accesspass_add_feed_refuses_a_pass_that_is_not_edge_seat() {
         let mut client = create_test_client();
         let user_payer = Pubkey::new_unique();
-        let fra_pk = Pubkey::new_unique();
+        let ams_pk = Pubkey::new_unique();
         expect_pass_and_feeds(
             &mut client,
             user_payer,
             Pubkey::new_unique(),
             pass(user_payer, AccessPassType::Prepaid, 1),
-            HashMap::from([(fra_pk, feed("Solana Shreds FRA"))]),
+            HashMap::from([(ams_pk, feed("solana-shreds-full-ams"))]),
         );
 
-        let err = run(&client, add(user_payer, "Solana Shreds FRA", 2, false)).unwrap_err();
+        let err = run(&client, add(user_payer, "solana-shreds-full-ams", 2, false)).unwrap_err();
         assert!(
             err.to_string()
                 .contains("only an EdgeSeat pass carries feeds"),
@@ -491,33 +491,33 @@ mod tests {
     fn test_cli_accesspass_add_feed_refuses_a_name_that_two_feeds_share() {
         let mut client = create_test_client();
         let user_payer = Pubkey::new_unique();
-        let (fra_pk, other_pk) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let (ams_pk, other_pk) = (Pubkey::new_unique(), Pubkey::new_unique());
         expect_pass_and_feeds(
             &mut client,
             user_payer,
             Pubkey::new_unique(),
             pass(user_payer, AccessPassType::EdgeSeat(vec![]), 0),
             HashMap::from([
-                (fra_pk, feed("Solana Shreds FRA")),
-                (other_pk, feed("Solana Shreds FRA")),
+                (ams_pk, feed("solana-shreds-full-ams")),
+                (other_pk, feed("solana-shreds-full-ams")),
             ]),
         );
 
-        let err = run(&client, add(user_payer, "Solana Shreds FRA", 2, false)).unwrap_err();
-        let mut both = [fra_pk, other_pk];
+        let err = run(&client, add(user_payer, "solana-shreds-full-ams", 2, false)).unwrap_err();
+        let mut both = [ams_pk, other_pk];
         both.sort();
         assert_eq!(
             err.to_string(),
             format!(
-                "2 feeds are named Solana Shreds FRA, so pass the pubkey of one of them: {}, {}",
+                "2 feeds are named solana-shreds-full-ams, so pass the pubkey of one of them: {}, {}",
                 both[0], both[1]
             )
         );
 
         // The pubkey picks one of them.
-        let output = run(&client, add(user_payer, &fra_pk.to_string(), 2, true)).unwrap();
+        let output = run(&client, add(user_payer, &ams_pk.to_string(), 2, true)).unwrap();
         assert!(
-            output.contains(&format!("Adding feed Solana Shreds FRA ({fra_pk})")),
+            output.contains(&format!("Adding feed solana-shreds-full-ams ({ams_pk})")),
             "{output}"
         );
     }
@@ -528,10 +528,10 @@ mod tests {
         client.expect_check_requirements().returning(|_| Ok(()));
         let user_payer = Pubkey::new_unique();
 
-        let err = run(&client, add(user_payer, "Solana Shreds FRA", 0, false)).unwrap_err();
+        let err = run(&client, add(user_payer, "solana-shreds-full-ams", 0, false)).unwrap_err();
         assert_eq!(err.to_string(), "--max-users must be above 0");
 
-        let mut past = add(user_payer, "Solana Shreds FRA", 2, false);
+        let mut past = add(user_payer, "solana-shreds-full-ams", 2, false);
         past.terminates_at = NaiveDate::from_ymd_opt(2020, 1, 1).unwrap();
         let err = run(&client, past).unwrap_err();
         assert_eq!(

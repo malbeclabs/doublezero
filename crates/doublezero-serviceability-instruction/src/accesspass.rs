@@ -438,10 +438,10 @@ mod tests {
                 expected_public_multicast_user_count: 1,
                 unicast_user_count: 2,
                 public_multicast_user_count: 1,
-                private_multicast_user_count: 0,
+                private_multicast_user_count: 1,
             },
         );
-        assert_eq!(ix.data, [135, 4, 0, 3, 0, 1, 0, 2, 0, 1, 0]);
+        assert_eq!(ix.data, [135, 4, 0, 3, 0, 1, 0, 2, 0, 1, 0, 1, 0]);
         let (globalstate, _) = get_globalstate_pda(&pid);
         assert_eq!(
             ix.accounts,

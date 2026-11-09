@@ -273,6 +273,10 @@ impl ServiceabilityCommand {
                 }
                 AccessPassCommands::DzfLock(args) => args.execute(ctx, client, out).await,
                 AccessPassCommands::DzfUnlock(args) => args.execute(ctx, client, out).await,
+                AccessPassCommands::AddFeed(args) => {
+                    args.execute(ctx, client, out, &mut std::io::stdin().lock())
+                        .await
+                }
                 AccessPassCommands::RemoveFeed(args) => {
                     args.execute(ctx, client, out, &mut std::io::stdin().lock())
                         .await

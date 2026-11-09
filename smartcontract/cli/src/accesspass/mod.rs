@@ -1,3 +1,4 @@
+pub mod add_feed;
 pub mod apply;
 pub mod close;
 pub mod desired;

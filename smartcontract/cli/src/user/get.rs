@@ -1,18 +1,23 @@
 use crate::{
-    doublezerocommand::CliCommand, feed::resolve::resolve_feed_labels, helpers::slot_to_datetime,
+    doublezerocommand::CliCommand,
+    feed::resolve::resolve_feed_labels,
+    helpers::slot_to_datetime,
+    user::list::{format_accesspasses, user_accesspasses},
     validators::validate_pubkey,
 };
 use clap::Args;
 use doublezero_cli_core::{label_addresses, CliContext};
 use doublezero_program_common::serializer;
 use doublezero_sdk::commands::{
-    accesspass::get::ResolveAccessPassCommand, device::list::ListDeviceCommand,
+    accesspass::get::GetAccessPassCommand, device::list::ListDeviceCommand,
     multicastgroup::list::ListMulticastGroupCommand, tenant::list::ListTenantCommand,
     user::get::GetUserCommand,
 };
+use doublezero_serviceability::state::accountdata::AccountData;
+use eyre::WrapErr;
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
-use std::{io::Write, str::FromStr};
+use std::{collections::HashMap, io::Write, net::Ipv4Addr, str::FromStr};
 use tabled::Tabled;
 
 #[derive(Args, Debug)]
@@ -42,6 +47,10 @@ struct UserDisplay {
     pub tunnel_endpoint: String,
     pub validator_pubkey: String,
     pub accesspass: String,
+    /// The address of the pass the user records, or of both candidate passes of a legacy user.
+    #[tabled(skip)]
+    #[serde(serialize_with = "serializer::serialize_pubkeylist_as_string")]
+    pub accesspass_pks: Vec<Pubkey>,
     pub feeds: String,
     pub publishers: String,
     pub subscribers: String,
@@ -83,18 +92,51 @@ impl GetUserCliCommand {
         let pubkey = Pubkey::from_str(&self.pubkey)?;
         let (pubkey, user) = client.get_user(GetUserCommand { pubkey })?;
 
-        let accesspass_str = client
-            .resolve_accesspass(ResolveAccessPassCommand {
-                client_ip: user.client_ip,
-                user_payer: user.owner,
-            })?
-            .map(|(_, ap)| ap.to_string());
-        if accesspass_str.is_none() {
-            tracing::warn!(
-                client_ip = %user.client_ip,
-                payer = %user.owner,
-                "no access pass found for user"
-            );
+        // Read only the passes the user can be on, then pick among them as `user list` does.
+        let mut candidates = HashMap::new();
+        if user.accesspass_pk != Pubkey::default() {
+            // `get_multiple_accounts` reports a closed pass as `None` and a failed read as `Err`,
+            // as `GetAccessPassCommand` does. A failed RPC read or decode then fails the command
+            // instead of printing `none`.
+            let account = client
+                .get_multiple_accounts(vec![user.accesspass_pk])?
+                .into_iter()
+                .next()
+                .flatten()
+                .filter(|account| account.owner == client.get_program_id());
+            if let Some(account) = account {
+                if let AccountData::AccessPass(accesspass) =
+                    AccountData::try_from(&account.data[..]).wrap_err_with(|| {
+                        format!("decoding the AccessPass at {}", user.accesspass_pk)
+                    })?
+                {
+                    candidates.insert(user.accesspass_pk, accesspass);
+                }
+            }
+        } else {
+            for client_ip in [user.client_ip, Ipv4Addr::UNSPECIFIED] {
+                if let Some((pk, accesspass)) = client.get_accesspass(GetAccessPassCommand {
+                    client_ip,
+                    user_payer: user.owner,
+                })? {
+                    candidates.insert(pk, accesspass);
+                }
+            }
+        }
+        let accesspasses = user_accesspasses(&client.get_program_id(), &user, &candidates);
+        if accesspasses.is_empty() {
+            if user.accesspass_pk != Pubkey::default() {
+                tracing::warn!(
+                    accesspass = %user.accesspass_pk,
+                    "the access pass the user records is closed"
+                );
+            } else {
+                tracing::warn!(
+                    client_ip = %user.client_ip,
+                    payer = %user.owner,
+                    "no access pass found for user"
+                );
+            }
         }
         let multicast_groups = client.list_multicastgroup(ListMulticastGroupCommand {})?;
         let tenants = client.list_tenant(ListTenantCommand {})?;
@@ -124,7 +166,8 @@ impl GetUserCliCommand {
             dz_ip: user.dz_ip.to_string(),
             tunnel_endpoint: user.tunnel_endpoint.to_string(),
             validator_pubkey: user.validator_pubkey.to_string(),
-            accesspass: accesspass_str.unwrap_or_default(),
+            accesspass: format_accesspasses(&accesspasses),
+            accesspass_pks: accesspasses.iter().map(|(pk, _)| *pk).collect(),
             // `code:metro`, as `access-pass get` names the same feeds: a feed is keyed by
             // (code, exchange), so the code on its own does not say which feed is held.
             feeds: user
@@ -363,13 +406,14 @@ mod tests {
                 map.insert(device_pubkey, device.clone());
                 Ok(map)
             });
-        client
-            .expect_resolve_accesspass()
-            .with(predicate::eq(accesspass::get::ResolveAccessPassCommand {
-                client_ip: user.client_ip,
-                user_payer: user.owner,
-            }))
-            .returning(move |_| Ok(Some((accesspass_pubkey, accesspass.clone()))));
+        // A legacy user: the pass at its client IP exists, the dynamic one does not.
+        let user_client_ip = user.client_ip;
+        client.expect_get_accesspass().returning(
+            move |cmd: accesspass::get::GetAccessPassCommand| {
+                Ok((cmd.client_ip == user_client_ip)
+                    .then(|| (accesspass_pubkey, accesspass.clone())))
+            },
+        );
 
         client
             .expect_get_user()
@@ -424,6 +468,10 @@ mod tests {
         assert!(
             has_row("subscribers", "test"),
             "subscribers row should contain group name"
+        );
+        assert!(
+            has_row("accesspass", "prepaid"),
+            "accesspass row should name the pass type"
         );
     }
 
@@ -510,13 +558,16 @@ mod tests {
             device2_pk: Pubkey::default(),
         };
 
+        let recorded_pk = user.accesspass_pk;
         client
             .expect_get_user()
             .with(predicate::eq(GetUserCommand { pubkey: pda_pubkey }))
             .returning(move |_| Ok((pda_pubkey, user.clone())));
+        // The user records a pass that has since been closed.
         client
-            .expect_resolve_accesspass()
-            .returning(move |_| Ok(None));
+            .expect_get_multiple_accounts()
+            .with(predicate::eq(vec![recorded_pk]))
+            .returning(|_| Ok(vec![None]));
         client
             .expect_list_multicastgroup()
             .with(predicate::eq(ListMulticastGroupCommand {}))
@@ -683,13 +734,7 @@ mod tests {
                 map.insert(device_pubkey, device.clone());
                 Ok(map)
             });
-        client
-            .expect_resolve_accesspass()
-            .with(predicate::eq(accesspass::get::ResolveAccessPassCommand {
-                client_ip: user.client_ip,
-                user_payer: user.owner,
-            }))
-            .returning(|_| Ok(None));
+        client.expect_get_accesspass().returning(|_| Ok(None));
 
         client
             .expect_get_user()
@@ -720,5 +765,116 @@ mod tests {
             has_row("status", "activated"),
             "status row should contain value"
         );
+    }
+
+    #[test]
+    fn test_cli_user_get_shows_the_recorded_pass() {
+        // The user records its prepaid pass. The command reads that pass by address and never
+        // looks up the payer's 0.0.0.0 pass, which used to win and label the user EdgeSeat.
+        let mut client = create_test_client();
+        let user_pk = Pubkey::new_unique();
+        let prepaid_pk = Pubkey::new_unique();
+        let user = User {
+            account_type: AccountType::User,
+            user_type: UserType::IBRL,
+            client_ip: [10, 0, 0, 1].into(),
+            owner: Pubkey::new_unique(),
+            status: UserStatus::Activated,
+            accesspass_pk: prepaid_pk,
+            ..Default::default()
+        };
+        let accesspass = AccessPass {
+            account_type: AccountType::AccessPass,
+            owner: Pubkey::new_unique(),
+            bump_seed: 255,
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: user.client_ip,
+            user_payer: user.owner,
+            last_access_epoch: u64::MAX,
+            connection_count: 1,
+            status: AccessPassStatus::Connected,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            flags: 0,
+            tenant_allowlist: vec![],
+            unicast_user_count: 1,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
+        };
+
+        client
+            .expect_get_user()
+            .with(predicate::eq(GetUserCommand { pubkey: user_pk }))
+            .returning(move |_| Ok((user_pk, user.clone())));
+        let program_id = client.get_program_id();
+        client
+            .expect_get_multiple_accounts()
+            .with(predicate::eq(vec![prepaid_pk]))
+            .returning(move |_| {
+                Ok(vec![Some(Account {
+                    data: borsh::to_vec(&accesspass).unwrap(),
+                    owner: program_id,
+                    ..Account::default()
+                })])
+            });
+        client.expect_get_accesspass().times(0);
+        client
+            .expect_list_multicastgroup()
+            .returning(|_| Ok(std::collections::HashMap::new()));
+        client
+            .expect_list_tenant()
+            .returning(|_| Ok(std::collections::HashMap::new()));
+        client
+            .expect_list_device()
+            .returning(|_| Ok(std::collections::HashMap::new()));
+
+        let mut output = Vec::new();
+        let res = block_on(
+            GetUserCliCommand {
+                pubkey: user_pk.to_string(),
+                json: true,
+            }
+            .execute(&cli_context_default_for_tests(), &client, &mut output),
+        );
+        assert!(res.is_ok(), "{res:?}");
+        let json: serde_json::Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(json["accesspass"], "prepaid");
+        assert_eq!(json["accesspass_pks"], prepaid_pk.to_string());
+    }
+
+    #[test]
+    fn test_cli_user_get_fails_when_the_recorded_pass_read_fails() {
+        // A failed RPC read must not print `none`, which an operator would read as a closed pass.
+        let mut client = create_test_client();
+        let user_pk = Pubkey::new_unique();
+        let user = User {
+            account_type: AccountType::User,
+            user_type: UserType::IBRL,
+            client_ip: [10, 0, 0, 1].into(),
+            owner: Pubkey::new_unique(),
+            status: UserStatus::Activated,
+            accesspass_pk: Pubkey::new_unique(),
+            ..Default::default()
+        };
+
+        client
+            .expect_get_user()
+            .with(predicate::eq(GetUserCommand { pubkey: user_pk }))
+            .returning(move |_| Ok((user_pk, user.clone())));
+        client
+            .expect_get_multiple_accounts()
+            .returning(|_| Err(eyre::eyre!("rpc timeout")));
+
+        let mut output = Vec::new();
+        let res = block_on(
+            GetUserCliCommand {
+                pubkey: user_pk.to_string(),
+                json: true,
+            }
+            .execute(&cli_context_default_for_tests(), &client, &mut output),
+        );
+        assert!(res.unwrap_err().to_string().contains("rpc timeout"));
+        assert!(output.is_empty());
     }
 }

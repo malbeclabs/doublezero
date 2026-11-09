@@ -10,7 +10,10 @@ use doublezero_sdk::{
     },
     read_doublezero_config, BGPStatus, MulticastGroup, User, UserCYOA, UserStatus, UserType,
 };
-use doublezero_serviceability::pda::get_accesspass_pda;
+use doublezero_serviceability::{
+    pda::get_accesspass_pda,
+    state::accesspass::{AccessPass, AccessPassType},
+};
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::{collections::HashMap, io::Write, net::Ipv4Addr};
@@ -111,6 +114,10 @@ pub struct UserDisplay {
     pub client_ip: Ipv4Addr,
     pub dz_ip: Ipv4Addr,
     pub accesspass: String,
+    /// The address of the pass the user records, or of both candidate passes of a legacy user.
+    #[tabled(skip)]
+    #[serde(serialize_with = "serializer::serialize_pubkeylist_as_string")]
+    pub accesspass_pks: Vec<Pubkey>,
     pub tunnel_id: u16,
     pub tunnel_net: NetworkV4,
     pub tunnel_endpoint: Ipv4Addr,
@@ -149,66 +156,42 @@ impl ListUserCliCommand {
         let tenants = client.list_tenant(ListTenantCommand {})?;
         let binding = client.list_user(ListUserCommand)?;
 
+        let program_id = client.get_program_id();
         let mut users = binding
             .iter()
             .map(|(pk, user)| {
-                let (accesspass_pk, _) = get_accesspass_pda(
-                    &client.get_program_id(),
-                    &Ipv4Addr::UNSPECIFIED,
-                    &user.owner,
-                );
-
-                match accesspasses.get(&accesspass_pk) {
-                    Some(accesspass) => (pk, user.clone(), Some(accesspass.clone())),
-                    None => {
-                        let (accesspass_pk, _) = get_accesspass_pda(
-                            &client.get_program_id(),
-                            &user.client_ip,
-                            &user.owner,
-                        );
-                        let accesspass = accesspasses.get(&accesspass_pk);
-
-                        (pk, user.clone(), accesspass.cloned())
-                    }
-                }
+                let user_accesspasses = user_accesspasses(&program_id, user, &accesspasses);
+                (pk, user.clone(), user_accesspasses)
             })
             .collect::<Vec<_>>();
 
-        // Filter users by access pass type
+        // Filter users by access pass type. A legacy user with two candidate passes matches when
+        // either one does.
         if self.prepaid {
-            users.retain(|(_, _, accesspass)| {
-                if let Some(accesspass) = accesspass {
-                    accesspass.accesspass_type
-                        == doublezero_serviceability::state::accesspass::AccessPassType::Prepaid
-                } else {
-                    false
-                }
+            users.retain(|(_, _, accesspasses)| {
+                accesspasses
+                    .iter()
+                    .any(|(_, accesspass)| accesspass.accesspass_type == AccessPassType::Prepaid)
             });
         }
-        // Filter users by access pass type
         if self.solana_validator {
-            users.retain(|(_, _, accesspass)| {
-                if let Some(accesspass) = accesspass {
+            users.retain(|(_, _, accesspasses)| {
+                accesspasses.iter().any(|(_, accesspass)| {
                     matches!(
                         accesspass.accesspass_type,
-                        doublezero_serviceability::state::accesspass::AccessPassType::SolanaValidator(_)
+                        AccessPassType::SolanaValidator(_)
                     )
-                } else {
-                    false
-                }
+                })
             });
         }
         if let Some(solana_identity_vec) = self.solana_identity {
-            users.retain(|(_, _, accesspass)| {
-                if let Some(accesspass) = accesspass {
-                    if let doublezero_serviceability::state::accesspass::AccessPassType::SolanaValidator(pk) = &accesspass.accesspass_type {
-                        solana_identity_vec.contains(pk)
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
+            users.retain(|(_, _, accesspasses)| {
+                accesspasses.iter().any(|(_, accesspass)| {
+                    matches!(
+                        &accesspass.accesspass_type,
+                        AccessPassType::SolanaValidator(pk) if solana_identity_vec.contains(pk)
+                    )
+                })
             });
         }
 
@@ -329,7 +312,7 @@ impl ListUserCliCommand {
 
         let mut users_displays: Vec<UserDisplay> = users
             .into_iter()
-            .map(|(pubkey, user, accesspass)| {
+            .map(|(pubkey, user, accesspasses)| {
                 let device = devices.get(&user.device_pk);
                 let location = match device {
                     Some(device) => locations.get(&device.location_pk),
@@ -377,11 +360,8 @@ impl ListUserCliCommand {
                     cyoa_type: user.cyoa_type,
                     client_ip: user.client_ip,
                     dz_ip: user.dz_ip,
-                    accesspass: if let Some(accesspass) = accesspass {
-                        accesspass.to_string()
-                    } else {
-                        "none".to_string()
-                    },
+                    accesspass: format_accesspasses(&accesspasses),
+                    accesspass_pks: accesspasses.iter().map(|(pk, _)| *pk).collect(),
                     tunnel_id: user.tunnel_id,
                     tunnel_net: user.tunnel_net,
                     tunnel_endpoint: user.tunnel_endpoint,
@@ -422,6 +402,50 @@ impl ListUserCliCommand {
 
         Ok(())
     }
+}
+
+/// The access passes a user can be on, with their addresses. A user that records its pass in
+/// `accesspass_pk` has exactly that one. A legacy user records none, and the program accepts
+/// either of the payer's passes for it: the one at the user's client IP or the dynamic one at
+/// 0.0.0.0. Nothing onchain says which of the two it was created against, so when both exist both
+/// are returned, the client IP pass first. An empty result means the pass has been closed.
+pub(crate) fn user_accesspasses(
+    program_id: &Pubkey,
+    user: &User,
+    accesspasses: &HashMap<Pubkey, AccessPass>,
+) -> Vec<(Pubkey, AccessPass)> {
+    if user.accesspass_pk != Pubkey::default() {
+        return accesspasses
+            .get(&user.accesspass_pk)
+            .map(|accesspass| (user.accesspass_pk, accesspass.clone()))
+            .into_iter()
+            .collect();
+    }
+
+    let (client_ip_pk, _) = get_accesspass_pda(program_id, &user.client_ip, &user.owner);
+    let (dynamic_pk, _) = get_accesspass_pda(program_id, &Ipv4Addr::UNSPECIFIED, &user.owner);
+    let mut candidates = vec![client_ip_pk];
+    if dynamic_pk != client_ip_pk {
+        candidates.push(dynamic_pk);
+    }
+    candidates
+        .into_iter()
+        .filter_map(|pk| accesspasses.get(&pk).map(|accesspass| (pk, accesspass)))
+        .filter(|(_, accesspass)| accesspass.user_payer == user.owner)
+        .map(|(pk, accesspass)| (pk, accesspass.clone()))
+        .collect()
+}
+
+/// Format the user's passes with the same type names `access-pass list` prints.
+pub(crate) fn format_accesspasses(accesspasses: &[(Pubkey, AccessPass)]) -> String {
+    if accesspasses.is_empty() {
+        return "none".to_string();
+    }
+    accesspasses
+        .iter()
+        .map(|(_, accesspass)| accesspass.accesspass_type.to_string())
+        .collect::<Vec<_>>()
+        .join(" or ")
 }
 
 pub fn format_multicast_group_names(
@@ -964,7 +988,7 @@ mod tests {
         );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | tenant                                    | user_type | groups   | device       | location       | cyoa_type  | client_ip | dz_ip   | accesspass                  | tunnel_id | tunnel_net | tunnel_endpoint | status    | bgp_status | rtt | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | Multicast | S:m_code | device1_code | location1_name | GREOverDIA | 1.2.3.4   | 2.3.4.5 | Prepaid: (expires epoch 10) | 500       | 1.2.3.5/32 | 5.6.7.8         | activated | unknown    | -   | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
+        assert_eq!(output_str, " account                                   | tenant                                    | user_type | groups   | device       | location       | cyoa_type  | client_ip | dz_ip   | accesspass | tunnel_id | tunnel_net | tunnel_endpoint | status    | bgp_status | rtt | owner                                     \n 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | Multicast | S:m_code | device1_code | location1_name | GREOverDIA | 1.2.3.4   | 2.3.4.5 | prepaid    | 500       | 1.2.3.5/32 | 5.6.7.8         | activated | unknown    | -   | 11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo \n");
 
         let mut output = Vec::new();
         let res = block_on(
@@ -994,7 +1018,11 @@ mod tests {
         assert!(res.is_ok());
 
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"tenant\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"user_type\":\"Multicast\",\"device_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast\":\"S:m_code\",\"publishers\":\"\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8\",\"device_name\":\"device1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"cyoa_type\":\"GREOverDIA\",\"client_ip\":\"1.2.3.4\",\"dz_ip\":\"2.3.4.5\",\"accesspass\":\"Prepaid: (expires epoch 10)\",\"tunnel_id\":500,\"tunnel_net\":\"1.2.3.5/32\",\"tunnel_endpoint\":\"5.6.7.8\",\"status\":\"Activated\",\"bgp_status\":\"Unknown\",\"bgp_rtt_ns\":0,\"bgp_rtt\":\"-\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n");
+        let expected = "[{\"account\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\",\"tenant\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"user_type\":\"Multicast\",\"device_pk\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"multicast\":\"S:m_code\",\"publishers\":\"\",\"subscribers\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo8\",\"device_name\":\"device1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"cyoa_type\":\"GREOverDIA\",\"client_ip\":\"1.2.3.4\",\"dz_ip\":\"2.3.4.5\",\"accesspass\":\"prepaid\",\"tunnel_id\":500,\"tunnel_net\":\"1.2.3.5/32\",\"tunnel_endpoint\":\"5.6.7.8\",\"status\":\"Activated\",\"bgp_status\":\"Unknown\",\"bgp_rtt_ns\":0,\"bgp_rtt\":\"-\",\"owner\":\"11111115RidqCHAoz6dzmXxGcfWLNzevYqNpaRAUo\"}]\n".replace(
+            "\"accesspass\":\"prepaid\",",
+            &format!("\"accesspass\":\"prepaid\",\"accesspass_pks\":\"{accesspass2_pubkey}\","),
+        );
+        assert_eq!(output_str, expected);
 
         let mut output = Vec::new();
         let res = block_on(
@@ -2124,5 +2152,233 @@ mod tests {
         let output_str = String::from_utf8(output).unwrap();
         assert!(output_str.contains("tenant1"));
         assert!(output_str.contains("tenant2"));
+    }
+
+    fn pass_test_user(owner: Pubkey, client_ip: [u8; 4], accesspass_pk: Pubkey) -> User {
+        User {
+            account_type: AccountType::User,
+            owner,
+            user_type: IBRL,
+            cyoa_type: GREOverDIA,
+            client_ip: client_ip.into(),
+            dz_ip: client_ip.into(),
+            status: Activated,
+            accesspass_pk,
+            ..Default::default()
+        }
+    }
+
+    fn pass_test_accesspass(
+        user_payer: Pubkey,
+        client_ip: std::net::Ipv4Addr,
+        accesspass_type: AccessPassType,
+    ) -> AccessPass {
+        AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 255,
+            accesspass_type,
+            client_ip,
+            user_payer,
+            last_access_epoch: u64::MAX,
+            connection_count: 1,
+            status: AccessPassStatus::Connected,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
+            owner: Pubkey::default(),
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            multicast_user_count: 0,
+            max_multicast_users: 1,
+        }
+    }
+
+    /// Run `user list --json-compact` over the given accounts and return each listed user's
+    /// `accesspass` and `accesspass_pks` values, keyed by user account.
+    fn listed_accesspasses(
+        users: Vec<(Pubkey, User)>,
+        accesspasses: Vec<(Pubkey, AccessPass)>,
+        prepaid: bool,
+    ) -> HashMap<String, (String, String)> {
+        let mut client = create_test_client();
+        client
+            .expect_list_user()
+            .returning(move |_| Ok(users.iter().cloned().collect()));
+        client
+            .expect_list_accesspass()
+            .returning(move |_| Ok(accesspasses.iter().cloned().collect()));
+        client
+            .expect_list_device()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_location()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_multicastgroup()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_tenant()
+            .returning(|_| Ok(HashMap::new()));
+
+        let mut output = Vec::new();
+        block_on(
+            ListUserCliCommand {
+                prepaid,
+                solana_validator: false,
+                solana_identity: None,
+                device: None,
+                location: None,
+                owner: None,
+                user_payer: None,
+                client_ip: None,
+                user_type: None,
+                cyoa_type: None,
+                dz_ip: None,
+                tunnel_id: None,
+                status: None,
+                multicast_group: None,
+                tenant: None,
+                all_tenants: true,
+                json: false,
+                json_compact: true,
+                narrow: false,
+            }
+            .execute(&cli_context_default_for_tests(), &client, &mut output),
+        )
+        .unwrap();
+
+        let rows: Vec<serde_json::Value> = serde_json::from_slice(&output).unwrap();
+        rows.into_iter()
+            .map(|row| {
+                (
+                    row["account"].as_str().unwrap().to_string(),
+                    (
+                        row["accesspass"].as_str().unwrap().to_string(),
+                        row["accesspass_pks"].as_str().unwrap().to_string(),
+                    ),
+                )
+            })
+            .collect()
+    }
+
+    #[test]
+    fn test_cli_user_list_shows_the_recorded_pass() {
+        // The payer holds a prepaid pass at the user's IP and an EdgeSeat pass at 0.0.0.0. Each
+        // user is labeled with the pass it records, not with the dynamic pass.
+        let program_id = create_test_client().get_program_id();
+        let payer = Pubkey::new_unique();
+        let client_ip = [1, 2, 3, 4];
+        let (prepaid_pk, _) = get_accesspass_pda(&program_id, &client_ip.into(), &payer);
+        let (edge_seat_pk, _) =
+            get_accesspass_pda(&program_id, &std::net::Ipv4Addr::UNSPECIFIED, &payer);
+        let ibrl_user_pk = Pubkey::new_unique();
+        let edge_seat_user_pk = Pubkey::new_unique();
+
+        let listed = listed_accesspasses(
+            vec![
+                (ibrl_user_pk, pass_test_user(payer, client_ip, prepaid_pk)),
+                (
+                    edge_seat_user_pk,
+                    pass_test_user(payer, client_ip, edge_seat_pk),
+                ),
+            ],
+            vec![
+                (
+                    prepaid_pk,
+                    pass_test_accesspass(payer, client_ip.into(), AccessPassType::Prepaid),
+                ),
+                (
+                    edge_seat_pk,
+                    pass_test_accesspass(
+                        payer,
+                        std::net::Ipv4Addr::UNSPECIFIED,
+                        AccessPassType::EdgeSeat(vec![]),
+                    ),
+                ),
+            ],
+            false,
+        );
+
+        assert_eq!(
+            listed[&ibrl_user_pk.to_string()],
+            ("prepaid".to_string(), prepaid_pk.to_string())
+        );
+        assert_eq!(
+            listed[&edge_seat_user_pk.to_string()],
+            ("edge_seat: 0 feed(s)".to_string(), edge_seat_pk.to_string())
+        );
+    }
+
+    #[test]
+    fn test_cli_user_list_shows_none_when_the_recorded_pass_is_closed() {
+        // The recorded pass is gone. The dynamic pass the payer still holds is not shown in its
+        // place, because the user is not on it.
+        let program_id = create_test_client().get_program_id();
+        let payer = Pubkey::new_unique();
+        let (edge_seat_pk, _) =
+            get_accesspass_pda(&program_id, &std::net::Ipv4Addr::UNSPECIFIED, &payer);
+        let user_pk = Pubkey::new_unique();
+
+        let listed = listed_accesspasses(
+            vec![(
+                user_pk,
+                pass_test_user(payer, [1, 2, 3, 4], Pubkey::new_unique()),
+            )],
+            vec![(
+                edge_seat_pk,
+                pass_test_accesspass(
+                    payer,
+                    std::net::Ipv4Addr::UNSPECIFIED,
+                    AccessPassType::EdgeSeat(vec![]),
+                ),
+            )],
+            false,
+        );
+
+        assert_eq!(
+            listed[&user_pk.to_string()],
+            ("none".to_string(), String::new())
+        );
+    }
+
+    #[test]
+    fn test_cli_user_list_shows_both_candidates_for_a_legacy_user() {
+        // A legacy user records no pass, and the payer holds both passes the program would accept
+        // for it, so both are shown. The --prepaid filter keeps the user.
+        let program_id = create_test_client().get_program_id();
+        let payer = Pubkey::new_unique();
+        let client_ip = [1, 2, 3, 4];
+        let (prepaid_pk, _) = get_accesspass_pda(&program_id, &client_ip.into(), &payer);
+        let (edge_seat_pk, _) =
+            get_accesspass_pda(&program_id, &std::net::Ipv4Addr::UNSPECIFIED, &payer);
+        let user_pk = Pubkey::new_unique();
+        let users = vec![(user_pk, pass_test_user(payer, client_ip, Pubkey::default()))];
+        let accesspasses = vec![
+            (
+                prepaid_pk,
+                pass_test_accesspass(payer, client_ip.into(), AccessPassType::Prepaid),
+            ),
+            (
+                edge_seat_pk,
+                pass_test_accesspass(
+                    payer,
+                    std::net::Ipv4Addr::UNSPECIFIED,
+                    AccessPassType::EdgeSeat(vec![]),
+                ),
+            ),
+        ];
+
+        let listed = listed_accesspasses(users.clone(), accesspasses.clone(), false);
+        assert_eq!(
+            listed[&user_pk.to_string()],
+            (
+                "prepaid or edge_seat: 0 feed(s)".to_string(),
+                format!("{prepaid_pk}, {edge_seat_pk}")
+            )
+        );
+
+        let listed = listed_accesspasses(users, accesspasses, true);
+        assert!(listed.contains_key(&user_pk.to_string()));
     }
 }

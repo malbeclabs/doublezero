@@ -18,7 +18,7 @@ use doublezero_sdk::{
     },
     Feed, User,
 };
-use doublezero_serviceability::state::accesspass::{AccessPassType, FeedSeat};
+use doublezero_serviceability::state::accesspass::{AccessPass, AccessPassType, FeedSeat};
 use solana_sdk::pubkey::Pubkey;
 use std::{
     collections::HashMap,
@@ -88,24 +88,7 @@ impl RemoveFeedAccessPassCliCommand {
         )?;
         let cap_changes = max_multicast_users != accesspass.max_multicast_users;
 
-        // SetAccessPass re-adds the pass's tenant, and the program requires the signer to
-        // administer it even for foundation signers.
-        let tenant = accesspass
-            .tenant_allowlist
-            .first()
-            .copied()
-            .unwrap_or_default();
-        if cap_changes && tenant != Pubkey::default() {
-            let (_, t) = client.get_tenant(GetTenantCommand {
-                pubkey_or_code: tenant.to_string(),
-            })?;
-            let signer = client.get_payer();
-            if !t.administrators.contains(&signer) {
-                eyre::bail!(
-                    "{signer} is not an administrator of tenant {tenant} on access pass {accesspass_pk}, so it cannot lower the multicast user cap"
-                );
-            }
-        }
+        let tenant = tenant_for_cap_change(client, &accesspass, accesspass_pk, cap_changes)?;
 
         let feed_name = feeds.get(&feed_pk).map_or("", |f| f.name.as_str());
         writeln!(out, "AccessPass PDA: {accesspass_pk}")?;
@@ -222,6 +205,34 @@ impl RemoveFeedAccessPassCliCommand {
     }
 }
 
+/// The tenant that `SetAccessPass` re-adds when it changes the multicast user cap. The program
+/// requires the signer to administer that tenant, even for foundation signers, so this fails first
+/// when the signer does not.
+pub(super) fn tenant_for_cap_change<C: CliCommand>(
+    client: &C,
+    accesspass: &AccessPass,
+    accesspass_pk: Pubkey,
+    cap_changes: bool,
+) -> eyre::Result<Pubkey> {
+    let tenant = accesspass
+        .tenant_allowlist
+        .first()
+        .copied()
+        .unwrap_or_default();
+    if cap_changes && tenant != Pubkey::default() {
+        let (_, t) = client.get_tenant(GetTenantCommand {
+            pubkey_or_code: tenant.to_string(),
+        })?;
+        let signer = client.get_payer();
+        if !t.administrators.contains(&signer) {
+            eyre::bail!(
+                "{signer} is not an administrator of tenant {tenant} on access pass {accesspass_pk}, so it cannot change the multicast user cap"
+            );
+        }
+    }
+    Ok(tenant)
+}
+
 fn find_holders<C: CliCommand>(
     client: &C,
     user_payer: Pubkey,
@@ -252,7 +263,7 @@ fn left_with_no_feed(user: &User, feed_pk: Pubkey, remaining: &[&FeedSeat]) -> b
             .any(|held| *held != feed_pk && remaining.iter().any(|s| s.feed_key == *held))
 }
 
-fn resolve_feed(
+pub(super) fn resolve_feed(
     feed: &str,
     seats: &[FeedSeat],
     feeds: &HashMap<Pubkey, Feed>,

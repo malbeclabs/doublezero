@@ -274,11 +274,25 @@ pub(super) fn resolve_feed(
         }
         eyre::bail!("feed {feed_pk} not found");
     }
-    feeds
+    let mut matches: Vec<Pubkey> = feeds
         .iter()
-        .find(|(_, f)| f.name == feed)
+        .filter(|(_, f)| f.name == feed)
         .map(|(feed_pk, _)| *feed_pk)
-        .ok_or_else(|| eyre::eyre!("no feed named {feed}"))
+        .collect();
+    matches.sort();
+    match matches.as_slice() {
+        [] => eyre::bail!("no feed named {feed}"),
+        [feed_pk] => Ok(*feed_pk),
+        _ => eyre::bail!(
+            "{} feeds are named {feed}, so pass the pubkey of one of them: {}",
+            matches.len(),
+            matches
+                .iter()
+                .map(Pubkey::to_string)
+                .collect::<Vec<_>>()
+                .join(", ")
+        ),
+    }
 }
 
 #[cfg(test)]

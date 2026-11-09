@@ -488,6 +488,41 @@ mod tests {
     }
 
     #[test]
+    fn test_cli_accesspass_add_feed_refuses_a_name_that_two_feeds_share() {
+        let mut client = create_test_client();
+        let user_payer = Pubkey::new_unique();
+        let (fra_pk, other_pk) = (Pubkey::new_unique(), Pubkey::new_unique());
+        expect_pass_and_feeds(
+            &mut client,
+            user_payer,
+            Pubkey::new_unique(),
+            pass(user_payer, AccessPassType::EdgeSeat(vec![]), 0),
+            HashMap::from([
+                (fra_pk, feed("Solana Shreds FRA")),
+                (other_pk, feed("Solana Shreds FRA")),
+            ]),
+        );
+
+        let err = run(&client, add(user_payer, "Solana Shreds FRA", 2, false)).unwrap_err();
+        let mut both = [fra_pk, other_pk];
+        both.sort();
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "2 feeds are named Solana Shreds FRA, so pass the pubkey of one of them: {}, {}",
+                both[0], both[1]
+            )
+        );
+
+        // The pubkey picks one of them.
+        let output = run(&client, add(user_payer, &fra_pk.to_string(), 2, true)).unwrap();
+        assert!(
+            output.contains(&format!("Adding feed Solana Shreds FRA ({fra_pk})")),
+            "{output}"
+        );
+    }
+
+    #[test]
     fn test_cli_accesspass_add_feed_refuses_zero_users_and_a_past_date() {
         let mut client = create_test_client();
         client.expect_check_requirements().returning(|_| Ok(()));

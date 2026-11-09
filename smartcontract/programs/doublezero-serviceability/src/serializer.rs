@@ -27,6 +27,7 @@ where
     value.validate()?;
 
     let account_space = borsh::object_length(value)?;
+    value.validate_account_size(0, account_space)?;
 
     #[cfg(test)]
     {
@@ -75,6 +76,7 @@ where
 
     // Compute target size
     let target_len = borsh::object_length(value)?;
+    value.validate_account_size(account.data_len(), target_len)?;
 
     // Resize account if needed
     resize_account_if_needed(account, payer, accounts, target_len)?;

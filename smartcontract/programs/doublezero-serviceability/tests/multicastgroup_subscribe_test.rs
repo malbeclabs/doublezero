@@ -2171,3 +2171,28 @@ async fn test_subscribe_ignores_max_subscribers_on_group_that_is_not_private() {
         .unwrap();
     assert_eq!(mgroup.subscriber_count, 2);
 }
+
+#[tokio::test]
+async fn test_private_group_with_caps_of_0_admits_nobody() {
+    let mut fixture = setup_fixture().await;
+    let mgroup_pubkey = fixture.mgroup1_pubkey;
+
+    set_group_counts_and_caps(
+        &mut fixture,
+        mgroup_pubkey,
+        MulticastGroupUpdateArgs {
+            private: Some(true),
+            ..Default::default()
+        },
+    )
+    .await;
+
+    let err = try_set_roles(&mut fixture, mgroup_pubkey, false, true)
+        .await
+        .unwrap_err();
+    assert_custom_error(&err, DoubleZeroError::MulticastGroupMaxSubscribersExceeded);
+    let err = try_set_roles(&mut fixture, mgroup_pubkey, true, false)
+        .await
+        .unwrap_err();
+    assert_custom_error(&err, DoubleZeroError::MulticastGroupMaxPublishersExceeded);
+}

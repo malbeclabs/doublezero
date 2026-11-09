@@ -1407,6 +1407,8 @@ async fn make_group_private(fixture: &mut Fixture, group: Pubkey) {
         fixture.program_id,
         DoubleZeroInstruction::UpdateMulticastGroup(MulticastGroupUpdateArgs {
             private: Some(true),
+            max_publishers: Some(10),
+            max_subscribers: Some(10),
             ..Default::default()
         }),
         vec![
@@ -1766,4 +1768,81 @@ async fn test_batch_with_a_private_group_and_a_feed_group_counts_once() {
     let pass = read_pass(&mut fixture).await;
     assert_eq!(pass.public_multicast_user_count, 1);
     assert_eq!(seat_users(&pass, &feed), 1);
+}
+
+#[tokio::test]
+async fn test_private_group_user_gives_back_its_pass_seat_when_it_leaves_its_last_feed() {
+    let mut fixture = setup([100, 0, 0, 59]).await;
+    let exchange = fixture.exchange_pubkey;
+    let private_group = fixture.groups[0];
+    let feed_group = fixture.groups[1];
+    make_group_private(&mut fixture, private_group).await;
+    add_group_to_subscriber_allowlist(&mut fixture, private_group).await;
+    let feed = create_feed(&mut fixture, "feed1", exchange, vec![feed_group]).await;
+    set_accesspass_feeds(&mut fixture, vec![seat(feed, 1)]).await;
+    create_private_group_user(&mut fixture, private_group).await;
+    join(&mut fixture, &[feed], &[feed_group]).await.unwrap();
+    assert_eq!(read_pass(&mut fixture).await.public_multicast_user_count, 1);
+
+    leave(&mut fixture, &[feed], &[], &[feed_group, private_group])
+        .await
+        .unwrap();
+
+    let user = read_user(&mut fixture).await;
+    assert_eq!(user.subscribers, vec![private_group]);
+    assert!(user.feed_pks.is_empty());
+    assert!(!user.holds_pass_seat);
+    let pass = read_pass(&mut fixture).await;
+    assert_eq!(pass.public_multicast_user_count, 0);
+    assert_eq!(seat_users(&pass, &feed), 0);
+}
+
+#[tokio::test]
+async fn test_user_on_a_public_group_keeps_its_pass_seat_when_it_leaves_its_last_feed() {
+    let mut fixture = setup([100, 0, 0, 60]).await;
+    let exchange = fixture.exchange_pubkey;
+    let private_group = fixture.groups[0];
+    let feed_group = fixture.groups[1];
+    let public_group = fixture.groups[2];
+    make_group_private(&mut fixture, private_group).await;
+    add_group_to_subscriber_allowlist(&mut fixture, private_group).await;
+    add_group_to_subscriber_allowlist(&mut fixture, public_group).await;
+    let feed = create_feed(&mut fixture, "feed1", exchange, vec![feed_group]).await;
+    set_accesspass_feeds(&mut fixture, vec![seat(feed, 1)]).await;
+    create_private_group_user(&mut fixture, private_group).await;
+    join(&mut fixture, &[feed], &[feed_group]).await.unwrap();
+    set_subscriber_role(&mut fixture, public_group, true).await;
+
+    leave(
+        &mut fixture,
+        &[feed],
+        &[],
+        &[feed_group, private_group, public_group],
+    )
+    .await
+    .unwrap();
+
+    assert!(read_user(&mut fixture).await.holds_pass_seat);
+    assert_eq!(read_pass(&mut fixture).await.public_multicast_user_count, 1);
+}
+
+#[tokio::test]
+async fn test_kept_groups_must_match_the_groups_the_user_keeps() {
+    let mut fixture = setup([100, 0, 0, 61]).await;
+    let exchange = fixture.exchange_pubkey;
+    let private_group = fixture.groups[0];
+    let feed_group = fixture.groups[1];
+    make_group_private(&mut fixture, private_group).await;
+    add_group_to_subscriber_allowlist(&mut fixture, private_group).await;
+    let feed = create_feed(&mut fixture, "feed1", exchange, vec![feed_group]).await;
+    set_accesspass_feeds(&mut fixture, vec![seat(feed, 1)]).await;
+    create_private_group_user(&mut fixture, private_group).await;
+    join(&mut fixture, &[feed], &[feed_group]).await.unwrap();
+
+    let other_group = fixture.groups[3];
+    let err = leave(&mut fixture, &[feed], &[], &[feed_group, other_group])
+        .await
+        .unwrap_err();
+    assert_custom_error(&err, custom_code(DoubleZeroError::InvalidArgument));
+    assert!(read_user(&mut fixture).await.holds_pass_seat);
 }

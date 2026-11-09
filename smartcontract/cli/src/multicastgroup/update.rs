@@ -10,7 +10,10 @@ use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::multicastgroup::{
     get::GetMulticastGroupCommand, update::UpdateMulticastGroupCommand,
 };
-use std::{io::Write, net::Ipv4Addr};
+use std::{
+    io::{BufRead, Write},
+    net::Ipv4Addr,
+};
 
 #[derive(Args, Debug)]
 pub struct UpdateMulticastGroupCliCommand {
@@ -38,10 +41,10 @@ pub struct UpdateMulticastGroupCliCommand {
     /// Mark the multicast group as private (true or false)
     #[arg(long)]
     pub private: Option<bool>,
-    /// Maximum number of publishers on the multicast group (0 means no cap)
+    /// Maximum number of publishers on a private multicast group. A private group with 0 admits no publisher
     #[arg(long)]
     pub max_publishers: Option<u32>,
-    /// Maximum number of subscribers on the multicast group (0 means no cap)
+    /// Maximum number of subscribers on a private multicast group. A private group with 0 admits no subscriber
     #[arg(long)]
     pub max_subscribers: Option<u32>,
     /// Wait for the multicast group to be activated
@@ -50,18 +53,40 @@ pub struct UpdateMulticastGroupCliCommand {
 }
 
 impl UpdateMulticastGroupCliCommand {
-    pub async fn execute<C: CliCommand, W: Write>(
+    pub async fn execute<C: CliCommand, W: Write, R: BufRead>(
         self,
         _ctx: &CliContext,
         client: &C,
         out: &mut W,
+        input: &mut R,
     ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (pubkey, _) = client.get_multicastgroup(GetMulticastGroupCommand {
+        let (pubkey, mgroup) = client.get_multicastgroup(GetMulticastGroupCommand {
             pubkey_or_code: self.pubkey,
         })?;
+
+        // The users already on the group keep the seats they hold on the pass-wide multicast cap of
+        // their access pass. Only a user that joins later follows the new private flag.
+        if let Some(private) = self.private {
+            let members = mgroup.publisher_count + mgroup.subscriber_count;
+            if private != mgroup.private && members > 0 {
+                writeln!(
+                    out,
+                    "Multicast group {} has {} publisher(s) and {} subscriber(s). Their access passes keep the multicast user counts they have now until these users disconnect.",
+                    mgroup.code, mgroup.publisher_count, mgroup.subscriber_count
+                )?;
+                write!(out, "Set private to {private}? [y/N]: ")?;
+                out.flush()?;
+                let mut answer = String::new();
+                input.read_line(&mut answer)?;
+                if !answer.trim().eq_ignore_ascii_case("y") {
+                    writeln!(out, "Aborted.")?;
+                    return Ok(());
+                }
+            }
+        }
 
         let signature = client.update_multicastgroup(UpdateMulticastGroupCommand {
             pubkey,
@@ -325,7 +350,7 @@ mod tests {
                 max_subscribers: None,
                 wait: false,
             }
-            .execute(&ctx, &client, &mut output),
+            .execute(&ctx, &client, &mut output, &mut "".as_bytes()),
         );
         assert!(res.is_ok());
         assert_eq!(String::from_utf8(output).unwrap(), EXPECTED_SIGNATURE_STR);
@@ -382,7 +407,7 @@ mod tests {
                 max_subscribers: None,
                 wait: false,
             }
-            .execute(&ctx, &client, &mut output),
+            .execute(&ctx, &client, &mut output, &mut "".as_bytes()),
         );
         assert!(res.is_ok());
         assert_eq!(String::from_utf8(output).unwrap(), EXPECTED_SIGNATURE_STR);
@@ -440,9 +465,49 @@ mod tests {
                 max_subscribers: None,
                 wait: false,
             }
-            .execute(&ctx, &client, &mut output),
+            .execute(&ctx, &client, &mut output, &mut "".as_bytes()),
         );
         assert!(res.is_ok());
         assert_eq!(String::from_utf8(output).unwrap(), EXPECTED_SIGNATURE_STR);
+    }
+
+    #[test]
+    fn test_cli_multicastgroup_update_private_asks_when_the_group_has_members() {
+        let mut client = create_test_client();
+        let (pda_pubkey, _) = get_multicastgroup_pda(&client.get_program_id(), 1);
+        let multicastgroup = make_multicastgroup(pda_pubkey);
+        client.expect_check_requirements().returning(|_| Ok(()));
+        client
+            .expect_get_multicastgroup()
+            .returning(move |_| Ok((pda_pubkey, multicastgroup.clone())));
+        client.expect_update_multicastgroup().never();
+
+        let mut output = Vec::new();
+        block_on(
+            UpdateMulticastGroupCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                code: None,
+                multicast_ip: None,
+                max_bandwidth: None,
+                publisher_count: None,
+                subscriber_count: None,
+                owner: None,
+                private: Some(true),
+                max_publishers: None,
+                max_subscribers: None,
+                wait: false,
+            }
+            .execute(
+                &cli_context_default_for_tests(),
+                &client,
+                &mut output,
+                &mut "n\n".as_bytes(),
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            "Multicast group test has 5 publisher(s) and 10 subscriber(s). Their access passes keep the multicast user counts they have now until these users disconnect.\nSet private to true? [y/N]: Aborted.\n"
+        );
     }
 }

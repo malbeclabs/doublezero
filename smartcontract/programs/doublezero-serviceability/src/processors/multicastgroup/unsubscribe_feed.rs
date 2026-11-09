@@ -9,13 +9,20 @@
 //! nothing in it. A held feed the pass no longer carries is exempt: it has no seat to strand, is
 //! pruned on any leave, and may itself be a target to unsubscribe its groups (but cannot stand in
 //! as retained). See [`super::feed`] for the shared model.
+//!
+//! When the leave removes the last feed of the user, the caller can pass the groups the user keeps
+//! after the groups it leaves. If every group it keeps is private, the user gives back its seat on
+//! the pass-wide multicast cap. Without these accounts the user keeps that seat.
 
 use crate::{
     error::DoubleZeroError,
-    processors::multicastgroup::feed::{
-        apply_groups, check_group_accounts, load_context, load_feeds, write_back,
+    processors::{
+        multicastgroup::feed::{
+            apply_groups, check_group_accounts, load_context, load_feeds, write_back,
+        },
+        validation::validate_program_account,
     },
-    state::permission::permission_flags,
+    state::{multicastgroup::MulticastGroup, permission::permission_flags},
 };
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
@@ -132,6 +139,15 @@ pub fn process_unsubscribe_feed(
             }
         }
     }
+    if group_accounts.len() < expected.len() {
+        msg!(
+            "passed {} MulticastGroup accounts but this call changes {}",
+            group_accounts.len(),
+            expected.len()
+        );
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+    let (group_accounts, kept_group_accounts) = group_accounts.split_at(expected.len());
     check_group_accounts(group_accounts, &expected)?;
 
     apply_groups(
@@ -147,6 +163,34 @@ pub fn process_unsubscribe_feed(
         if ctx.user.feed_pks.contains(feed_key) {
             ctx.accesspass.release_feed_seat(feed_key);
             ctx.user.feed_pks.retain(|k| k != feed_key);
+        }
+    }
+
+    if !kept_group_accounts.is_empty() {
+        if !ctx.user.feed_pks.is_empty() {
+            msg!("kept groups are passed only when the user leaves its last feed");
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
+        let mut kept: Vec<Pubkey> = ctx.user.subscribers.clone();
+        for group in &ctx.user.publishers {
+            if !kept.contains(group) {
+                kept.push(*group);
+            }
+        }
+        check_group_accounts(kept_group_accounts, &kept)?;
+        let mut keeps_only_private_groups = true;
+        for group_account in kept_group_accounts {
+            validate_program_account!(
+                *group_account,
+                program_id,
+                writable = false,
+                "MulticastGroup"
+            );
+            keeps_only_private_groups &= MulticastGroup::try_from(*group_account)?.private;
+        }
+        if keeps_only_private_groups && ctx.user.holds_pass_seat {
+            ctx.accesspass.release_pass_seat(ctx.user.user_type);
+            ctx.user.holds_pass_seat = false;
         }
     }
 

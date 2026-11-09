@@ -389,9 +389,8 @@ async fn test_set_access_pass_counts_feed_authority_limited_to_own_passes() {
     assert_eq!(ap.connection_count, 1);
 }
 
-/// The admin counts 1 user on a feed and 1 user on a private group only. The program sets 2
-/// connections and 1 public multicast user, because a private group user counts only as a
-/// connection.
+/// The test sends 1 public multicast user and 1 private multicast user. The program sets the
+/// connection count to 2 and the public multicast count to 1. The pass stores no private count.
 #[tokio::test]
 async fn test_set_access_pass_counts_adds_private_multicast_users_to_connections() {
     let mut env = setup().await;

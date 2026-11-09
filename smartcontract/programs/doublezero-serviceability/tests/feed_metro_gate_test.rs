@@ -935,6 +935,8 @@ async fn make_group_private(fixture: &mut FeedFixture, mgroup: Pubkey) {
         fixture.program_id,
         DoubleZeroInstruction::UpdateMulticastGroup(MulticastGroupUpdateArgs {
             private: Some(true),
+            max_publishers: Some(10),
+            max_subscribers: Some(10),
             ..Default::default()
         }),
         vec![

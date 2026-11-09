@@ -394,7 +394,13 @@ impl TryFrom<&[u8]> for User {
             // zero bytes here (never a real feed), which read as an empty vec; the 28 bytes left
             // over are trailing data this decoder ignores. Accounts predating the slot default too.
             feed_pks: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
-            accesspass_pk: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            accesspass_pk: if data.len() >= 32 {
+                BorshDeserialize::deserialize(&mut data).unwrap_or_default()
+            } else {
+                // Skip a short tail, so that holds_pass_seat below does not read its bytes.
+                data = &[];
+                Pubkey::default()
+            },
             // Every multicast user created before this field existed raised the pass-wide count.
             holds_pass_seat: BorshDeserialize::deserialize(&mut data).unwrap_or(true),
         };

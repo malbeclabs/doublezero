@@ -114,10 +114,7 @@ pub fn update_user_multicastgroup_roles(
     match publisher {
         true => {
             if !user.publishers.contains(mgroup_account.key) {
-                if mgroup.private
-                    && mgroup.max_publishers > 0
-                    && mgroup.publisher_count >= mgroup.max_publishers
-                {
+                if mgroup.private && mgroup.publisher_count >= mgroup.max_publishers {
                     msg!(
                         "Multicast group publishers at cap: count={}, max={}",
                         mgroup.publisher_count,
@@ -148,10 +145,7 @@ pub fn update_user_multicastgroup_roles(
     match subscriber {
         true => {
             if !user.subscribers.contains(mgroup_account.key) {
-                if mgroup.private
-                    && mgroup.max_subscribers > 0
-                    && mgroup.subscriber_count >= mgroup.max_subscribers
-                {
+                if mgroup.private && mgroup.subscriber_count >= mgroup.max_subscribers {
                     msg!(
                         "Multicast group subscribers at cap: count={}, max={}",
                         mgroup.subscriber_count,

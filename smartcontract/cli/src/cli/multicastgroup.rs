@@ -154,7 +154,10 @@ impl MulticastGroupCommands {
                 },
             },
             Self::Create(args) => args.execute(ctx, client, out).await,
-            Self::Update(args) => args.execute(ctx, client, out).await,
+            Self::Update(args) => {
+                args.execute(ctx, client, out, &mut std::io::stdin().lock())
+                    .await
+            }
             Self::List(args) => args.execute(ctx, client, out).await,
             Self::Get(args) => args.execute(ctx, client, out).await,
             Self::Delete(args) => args.execute(ctx, client, out).await,

@@ -85,8 +85,8 @@ pub struct MulticastGroup {
     /// group. It also lets cleanup find a bond's groups once the bond is gone.
     pub bond_ref: Pubkey, // 32
     pub private: bool,             // 1
-    pub max_publishers: u32,       // 4, 0 means no cap
-    pub max_subscribers: u32,      // 4, 0 means no cap
+    pub max_publishers: u32,       // 4, applies to a private group only
+    pub max_subscribers: u32,      // 4, applies to a private group only
 }
 
 impl fmt::Display for MulticastGroup {

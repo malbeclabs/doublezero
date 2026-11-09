@@ -160,8 +160,18 @@ mod tests {
         accesspass::set_access_pass, tenant::delete_tenant, user::delete_user,
     };
     use mockall::{predicate, Sequence};
-    use solana_sdk::{pubkey::Pubkey, signature::Signature};
+    use solana_sdk::{account::Account, pubkey::Pubkey, signature::Signature};
     use std::{collections::HashMap, net::Ipv4Addr};
+
+    fn accesspass_account(program_id: Pubkey, pass: &AccessPass) -> Account {
+        Account {
+            lamports: 1,
+            data: borsh::to_vec(pass).unwrap(),
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        }
+    }
 
     #[test]
     fn test_delete_tenant_without_cascade() {
@@ -281,6 +291,13 @@ mod tests {
             .expect_get()
             .with(predicate::eq(accesspass_pubkey))
             .returning(move |_| Ok(AccountData::AccessPass(value.clone())));
+
+        // SetAccessPassCommand reads the exact pass for its current tenant.
+        let account = accesspass_account(program_id, &accesspass);
+        client
+            .expect_get_multiple_accounts()
+            .with(predicate::eq(vec![accesspass_pubkey]))
+            .returning(move |_| Ok(vec![Some(account.clone())]));
 
         // 1. ListUserCommand: gets(AccountType::User)
         let user_clone = user.clone();
@@ -455,24 +472,12 @@ mod tests {
 
         let mut seq = Sequence::new();
 
-        // ResolveAccessPassCommand inside SetAccessPassCommand: get(accesspass_pda)
-        let ap_for_get = accesspass.clone();
+        // SetAccessPassCommand reads the exact pass for its current tenant.
+        let account = accesspass_account(program_id, &accesspass);
         client
-            .expect_get()
-            .with(predicate::eq(accesspass_pubkey))
-            .returning(move |_| Ok(AccountData::AccessPass(ap_for_get.clone())));
-
-        // ResolveAccessPassCommand checks the UNSPECIFIED (dynamic) PDA first; no pass
-        // exists there, so it falls back to the exact-IP PDA above.
-        let (dynamic_accesspass_pubkey, _) = get_accesspass_pda(
-            &client.get_program_id(),
-            &Ipv4Addr::UNSPECIFIED,
-            &client.get_payer(),
-        );
-        client
-            .expect_get()
-            .with(predicate::eq(dynamic_accesspass_pubkey))
-            .returning(|_| Err(eyre::eyre!("account not found")));
+            .expect_get_multiple_accounts()
+            .with(predicate::eq(vec![accesspass_pubkey]))
+            .returning(move |_| Ok(vec![Some(account.clone())]));
 
         // 1. ListAccessPassCommand: gets(AccountType::AccessPass)
         let ap_for_list = accesspass.clone();

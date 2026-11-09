@@ -24,7 +24,7 @@ All notable changes to this project will be documented in this file.
   - `doublezero-sentinel` 0.2.7. It carries the -32022 fix above, and the Solana 3.0 migration, the static musl binary and the move to rustls that landed since 0.2.6.
 - CLI
   - `doublezero device delete` no longer reads the device's shred-subscription `DeviceHistory` account first. The program is closed, so a device it marks enabled can no longer be disabled there, and the check refused to delete it.
-  - `doublezero disconnect` no longer tells the user to run `doublezero-solana shreds withdraw` for a user that the shred oracle manages.
+  - `doublezero disconnect` prints one message for every user that another key owns: it names the owner, says that `disconnect` skips the user, and says that its owner can delete it. The separate shred oracle message, with its `doublezero-solana shreds withdraw` hint, is gone. It matched only the global state's legacy feed authority, which is unset on mainnet-beta and testnet.
 - E2E/QA
   - The QA agent drops the `FeedEnable`, `FeedSeatPrice`, `FeedSeatPay`, `FeedSeatWithdraw` and `GetWalletPubkey` RPCs, and the QA client drops its Solana RPC failover pool and the `SOLANA_RPC_FALLBACK_URLS` and `QA_SOLANA_RPC_*` variables it read. Only the settlement test that #4248 removed used them.
 

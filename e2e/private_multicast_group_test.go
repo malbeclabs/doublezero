@@ -21,7 +21,7 @@ import (
 // TestE2E_PrivateMulticastGroup connects five hosts that share one DZ ID, and so one EdgeSeat
 // access pass, to a feed and to a private multicast group (malbeclabs/infra#3706).
 //
-// The pass holds the feed `shreds-e2e` for 4 users, so its multicast user cap is 4. The group
+// The pass holds the feed `solana-shreds-full-ewr` for 4 users, so its multicast user cap is 4. The group
 // `private-e2e` is private and admits at most 2 publishers and 3 subscribers. A host that joins
 // only the private group does not count against the cap of 4 until it joins the feed. Hosts A and
 // B join the private group and the feed as subscribers in opposite orders, and hosts C and D do
@@ -161,11 +161,11 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 		for _, code := range []string{"feed-e2e-a", "feed-e2e-b", "private-e2e", "comped-e2e"} {
 			manager(t, "doublezero multicast group create --code "+code+" --max-bandwidth 10Gbps --owner me -w")
 		}
-		manager(t, "doublezero feed create --code shreds-e2e --name 'Shreds E2E' --exchange "+device.Spec.Exchange+
+		manager(t, "doublezero feed create --code solana-shreds-full --name solana-shreds-full-ewr --exchange "+device.Spec.Exchange+
 			" --group feed-e2e-a --group feed-e2e-b")
 		manager(t, "doublezero access-pass set --accesspass-type edge-seat --epochs max --allow-multiple-ip"+
 			" --user-payer "+dzID+" --max-unicast-users 0 --max-multicast-users 0")
-		manager(t, "doublezero access-pass add-feed --user-payer "+dzID+" --feed 'Shreds E2E' --max-users 4"+
+		manager(t, "doublezero access-pass add-feed --user-payer "+dzID+" --feed solana-shreds-full-ewr --max-users 4"+
 			" --terminates-at "+time.Now().UTC().AddDate(0, 1, 0).Format("2006-01-02")+" <<< y")
 
 		manager(t, "doublezero multicast group update --pubkey private-e2e --private true --max-publishers 2 --max-subscribers 3")
@@ -190,7 +190,7 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 		requireCounts(t, 0, 0, 0, 1)
 		require.False(t, readState(t).users[hostIP(hostA)].HoldsPassSeat)
 
-		connect(t, hostA, "--subscribe-feed shreds-e2e")
+		connect(t, hostA, "--subscribe-feed solana-shreds-full")
 		requireCounts(t, 1, 1, 0, 1)
 		require.True(t, readState(t).users[hostIP(hostA)].HoldsPassSeat)
 	}) {
@@ -198,7 +198,7 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 	}
 
 	if !t.Run("host_b_joins_the_feed_then_subscribes_to_the_private_group", func(t *testing.T) {
-		connect(t, hostB, "--subscribe-feed shreds-e2e")
+		connect(t, hostB, "--subscribe-feed solana-shreds-full")
 		requireCounts(t, 2, 2, 0, 1)
 
 		connect(t, hostB, "--subscribe private-e2e")
@@ -234,14 +234,14 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 		connect(t, hostC, "--publish private-e2e")
 		requireCounts(t, 2, 2, 1, 3)
 
-		connect(t, hostC, "--subscribe-feed shreds-e2e")
+		connect(t, hostC, "--subscribe-feed solana-shreds-full")
 		requireCounts(t, 3, 3, 1, 3)
 	}) {
 		t.FailNow()
 	}
 
 	if !t.Run("host_d_joins_the_feed_then_publishes_to_the_private_group", func(t *testing.T) {
-		connect(t, hostD, "--subscribe-feed shreds-e2e")
+		connect(t, hostD, "--subscribe-feed solana-shreds-full")
 		requireCounts(t, 4, 4, 1, 3)
 
 		connect(t, hostD, "--publish private-e2e")
@@ -273,7 +273,7 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 	}
 
 	if !t.Run("host_e_cannot_join_the_feed_while_its_seats_are_full", func(t *testing.T) {
-		connectRefused(t, hostE, "--subscribe-feed shreds-e2e")
+		connectRefused(t, hostE, "--subscribe-feed solana-shreds-full")
 		requireCounts(t, 4, 4, 2, 3)
 		require.Empty(t, readState(t).users[hostIP(hostE)].FeedPks)
 	}) {

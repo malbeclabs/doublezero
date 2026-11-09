@@ -1389,3 +1389,76 @@ async fn test_an_unchanged_seat_past_its_end_is_refused() {
         custom_code(DoubleZeroError::FeedInvalidBillingWindow),
     );
 }
+
+/// The program moves a seat to its future cap only when the request copies all five fields of the
+/// stored seat. Each request below changes one field and keeps window_end in the past, so the
+/// program treats the seat as a new request and refuses it.
+#[tokio::test]
+async fn test_a_changed_seat_past_its_window_end_is_refused() {
+    let lon_seat = |feed_key| FeedSeat {
+        feed_key,
+        max_users: 2,
+        max_future_users: 4,
+        current_users: 1,
+        anniversary_day: 15,
+        window_end: 1_000,
+        terminates_at: TEST_TERMINATES_AT,
+    };
+    let SeededPass {
+        mut banks_client,
+        program_id,
+        authority,
+        accounts,
+        accesspass_pubkey,
+        lon_feed_pubkey,
+        ..
+    } = start_program_with_one_seat(lon_seat).await;
+    let prior = copy_of(&lon_seat(lon_feed_pubkey));
+    let user_payer = read_accesspass(&mut banks_client, accesspass_pubkey)
+        .await
+        .user_payer;
+
+    let changed_seats = [
+        FeedSeatConfig {
+            max_users: 3,
+            ..prior.clone()
+        },
+        FeedSeatConfig {
+            max_future_users: 5,
+            ..prior.clone()
+        },
+        FeedSeatConfig {
+            anniversary_day: 16,
+            ..prior.clone()
+        },
+        FeedSeatConfig {
+            window_end: 1_001,
+            ..prior.clone()
+        },
+        FeedSeatConfig {
+            terminates_at: TEST_TERMINATES_AT + 86_400,
+            ..prior.clone()
+        },
+    ];
+    for changed in changed_seats {
+        let result = try_execute_and_get_error(
+            &mut banks_client,
+            program_id,
+            DoubleZeroInstruction::SetAccessPassFeeds(SetAccessPassFeedsArgs {
+                client_ip: Ipv4Addr::new(100, 0, 0, 5),
+                user_payer,
+                feeds: vec![changed.clone(), seat_config()],
+            }),
+            accounts.clone(),
+            &authority,
+        )
+        .await;
+        assert_custom_at_ix0(
+            &result,
+            custom_code(DoubleZeroError::FeedInvalidBillingWindow),
+        );
+    }
+
+    let pass = read_accesspass(&mut banks_client, accesspass_pubkey).await;
+    assert_eq!(pass.feed_seats(), &[lon_seat(lon_feed_pubkey)]);
+}

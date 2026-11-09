@@ -230,9 +230,9 @@ pub(super) fn check_kept_seat(
     Ok(())
 }
 
-/// Returns a seat to send back unchanged. When its window_end passed, the seat takes the switch
-/// the oracle makes at window_end: the cap becomes max_future_users and window_end becomes
-/// terminates_at. The multicast user cap then matches the cap the program stores.
+/// Returns a seat that the command sends back unchanged. When the window_end of the seat passed,
+/// this function sets the cap to max_future_users and window_end to terminates_at, as the oracle
+/// does at window_end. The multicast user cap then matches the cap that the program stores.
 pub(super) fn kept_seat(seat: &FeedSeat, now: i64) -> FeedSeatProvision {
     let past_window = seat.window_end <= now;
     FeedSeatProvision {

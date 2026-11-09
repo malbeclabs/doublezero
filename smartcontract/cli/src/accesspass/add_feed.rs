@@ -208,7 +208,7 @@ impl AddFeedAccessPassCliCommand {
                 max_unicast_users: accesspass.max_unicast_users,
                 max_multicast_users,
             })
-            .wrap_err("the feeds are set on the access pass. Run add-feed again with the same arguments to set the multicast user cap")?;
+            .wrap_err("add-feed set the feeds on the access pass but not the multicast user cap. Run add-feed again with the same arguments to set the cap")?;
             writeln!(
                 out,
                 "Set max multicast users from {} to {max_multicast_users}: {signature}",

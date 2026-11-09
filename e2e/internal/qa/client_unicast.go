@@ -48,9 +48,8 @@ func (c *Client) ConnectUserUnicast(ctx context.Context, deviceCode string, wait
 	c.doubleZeroIP = nil // Clear stale IP before connecting
 
 	// Submit the disconnect RPC without waiting for all-tunnel disconnected
-	// status or all-user-deletion onchain: a stale Multicast tunnel (e.g. from
-	// a shred-subscription seat that cannot be withdrawn) keeps an oracle-owned
-	// multicast user account alive that `doublezero disconnect` skips and the
+	// status or all-user-deletion onchain: a multicast user that another key
+	// owns stays alive, because `doublezero disconnect` skips it, and the
 	// daemon's multicast tunnel stays BGP-up. Waiting on either condition would
 	// block the entire unicast suite. Wait only for the IBRL tunnel to be down
 	// before reconnecting.

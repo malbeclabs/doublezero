@@ -44,7 +44,6 @@ compat-test:
 	$(MAKE) compat-test-typescript-revdist
 	$(MAKE) compat-test-python-serviceability
 	$(MAKE) compat-test-typescript-serviceability
-	SHREDS_COMPAT_TEST=1 go test -run TestCompat -v ./shreds/go/...
 
 .PHONY: compat-test-python-revdist
 compat-test-python-revdist:
@@ -63,13 +62,6 @@ compat-test-python-serviceability:
 compat-test-typescript-serviceability:
 	bun install
 	SERVICEABILITY_COMPAT_TEST=1 bun test --cwd serviceability/typescript --grep compat
-
-# -----------------------------------------------------------------------------
-# Shreds examples
-# -----------------------------------------------------------------------------
-.PHONY: example-shreds-go
-example-shreds-go:
-	go run ./shreds/go/examples/fetch --env $(sdk_env) --epoch $(sdk_epoch)
 
 # -----------------------------------------------------------------------------
 # Serviceability examples
@@ -112,7 +104,7 @@ example-revdist-typescript:
 # Run all examples for a specific language
 # -----------------------------------------------------------------------------
 .PHONY: examples-go
-examples-go: example-revdist-go example-shreds-go
+examples-go: example-revdist-go
 
 .PHONY: examples-python
 examples-python: example-serviceability-python example-telemetry-python example-revdist-python

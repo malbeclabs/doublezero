@@ -40,9 +40,8 @@ pub trait LedgerClient: Send + Sync {
     /// mutating ledger operations. Diagnostics route through `tracing`.
     fn check_requirements(&self) -> eyre::Result<()>;
 
-    /// Fetch onchain global state (its `feed_authority_pk` identifies
-    /// shred-oracle-managed users during teardown, and `connect --device` checks
-    /// the payer against its `qa_allowlist`).
+    /// Fetch onchain global state (`connect --device` checks the payer against
+    /// its `qa_allowlist`).
     fn get_globalstate(&self) -> eyre::Result<GlobalState>;
 
     /// List all users on the ledger.

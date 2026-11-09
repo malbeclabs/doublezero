@@ -29,11 +29,8 @@ import (
 const (
 	disconnectTimeout      = 150 * time.Second
 	waitForStatusUpTimeout = 90 * time.Second
-	// Multicast (shred-subscription) tunnel UP is the oracle *subscribe* path. For
-	// a pre-existing validator-owned user the oracle adds the shred groups via its
-	// ~60s reconcile loop (not inline on the allocation ack), so subscribe latency
-	// is cadence-bound and has been observed up to ~3.5 min on devnet. Keep a
-	// generous budget until the oracle subscribes on grant.
+	// Multicast tunnel UP once waited on an oracle's ~60s subscribe loop (up to
+	// ~3.5 min on devnet), so it keeps a longer budget than unicast.
 	waitForMulticastStatusUpTimeout  = 300 * time.Second
 	waitForStatusDisconnectedTimeout = 90 * time.Second
 	waitForUserDeletionTimeout       = 90 * time.Second
@@ -552,10 +549,10 @@ func (c *Client) WaitForStatusDisconnected(ctx context.Context) error {
 // status entry remains with a non-disconnected session. Non-IBRL tunnel types
 // (e.g. Multicast) are ignored. Prefer this over WaitForStatusDisconnected in
 // multi-tunnel contexts where a Multicast tunnel can persist independently of
-// the unicast lifecycle — e.g. when a stale shred-subscription seat cannot be
-// withdrawn and its multicast tunnel stays up. Walks the status list directly
-// rather than reusing FindIBRLStatus, which has a single-status fallback that
-// would misclassify a lone Multicast entry as IBRL.
+// the unicast lifecycle — e.g. when another key owns the multicast user, so
+// `doublezero disconnect` skips it and its tunnel stays up. Walks the status
+// list directly rather than reusing FindIBRLStatus, which has a single-status
+// fallback that would misclassify a lone Multicast entry as IBRL.
 func (c *Client) WaitForIBRLStatusDisconnected(ctx context.Context) error {
 	c.log.Debug("Waiting for IBRL status to be disconnected", "host", c.Host)
 	err := poll.Until(ctx, func() (bool, error) {

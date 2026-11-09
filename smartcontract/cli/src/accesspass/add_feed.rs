@@ -25,6 +25,10 @@ use std::{
 /// Add one feed to an EdgeSeat access pass, or change the seat of a feed it already holds, and
 /// set the multicast user cap to the total of its seats. Requires `ACCESS_PASS_ADMIN`, or
 /// foundation allowlist membership.
+///
+/// Use this command only for testing, such as in the e2e suite or on devnet. On mainnet-beta, a
+/// customer gets a feed through the frontend, with a normal subscription or a trial, and the
+/// oracle writes the feed onto the access pass.
 #[derive(Args, Debug)]
 pub struct AddFeedAccessPassCliCommand {
     /// Client IP of the access pass. Defaults to 0.0.0.0, the pass every host of the user payer shares

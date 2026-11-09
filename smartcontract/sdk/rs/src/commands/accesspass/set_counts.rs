@@ -4,8 +4,9 @@ use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 use crate::DoubleZeroClient;
 
-/// Replace the unicast and multicast user counts of an existing access pass. The program sets
-/// the connection count to their sum. Use it after counting the users on the pass offchain.
+/// Replace the unicast and public multicast user counts of an existing access pass. The program
+/// sets the connection count to the sum of these two counts and the private multicast count. Use
+/// it after you count the users on the pass offchain.
 ///
 /// The `expected_*` fields are the counts read from the pass when the users were counted. The
 /// program refuses the write with `AccessPassCountsChanged` when the pass no longer holds them.

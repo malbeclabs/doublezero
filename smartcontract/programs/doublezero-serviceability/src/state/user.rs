@@ -397,7 +397,8 @@ impl TryFrom<&[u8]> for User {
             accesspass_pk: if data.len() >= 32 {
                 BorshDeserialize::deserialize(&mut data).unwrap_or_default()
             } else {
-                // Skip a short tail, so that holds_pass_seat below does not read its bytes.
+                // When fewer than 32 bytes remain, the decoder skips them, so that
+                // holds_pass_seat does not read them.
                 data = &[];
                 Pubkey::default()
             },

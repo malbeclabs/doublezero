@@ -24,9 +24,9 @@ import (
 // only the private group does not count against the cap of 4 until it joins the feed. Hosts A and
 // B join the private group and the feed as subscribers in opposite orders, and hosts C and D do
 // the same as publishers, so each pair must end in the same state. Host E stays on the private
-// group only. Host E cannot join the feed when its 4 seats are full, and cannot join it either
-// when the feed gets a fifth seat while the pass-wide cap stays at 4. The hosts disconnect in the
-// opposite order from the joins, and every count must go back to 0 before the admin closes the pass.
+// group only. Host E cannot join the feed when its 4 seats are full. Host E also cannot join the
+// feed when the feed gets a fifth seat and the pass-wide cap stays at 4. The hosts disconnect in
+// the opposite order from the joins. Every count must go back to 0 before the admin closes the pass.
 func TestE2E_PrivateMulticastGroup(t *testing.T) {
 	t.Parallel()
 
@@ -291,8 +291,8 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 	}
 
 	if !t.Run("host_e_cannot_join_the_feed_while_the_pass_wide_cap_is_full", func(t *testing.T) {
-		// The feed gets a fifth seat and the pass-wide cap stays at 4, so the client lets the
-		// join through and the program refuses it.
+		// The feed gets a fifth seat, so the CLI sends the join. The pass-wide cap stays at 4,
+		// so the program refuses the join.
 		manager(t, "doublezero access-pass add-feed --user-payer "+dzID+" --feed solana-shreds-full-ewr --max-users 5"+
 			" --terminates-at "+time.Now().UTC().AddDate(0, 1, 0).Format("2006-01-02")+" <<< y")
 		manager(t, "doublezero access-pass set --accesspass-type edge-seat --epochs max --allow-multiple-ip"+

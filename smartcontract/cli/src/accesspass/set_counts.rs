@@ -9,7 +9,7 @@ use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 
 /// Replace the user counts of an access pass with the users you counted on it. The program sets
-/// `connections` to the sum of the two counts. Requires `ACCESS_PASS_ADMIN`.
+/// `connections` to the sum of the three counts. Requires `ACCESS_PASS_ADMIN`.
 ///
 /// The `--expected-*` flags are the counts the pass held when you counted its users. The command
 /// fails, and changes nothing, when the pass no longer holds them: a user connected or

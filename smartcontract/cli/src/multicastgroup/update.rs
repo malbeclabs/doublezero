@@ -68,8 +68,8 @@ impl UpdateMulticastGroupCliCommand {
             pubkey_or_code: self.pubkey,
         })?;
 
-        // The users already on the group keep the seats they hold on the pass-wide multicast cap of
-        // their access pass. Only a user that joins later follows the new private flag.
+        // A change to the private flag does not change the counts on the access passes of the
+        // users already on the group. The new flag applies only to a user that joins later.
         if self.private == Some(true) && !mgroup.private {
             let mut feeds: Vec<String> = client
                 .list_feed(ListFeedCommand {})?

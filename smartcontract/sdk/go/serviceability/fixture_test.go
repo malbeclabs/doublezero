@@ -438,8 +438,8 @@ func TestFixtureMulticastGroup(t *testing.T) {
 	assert.Equal(t, uint32(10), mg.MaxSubscribers)
 }
 
-// A group written before the private flag and the caps existed ends 9 bytes earlier. It decodes as
-// a group that is not private and has no caps.
+// A group account from before this change has no private flag and no caps, so it is 9 bytes
+// shorter. The decoder reads that account as a group that is not private and has no caps.
 func TestFixtureMulticastGroupBeforePrivateCaps(t *testing.T) {
 	data, meta := loadFixture(t, "multicast_group")
 	old := data[:len(data)-9]

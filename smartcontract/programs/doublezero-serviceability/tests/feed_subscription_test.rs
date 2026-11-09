@@ -1443,8 +1443,8 @@ async fn add_group_to_subscriber_allowlist(fixture: &mut Fixture, group: Pubkey)
     .await;
 }
 
-// Sends one CreateSubscribeUser for the fixture host. The first group is the main group and the
-// rest are extra groups.
+// This helper sends one CreateSubscribeUser for the fixture host. The first group in `groups` is
+// the main group, and the other groups are extra groups.
 async fn create_subscribe_user(
     fixture: &mut Fixture,
     user_type: UserType,

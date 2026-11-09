@@ -194,8 +194,8 @@ pub fn process_delete_user(
     }
 
     accesspass.connection_count = accesspass.connection_count.saturating_sub(1);
-    // Uncount the user from the pass by category, on every pass type. A user that joined only
-    // private groups was not counted, so it has nothing to uncount.
+    // Uncount the user from the pass by category, on every pass type. The pass did not count a
+    // user that joined only private groups, so DeleteUser skips that user.
     if user.holds_pass_seat {
         accesspass.release_pass_seat(user.user_type);
     }

@@ -10,8 +10,8 @@
 //! pruned on any leave, and may itself be a target to unsubscribe its groups (but cannot stand in
 //! as retained). See [`super::feed`] for the shared model.
 //!
-//! When the leave removes the last feed of the user, the caller can pass the groups the user keeps
-//! after the groups it leaves. If every group it keeps is private, the user gives back its seat on
+//! When the user leaves its last feed, the caller can pass the groups the user keeps after the
+//! groups it leaves. If every group it keeps is private, the user gives back its seat on
 //! the pass-wide multicast cap. Without these accounts the user keeps that seat.
 
 use crate::{

@@ -74,8 +74,7 @@ impl Disconnect {
         let client_ip = resolve_client_ip(daemon).await?;
         writeln!(out, "    Client IP: {client_ip}")?;
 
-        let gstate = ledger.get_globalstate()?;
-        self.delete_users(ledger, client_ip, gstate.feed_authority_pk, &spinner, out)?;
+        self.delete_users(ledger, client_ip, &spinner, out)?;
 
         if self.no_wait {
             writeln!(
@@ -117,13 +116,12 @@ impl Disconnect {
     }
 
     /// Delete DZ Ledger users matching `client_ip`, skipping any that are
-    /// owned by a different keypair (e.g. the shred oracle). Extracted from
-    /// `execute` so it can be tested without filesystem/daemon dependencies.
+    /// owned by a different keypair. Extracted from `execute` so it can be
+    /// tested without filesystem/daemon dependencies.
     fn delete_users<L: LedgerClient, W: Write>(
         &self,
         ledger: &L,
         client_ip: std::net::Ipv4Addr,
-        feed_authority: Pubkey,
         spinner: &ProgressBar,
         out: &mut W,
     ) -> eyre::Result<()> {
@@ -148,23 +146,12 @@ impl Disconnect {
 
             // Skip users owned by a different keypair — only the owner can delete them.
             if user.owner != payer {
-                if user.owner == feed_authority {
-                    // User is managed by the shred oracle.
-                    // The validator must withdraw via doublezero-solana first.
-                    writeln!(
-                        out,
-                        "⚠️  User {pubkey} is managed by the shred oracle (owner: {}). \
-                         Use `doublezero-solana shreds withdraw` to disconnect.",
-                        user.owner,
-                    )?;
-                } else {
-                    writeln!(
-                        out,
-                        "⚠️  User {pubkey} is managed by an external service (owner: {}). \
-                         It will be cleaned up automatically.",
-                        user.owner,
-                    )?;
-                }
+                writeln!(
+                    out,
+                    "⚠️  User {pubkey} is owned by {}, not by your keypair, so `disconnect` \
+                     skips it. Its owner can delete it.",
+                    user.owner,
+                )?;
                 continue;
             }
 
@@ -290,7 +277,7 @@ mod tests {
     use std::{collections::HashMap, net::Ipv4Addr};
 
     use doublezero_cli_core::testing::block_on;
-    use doublezero_sdk::{AccountType, GlobalState, User, UserCYOA, UserStatus};
+    use doublezero_sdk::{AccountType, User, UserCYOA, UserStatus};
     use doublezero_serviceability::state::accesspass::{
         AccessPass, AccessPassStatus, AccessPassType,
     };
@@ -493,14 +480,14 @@ mod tests {
     // --- delete_users tests ---
 
     #[test]
-    fn test_delete_users_skips_oracle_owned_user() {
+    fn test_delete_users_skips_user_another_key_owns() {
         let mut ledger = MockLedgerClient::new();
         let payer = Pubkey::new_unique();
-        let oracle_key = Pubkey::new_unique();
+        let owner = Pubkey::new_unique();
         let ip = Ipv4Addr::new(10, 0, 0, 1);
 
         let user_pk = Pubkey::new_unique();
-        let user = make_test_user(ip, oracle_key, UserType::Multicast);
+        let user = make_test_user(ip, owner, UserType::Multicast);
 
         let mut users = HashMap::new();
         users.insert(user_pk, user);
@@ -509,28 +496,26 @@ mod tests {
         ledger
             .expect_list_user()
             .returning(move || Ok(users.clone()));
-        // delete_user should NOT be called for oracle-owned user.
         ledger.expect_delete_user().never();
 
         let cmd = test_cmd();
         let spinner = hidden_spinner();
         let mut out = Vec::new();
-        let result = cmd.delete_users(&ledger, ip, oracle_key, &spinner, &mut out);
+        let result = cmd.delete_users(&ledger, ip, &spinner, &mut out);
         assert!(result.is_ok());
 
         let output = String::from_utf8(out).unwrap();
-        assert!(output.contains("managed by the shred oracle"));
+        assert!(output.contains(&format!(
+            "User {user_pk} is owned by {owner}, not by your keypair, so `disconnect` skips it. \
+             Its owner can delete it."
+        )));
         assert!(!output.contains("Removing account"));
-
-        // Verify payer != oracle_key to confirm the test is meaningful.
-        assert_ne!(payer, oracle_key);
     }
 
     #[test]
     fn test_delete_users_deletes_self_owned_user() {
         let mut ledger = MockLedgerClient::new();
         let payer = Pubkey::new_unique();
-        let feed_authority = Pubkey::new_unique();
         let accesspass_pk = Pubkey::new_unique();
         let ip = Ipv4Addr::new(10, 0, 0, 1);
 
@@ -578,7 +563,7 @@ mod tests {
         };
         let spinner = hidden_spinner();
         let mut out = Vec::new();
-        let result = cmd.delete_users(&ledger, ip, feed_authority, &spinner, &mut out);
+        let result = cmd.delete_users(&ledger, ip, &spinner, &mut out);
         assert!(result.is_ok());
 
         let output = String::from_utf8(out).unwrap();
@@ -589,7 +574,6 @@ mod tests {
     fn test_delete_users_ignores_accesspass_for_current_user() {
         let mut ledger = MockLedgerClient::new();
         let payer = Pubkey::new_unique();
-        let feed_authority = Pubkey::new_unique();
         let selected_accesspass = Pubkey::new_unique();
         let ip = Ipv4Addr::new(10, 0, 0, 1);
 
@@ -633,43 +617,9 @@ mod tests {
         };
         let spinner = hidden_spinner();
         let mut out = Vec::new();
-        let result = cmd.delete_users(&ledger, ip, feed_authority, &spinner, &mut out);
+        let result = cmd.delete_users(&ledger, ip, &spinner, &mut out);
 
         assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_delete_users_skips_externally_owned_non_oracle_user() {
-        let mut ledger = MockLedgerClient::new();
-        let payer = Pubkey::new_unique();
-        let external_owner = Pubkey::new_unique();
-        let feed_authority = Pubkey::new_unique();
-        let ip = Ipv4Addr::new(10, 0, 0, 1);
-
-        let user_pk = Pubkey::new_unique();
-        let user = make_test_user(ip, external_owner, UserType::IBRL);
-
-        let mut users = HashMap::new();
-        users.insert(user_pk, user);
-
-        ledger.expect_get_payer().return_const(payer);
-        ledger
-            .expect_list_user()
-            .returning(move || Ok(users.clone()));
-        // delete_user should NOT be called for externally-owned user.
-        ledger.expect_delete_user().never();
-
-        let cmd = test_cmd();
-        let spinner = hidden_spinner();
-        let mut out = Vec::new();
-        let result = cmd.delete_users(&ledger, ip, feed_authority, &spinner, &mut out);
-        assert!(result.is_ok());
-
-        let output = String::from_utf8(out).unwrap();
-        assert!(output.contains("managed by an external service"));
-
-        assert_ne!(payer, external_owner);
-        assert_ne!(external_owner, feed_authority);
     }
 
     #[test]
@@ -723,7 +673,7 @@ mod tests {
         let cmd = test_cmd();
         let spinner = hidden_spinner();
         let mut out = Vec::new();
-        let result = cmd.delete_users(&ledger, ip, oracle_key, &spinner, &mut out);
+        let result = cmd.delete_users(&ledger, ip, &spinner, &mut out);
         assert!(result.is_ok());
     }
 
@@ -734,7 +684,6 @@ mod tests {
     fn test_delete_users_declares_no_kind_for_a_non_prepaid_pass() {
         let mut ledger = MockLedgerClient::new();
         let payer = Pubkey::new_unique();
-        let feed_authority = Pubkey::new_unique();
         let ip = Ipv4Addr::new(10, 0, 0, 1);
 
         let user_pk = Pubkey::new_unique();
@@ -765,7 +714,7 @@ mod tests {
         let cmd = test_cmd();
         let spinner = hidden_spinner();
         let mut out = Vec::new();
-        let result = cmd.delete_users(&ledger, ip, feed_authority, &spinner, &mut out);
+        let result = cmd.delete_users(&ledger, ip, &spinner, &mut out);
         assert!(result.is_ok());
     }
 
@@ -808,9 +757,6 @@ mod tests {
                 .returning(doublezero_config::Environment::default);
             ledger.expect_check_requirements().returning(|| Ok(()));
             ledger.expect_get_payer().return_const(payer);
-            ledger
-                .expect_get_globalstate()
-                .returning(|| Ok(GlobalState::default()));
             ledger
                 .expect_list_user()
                 .returning(move || Ok(users.clone()));
@@ -878,9 +824,6 @@ mod tests {
                 .returning(doublezero_config::Environment::default);
             ledger.expect_check_requirements().returning(|| Ok(()));
             ledger.expect_get_payer().return_const(payer);
-            ledger
-                .expect_get_globalstate()
-                .returning(|| Ok(GlobalState::default()));
             // Empty user set — no matching users to delete.
             ledger.expect_list_user().returning(|| Ok(HashMap::new()));
             ledger.expect_delete_user().never();

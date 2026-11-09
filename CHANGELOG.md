@@ -6,6 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- CLI
+  - `doublezero-solana` drops the `shreds` command group, including `shreds withdraw`, `shreds publisher-rewards` and `shreds validator-client-rewards`. The shred-subscription program it called is closed on Solana mainnet-beta and devnet, so every `shreds` command failed. The `feeds` commands serve the feed subscription program that replaced it.
+- SDK
+  - The offchain Rust SDK (`doublezero-solana-sdk`) drops its `shred_subscription` module. `environment_usdc_token_mint_key` returns the same USDC mints as before.
+  - The Go `sdk/shreds/go` package keeps only the feed subscription program's `FeedProgramID`, `FeedDistribution` and `DeserializeFeedDistribution`, and `NewRPCClient`. It drops the shred-subscription program's `Client`, `ProgramID`, `SolanaRPCURLs`, account types, discriminators and PDA helpers, and its fetch example.
+- Config
+  - The Rust config drops `Environment::shred_subscription_config` and `ShredSubscriptionConfig`, and no longer reads `DZ_SHRED_SOLANA_RPC_URL`. The Go `NetworkConfig` drops `ShredSubscriptionProgramID` and `USDCMint`, and the matching per-environment constants go with them.
+
 ### Changes
 
 - CI
@@ -14,6 +22,11 @@ All notable changes to this project will be documented in this file.
   - The offchain sentinel treats the `getLeaderSchedule` error -32022, which Agave 4.4 returns for an identity with no slots in the epoch, as not scheduled, like the empty schedule earlier versions return. Against 4.4 RPC nodes, access requests with backup IDs failed on every poll and were never granted, and a primary with no slots failed instead of being rejected. `doublezero-solana passport find-validator`, `request-validator-access` and `prepare-validator-access` use the same check, so they now treat such a node as not scheduled instead of failing.
 - Release
   - `doublezero-sentinel` 0.2.7. It carries the -32022 fix above, and the Solana 3.0 migration, the static musl binary and the move to rustls that landed since 0.2.6.
+- CLI
+  - `doublezero device delete` no longer reads the device's shred-subscription `DeviceHistory` account first. The program is closed, so a device it marks enabled can no longer be disabled there, and the check refused to delete it.
+  - `doublezero disconnect` prints one message for every user that another key owns: it names the owner, says that `disconnect` skips the user, and says that its owner can delete it. The separate shred oracle message, with its `doublezero-solana shreds withdraw` hint, is gone. It matched only the global state's legacy feed authority, which is unset on mainnet-beta and testnet.
+- E2E/QA
+  - The QA agent drops the `FeedEnable`, `FeedSeatPrice`, `FeedSeatPay`, `FeedSeatWithdraw` and `GetWalletPubkey` RPCs, and the QA client drops its Solana RPC failover pool and the `SOLANA_RPC_FALLBACK_URLS` and `QA_SOLANA_RPC_*` variables it read. Only the settlement test that #4248 removed used them.
 
 ## [v0.47.0](https://github.com/malbeclabs/doublezero/compare/client/v0.46.0...client/v0.47.0) - 2026-11-06
 

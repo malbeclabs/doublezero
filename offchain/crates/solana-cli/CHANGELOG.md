@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- `shreds`: remove the command group. The shred-subscription program it called is closed on Solana mainnet-beta and devnet, so every `shreds` command failed. The `feeds` commands serve the feed subscription program that replaced it.
 - `feeds validator-client-rewards claim`: create the manager's own 2Z token account when it is missing, in every claim transaction, so a new team manager no longer runs `spl-token create-account` first. The Squads path already did this. A missing `--destination-token-account` that is not the manager's own 2Z token account still fails (malbeclabs/infra#3263)
 - `feeds publisher-rewards status`: new command that prints the wallet and mint a validator is paid in, and what the feed subscription program paid it in each of the last three calendar months. `--num-months` changes the count, and `--json` prints the report as JSON. It reads the history of the validator's rewards address, which every route and payout names, so a month shows `unpaid` when the oracle routed a reward that it did not pay, such as to a validator that never ran `configure`
 - `revenue-distribution relay pay-solana-validator-debt`: remove the command. Validators no longer pay debt. `fetch validator-debts` and the debt views of `fetch distribution` stay, so past debts can still be listed.

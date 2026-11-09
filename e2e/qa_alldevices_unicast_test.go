@@ -134,8 +134,8 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 			wg.Add(1)
 			go func(client *qa.Client) {
 				defer wg.Done()
-				// Mirror ConnectUserUnicast: don't block on a stale Multicast
-				// tunnel left by a shred-subscription seat that won't withdraw.
+				// Mirror ConnectUserUnicast: don't block on a Multicast tunnel
+				// whose user another key owns.
 				cleanupCtx := context.Background()
 				if err := client.DisconnectUser(cleanupCtx, false, false); err != nil {
 					assert.NoError(t, err, "failed to disconnect user")

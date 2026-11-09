@@ -5,9 +5,10 @@ use doublezero_serviceability::{
 use doublezero_serviceability_instruction::accesspass::close_access_pass;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
-/// Closes an access pass. `kind` names the kind of pass the caller means to close; the program
-/// refuses the call when the stored pass is a different kind, so `kind` must carry the caller's
-/// intent rather than a value read back from the pass.
+/// Closes an access pass. `kind` names the kind of pass to close, and the program refuses the call
+/// when the stored pass is a different kind. That refusal guards the caller only when `kind` comes
+/// from the caller. `doublezero access-pass close` reads `kind` back from the pass when the
+/// operator gives no `--accesspass-type`, because the pass is already named by its address.
 #[derive(Debug, PartialEq, Clone)]
 pub struct CloseAccessPassCommand {
     pub pubkey: Pubkey,

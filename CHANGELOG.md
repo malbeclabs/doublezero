@@ -6,6 +6,32 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- CLI
+  - `doublezero-solana` drops the `shreds` command group, including `shreds withdraw`, `shreds publisher-rewards` and `shreds validator-client-rewards`. The shred-subscription program it called is closed on Solana mainnet-beta and devnet, so every `shreds` command failed. The `feeds` commands serve the feed subscription program that replaced it.
+- SDK
+  - The offchain Rust SDK (`doublezero-solana-sdk`) drops its `shred_subscription` module. `environment_usdc_token_mint_key` returns the same USDC mints as before.
+  - The Go `sdk/shreds/go` package keeps only the feed subscription program's `FeedProgramID`, `FeedDistribution` and `DeserializeFeedDistribution`, and `NewRPCClient`. It drops the shred-subscription program's `Client`, `ProgramID`, `SolanaRPCURLs`, account types, discriminators and PDA helpers, and its fetch example.
+- Config
+  - The Rust config drops `Environment::shred_subscription_config` and `ShredSubscriptionConfig`, and no longer reads `DZ_SHRED_SOLANA_RPC_URL`. The Go `NetworkConfig` drops `ShredSubscriptionProgramID` and `USDCMint`, and the matching per-environment constants go with them.
+
+### Changes
+
+- CI
+  - The Solana fork test no longer loads the shred-subscription program or runs the `doublezero-solana shreds` commands, because the program was closed on mainnet on 2026-11-05. The fork loader drops `--synthetic-validator-client-rewards-manager`.
+- Offchain
+  - The offchain sentinel treats the `getLeaderSchedule` error -32022, which Agave 4.4 returns for an identity with no slots in the epoch, as not scheduled, like the empty schedule earlier versions return. Against 4.4 RPC nodes, access requests with backup IDs failed on every poll and were never granted, and a primary with no slots failed instead of being rejected. `doublezero-solana passport find-validator`, `request-validator-access` and `prepare-validator-access` use the same check, so they now treat such a node as not scheduled instead of failing.
+- Release
+  - `doublezero-sentinel` 0.2.7. It carries the -32022 fix above, and the Solana 3.0 migration, the static musl binary and the move to rustls that landed since 0.2.6.
+- CLI
+  - `doublezero device delete` no longer reads the device's shred-subscription `DeviceHistory` account first. The program is closed, so a device it marks enabled can no longer be disabled there, and the check refused to delete it.
+  - `doublezero disconnect` prints one message for every user that another key owns: it names the owner, says that `disconnect` skips the user, and says that its owner can delete it. The separate shred oracle message, with its `doublezero-solana shreds withdraw` hint, is gone. It matched only the global state's legacy feed authority, which is unset on mainnet-beta and testnet.
+- E2E/QA
+  - The QA agent drops the `FeedEnable`, `FeedSeatPrice`, `FeedSeatPay`, `FeedSeatWithdraw` and `GetWalletPubkey` RPCs, and the QA client drops its Solana RPC failover pool and the `SOLANA_RPC_FALLBACK_URLS` and `QA_SOLANA_RPC_*` variables it read. Only the settlement test that #4248 removed used them.
+
+## [v0.47.0](https://github.com/malbeclabs/doublezero/compare/client/v0.46.0...client/v0.47.0) - 2026-11-06
+
+### Breaking
+
 - Client
   - `doublezerod` runs route liveness in active mode by default for IBRL users. When a peer stops answering liveness probes over DoubleZero, the client withdraws the route to that peer, and traffic to the peer uses the public internet. A peer that never answers gets no route. After a first flap, the client reinstalls the route as soon as the session comes back up. After a second flap, the client reinstalls the route only after the session stays up for `-route-liveness-hold-down` (default 30s). That time doubles with each further flap up to `-route-liveness-hold-down-max` (default 5m), and the flap count resets after twice that time with no flap. Peers that still run passive liveness, the default since v0.8.3, keep their routes until they upgrade. IBRL with an allocated IP waits for the session to come up before it installs a route, but never withdraws one. Opt out with `-route-liveness-enable-active=false`. Operators who turned liveness off with `-route-liveness-enable-passive=false` must now also pass `-route-liveness-enable-active=false`, because the passive flag alone no longer turns it off. UDP port 44880 must be reachable over `doublezero0`. `doublezerod` sets `rp_filter=2` (loose) on `doublezero0` and changes no other interface.
 
@@ -24,11 +50,19 @@ All notable changes to this project will be documented in this file.
   - `DeleteDevice` closes only the device's own resource accounts: its `TunnelIds` account, then its `DzPrefixBlock` accounts.
 - CLI
   - `doublezero user list` and `doublezero user get` show the access pass that each user records. Before, they showed the payer's 0.0.0.0 pass when one existed, so a user on a prepaid pass showed as EdgeSeat when its payer also held an EdgeSeat pass. A user that records no pass shows both of its payer's passes that the program accepts, joined by `or`. The `accesspass` column and JSON key use the type names of `doublezero access-pass list`, for example `prepaid` and `edge_seat: 1 feed(s)`, in place of `Prepaid: (MAX)` and `EdgeSeat: (1 feed(s))`. A new `accesspass_pks` JSON key gives the address of each pass shown. (malbeclabs/infra#2766)
+  - `doublezero user delete` and `doublezero access-pass close` take `--accesspass-type` as an optional flag. Without it, `user delete` deletes the user from the pass the user records, and `access-pass close` reads the pass, prints its type as `--accesspass-type` spells it, and closes it as that type. With it, each command refuses a pass of another type, as before. (malbeclabs/infra#2766)
   - `doublezero tenant list` shows an `administrators` column next to `owner`. `owner` is the key that created the tenant. The administrators are the keys that may set access passes for it, so the old output pointed operators at a key the program rejects. `--json` and `--json-compact` output gain an `administrators` string key that holds the keys joined by `, `, and `owner` is unchanged.
+  - An IBRL `doublezero connect` with `--device` no longer refuses a payer on the QA allowlist when the named device is full or has `max_users=0`, because the program exempts that payer from device user limits. The device must still be an activated edge or hybrid device, and multicast connects are unchanged.
+- Client
+  - `doublezerod` tells the user when missing peer routes need their action: in active liveness mode, no session has been up for 2 minutes while a desired route is missing from the kernel. It logs a WARN that names which direction of UDP 44880 on `doublezero0` to check and links the troubleshooting docs, repeats it every 15 minutes, and logs an Info line when it clears. `/v2/status` carries a route summary for the IBRL service, which the new `doublezero routes status` shows. `doublezero status` warns only when action is needed. `doublezero routes` shows `no reply` instead of `none` for a peer that never answered, and `held down` while a route waits out its hold-down.
 - Geolocation
   - The foundation check reads the program config and the serviceability global state only from their PDAs. An account at another address fails with `InvalidSeeds`.
 - RFCs
   - Add RFC-29, DoubleZero Edge for Builders.
+- E2E/QA
+  - `TestQA_AllDevices_UnicastConnectivity` does not wait for routes to a host on a device that is not ready for users. Once the QA hosts can connect to such a device, a missing route to it would otherwise count against the waiting host's device.
+  - `TestQA_AllDevices_UnicastConnectivity` connects each batch's hosts in parallel, and a host whose connect fails no longer waits out the 90-second status timeout. Mainnet-beta runs took 71 to 120 minutes and had started to hit the 120-minute test timeout.
+  - The e2e devnet pulls Prometheus v2.54.1 from Docker Hub, pinned by digest to the upstream image. The `ghcr.io/malbeclabs/dz-e2e/prometheus` package is private and not linked to this repository, so the e2e workflow cannot read it and `TestE2E_DeviceTelemetry` failed at setup.
 
 ## [v0.46.0](https://github.com/malbeclabs/doublezero/compare/client/v0.45.0...client/v0.46.0) - 2026-10-27
 
@@ -59,6 +93,7 @@ All notable changes to this project will be documented in this file.
 - SDK
   - `CreateFeedCommand` takes `bond: Option<FeedBondTerms>`: the builder, `bond_ref`, `spec_id`, `sla_hash` and committed rate. The program requires them together, except `sla_hash`, where all zeros declares no service level. `None` creates a catalog feed, as before.
 - Dependencies
+  - `github.com/andybalholm/brotli` 1.2.8 in the root Go module, so the `osv-scanner` workflow passes again.
   - `block-buffer` 0.12.1 in the workspace and the telemetry fixture lockfile, the first release that fixes GHSA-qwgh-2vcv-g2f7. `block-buffer` 0.9.0 and 0.10.4 come in through the Solana crates and have no fixed release, so `osv-scanner.toml` accepts the advisory until 2027-01-25. The bug needs a hash compress step that panics, and the `sha2` compress functions do not.
   - `osv-scanner.toml` also accepts GHSA-h2v8-394m-p7vv until 2027-01-25, for the `rustls` 0.21.12 that comes in through the AWS SDK and the Solana crates. The fix is 0.23.46, which the 0.23 copies already use, and 0.21 has no certificate compression.
 - Config
@@ -139,6 +174,10 @@ All notable changes to this project will be documented in this file.
   - `CreateFeed` refuses a feed with a builder and a chain, and `UpdateFeed` refuses to give such a feed any chain except `unspecified`. The rewards process uses either the builder or the chain to find who gets the rewards. (#4385)
 - Telemetry
   - Cap pooled ClickHouse connections at 3 minutes in gnmi-writer, flow-enricher, global-monitor, the controller, device-health-oracle and the geoprobe writer. The driver default of 1 hour let a parked connection outlive ClickHouse Cloud's ~5 minute idle close, so the next write failed with `read: EOF` and tripped the error alerts.
+- Device Health Oracle
+  - Links now move both ways between `ReadyForService` and `Impaired`, driven by the lake `link_rollup_5m` table. Until now the oracle had no link criteria at all, so every link auto-advanced to `ReadyForService` and stayed there with no demotion path. A link is impaired when its latest settled 5-minute bucket shows the ISIS adjacency down or loss above `--link-loss-threshold` (default 5%) in both directions; it recovers only after a fully covered, recent window of clean buckets, reusing the `--drained-slot-count` dwell. Buckets the lake is still filling, one-sided loss from a telemetry-agent restart, and `isis_down` on hard-drained links or in the bucket that ends a hard drain all stay out of the signal, because each would mark a healthy link Impaired. Fast to demote, slow to recover, so borderline links do not flap. This is a reporting signal — `link.status` is not gated on `LinkHealth`.
+  - Neither a ClickHouse outage nor missing telemetry moves a link's health in either direction: an unreachable lake would otherwise demote every healthy link on the network in one tick. Query failures are counted under `doublezero_device_health_oracle_errors_total{error_type="link_health_query"}` so an outage is visible without reading as impairment.
+  - Add `CLICKHOUSE_LAKE_DB` (defaults to `CLICKHOUSE_DB`) to locate the lake tables, and keep ClickHouse-based criteria when the startup ping fails, so a blip no longer drops them for the life of the process.
 
 ## [v0.43.0](https://github.com/malbeclabs/doublezero/compare/client/v0.42.0...client/v0.43.0) - 2026-09-25
 

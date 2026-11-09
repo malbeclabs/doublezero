@@ -377,7 +377,7 @@ func TestFilterStatusUpClients(t *testing.T) {
 			"client2": UserStatusUp,
 		}
 
-		result := FilterStatusUpClients(clients, batch, statuses)
+		result := FilterStatusUpClients(clients, batch, statuses, nil)
 
 		if len(result) != 2 {
 			t.Errorf("expected 2 clients, got %d", len(result))
@@ -395,7 +395,7 @@ func TestFilterStatusUpClients(t *testing.T) {
 			"client3": UserStatusUp,
 		}
 
-		result := FilterStatusUpClients(clients, batch, statuses)
+		result := FilterStatusUpClients(clients, batch, statuses, nil)
 
 		if len(result) != 1 {
 			t.Fatalf("expected 1 client, got %d", len(result))
@@ -415,7 +415,7 @@ func TestFilterStatusUpClients(t *testing.T) {
 			"client2": "disconnected",
 		}
 
-		result := FilterStatusUpClients(clients, batch, statuses)
+		result := FilterStatusUpClients(clients, batch, statuses, nil)
 
 		if len(result) != 1 {
 			t.Fatalf("expected 1 client, got %d", len(result))
@@ -435,7 +435,28 @@ func TestFilterStatusUpClients(t *testing.T) {
 			// client2 status missing (e.g., GetUserStatus failed)
 		}
 
-		result := FilterStatusUpClients(clients, batch, statuses)
+		result := FilterStatusUpClients(clients, batch, statuses, nil)
+
+		if len(result) != 1 {
+			t.Fatalf("expected 1 client, got %d", len(result))
+		}
+		if result[0].Host != "client1" {
+			t.Errorf("expected client1, got %s", result[0].Host)
+		}
+	})
+
+	t.Run("excludes clients whose connect failed even when status is up", func(t *testing.T) {
+		batch := map[string]*BatchResult{
+			"client1": {Device: dev1},
+			"client2": {Device: dev2},
+		}
+		statuses := map[string]string{
+			"client1": UserStatusUp,
+			"client2": UserStatusUp,
+		}
+		connectFailed := map[string]struct{}{"client2": {}}
+
+		result := FilterStatusUpClients(clients, batch, statuses, connectFailed)
 
 		if len(result) != 1 {
 			t.Fatalf("expected 1 client, got %d", len(result))
@@ -447,9 +468,13 @@ func TestFilterStatusUpClients(t *testing.T) {
 }
 
 func TestComputeRouteTargets(t *testing.T) {
-	dev1 := &Device{Code: "dev1", ExchangeCode: "ex1"}
-	dev2 := &Device{Code: "dev2", ExchangeCode: "ex2"}
-	dev3 := &Device{Code: "dev3", ExchangeCode: "ex1"} // same exchange as dev1
+	ready := func(code, exchange string) *Device {
+		return &Device{Code: code, ExchangeCode: exchange, Status: serviceability.DeviceStatusActivated, MaxUsers: 128}
+	}
+	dev1 := ready("dev1", "ex1")
+	dev2 := ready("dev2", "ex2")
+	dev3 := ready("dev3", "ex1") // same exchange as dev1
+	drained := &Device{Code: "dev4", ExchangeCode: "ex3", Status: serviceability.DeviceStatusActivated}
 	client1 := &Client{Host: "client1"}
 	client2 := &Client{Host: "client2"}
 	client3 := &Client{Host: "client3"}
@@ -504,6 +529,24 @@ func TestComputeRouteTargets(t *testing.T) {
 			"client1": {Device: dev1}, // ex1
 			"client2": {Device: dev2}, // ex2
 			"client3": {Device: dev3}, // ex1 (same as client1)
+		}
+		connectedClients := []*Client{client1, client2, client3}
+
+		result := ComputeRouteTargets(client1, connectedClients, batch, getIP)
+
+		if len(result) != 1 {
+			t.Fatalf("expected 1 target (only client2), got %d", len(result))
+		}
+		if !result[0].Equal(net.ParseIP("10.0.0.2")) {
+			t.Errorf("expected 10.0.0.2, got %s", result[0])
+		}
+	})
+
+	t.Run("excludes clients on devices not ready for users", func(t *testing.T) {
+		batch := map[string]*BatchResult{
+			"client1": {Device: dev1},    // ex1
+			"client2": {Device: dev2},    // ex2
+			"client3": {Device: drained}, // ex3, max_users=0
 		}
 		connectedClients := []*Client{client1, client2, client3}
 

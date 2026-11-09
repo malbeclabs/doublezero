@@ -125,9 +125,10 @@ type Session struct {
 	nextDetectScheduled time.Time
 
 	// Route-flap damping: Up->Down transitions since the count last decayed.
-	flaps    uint32
-	lastFlap time.Time
-	dampUp   bool // came Up since the last counted flap
+	flaps         uint32
+	lastFlap      time.Time
+	dampUp        bool      // came Up since the last counted flap
+	holdDownUntil time.Time // end of the hold-down armed by the last Up
 }
 
 // holdDown records that the session came Up and returns how long it must stay
@@ -139,13 +140,16 @@ func (s *Session) holdDown(now time.Time, base, max time.Duration) (time.Duratio
 	s.decayFlaps(now, 2*max)
 	s.dampUp = true
 	if s.flaps < 2 {
+		s.holdDownUntil = time.Time{}
 		return 0, s.flaps
 	}
 	hold := base
 	for i := uint32(2); i < s.flaps && hold < max; i++ {
 		hold *= 2
 	}
-	return min(hold, max), s.flaps
+	hold = min(hold, max)
+	s.holdDownUntil = now.Add(hold)
+	return hold, s.flaps
 }
 
 // recordFlap counts an Up->Down transition for route-flap damping.
@@ -479,6 +483,8 @@ type SessionSnapshot struct {
 	PeerAdvertisedMode  PeerMode
 	PeerClientVersion   ClientVersion
 	ExpectedKernelState KernelState
+	LastRx              time.Time
+	HoldDownUntil       time.Time
 }
 
 func (s *Session) Snapshot() SessionSnapshot {
@@ -508,5 +514,7 @@ func (s *Session) Snapshot() SessionSnapshot {
 		LastUpdated:         s.lastUpdated,
 		PeerAdvertisedMode:  s.peerAdvertisedMode,
 		PeerClientVersion:   s.peerClientVersion,
+		LastRx:              s.lastRx,
+		HoldDownUntil:       s.holdDownUntil,
 	}
 }

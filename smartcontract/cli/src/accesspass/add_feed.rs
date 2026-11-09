@@ -25,6 +25,10 @@ use std::{
 /// Add one feed to an EdgeSeat access pass, or change the seat of a feed it already holds, and
 /// set the multicast user cap to the total of its seats. Requires `ACCESS_PASS_ADMIN`, or
 /// foundation allowlist membership.
+///
+/// Use this command only for testing, such as in the e2e suite or on devnet. On mainnet-beta, a
+/// customer gets a feed through the frontend, with a normal subscription or a trial, and the
+/// oracle writes the feed onto the access pass.
 #[derive(Args, Debug)]
 pub struct AddFeedAccessPassCliCommand {
     /// Client IP of the access pass. Defaults to 0.0.0.0, the pass every host of the user payer shares
@@ -480,6 +484,41 @@ mod tests {
             err.to_string()
                 .contains("only an EdgeSeat pass carries feeds"),
             "{err}"
+        );
+    }
+
+    #[test]
+    fn test_cli_accesspass_add_feed_refuses_a_name_that_two_feeds_share() {
+        let mut client = create_test_client();
+        let user_payer = Pubkey::new_unique();
+        let (fra_pk, other_pk) = (Pubkey::new_unique(), Pubkey::new_unique());
+        expect_pass_and_feeds(
+            &mut client,
+            user_payer,
+            Pubkey::new_unique(),
+            pass(user_payer, AccessPassType::EdgeSeat(vec![]), 0),
+            HashMap::from([
+                (fra_pk, feed("Solana Shreds FRA")),
+                (other_pk, feed("Solana Shreds FRA")),
+            ]),
+        );
+
+        let err = run(&client, add(user_payer, "Solana Shreds FRA", 2, false)).unwrap_err();
+        let mut both = [fra_pk, other_pk];
+        both.sort();
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "2 feeds are named Solana Shreds FRA, so pass the pubkey of one of them: {}, {}",
+                both[0], both[1]
+            )
+        );
+
+        // The pubkey picks one of them.
+        let output = run(&client, add(user_payer, &fra_pk.to_string(), 2, true)).unwrap();
+        assert!(
+            output.contains(&format!("Adding feed Solana Shreds FRA ({fra_pk})")),
+            "{output}"
         );
     }
 

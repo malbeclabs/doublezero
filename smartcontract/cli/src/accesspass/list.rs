@@ -159,6 +159,16 @@ pub struct AccessPassDisplayNarrow {
 /// Abbreviate the accesspass type for narrow output, shortening every embedded
 /// key. The match is exhaustive on purpose: a new payload-carrying variant must
 /// be handled here rather than silently rendering full-width.
+/// Format a per-category user count. Only an EdgeSeat pass enforces its cap, so only an EdgeSeat
+/// pass shows one. Other pass types show the count alone.
+fn format_user_count(accesspass_type: &AccessPassType, count: u16, max: u16) -> String {
+    if matches!(accesspass_type, AccessPassType::EdgeSeat(_)) {
+        format!("{count} / {max}")
+    } else {
+        count.to_string()
+    }
+}
+
 fn accesspass_type_short(t: &AccessPassType) -> String {
     match t {
         AccessPassType::SolanaValidator(pk) => {
@@ -407,13 +417,15 @@ impl ListAccessPassCliCommand {
                     },
                     flags: access_pass.flags_string(),
                     connections: access_pass.connection_count,
-                    unicast_users: format!(
-                        "{} / {}",
-                        access_pass.unicast_user_count, access_pass.max_unicast_users
+                    unicast_users: format_user_count(
+                        &access_pass.accesspass_type,
+                        access_pass.unicast_user_count,
+                        access_pass.max_unicast_users,
                     ),
-                    multicast_users: format!(
-                        "{} / {}",
-                        access_pass.multicast_user_count, access_pass.max_multicast_users
+                    multicast_users: format_user_count(
+                        &access_pass.accesspass_type,
+                        access_pass.public_multicast_user_count,
+                        access_pass.max_multicast_users,
                     ),
                     status: access_pass.status,
                     owner: access_pass.owner,
@@ -522,7 +534,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
+            public_multicast_user_count: 0,
             max_multicast_users: 1,
         };
 
@@ -545,7 +557,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
+            public_multicast_user_count: 0,
             max_multicast_users: 1,
         };
 
@@ -566,7 +578,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
+            public_multicast_user_count: 0,
             max_multicast_users: 1,
         };
 
@@ -610,7 +622,7 @@ mod tests {
         );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | accesspass_type                                             | client_ip | user_payer                                | tenant | multicast | last_access_epoch | remaining_epoch | flags | connections | unicast_users | multicast_users | status    | owner                                     \n 1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM  | solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | 0.0.0.0   | 1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM  |        | S:test    | 123               | 113             |       | 0           | 0 / 1         | 0 / 1           | connected | 1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM  \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | prepaid                                                     | 1.2.3.4   | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB |        | P:test    | 123               | 113             |       | 0           | 0 / 1         | 0 / 1           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | prepaid                                                     | 2.3.4.5   | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 |        | P:test    | 123               | 113             |       | 0           | 0 / 1         | 0 / 1           | connected | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
+        assert_eq!(output_str, " account                                   | accesspass_type                                             | client_ip | user_payer                                | tenant | multicast | last_access_epoch | remaining_epoch | flags | connections | unicast_users | multicast_users | status    | owner                                     \n 1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM  | solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | 0.0.0.0   | 1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM  |        | S:test    | 123               | 113             |       | 0           | 0             | 0               | connected | 1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM  \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | prepaid                                                     | 1.2.3.4   | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB |        | P:test    | 123               | 113             |       | 0           | 0             | 0               | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 | prepaid                                                     | 2.3.4.5   | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 |        | P:test    | 123               | 113             |       | 0           | 0             | 0               | connected | 11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9 \n");
 
         let mut output = Vec::new();
         let res = block_on(
@@ -634,7 +646,7 @@ mod tests {
         );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM\",\"accesspass_type\":\"solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"client_ip\":\"0.0.0.0\",\"user_payer\":\"1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM\",\"tenant\":\"\",\"multicast\":\"S:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"flags\":\"\",\"connections\":0,\"unicast_users\":\"0 / 1\",\"multicast_users\":\"0 / 1\",\"status\":\"Connected\",\"owner\":\"1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM\"},{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"accesspass_type\":\"prepaid\",\"client_ip\":\"1.2.3.4\",\"user_payer\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"tenant\":\"\",\"multicast\":\"P:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"flags\":\"\",\"connections\":0,\"unicast_users\":\"0 / 1\",\"multicast_users\":\"0 / 1\",\"status\":\"Connected\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"},{\"account\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"accesspass_type\":\"prepaid\",\"client_ip\":\"2.3.4.5\",\"user_payer\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"tenant\":\"\",\"multicast\":\"P:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"flags\":\"\",\"connections\":0,\"unicast_users\":\"0 / 1\",\"multicast_users\":\"0 / 1\",\"status\":\"Connected\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM\",\"accesspass_type\":\"solana_validator: 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"client_ip\":\"0.0.0.0\",\"user_payer\":\"1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM\",\"tenant\":\"\",\"multicast\":\"S:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"flags\":\"\",\"connections\":0,\"unicast_users\":\"0\",\"multicast_users\":\"0\",\"status\":\"Connected\",\"owner\":\"1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM\"},{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"accesspass_type\":\"prepaid\",\"client_ip\":\"1.2.3.4\",\"user_payer\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"tenant\":\"\",\"multicast\":\"P:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"flags\":\"\",\"connections\":0,\"unicast_users\":\"0\",\"multicast_users\":\"0\",\"status\":\"Connected\",\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"},{\"account\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"accesspass_type\":\"prepaid\",\"client_ip\":\"2.3.4.5\",\"user_payer\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\",\"tenant\":\"\",\"multicast\":\"P:test\",\"last_access_epoch\":\"123\",\"remaining_epoch\":\"113\",\"flags\":\"\",\"connections\":0,\"unicast_users\":\"0\",\"multicast_users\":\"0\",\"status\":\"Connected\",\"owner\":\"11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9\"}]\n");
 
         // Test filtering by client IP
         let mut output = Vec::new();
@@ -647,7 +659,7 @@ mod tests {
         );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | accesspass_type | client_ip | user_payer                                | tenant | multicast | last_access_epoch | remaining_epoch | flags | connections | unicast_users | multicast_users | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | prepaid         | 1.2.3.4   | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB |        | P:test    | 123               | 113             |       | 0           | 0 / 1         | 0 / 1           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+        assert_eq!(output_str, " account                                   | accesspass_type | client_ip | user_payer                                | tenant | multicast | last_access_epoch | remaining_epoch | flags | connections | unicast_users | multicast_users | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | prepaid         | 1.2.3.4   | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB |        | P:test    | 123               | 113             |       | 0           | 0             | 0               | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
 
         // Test filtering by user payer
         let mut output = Vec::new();
@@ -662,7 +674,7 @@ mod tests {
         );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, " account                                   | accesspass_type | client_ip | user_payer                                | tenant | multicast | last_access_epoch | remaining_epoch | flags | connections | unicast_users | multicast_users | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | prepaid         | 1.2.3.4   | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB |        | P:test    | 123               | 113             |       | 0           | 0 / 1         | 0 / 1           | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
+        assert_eq!(output_str, " account                                   | accesspass_type | client_ip | user_payer                                | tenant | multicast | last_access_epoch | remaining_epoch | flags | connections | unicast_users | multicast_users | status    | owner                                     \n 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB | prepaid         | 1.2.3.4   | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB |        | P:test    | 123               | 113             |       | 0           | 0             | 0               | connected | 1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB \n");
         // Narrow output: shortened pubkeys, abbreviated type/multicast, short
         // headers; fits within 240 cols.
         let mut output = Vec::new();
@@ -712,6 +724,27 @@ mod tests {
                 line.len()
             );
         }
+    }
+
+    #[test]
+    fn test_format_user_count_shows_a_cap_only_for_edge_seat() {
+        assert_eq!(
+            super::format_user_count(&AccessPassType::EdgeSeat(vec![]), 2, 5),
+            "2 / 5"
+        );
+        // A cap that is not enforced is not shown, whatever value the pass stores.
+        assert_eq!(
+            super::format_user_count(&AccessPassType::Prepaid, 2, 1),
+            "2"
+        );
+        assert_eq!(
+            super::format_user_count(
+                &AccessPassType::SolanaValidator(Pubkey::new_unique()),
+                0,
+                35662
+            ),
+            "0"
+        );
     }
 
     #[test]
@@ -795,7 +828,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
+            public_multicast_user_count: 0,
             max_multicast_users: 1,
         };
 
@@ -817,7 +850,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
+            public_multicast_user_count: 0,
             max_multicast_users: 1,
         };
 
@@ -839,7 +872,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
+            public_multicast_user_count: 0,
             max_multicast_users: 1,
         };
 
@@ -1052,7 +1085,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
+            public_multicast_user_count: 0,
             max_multicast_users: 1,
         };
 

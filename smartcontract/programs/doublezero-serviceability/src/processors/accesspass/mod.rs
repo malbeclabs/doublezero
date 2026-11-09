@@ -1,6 +1,7 @@
 pub mod check_status;
 pub mod close;
 pub mod set;
+pub mod set_counts;
 pub mod set_feeds;
 pub mod set_flags;
 

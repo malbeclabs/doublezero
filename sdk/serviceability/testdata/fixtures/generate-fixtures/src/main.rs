@@ -1343,7 +1343,7 @@ fn generate_access_pass(dir: &Path) {
         tenant_allowlist: vec![],
         unicast_user_count: 2,
         max_unicast_users: 4,
-        multicast_user_count: 1,
+        public_multicast_user_count: 1,
         max_multicast_users: 3,
     };
 
@@ -1399,7 +1399,7 @@ fn generate_access_pass_validator(dir: &Path) {
         tenant_allowlist: vec![],
         unicast_user_count: 0,
         max_unicast_users: 5,
-        multicast_user_count: 0,
+        public_multicast_user_count: 0,
         max_multicast_users: 2,
     };
 
@@ -1467,7 +1467,7 @@ fn generate_access_pass_edge_seat(dir: &Path) {
         tenant_allowlist: vec![],
         unicast_user_count: 2,
         max_unicast_users: 4,
-        multicast_user_count: 1,
+        public_multicast_user_count: 1,
         max_multicast_users: 3,
     };
 

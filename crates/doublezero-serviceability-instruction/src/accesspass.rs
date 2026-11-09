@@ -9,8 +9,8 @@ use doublezero_serviceability::{
     pda::{get_accesspass_pda, get_globalstate_pda},
     processors::accesspass::{
         check_status::CheckStatusAccessPassArgs, close::CloseAccessPassArgs,
-        set::SetAccessPassArgs, set_feeds::SetAccessPassFeedsArgs,
-        set_flags::SetAccessPassFlagsArgs,
+        set::SetAccessPassArgs, set_counts::SetAccessPassCountsArgs,
+        set_feeds::SetAccessPassFeedsArgs, set_flags::SetAccessPassFlagsArgs,
     },
     state::accesspass::AccessPassKind,
 };
@@ -174,6 +174,28 @@ pub fn set_access_pass_flags(
         DoubleZeroInstruction::SetAccessPassFlags(args),
         vec![
             AccountMeta::new(accesspass, false),
+            AccountMeta::new_readonly(globalstate, false),
+        ],
+        payer,
+    )
+}
+
+/// `SetAccessPassCounts` (variant 135).
+/// Accounts: `[accesspass, globalstate(readonly)]`.
+///
+/// The pass is named by its address, the way an admin finds it in a list of all passes.
+pub fn set_access_pass_counts(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    accesspass: &Pubkey,
+    args: SetAccessPassCountsArgs,
+) -> Instruction {
+    let (globalstate, _) = get_globalstate_pda(program_id);
+    common::build_with_permission(
+        program_id,
+        DoubleZeroInstruction::SetAccessPassCounts(args),
+        vec![
+            AccountMeta::new(*accesspass, false),
             AccountMeta::new_readonly(globalstate, false),
         ],
         payer,
@@ -388,6 +410,38 @@ mod tests {
         );
         assert_eq!(ix.data[0], 116);
         let (accesspass, _) = get_accesspass_pda(&pid, &client_ip, &user_payer);
+        let (globalstate, _) = get_globalstate_pda(&pid);
+        assert_eq!(
+            ix.accounts,
+            vec![
+                AccountMeta::new(accesspass, false),
+                AccountMeta::new_readonly(globalstate, false),
+                AccountMeta::new(payer, true),
+                AccountMeta::new(system_program::ID, false),
+                common::permission_meta(&pid, &payer),
+            ]
+        );
+    }
+
+    #[test]
+    fn test_set_access_pass_counts() {
+        let pid = Pubkey::new_unique();
+        let payer = Pubkey::new_unique();
+        let accesspass = Pubkey::new_unique();
+        let ix = set_access_pass_counts(
+            &pid,
+            &payer,
+            &accesspass,
+            SetAccessPassCountsArgs {
+                expected_connection_count: 4,
+                expected_unicast_user_count: 3,
+                expected_public_multicast_user_count: 1,
+                unicast_user_count: 2,
+                public_multicast_user_count: 1,
+                private_multicast_user_count: 0,
+            },
+        );
+        assert_eq!(ix.data, [135, 4, 0, 3, 0, 1, 0, 2, 0, 1, 0]);
         let (globalstate, _) = get_globalstate_pda(&pid);
         assert_eq!(
             ix.accounts,

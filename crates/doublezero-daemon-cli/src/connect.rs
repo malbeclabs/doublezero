@@ -820,7 +820,7 @@ impl Connect {
         // far better than a gate here could.
         let at_multicast_cap = edge_seat
             && !mcast_exists
-            && accesspass.multicast_user_count >= accesspass.max_multicast_users;
+            && accesspass.public_multicast_user_count >= accesspass.max_multicast_users;
         // A pass without feed seats joins the groups on its allowlists. When every one of those
         // groups is private, the user does not count against the pass-wide cap, so the cap does
         // not stop the join.
@@ -839,7 +839,7 @@ impl Connect {
         let multicast = if at_multicast_cap && !joins_only_private_groups {
             LegOutcome::Skipped(format!(
                 "the EdgeSeat AccessPass has no free multicast seat ({} of {} in use)",
-                accesspass.multicast_user_count, accesspass.max_multicast_users
+                accesspass.public_multicast_user_count, accesspass.max_multicast_users
             ))
         } else {
             let ip_proof = IpProofFetcher::new(
@@ -3117,7 +3117,7 @@ mod tests {
                 flags: 0,
                 unicast_user_count: 0,
                 max_unicast_users: 1,
-                multicast_user_count: 0,
+                public_multicast_user_count: 0,
                 max_multicast_users: 1,
             }));
 
@@ -3696,7 +3696,7 @@ mod tests {
             let mut ap = self.accesspass.lock().unwrap();
             ap.accesspass_type = AccessPassType::EdgeSeat(vec![]);
             (ap.unicast_user_count, ap.max_unicast_users) = unicast;
-            (ap.multicast_user_count, ap.max_multicast_users) = multicast;
+            (ap.public_multicast_user_count, ap.max_multicast_users) = multicast;
         }
 
         pub fn add_feed(&mut self, code: &str, exchange: Pubkey, groups: Vec<Pubkey>) -> Pubkey {
@@ -7443,7 +7443,7 @@ mod tests {
                 flags: 0,
                 unicast_user_count: 0,
                 max_unicast_users: 1,
-                multicast_user_count: 0,
+                public_multicast_user_count: 0,
                 max_multicast_users: 1,
             }
         }

@@ -6,6 +6,7 @@ use doublezero_sdk::{
             get::{GetAccessPassCommand, ResolveAccessPassCommand},
             list::ListAccessPassCommand,
             set::SetAccessPassCommand,
+            set_counts::SetAccessPassCountsCommand,
             set_feeds::SetAccessPassFeedsCommand,
             set_flags::SetAccessPassFlagsCommand,
         },
@@ -340,6 +341,7 @@ pub trait CliCommand {
     ) -> eyre::Result<Signature>;
     fn set_accesspass(&self, cmd: SetAccessPassCommand) -> eyre::Result<Signature>;
     fn set_accesspass_flags(&self, cmd: SetAccessPassFlagsCommand) -> eyre::Result<Signature>;
+    fn set_accesspass_counts(&self, cmd: SetAccessPassCountsCommand) -> eyre::Result<Signature>;
     fn set_accesspass_feeds(&self, cmd: SetAccessPassFeedsCommand) -> eyre::Result<Signature>;
     fn resolve_accesspass(
         &self,
@@ -829,6 +831,9 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd.execute(self.client)
     }
     fn set_accesspass_flags(&self, cmd: SetAccessPassFlagsCommand) -> eyre::Result<Signature> {
+        cmd.execute(self.client)
+    }
+    fn set_accesspass_counts(&self, cmd: SetAccessPassCountsCommand) -> eyre::Result<Signature> {
         cmd.execute(self.client)
     }
     fn set_accesspass_feeds(&self, cmd: SetAccessPassFeedsCommand) -> eyre::Result<Signature> {

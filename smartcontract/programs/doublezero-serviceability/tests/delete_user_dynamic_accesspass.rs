@@ -490,6 +490,15 @@ async fn test_delete_user_specific_ip_pass() {
     let (accesspass_pubkey, user_pubkey) =
         create_and_activate_user(&mut env, user_ip, UserType::IBRL, user_ip, false).await;
 
+    // A prepaid pass counts its unicast user, although only an EdgeSeat pass enforces a cap.
+    let pass = get_account_data(&mut env.banks_client, accesspass_pubkey)
+        .await
+        .unwrap()
+        .get_accesspass()
+        .unwrap();
+    assert_eq!(pass.unicast_user_count, 1);
+    assert_eq!(pass.public_multicast_user_count, 0);
+
     let recent_blockhash = env
         .banks_client
         .get_latest_blockhash()
@@ -546,6 +555,7 @@ async fn test_delete_user_specific_ip_pass() {
         .get_accesspass()
         .unwrap();
     assert_eq!(pass.connection_count, 0);
+    assert_eq!(pass.unicast_user_count, 0);
     assert_eq!(pass.status, AccessPassStatus::Disconnected);
     assert_eq!(pass.client_ip, user_ip);
 }
@@ -575,6 +585,15 @@ async fn test_delete_multicast_user_dynamic_pass() {
     assert_eq!(user.user_type, UserType::Multicast);
     assert_eq!(user.status, UserStatus::Activated);
 
+    // A prepaid pass counts its multicast user too.
+    let pass = get_account_data(&mut env.banks_client, accesspass_pubkey)
+        .await
+        .unwrap()
+        .get_accesspass()
+        .unwrap();
+    assert_eq!(pass.unicast_user_count, 0);
+    assert_eq!(pass.public_multicast_user_count, 1);
+
     let recent_blockhash = env
         .banks_client
         .get_latest_blockhash()
@@ -631,6 +650,7 @@ async fn test_delete_multicast_user_dynamic_pass() {
         .get_accesspass()
         .unwrap();
     assert_eq!(pass.connection_count, 0);
+    assert_eq!(pass.public_multicast_user_count, 0);
     assert_eq!(pass.status, AccessPassStatus::Disconnected);
 }
 
@@ -780,6 +800,6 @@ async fn test_edge_seat_user_caps_enforced() {
         .get_accesspass()
         .unwrap();
     assert_eq!(pass.unicast_user_count, 1);
-    assert_eq!(pass.multicast_user_count, 1);
+    assert_eq!(pass.public_multicast_user_count, 1);
     assert_eq!(pass.connection_count, 2);
 }

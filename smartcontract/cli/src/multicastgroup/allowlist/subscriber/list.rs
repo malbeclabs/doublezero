@@ -136,7 +136,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
+            public_multicast_user_count: 0,
             max_multicast_users: 1,
         };
 
@@ -157,7 +157,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
+            public_multicast_user_count: 0,
             max_multicast_users: 1,
         };
 

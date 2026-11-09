@@ -642,7 +642,7 @@ async fn test_second_feed_takes_its_own_seat() {
     let pass = read_pass(&mut fixture).await;
     assert_eq!(seat_users(&pass, &feed1), 1);
     assert_eq!(seat_users(&pass, &feed2), 1);
-    assert_eq!(pass.multicast_user_count, 1);
+    assert_eq!(pass.public_multicast_user_count, 1);
 }
 
 // Both feeds' groups join in a single transaction, taking one seat each.
@@ -1502,7 +1502,7 @@ async fn test_private_group_user_counts_once_it_joins_a_feed() {
     set_accesspass_feeds(&mut fixture, vec![seat(feed, 1)]).await;
 
     create_private_group_user(&mut fixture, private_group).await;
-    assert_eq!(read_pass(&mut fixture).await.multicast_user_count, 0);
+    assert_eq!(read_pass(&mut fixture).await.public_multicast_user_count, 0);
     assert!(!read_user(&mut fixture).await.holds_pass_seat);
 
     join(&mut fixture, &[feed], &[feed_group]).await.unwrap();
@@ -1512,7 +1512,7 @@ async fn test_private_group_user_counts_once_it_joins_a_feed() {
     assert_eq!(user.feed_pks, vec![feed]);
     assert!(user.holds_pass_seat);
     let pass = read_pass(&mut fixture).await;
-    assert_eq!(pass.multicast_user_count, 1);
+    assert_eq!(pass.public_multicast_user_count, 1);
     assert_eq!(seat_users(&pass, &feed), 1);
 }
 
@@ -1538,7 +1538,7 @@ async fn test_private_group_user_feed_join_refused_at_pass_wide_cap() {
         .await;
     }
     create_private_group_user(&mut fixture, private_group).await;
-    assert_eq!(read_pass(&mut fixture).await.multicast_user_count, 4);
+    assert_eq!(read_pass(&mut fixture).await.public_multicast_user_count, 4);
 
     let err = join(&mut fixture, &[feed], &[feed_group])
         .await
@@ -1613,7 +1613,7 @@ async fn test_delete_feed_user_releases_pass_count() {
     let feed = create_feed(&mut fixture, "feed1", exchange, vec![feed_group]).await;
     set_accesspass_feeds(&mut fixture, vec![seat(feed, 1)]).await;
     create_user_on(&mut fixture, feed, feed_group).await;
-    assert_eq!(read_pass(&mut fixture).await.multicast_user_count, 1);
+    assert_eq!(read_pass(&mut fixture).await.public_multicast_user_count, 1);
 
     leave(&mut fixture, &[feed], &[], &[feed_group])
         .await
@@ -1621,7 +1621,7 @@ async fn test_delete_feed_user_releases_pass_count() {
     delete_user(&mut fixture).await;
 
     let pass = read_pass(&mut fixture).await;
-    assert_eq!(pass.multicast_user_count, 0);
+    assert_eq!(pass.public_multicast_user_count, 0);
     assert_eq!(pass.connection_count, 0);
     assert_eq!(seat_users(&pass, &feed), 0);
 }
@@ -1640,13 +1640,13 @@ async fn test_delete_private_group_user_keeps_pass_count() {
     // A feed user on another host holds the only raised count.
     create_user_at(&mut fixture, Ipv4Addr::new(100, 0, 1, 1), feed, feed_group).await;
     create_private_group_user(&mut fixture, private_group).await;
-    assert_eq!(read_pass(&mut fixture).await.multicast_user_count, 1);
+    assert_eq!(read_pass(&mut fixture).await.public_multicast_user_count, 1);
 
     leave_private_group(&mut fixture, private_group).await;
     delete_user(&mut fixture).await;
 
     let pass = read_pass(&mut fixture).await;
-    assert_eq!(pass.multicast_user_count, 1);
+    assert_eq!(pass.public_multicast_user_count, 1);
     assert_eq!(pass.connection_count, 1);
 }
 
@@ -1663,7 +1663,7 @@ async fn test_delete_private_group_user_that_joined_a_feed_releases_pass_count()
 
     create_private_group_user(&mut fixture, private_group).await;
     join(&mut fixture, &[feed], &[feed_group]).await.unwrap();
-    assert_eq!(read_pass(&mut fixture).await.multicast_user_count, 1);
+    assert_eq!(read_pass(&mut fixture).await.public_multicast_user_count, 1);
 
     leave(&mut fixture, &[feed], &[], &[feed_group])
         .await
@@ -1672,7 +1672,7 @@ async fn test_delete_private_group_user_that_joined_a_feed_releases_pass_count()
     delete_user(&mut fixture).await;
 
     let pass = read_pass(&mut fixture).await;
-    assert_eq!(pass.multicast_user_count, 0);
+    assert_eq!(pass.public_multicast_user_count, 0);
     assert_eq!(pass.connection_count, 0);
     assert_eq!(seat_users(&pass, &feed), 0);
 }
@@ -1687,19 +1687,19 @@ async fn test_private_group_user_counts_once_it_joins_an_allowlisted_public_grou
     add_group_to_subscriber_allowlist(&mut fixture, public_group).await;
 
     create_private_group_user(&mut fixture, private_group).await;
-    assert_eq!(read_pass(&mut fixture).await.multicast_user_count, 0);
+    assert_eq!(read_pass(&mut fixture).await.public_multicast_user_count, 0);
 
     set_subscriber_role(&mut fixture, public_group, true).await;
 
     let user = read_user(&mut fixture).await;
     assert_eq!(user.subscribers, vec![private_group, public_group]);
     assert!(user.holds_pass_seat);
-    assert_eq!(read_pass(&mut fixture).await.multicast_user_count, 1);
+    assert_eq!(read_pass(&mut fixture).await.public_multicast_user_count, 1);
 
     set_subscriber_role(&mut fixture, public_group, false).await;
     leave_private_group(&mut fixture, private_group).await;
     delete_user(&mut fixture).await;
-    assert_eq!(read_pass(&mut fixture).await.multicast_user_count, 0);
+    assert_eq!(read_pass(&mut fixture).await.public_multicast_user_count, 0);
 }
 
 #[tokio::test]
@@ -1716,7 +1716,7 @@ async fn test_private_group_user_joining_another_private_group_does_not_count() 
     set_subscriber_role(&mut fixture, other_private_group, true).await;
 
     assert!(!read_user(&mut fixture).await.holds_pass_seat);
-    assert_eq!(read_pass(&mut fixture).await.multicast_user_count, 0);
+    assert_eq!(read_pass(&mut fixture).await.public_multicast_user_count, 0);
 }
 
 #[tokio::test]
@@ -1737,7 +1737,7 @@ async fn test_ibrl_user_on_a_private_group_counts_against_the_pass() {
     assert!(user.holds_pass_seat);
     let pass = read_pass(&mut fixture).await;
     assert_eq!(pass.unicast_user_count, 1);
-    assert_eq!(pass.multicast_user_count, 0);
+    assert_eq!(pass.public_multicast_user_count, 0);
 }
 
 #[tokio::test]
@@ -1764,6 +1764,6 @@ async fn test_batch_with_a_private_group_and_a_feed_group_counts_once() {
     assert_eq!(user.feed_pks, vec![feed]);
     assert!(user.holds_pass_seat);
     let pass = read_pass(&mut fixture).await;
-    assert_eq!(pass.multicast_user_count, 1);
+    assert_eq!(pass.public_multicast_user_count, 1);
     assert_eq!(seat_users(&pass, &feed), 1);
 }

@@ -212,7 +212,7 @@ pub fn process_set_access_pass(
             flags,
             unicast_user_count: 0,
             max_unicast_users: value.max_unicast_users,
-            multicast_user_count: 0,
+            public_multicast_user_count: 0,
             max_multicast_users: value.max_multicast_users,
         };
 
@@ -268,7 +268,7 @@ pub fn process_set_access_pass(
                 tenant_allowlist: vec![],
                 unicast_user_count: 0,
                 max_unicast_users: value.max_unicast_users,
-                multicast_user_count: 0,
+                public_multicast_user_count: 0,
                 max_multicast_users: value.max_multicast_users,
             }
         };

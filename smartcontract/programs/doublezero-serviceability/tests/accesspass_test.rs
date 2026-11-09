@@ -681,7 +681,7 @@ async fn test_close_accesspass_rejects_nonzero_connection_count() {
         tenant_allowlist: vec![],
         unicast_user_count: 0,
         max_unicast_users: 1,
-        multicast_user_count: 0,
+        public_multicast_user_count: 0,
         max_multicast_users: 1,
     };
 

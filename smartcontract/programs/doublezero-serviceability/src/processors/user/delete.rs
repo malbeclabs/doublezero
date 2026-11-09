@@ -194,8 +194,8 @@ pub fn process_delete_user(
     }
 
     accesspass.connection_count = accesspass.connection_count.saturating_sub(1);
-    // Release the per-category seat (EdgeSeat only; no-op otherwise). A user that joined only a
-    // private group did not take this seat, so it has nothing to release.
+    // Uncount the user from the pass by category, on every pass type. A user that joined only
+    // private groups was not counted, so it has nothing to uncount.
     if user.holds_pass_seat {
         accesspass.release_pass_seat(user.user_type);
     }

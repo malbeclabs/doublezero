@@ -190,7 +190,7 @@ fn apply_serviceability_json_compat_migrations(serviceability: &mut Value) {
                 .entry("max_unicast_users")
                 .or_insert_with(|| Value::Number(1.into()));
             access_pass
-                .entry("multicast_user_count")
+                .entry("public_multicast_user_count")
                 .or_insert_with(|| Value::Number(0.into()));
             access_pass
                 .entry("max_multicast_users")

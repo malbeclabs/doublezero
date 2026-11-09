@@ -1038,7 +1038,7 @@ async fn test_private_group_joins_without_feed_or_pass_seat() {
         .unwrap()
         .get_accesspass()
         .unwrap();
-    assert_eq!(pass.multicast_user_count, 0);
+    assert_eq!(pass.public_multicast_user_count, 0);
     assert_eq!(pass.connection_count, 1);
 
     let group = get_account_data(&mut fixture.banks_client, mgroup)
@@ -1133,5 +1133,5 @@ async fn test_feed_group_with_private_extra_group_joins_both() {
         .get_accesspass()
         .unwrap();
     assert_eq!(pass.feed_seats()[0].current_users, 1);
-    assert_eq!(pass.multicast_user_count, 1);
+    assert_eq!(pass.public_multicast_user_count, 1);
 }

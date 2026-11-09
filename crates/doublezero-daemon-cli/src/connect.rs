@@ -7190,7 +7190,11 @@ mod tests {
 
             // Both legs skip, so the command reports that it connected nothing.
             let (result, output) = run(&fixture, bare_connect()).await;
-            assert!(result.is_err(), "{output}");
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "nothing to connect: the AccessPass authorizes no unicast connection and no \
+                 multicast groups or feeds"
+            );
             assert!(
                 output.contains("no free multicast seat (0 of 0 in use)"),
                 "{output}"

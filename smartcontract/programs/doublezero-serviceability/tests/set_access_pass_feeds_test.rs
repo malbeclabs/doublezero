@@ -1156,6 +1156,8 @@ async fn test_a_retiring_feed_keeps_its_seats_and_sells_no_new_one() {
 /// Starts the program with the foundation authority, the feeds `solana-shreds-full-lon` and
 /// `solana-shreds-full-ams`, and an EdgeSeat pass that holds one seat on the LON feed. The test
 /// writes the pass directly, because no instruction can write a seat whose window_end has passed.
+// TODO: Create the pass with instructions and move the clock past window_end, for example in
+// surfpool, so a change to the pass layout cannot leave this seeded pass stale.
 struct SeededPass {
     banks_client: BanksClient,
     program_id: Pubkey,

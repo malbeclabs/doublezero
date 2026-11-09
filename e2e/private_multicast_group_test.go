@@ -5,8 +5,6 @@ package e2e_test
 import (
 	"fmt"
 	"net"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -35,22 +33,29 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 	log := logger.With("test", t.Name())
 	ctx := t.Context()
 
-	keypairJSON, err := e2esolana.GenerateKeypairJSON()
+	// The harness names a client container after its keypair, so each host starts with its own
+	// keypair. Each host then signs with the shared DZ ID.
+	dzIDKeypairJSON, err := e2esolana.GenerateKeypairJSON()
 	require.NoError(t, err)
-	keypairPath := filepath.Join(t.TempDir(), "dz-id.json")
-	require.NoError(t, os.WriteFile(keypairPath, keypairJSON, 0o600))
+	dzID, err := e2esolana.PubkeyFromKeypairJSON(dzIDKeypairJSON)
+	require.NoError(t, err)
 
 	hosts := map[string]*devnet.Client{}
 	for i, name := range []string{"a", "b", "c", "d", "e"} {
 		client, err := dn.AddClient(ctx, devnet.ClientSpec{
 			CYOANetworkIPHostID: uint32(101 + i),
-			KeypairPath:         keypairPath,
 		})
 		require.NoError(t, err)
+		output, err := client.Exec(ctx, []string{"bash", "-c", fmt.Sprintf(
+			"echo '%s' > /root/.config/doublezero/id.json && echo '%s' > /root/.config/solana/id.json",
+			dzIDKeypairJSON, dzIDKeypairJSON,
+		)})
+		require.NoError(t, err, "write the DZ ID keypair: %s", output)
 		hosts[name] = client
 	}
 	hostA, hostB, hostC, hostD, hostE := hosts["a"], hosts["b"], hosts["c"], hosts["d"], hosts["e"]
-	dzID := hostA.Pubkey
+	output, err := hostA.Exec(ctx, []string{"solana", "airdrop", "-u", dn.Ledger.InternalRPCURL, "10", dzID})
+	require.NoError(t, err, "fund the DZ ID: %s", output)
 
 	manager := func(t *testing.T, command string) {
 		t.Helper()
@@ -67,10 +72,11 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 		output, err := runOnHost(host, "doublezero connect multicast --device "+device.Spec.Code+" "+args)
 		require.NoError(t, err, "connect multicast %s: %s", args, output)
 	}
-	connectRefused := func(t *testing.T, host *devnet.Client, args string) {
+	connectRefused := func(t *testing.T, host *devnet.Client, args string, reason string) {
 		t.Helper()
 		output, err := runOnHost(host, "doublezero connect multicast --device "+device.Spec.Code+" "+args)
 		require.Error(t, err, "connect multicast %s must be refused: %s", args, output)
+		require.Contains(t, string(output), reason)
 	}
 
 	serviceabilityClient, err := dn.Ledger.GetServiceabilityClient()
@@ -265,15 +271,18 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 
 	if !t.Run("the_private_group_refuses_a_role_past_its_caps", func(t *testing.T) {
 		// The private group already has 2 publishers and 3 subscribers.
-		connectRefused(t, hostA, "--publish private-e2e")
-		connectRefused(t, hostC, "--subscribe private-e2e")
+		connectRefused(t, hostA, "--publish private-e2e",
+			"This multicast group already has as many publishers as its max_publishers allows")
+		connectRefused(t, hostC, "--subscribe private-e2e",
+			"This multicast group already has as many subscribers as its max_subscribers allows")
 		requireCounts(t, 4, 4, 2, 3)
 	}) {
 		t.FailNow()
 	}
 
 	if !t.Run("host_e_cannot_join_the_feed_while_its_seats_are_full", func(t *testing.T) {
-		connectRefused(t, hostE, "--subscribe-feed solana-shreds-full")
+		connectRefused(t, hostE, "--subscribe-feed solana-shreds-full",
+			"every purchased feed is already at capacity: solana-shreds-full (4 of 4 seats in use)")
 		requireCounts(t, 4, 4, 2, 3)
 		require.Empty(t, readState(t).users[hostIP(hostE)].FeedPks)
 	}) {

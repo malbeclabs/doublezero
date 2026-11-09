@@ -1441,12 +1441,20 @@ async fn add_group_to_subscriber_allowlist(fixture: &mut Fixture, group: Pubkey)
     .await;
 }
 
-async fn create_private_group_user(fixture: &mut Fixture, group: Pubkey) {
+// Sends one CreateSubscribeUser for the fixture host. The first group is the main group and the
+// rest are extra groups.
+async fn create_subscribe_user(
+    fixture: &mut Fixture,
+    user_type: UserType,
+    groups: &[Pubkey],
+    feed: Option<Pubkey>,
+) {
+    let (user_pubkey, _) = get_user_pda(&fixture.program_id, &fixture.user_ip, user_type);
     let recent_blockhash = wait_for_new_blockhash(&mut fixture.banks_client).await;
-    let accounts = vec![
-        AccountMeta::new(fixture.user_pubkey, false),
+    let mut accounts = vec![
+        AccountMeta::new(user_pubkey, false),
         AccountMeta::new(fixture.device_pubkey, false),
-        AccountMeta::new(group, false),
+        AccountMeta::new(groups[0], false),
         AccountMeta::new(fixture.accesspass_pubkey, false),
         AccountMeta::new(fixture.globalstate_pubkey, false),
         AccountMeta::new(fixture.user_tunnel_block, false),
@@ -1454,10 +1462,12 @@ async fn create_private_group_user(fixture: &mut Fixture, group: Pubkey) {
         AccountMeta::new(fixture.tunnel_ids, false),
         AccountMeta::new(fixture.dz_prefix_block, false),
     ];
+    accounts.extend(groups[1..].iter().map(|k| AccountMeta::new(*k, false)));
+    accounts.extend(feed.iter().map(|k| AccountMeta::new_readonly(*k, false)));
     let mut tx = create_transaction_with_extra_accounts(
         fixture.program_id,
         &DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
-            user_type: UserType::Multicast,
+            user_type,
             cyoa_type: UserCYOA::GREOverDIA,
             client_ip: fixture.user_ip,
             publisher: false,
@@ -1466,7 +1476,7 @@ async fn create_private_group_user(fixture: &mut Fixture, group: Pubkey) {
             dz_prefix_count: 1,
             owner: Pubkey::default(),
             ip_proof: None,
-            extra_group_count: 0,
+            extra_group_count: (groups.len() - 1) as u8,
         }),
         &accounts,
         &fixture.payer,
@@ -1474,6 +1484,10 @@ async fn create_private_group_user(fixture: &mut Fixture, group: Pubkey) {
     );
     tx.try_sign(&[&fixture.payer], recent_blockhash).unwrap();
     fixture.banks_client.process_transaction(tx).await.unwrap();
+}
+
+async fn create_private_group_user(fixture: &mut Fixture, group: Pubkey) {
+    create_subscribe_user(fixture, UserType::Multicast, &[group], None).await;
 }
 
 #[tokio::test]
@@ -1541,13 +1555,17 @@ async fn test_private_group_user_feed_join_refused_at_pass_wide_cap() {
 }
 
 async fn leave_private_group(fixture: &mut Fixture, group: Pubkey) {
+    set_subscriber_role(fixture, group, false).await;
+}
+
+async fn set_subscriber_role(fixture: &mut Fixture, group: Pubkey, subscriber: bool) {
     let recent_blockhash = wait_for_new_blockhash(&mut fixture.banks_client).await;
     let mut tx = create_transaction_with_extra_accounts(
         fixture.program_id,
         &DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
             client_ip: fixture.user_ip,
             publisher: false,
-            subscriber: false,
+            subscriber,
             use_onchain_allocation: true,
             extra_group_count: 0,
         }),
@@ -1657,4 +1675,95 @@ async fn test_delete_private_group_user_that_joined_a_feed_releases_pass_count()
     assert_eq!(pass.multicast_user_count, 0);
     assert_eq!(pass.connection_count, 0);
     assert_eq!(seat_users(&pass, &feed), 0);
+}
+
+#[tokio::test]
+async fn test_private_group_user_counts_once_it_joins_an_allowlisted_public_group() {
+    let mut fixture = setup([100, 0, 0, 55]).await;
+    let private_group = fixture.groups[0];
+    let public_group = fixture.groups[1];
+    make_group_private(&mut fixture, private_group).await;
+    add_group_to_subscriber_allowlist(&mut fixture, private_group).await;
+    add_group_to_subscriber_allowlist(&mut fixture, public_group).await;
+
+    create_private_group_user(&mut fixture, private_group).await;
+    assert_eq!(read_pass(&mut fixture).await.multicast_user_count, 0);
+
+    set_subscriber_role(&mut fixture, public_group, true).await;
+
+    let user = read_user(&mut fixture).await;
+    assert_eq!(user.subscribers, vec![private_group, public_group]);
+    assert!(user.holds_pass_seat);
+    assert_eq!(read_pass(&mut fixture).await.multicast_user_count, 1);
+
+    set_subscriber_role(&mut fixture, public_group, false).await;
+    leave_private_group(&mut fixture, private_group).await;
+    delete_user(&mut fixture).await;
+    assert_eq!(read_pass(&mut fixture).await.multicast_user_count, 0);
+}
+
+#[tokio::test]
+async fn test_private_group_user_joining_another_private_group_does_not_count() {
+    let mut fixture = setup([100, 0, 0, 56]).await;
+    let private_group = fixture.groups[0];
+    let other_private_group = fixture.groups[1];
+    make_group_private(&mut fixture, private_group).await;
+    make_group_private(&mut fixture, other_private_group).await;
+    add_group_to_subscriber_allowlist(&mut fixture, private_group).await;
+    add_group_to_subscriber_allowlist(&mut fixture, other_private_group).await;
+
+    create_private_group_user(&mut fixture, private_group).await;
+    set_subscriber_role(&mut fixture, other_private_group, true).await;
+
+    assert!(!read_user(&mut fixture).await.holds_pass_seat);
+    assert_eq!(read_pass(&mut fixture).await.multicast_user_count, 0);
+}
+
+#[tokio::test]
+async fn test_ibrl_user_on_a_private_group_counts_against_the_pass() {
+    let mut fixture = setup([100, 0, 0, 57]).await;
+    let private_group = fixture.groups[0];
+    make_group_private(&mut fixture, private_group).await;
+    add_group_to_subscriber_allowlist(&mut fixture, private_group).await;
+
+    create_subscribe_user(&mut fixture, UserType::IBRL, &[private_group], None).await;
+
+    let (ibrl_user, _) = get_user_pda(&fixture.program_id, &fixture.user_ip, UserType::IBRL);
+    let user = get_account_data(&mut fixture.banks_client, ibrl_user)
+        .await
+        .expect("user")
+        .get_user()
+        .unwrap();
+    assert!(user.holds_pass_seat);
+    let pass = read_pass(&mut fixture).await;
+    assert_eq!(pass.unicast_user_count, 1);
+    assert_eq!(pass.multicast_user_count, 0);
+}
+
+#[tokio::test]
+async fn test_batch_with_a_private_group_and_a_feed_group_counts_once() {
+    let mut fixture = setup([100, 0, 0, 58]).await;
+    let exchange = fixture.exchange_pubkey;
+    let private_group = fixture.groups[0];
+    let feed_group = fixture.groups[1];
+    make_group_private(&mut fixture, private_group).await;
+    add_group_to_subscriber_allowlist(&mut fixture, private_group).await;
+    let feed = create_feed(&mut fixture, "feed1", exchange, vec![feed_group]).await;
+    set_accesspass_feeds(&mut fixture, vec![seat(feed, 1)]).await;
+
+    create_subscribe_user(
+        &mut fixture,
+        UserType::Multicast,
+        &[private_group, feed_group],
+        Some(feed),
+    )
+    .await;
+
+    let user = read_user(&mut fixture).await;
+    assert_eq!(user.subscribers, vec![private_group, feed_group]);
+    assert_eq!(user.feed_pks, vec![feed]);
+    assert!(user.holds_pass_seat);
+    let pass = read_pass(&mut fixture).await;
+    assert_eq!(pass.multicast_user_count, 1);
+    assert_eq!(seat_users(&pass, &feed), 1);
 }

@@ -1074,7 +1074,7 @@ async fn test_group_that_is_not_private_still_needs_a_feed() {
 }
 
 #[tokio::test]
-async fn test_private_group_with_feed_group_off_allowlist_rejected() {
+async fn test_private_group_with_feed_group_needs_a_feed() {
     let mut fixture = setup_feed_fixture([100, 0, 0, 43]).await;
     let mgroup = fixture.mgroup_pubkey;
     make_group_private(&mut fixture, mgroup).await;
@@ -1084,7 +1084,7 @@ async fn test_private_group_with_feed_group_off_allowlist_rejected() {
     let err = try_subscribe_without_feed(&mut fixture, &[feed_group])
         .await
         .unwrap_err();
-    assert_custom_error(&err, custom_code(DoubleZeroError::NotAllowed));
+    assert_custom_error(&err, custom_code(DoubleZeroError::FeedAccountRequired));
 
     let (user_pubkey, _) = get_user_pda(&fixture.program_id, &fixture.user_ip, UserType::Multicast);
     assert!(get_account_data(&mut fixture.banks_client, user_pubkey)

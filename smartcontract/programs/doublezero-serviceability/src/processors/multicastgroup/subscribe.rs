@@ -280,7 +280,7 @@ pub fn process_update_multicastgroup_roles(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    let accesspass = AccessPass::try_from(accesspass_account)?;
+    let mut accesspass = AccessPass::try_from(accesspass_account)?;
 
     let (accesspass_pda, _) = get_accesspass_pda(program_id, &user.client_ip, &user.owner);
     let (accesspass_dynamic_pda, _) =
@@ -351,6 +351,7 @@ pub fn process_update_multicastgroup_roles(
     // below: on batch adds only the first add sees empty→non-empty; on batch
     // removes only the last removal sees non-empty→empty.
     let mut publisher_list_transitioned = false;
+    let mut joins_public_group = false;
     for group_account in std::iter::once(mgroup_account).chain(extra_group_accounts.iter().copied())
     {
         check_mgroup_allowlists(
@@ -366,7 +367,16 @@ pub fn process_update_multicastgroup_roles(
             value.subscriber,
         )?;
         publisher_list_transitioned |= result.publisher_list_transitioned;
+        joins_public_group |= has_role && !result.mgroup.private;
         try_acc_write(&result.mgroup, group_account, payer_account, accounts)?;
+    }
+
+    // A user that joined only private groups takes a pass-wide seat when it joins its first
+    // group that is not private, the same way SubscribeFeed does.
+    if joins_public_group && !user.holds_pass_seat {
+        accesspass.try_take_pass_seat(user.user_type)?;
+        user.holds_pass_seat = true;
+        try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;
     }
 
     // Allocate dz_ip when gaining first publisher

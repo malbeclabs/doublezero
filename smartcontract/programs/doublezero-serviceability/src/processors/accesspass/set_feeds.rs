@@ -163,11 +163,29 @@ pub fn process_set_access_pass_feeds(
             return Err(DoubleZeroError::FeedNotActive.into());
         }
 
-        let current_users = prior_seats
-            .iter()
-            .find(|s| s.feed_key == feed_key)
-            .map(|s| s.current_users)
-            .unwrap_or(0);
+        let prior_seat = prior_seats.iter().find(|s| s.feed_key == feed_key);
+        let current_users = prior_seat.map(|s| s.current_users).unwrap_or(0);
+
+        // A seat that the request copies unchanged from the pass, after its window_end passed,
+        // takes the switch the oracle makes at window_end: the cap becomes max_future_users and
+        // window_end becomes terminates_at. Then terminates_at alone decides whether the seat is
+        // still valid, so a caller that adds or removes another feed is not refused for this one.
+        let copied_past_window = prior_seat.is_some_and(|prior| {
+            prior.max_users == config.max_users
+                && prior.max_future_users == config.max_future_users
+                && prior.anniversary_day == config.anniversary_day
+                && prior.window_end == config.window_end
+                && prior.terminates_at == config.terminates_at
+        }) && config.window_end <= now;
+        let config = if copied_past_window {
+            FeedSeatConfig {
+                max_users: config.max_future_users,
+                window_end: config.terminates_at,
+                ..config.clone()
+            }
+        } else {
+            config.clone()
+        };
 
         // A zero current cap admits no users, which is not a meaningful seat to provision.
         if config.max_users == 0 {

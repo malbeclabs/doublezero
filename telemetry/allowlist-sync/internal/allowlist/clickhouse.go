@@ -22,11 +22,12 @@ var validDBName = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 // all, so 10,000 is over ten times what the report can use and about 1 MB.
 // The read keeps the newest pairs and drops the rest. Failing the read
 // instead would let a flood of callers freeze the report for as long as the
-// flood stays in the caller window. A cut keeps every device that called in
-// the last few minutes, since a device calls every 5 seconds, and keeps the
-// flood's own callers, which the report shows as unlisted. What it drops is
-// the oldest calls, so a device silent for longer than the cut reaches back
-// reads as having made no call.
+// flood stays in the caller window. A cut keeps the flood's own callers, the
+// newest rows, which the report shows as unlisted. It drops the oldest calls,
+// so a device whose newest call is older than the cut reaches back reads as
+// having made no call, however recent that call was: a flood of more than
+// 10,000 pairs in 5 seconds reaches past every device. The cut is exported as
+// caller_read_cut, and the missing device alert is held while it is 1.
 const MaxCallerRows = 10_000
 
 // ClickHouseCallers reads controller_grpc_getconfig_success, which the

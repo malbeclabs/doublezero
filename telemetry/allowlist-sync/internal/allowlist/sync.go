@@ -118,7 +118,7 @@ func (s *Syncer) runPass(ctx context.Context) {
 	pctx, cancel := context.WithTimeout(ctx, s.cfg.PassTimeout)
 	defer cancel()
 	if err := s.Pass(pctx); err != nil && ctx.Err() == nil {
-		s.cfg.Log.Error("allowlist pass failed; the targets keep what they hold", "error", err)
+		s.cfg.Log.Error("allowlist pass failed or was refused; the next pass tries again", "error", err)
 	}
 }
 
@@ -134,10 +134,11 @@ func (e *RefusedError) Error() string {
 
 // Pass reads, builds, checks and applies once. It writes nothing unless the
 // ledger and exception file read whole and the list is not empty. A target it
-// cannot read is skipped, and the others are still written. When a target
-// would lose more than the removal limits allow, and AllowShrinkTo does not
-// name the list, the pass is refused: every target gets the list's additions
-// and keeps everything it holds.
+// cannot read is skipped, and the others get only the list's additions: the
+// removal limits are checked against every target, and one unread could not
+// stop a removal. When a target would lose more than the removal limits allow,
+// and AllowShrinkTo does not name the list, the pass is refused: every target
+// gets the list's additions and keeps everything it holds.
 func (s *Syncer) Pass(ctx context.Context) error {
 	m := s.cfg.Metrics
 	fail := func(stage string, err error) error {
@@ -207,6 +208,10 @@ func (s *Syncer) Pass(ctx context.Context) error {
 	}
 	if refusal != nil {
 		refusal.Detail += fmt.Sprintf("; additions are written and every removal is held; after checking the ledger, set --allow-shrink-to=%s to apply this list once", digest)
+	}
+	// An unread target could not be checked: only the map counts devices, so
+	// without it Cloudflare alone could lose 10% of the fleet.
+	if refusal != nil || len(plans) < len(s.cfg.Targets) {
 		for i := range plans {
 			plans[i].plan = plans[i].target.HoldRemovals(plans[i].plan)
 		}

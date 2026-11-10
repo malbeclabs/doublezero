@@ -411,7 +411,7 @@ func TestPass_RemovalLimits(t *testing.T) {
 			assert.Equal(t, tc.refused, refused.Reason)
 			assert.Contains(t, refused.Detail, "set --allow-shrink-to="+mustBuild(t, h.ledger.pd.Devices, Exceptions{}).List.Digest())
 			assert.Equal(t, 1.0, counter(h.metrics.RefusedPasses, tc.refused))
-			assert.Equal(t, [2]int{1, 1}, [2]int{cmUpdates, cfReplaces}, "a refused pass writes nothing")
+			assert.Equal(t, [2]int{1, 1}, [2]int{cmUpdates, cfReplaces}, "a refused pass with nothing to add writes nothing")
 			assert.Len(t, h.cfIPs(), tc.fleet)
 			assert.Len(t, h.cm.gnmicMap(t), tc.fleet)
 		})
@@ -462,6 +462,7 @@ func TestPass_RefusedPassWritesAdditionsAndHoldsRemovals(t *testing.T) {
 	t0 := testutil.ToFloat64(h.metrics.LastSuccess)
 	h.clock.Advance(time.Minute)
 	h.ledger.pd.Devices = append(h.ledger.pd.Devices[:54:54], dev(61, "dz61", serviceability.DeviceStatusActivated, "45.0.0.61"))
+	h.ledger.pd.Devices[0] = dev(1, "dz1", serviceability.DeviceStatusActivated, "45.0.1.1") // moved
 
 	var refused *RefusedError
 	require.ErrorAs(t, h.pass(t), &refused)
@@ -473,7 +474,10 @@ func TestPass_RefusedPassWritesAdditionsAndHoldsRemovals(t *testing.T) {
 	assert.Len(t, m, 61)
 	assert.Equal(t, []string{"45.0.0.61"}, m[pk(61)])
 	assert.Equal(t, []string{"45.0.0.60"}, m[pk(60)], "a device the ledger dropped keeps its entry")
-	assert.Len(t, h.cfIPs(), 61)
+	assert.Equal(t, []string{"45.0.0.1", "45.0.1.1"}, m[pk(1)], "a moved device keeps its old address too")
+	assert.Len(t, h.cfIPs(), 62)
+	assert.Contains(t, h.cfIPs(), "45.0.0.1")
+	assert.Contains(t, h.cfIPs(), "45.0.1.1")
 	assert.Contains(t, h.cfIPs(), "45.0.0.61")
 	cmUpdates, cfWrites := h.wrote()
 	assert.Equal(t, [2]int{2, 2}, [2]int{cmUpdates, cfWrites})
@@ -491,6 +495,49 @@ func TestPass_RefusedPassWritesAdditionsAndHoldsRemovals(t *testing.T) {
 	require.NoError(t, h.pass(t))
 	assert.Len(t, h.cm.gnmicMap(t), 55)
 	assert.Len(t, h.cfIPs(), 55)
+	assert.NotContains(t, h.cfIPs(), "45.0.0.1")
+}
+
+// A target that cannot be read cannot be checked against the removal limits,
+// and only the map counts devices. So while one is unread, the other gets
+// only additions: a partial read cannot take 10 devices out of Cloudflare
+// under the 5-device limit, or a device out of the map while Cloudflare is
+// down.
+func TestPass_UnreadTargetHoldsTheOthersRemovals(t *testing.T) {
+	t.Run("map unread", func(t *testing.T) {
+		h := newHarness(t, fleet(100))
+		require.NoError(t, h.pass(t))
+		h.cm.getErr = errors.New("timeout")
+		h.ledger.pd.Devices = append(h.ledger.pd.Devices[:90:90], dev(101, "dz101", serviceability.DeviceStatusActivated, "45.0.1.101"))
+		assert.EqualError(t, h.pass(t), "read_gnmic_map: timeout")
+		assert.Len(t, h.cfIPs(), 101, "nothing removed, the new device added")
+		assert.Contains(t, h.cfIPs(), "45.0.1.101")
+		assert.Equal(t, 0.0, counter(h.metrics.RefusedPasses, RefusedTooManyAddrs))
+
+		// Once the map reads, the 10 removals are refused on both targets.
+		h.cm.getErr = nil
+		var refused *RefusedError
+		require.ErrorAs(t, h.pass(t), &refused)
+		assert.Equal(t, RefusedTooManyDevices, refused.Reason)
+		assert.Len(t, h.cfIPs(), 101)
+		assert.Len(t, h.cm.gnmicMap(t), 101)
+	})
+	t.Run("cloudflare unread", func(t *testing.T) {
+		h := newHarness(t, fleet(20))
+		require.NoError(t, h.pass(t))
+		h.cf.itemsErr = errors.New("HTTP 403")
+		h.ledger.pd.Devices = append(h.ledger.pd.Devices[1:20:20], dev(21, "dz21", serviceability.DeviceStatusActivated, "45.0.0.21"))
+		assert.EqualError(t, h.pass(t), "read_cloudflare_list: HTTP 403")
+		m := h.cm.gnmicMap(t)
+		assert.Len(t, m, 21)
+		assert.Equal(t, []string{"45.0.0.1"}, m[pk(1)], "the dropped device stays until both targets read")
+		assert.Equal(t, []string{"45.0.0.21"}, m[pk(21)])
+
+		h.cf.itemsErr = nil
+		require.NoError(t, h.pass(t))
+		assert.Len(t, h.cm.gnmicMap(t), 20)
+		assert.NotContains(t, h.cfIPs(), "45.0.0.1")
+	})
 }
 
 // Stray Cloudflare items past the address limit refuse every pass, and a new

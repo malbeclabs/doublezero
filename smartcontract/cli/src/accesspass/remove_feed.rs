@@ -214,6 +214,17 @@ impl RemoveFeedAccessPassCliCommand {
         }
 
         if cap_changes {
+            let (_, fresh) = client
+                .get_accesspass(GetAccessPassCommand {
+                    client_ip,
+                    user_payer,
+                })?
+                .ok_or_else(|| eyre::eyre!("access pass {accesspass_pk} no longer exists"))?;
+            refuse_cap_below_public_users(
+                accesspass_pk,
+                max_public_multicast_users,
+                u32::from(fresh.public_multicast_user_count),
+            )?;
             let signature = client.set_accesspass(SetAccessPassCommand {
                 accesspass_type: AccessPassType::EdgeSeat(vec![]),
                 client_ip,
@@ -659,6 +670,49 @@ mod tests {
         assert!(output.contains(&format!(
             "Failed to delete user {holder_pk}: blockhash expired. Run `doublezero user delete --pubkey {holder_pk} --accesspass-type edge-seat` to finish."
         )));
+    }
+
+    #[test]
+    fn test_cli_accesspass_remove_feed_keeps_the_cap_when_a_delete_fails() {
+        let mut client = create_test_client();
+        let user_payer = Pubkey::new_unique();
+        let accesspass_pk = Pubkey::new_unique();
+        let (fra_pk, lon_pk) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let holder_pk = Pubkey::new_unique();
+
+        client.expect_check_requirements().returning(|_| Ok(()));
+        let mut pass = edge_seat_pass(user_payer, vec![seat(fra_pk, 2), seat(lon_pk, 3)]);
+        pass.public_multicast_user_count = 4;
+        client
+            .expect_get_accesspass()
+            .times(2)
+            .returning(move |_| Ok(Some((accesspass_pk, pass.clone()))));
+        client.expect_list_feed().returning(move |_| {
+            Ok(HashMap::from([
+                (fra_pk, feed("fra", "FRA")),
+                (lon_pk, feed("lon", "LON")),
+            ]))
+        });
+        let holder = User {
+            holds_pass_seat: true,
+            ..user(user_payer, accesspass_pk, vec![fra_pk])
+        };
+        client
+            .expect_list_user()
+            .returning(move |_| Ok(HashMap::from([(holder_pk, holder.clone())])));
+        client
+            .expect_set_accesspass_feeds()
+            .returning(|_| Ok(Signature::new_unique()));
+        client
+            .expect_delete_user()
+            .returning(|_| Err(eyre::eyre!("blockhash expired")));
+        client.expect_set_accesspass().never();
+
+        let err = run(&client, remove(user_payer, "FRA", false)).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            format!("access pass {accesspass_pk} has 4 public multicast users, which is more than the new cap of 3. Reduce the users through the client portal first")
+        );
     }
 
     #[test]

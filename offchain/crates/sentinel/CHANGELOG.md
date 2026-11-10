@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- chore(sentinel): use the renamed `max_public_multicast_users` field when it grants an access pass. The value sent to the program does not change (malbeclabs/doublezero#4512)
+
 ## [0.2.7](https://github.com/malbeclabs/doublezero/releases/tag/sentinel%2Fv0.2.7) - 2026-11-07
 
 - fix(sentinel): treat the `getLeaderSchedule` error -32022, which Agave 4.4 returns for an identity with no slots in the epoch, as not scheduled, like the empty schedule earlier versions return. Against 4.4 RPC nodes, access requests with backup IDs failed on every poll and were never granted, and a primary with no slots failed instead of being rejected.

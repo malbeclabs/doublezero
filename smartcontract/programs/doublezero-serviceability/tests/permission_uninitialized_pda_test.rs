@@ -326,7 +326,8 @@ async fn setup_topology() -> TopologyFixture {
                 metrics_publisher_pk: Pubkey::default(),
                 mgmt_vrf: "mgmt".to_string(),
                 desired_status: Some(DeviceDesiredStatus::Activated),
-                resource_count: 0, // derived by the builder
+                resource_count: 0, // derived by the builder,
+                agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
             },
         );
         devices.push(ix.accounts[0].pubkey);

@@ -716,6 +716,10 @@ class Device:
     # by from_bytes. When populated from the wire, len(interfaces) ==
     # len(deprecated_interfaces) is enforced.
     interfaces: list[Interface] = field(default_factory=list)
+    # agent_ip is the public address the device's agents connect from, when it
+    # is neither public_ip nor an interface address. All zeros means unset, and
+    # accounts written before the field existed read as zeros.
+    agent_ip: bytes = b"\x00" * 4
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Device:
@@ -787,6 +791,7 @@ class Device:
             dev.interfaces = [
                 Interface.from_reader_sized(r) for _ in range(new_len)
             ]
+        dev.agent_ip = r.read_ipv4()
 
         return dev
 

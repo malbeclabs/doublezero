@@ -1184,7 +1184,7 @@ type AccessPass struct {
 	UnicastUserCount   uint16
 	MaxUnicastUsers    uint16
 	// The program names this field public_multicast_user_count. It leaves out the users that
-	// joined only private groups.
+	// hold no pass seat.
 	MulticastUserCount uint16
 	MaxMulticastUsers  uint16
 	PubKey             [32]byte

@@ -342,6 +342,19 @@ func TestFixtureUserLegacyDefaults(t *testing.T) {
 	assert.True(t, u.HoldsPassSeat)
 }
 
+// Every user on mainnet has the access pass key and no holds_pass_seat byte. The decoder reads
+// the real access pass key, and it reads a missing holds_pass_seat byte as true.
+func TestFixtureUserWithoutHoldsPassSeat(t *testing.T) {
+	data, meta := loadFixture(t, "user")
+	old := data[:len(data)-1]
+
+	var u serviceability.User
+	serviceability.DeserializeUser(serviceability.NewByteReader(old), &u)
+
+	assert.Equal(t, fixtureFieldValue(t, meta, "AccessPassPk"), base58.Encode(u.AccessPassPubKey[:]))
+	assert.True(t, u.HoldsPassSeat)
+}
+
 // An account written by the previous layout carries a 32-zero-byte scalar feed_pk slot where
 // feed_pks now lives (never written with a real feed on any cluster). Those bytes must decode as
 // an empty slice, with the 28 leftover zero bytes ignored as trailing data.

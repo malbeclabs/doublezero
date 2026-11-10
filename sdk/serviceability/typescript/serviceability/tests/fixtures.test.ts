@@ -438,6 +438,18 @@ describe("User fixture", () => {
     expect(u.holdsPassSeat).toBe(true);
   });
 
+  test("a user without holds_pass_seat reads the access pass key", () => {
+    // Every user on mainnet has the access pass key and no holds_pass_seat byte.
+    const [data, meta] = loadFixture("user");
+    const expectedAccessPass = meta.fields.find(
+      (f) => f.name === "AccessPassPk",
+    )?.value;
+    expect(expectedAccessPass).toBeDefined();
+    const u = deserializeUser(data.slice(0, data.length - 1));
+    expect(u.accessPassPubKey.toBase58()).toBe(expectedAccessPass!);
+    expect(u.holdsPassSeat).toBe(true);
+  });
+
   test("old layout: zeroed scalar feed slot reads as empty feedPks", () => {
     const [data] = loadFixture("user");
     // Remove holds_pass_seat and accesspass_pk, and replace feed_pks with the old 32-zero-byte
@@ -469,6 +481,19 @@ describe("MulticastGroup fixture", () => {
       MaxPublishers: mg.maxPublishers,
       MaxSubscribers: mg.maxSubscribers,
     });
+  });
+
+  test("a group before the private flag and the caps reads as not private", () => {
+    const [data, meta] = loadFixture("multicast_group");
+    const expectedBondRef = meta.fields.find(
+      (f) => f.name === "BondRef",
+    )?.value;
+    expect(expectedBondRef).toBeDefined();
+    const mg = deserializeMulticastGroup(data.slice(0, data.length - 9));
+    expect(mg.bondRef.toBase58()).toBe(expectedBondRef!);
+    expect(mg.private).toBe(false);
+    expect(mg.maxPublishers).toBe(0);
+    expect(mg.maxSubscribers).toBe(0);
   });
 });
 

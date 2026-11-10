@@ -394,6 +394,14 @@ class TestFixtureUser:
         assert u.access_pass_pub_key == Pubkey.default()
         assert u.holds_pass_seat is True
 
+    def test_user_without_holds_pass_seat_reads_the_access_pass_key(self):
+        # Every user on mainnet has the access pass key and no holds_pass_seat byte.
+        data, meta = _load_fixture("user")
+        fields = {f["name"]: f["value"] for f in meta["fields"]}
+        u = User.from_bytes(data[:-1])
+        assert u.access_pass_pub_key == Pubkey.from_string(fields["AccessPassPk"])
+        assert u.holds_pass_seat is True
+
     def test_old_layout_zero_feed_slot_reads_as_empty_vec(self):
         # An account written by the previous layout carries a 32-zero-byte scalar
         # feed_pk slot where feed_pks now lives (never written with a real feed on
@@ -407,6 +415,16 @@ class TestFixtureUser:
 
 
 class TestFixtureMulticastGroup:
+    def test_group_before_private_and_caps_reads_as_not_private(self):
+        # A group from before the private flag and the caps has no bytes for them.
+        data, meta = _load_fixture("multicast_group")
+        fields = {f["name"]: f["value"] for f in meta["fields"]}
+        mg = MulticastGroup.from_bytes(data[:-9])
+        assert mg.bond_ref == Pubkey.from_string(fields["BondRef"])
+        assert mg.private is False
+        assert mg.max_publishers == 0
+        assert mg.max_subscribers == 0
+
     def test_deserialize(self):
         data, meta = _load_fixture("multicast_group")
         mg = MulticastGroup.from_bytes(data)

@@ -1125,7 +1125,7 @@ export interface AccessPass {
   unicastUserCount: number;
   maxUnicastUsers: number;
   // The program names this field public_multicast_user_count. It leaves out the users that
-  // joined only private groups.
+  // hold no pass seat.
   multicastUserCount: number;
   maxMulticastUsers: number;
 }

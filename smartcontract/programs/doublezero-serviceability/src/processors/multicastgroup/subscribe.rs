@@ -14,7 +14,7 @@ use crate::{
         globalstate::GlobalState,
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
         permission::permission_flags,
-        user::{User, UserStatus},
+        user::{User, UserStatus, UserType},
     },
 };
 use borsh::BorshSerialize;
@@ -380,9 +380,14 @@ pub fn process_update_multicastgroup_roles(
         try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;
     }
 
-    // A user that leaves its last public group, with no feed, no longer needs its pass seat.
+    // A multicast user that leaves its last public group, with no feed, no longer needs its pass
+    // seat. A user of another type took its seat at connect, so it keeps the seat until DeleteUser.
     // The caller passes the groups the user stays in. Without them the user keeps the seat.
-    if leaves_public_group && user.holds_pass_seat && user.feed_pks.is_empty() {
+    if leaves_public_group
+        && user.user_type == UserType::Multicast
+        && user.holds_pass_seat
+        && user.feed_pks.is_empty()
+    {
         let mut staying: Vec<Pubkey> = user.subscribers.clone();
         for group in &user.publishers {
             if !staying.contains(group) {

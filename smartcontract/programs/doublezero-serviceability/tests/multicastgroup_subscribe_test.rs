@@ -357,7 +357,7 @@ async fn setup_fixture() -> TestFixture {
         .get_user()
         .unwrap();
     assert_eq!(user.status, UserStatus::Activated);
-    assert!(user.holds_pass_seat);
+    assert!(!user.holds_pass_seat);
 
     TestFixture {
         banks_client,

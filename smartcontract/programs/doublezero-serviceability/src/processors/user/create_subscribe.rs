@@ -177,6 +177,16 @@ pub fn process_create_subscribe_user(
         .iter()
         .map(|account| MulticastGroup::try_from(*account).map(|group| group.private))
         .collect::<Result<Vec<bool>, _>>()?;
+    // A call that names a private group must ask for a role. Without a role, the call would skip
+    // the allowlist check and the cap check.
+    if value.user_type == UserType::Multicast
+        && !value.publisher
+        && !value.subscriber
+        && (mgroup_is_private || extra_groups_are_private.iter().any(|private| *private))
+    {
+        msg!("A multicast user that names a private group must be a publisher or a subscriber");
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
     // A multicast user that joins only private groups does not count against the pass-wide
     // multicast cap. A unicast user always counts.
     let joins_only_private_groups = value.user_type == UserType::Multicast

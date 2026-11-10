@@ -1451,6 +1451,30 @@ async fn create_subscribe_user(
     groups: &[Pubkey],
     feed: Option<Pubkey>,
 ) {
+    create_subscribe_user_with_roles(fixture, user_type, groups, feed, false, true).await;
+}
+
+async fn create_subscribe_user_with_roles(
+    fixture: &mut Fixture,
+    user_type: UserType,
+    groups: &[Pubkey],
+    feed: Option<Pubkey>,
+    publisher: bool,
+    subscriber: bool,
+) {
+    try_create_subscribe_user_with_roles(fixture, user_type, groups, feed, publisher, subscriber)
+        .await
+        .unwrap();
+}
+
+async fn try_create_subscribe_user_with_roles(
+    fixture: &mut Fixture,
+    user_type: UserType,
+    groups: &[Pubkey],
+    feed: Option<Pubkey>,
+    publisher: bool,
+    subscriber: bool,
+) -> Result<(), BanksClientError> {
     let (user_pubkey, _) = get_user_pda(&fixture.program_id, &fixture.user_ip, user_type);
     let recent_blockhash = wait_for_new_blockhash(&mut fixture.banks_client).await;
     let mut accounts = vec![
@@ -1472,8 +1496,8 @@ async fn create_subscribe_user(
             user_type,
             cyoa_type: UserCYOA::GREOverDIA,
             client_ip: fixture.user_ip,
-            publisher: false,
-            subscriber: true,
+            publisher,
+            subscriber,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             dz_prefix_count: 1,
             owner: Pubkey::default(),
@@ -1485,7 +1509,7 @@ async fn create_subscribe_user(
         &[],
     );
     tx.try_sign(&[&fixture.payer], recent_blockhash).unwrap();
-    fixture.banks_client.process_transaction(tx).await.unwrap();
+    fixture.banks_client.process_transaction(tx).await
 }
 
 async fn create_private_group_user(fixture: &mut Fixture, group: Pubkey) {
@@ -1561,7 +1585,27 @@ async fn leave_private_group(fixture: &mut Fixture, group: Pubkey) {
 }
 
 async fn set_subscriber_role(fixture: &mut Fixture, group: Pubkey, subscriber: bool) {
+    try_set_subscriber_role(fixture, group, subscriber, &[])
+        .await
+        .unwrap();
+}
+
+// The kept groups are the groups the user stays in that this call does not change.
+async fn try_set_subscriber_role(
+    fixture: &mut Fixture,
+    group: Pubkey,
+    subscriber: bool,
+    kept_groups: &[Pubkey],
+) -> Result<(), BanksClientError> {
     let recent_blockhash = wait_for_new_blockhash(&mut fixture.banks_client).await;
+    let mut accounts = vec![
+        AccountMeta::new(group, false),
+        AccountMeta::new(fixture.accesspass_pubkey, false),
+        AccountMeta::new(fixture.user_pubkey, false),
+        AccountMeta::new(fixture.globalstate_pubkey, false),
+        AccountMeta::new(fixture.multicast_publisher_block, false),
+    ];
+    accounts.extend(kept_groups.iter().map(|k| AccountMeta::new(*k, false)));
     let mut tx = create_transaction_with_extra_accounts(
         fixture.program_id,
         &DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
@@ -1571,18 +1615,12 @@ async fn set_subscriber_role(fixture: &mut Fixture, group: Pubkey, subscriber: b
             use_onchain_allocation: true,
             extra_group_count: 0,
         }),
-        &vec![
-            AccountMeta::new(group, false),
-            AccountMeta::new(fixture.accesspass_pubkey, false),
-            AccountMeta::new(fixture.user_pubkey, false),
-            AccountMeta::new(fixture.globalstate_pubkey, false),
-            AccountMeta::new(fixture.multicast_publisher_block, false),
-        ],
+        &accounts,
         &fixture.payer,
         &[],
     );
     tx.try_sign(&[&fixture.payer], recent_blockhash).unwrap();
-    fixture.banks_client.process_transaction(tx).await.unwrap();
+    fixture.banks_client.process_transaction(tx).await
 }
 
 async fn delete_user(fixture: &mut Fixture) {
@@ -1843,6 +1881,113 @@ async fn test_kept_groups_must_match_the_groups_the_user_keeps() {
     let err = leave(&mut fixture, &[feed], &[], &[feed_group, other_group])
         .await
         .unwrap_err();
+    assert_custom_error(&err, custom_code(DoubleZeroError::InvalidArgument));
+    assert!(read_user(&mut fixture).await.holds_pass_seat);
+}
+
+#[tokio::test]
+async fn test_create_subscribe_user_with_no_role_on_a_private_group_is_refused() {
+    let mut fixture = setup([100, 0, 0, 62]).await;
+    let private_group = fixture.groups[0];
+    make_group_private(&mut fixture, private_group).await;
+
+    let err = try_create_subscribe_user_with_roles(
+        &mut fixture,
+        UserType::Multicast,
+        &[private_group],
+        None,
+        false,
+        false,
+    )
+    .await
+    .unwrap_err();
+
+    assert_custom_error(&err, custom_code(DoubleZeroError::InvalidArgument));
+    assert_eq!(read_pass(&mut fixture).await.public_multicast_user_count, 0);
+}
+
+#[tokio::test]
+async fn test_leaving_the_last_public_group_gives_back_the_pass_seat() {
+    let mut fixture = setup([100, 0, 0, 63]).await;
+    let private_group = fixture.groups[0];
+    let public_group = fixture.groups[1];
+    make_group_private(&mut fixture, private_group).await;
+    add_group_to_subscriber_allowlist(&mut fixture, private_group).await;
+    add_group_to_subscriber_allowlist(&mut fixture, public_group).await;
+    create_private_group_user(&mut fixture, private_group).await;
+    set_subscriber_role(&mut fixture, public_group, true).await;
+    assert_eq!(read_pass(&mut fixture).await.public_multicast_user_count, 1);
+
+    try_set_subscriber_role(&mut fixture, public_group, false, &[private_group])
+        .await
+        .unwrap();
+
+    let user = read_user(&mut fixture).await;
+    assert_eq!(user.subscribers, vec![private_group]);
+    assert!(!user.holds_pass_seat);
+    assert_eq!(read_pass(&mut fixture).await.public_multicast_user_count, 0);
+}
+
+#[tokio::test]
+async fn test_leaving_a_public_group_keeps_the_seat_when_another_public_group_stays() {
+    let mut fixture = setup([100, 0, 0, 64]).await;
+    let private_group = fixture.groups[0];
+    let public_group = fixture.groups[1];
+    let other_public_group = fixture.groups[2];
+    make_group_private(&mut fixture, private_group).await;
+    for group in [private_group, public_group, other_public_group] {
+        add_group_to_subscriber_allowlist(&mut fixture, group).await;
+    }
+    create_private_group_user(&mut fixture, private_group).await;
+    set_subscriber_role(&mut fixture, public_group, true).await;
+    set_subscriber_role(&mut fixture, other_public_group, true).await;
+
+    try_set_subscriber_role(
+        &mut fixture,
+        public_group,
+        false,
+        &[private_group, other_public_group],
+    )
+    .await
+    .unwrap();
+
+    assert!(read_user(&mut fixture).await.holds_pass_seat);
+    assert_eq!(read_pass(&mut fixture).await.public_multicast_user_count, 1);
+}
+
+#[tokio::test]
+async fn test_leaving_a_public_group_without_the_kept_groups_keeps_the_seat() {
+    let mut fixture = setup([100, 0, 0, 65]).await;
+    let private_group = fixture.groups[0];
+    let public_group = fixture.groups[1];
+    make_group_private(&mut fixture, private_group).await;
+    add_group_to_subscriber_allowlist(&mut fixture, private_group).await;
+    add_group_to_subscriber_allowlist(&mut fixture, public_group).await;
+    create_private_group_user(&mut fixture, private_group).await;
+    set_subscriber_role(&mut fixture, public_group, true).await;
+
+    set_subscriber_role(&mut fixture, public_group, false).await;
+
+    assert!(read_user(&mut fixture).await.holds_pass_seat);
+    assert_eq!(read_pass(&mut fixture).await.public_multicast_user_count, 1);
+}
+
+#[tokio::test]
+async fn test_role_removal_refuses_kept_groups_that_do_not_match() {
+    let mut fixture = setup([100, 0, 0, 66]).await;
+    let private_group = fixture.groups[0];
+    let public_group = fixture.groups[1];
+    let other_group = fixture.groups[3];
+    make_group_private(&mut fixture, private_group).await;
+    add_group_to_subscriber_allowlist(&mut fixture, private_group).await;
+    add_group_to_subscriber_allowlist(&mut fixture, public_group).await;
+    create_private_group_user(&mut fixture, private_group).await;
+    set_subscriber_role(&mut fixture, public_group, true).await;
+
+    let err = try_set_subscriber_role(&mut fixture, public_group, false, &[other_group])
+        .await
+        .unwrap_err();
+
     assert_custom_error(&err, custom_code(DoubleZeroError::InvalidArgument));
     assert!(read_user(&mut fixture).await.holds_pass_seat);
 }

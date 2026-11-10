@@ -19,8 +19,9 @@ use std::net::Ipv4Addr;
 
 /// The user counts an admin sets on an existing access pass after it counts the users on the pass
 /// offchain. `connection_count` is not a new value: the program sets it to the sum of the
-/// unicast users, the public multicast users and the multicast users that joined only private
-/// groups. The pass does not store the private count.
+/// unicast users, the multicast users that hold a pass seat and the multicast users that hold
+/// none. The pass does not store the count of users that hold none. A user holds a pass seat when
+/// its `holds_pass_seat` bit is set.
 ///
 /// The `expected_*` fields are the counts the admin read when it counted the users. The program
 /// writes only when all three still match the pass, so a user created or deleted between the

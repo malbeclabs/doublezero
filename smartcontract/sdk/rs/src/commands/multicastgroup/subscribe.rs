@@ -11,7 +11,7 @@ use doublezero_serviceability::{
     processors::multicastgroup::subscribe::UpdateMulticastGroupRolesArgs,
     state::multicastgroup::MulticastGroupStatus,
 };
-use doublezero_serviceability_instruction::multicastgroup::update_multicast_group_roles;
+use doublezero_serviceability_instruction::multicastgroup::update_multicast_group_roles_with_kept_groups;
 use eyre::Context;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -107,13 +107,27 @@ impl UpdateMulticastGroupRolesCommand {
         // the `update_multicast_group_roles` layout has no slot for them via this path.
         // Post-activation re-gating is deferred to the oracle lifecycle
         // (see malbeclabs/infra#1700 / doublezero #1699).
-        let ix = update_multicast_group_roles(
+        // The program reads the groups the user stays in to decide whether to release its seat.
+        let mut kept_group_pks: Vec<Pubkey> = Vec::new();
+        if !self.publisher && !self.subscriber && user.holds_pass_seat && user.feed_pks.is_empty() {
+            for group_pk in user.subscribers.iter().chain(user.publishers.iter()) {
+                if !group_pks.contains(group_pk) && !kept_group_pks.contains(group_pk) {
+                    kept_group_pks.push(*group_pk);
+                }
+            }
+            if group_pks.len() + kept_group_pks.len() > MAX_GROUPS_PER_TRANSACTION {
+                kept_group_pks.clear();
+            }
+        }
+
+        let ix = update_multicast_group_roles_with_kept_groups(
             &client.get_program_id(),
             &client.get_payer(),
             first_group_pk,
             &accesspass_pubkey,
             &self.user_pk,
             extra_group_pks,
+            &kept_group_pks,
             UpdateMulticastGroupRolesArgs {
                 publisher: self.publisher,
                 subscriber: self.subscriber,

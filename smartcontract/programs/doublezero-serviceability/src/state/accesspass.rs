@@ -239,8 +239,8 @@ pub struct AccessPass {
     )]
     pub user_payer: Pubkey, // 32
     pub last_access_epoch: u64,    // 8 / 0-Rejected / u64::MAX unlimited
-    // The connection count includes a multicast user that joined only private groups. The
-    // unicast and public multicast counts leave that user out.
+    // The connection count includes a multicast user that holds no pass seat. The unicast and
+    // public multicast counts leave that user out.
     pub connection_count: u16,             // 2
     pub status: AccessPassStatus,          // 1
     pub mgroup_pub_allowlist: Vec<Pubkey>, // Vec<32> - List of multicast groups this AccessPass can publish to
@@ -249,8 +249,8 @@ pub struct AccessPass {
     pub tenant_allowlist: Vec<Pubkey>, // Vec<32> - List of tenants this AccessPass can connect to
     pub unicast_user_count: u16,       // 2 - live count of unicast users (every pass type)
     pub max_unicast_users: u16,        // 2 - max unicast users admitted (enforced on EdgeSeat only)
-    // This count includes the multicast users on a public group or a feed. It leaves out a user
-    // that joined only private groups. The JSON name stays `multicast_user_count`.
+    // This count includes the multicast users that hold a pass seat. It leaves out a user that
+    // holds none. The JSON name stays `multicast_user_count`.
     #[cfg_attr(feature = "serde", serde(rename = "multicast_user_count"))]
     pub public_multicast_user_count: u16, // 2 - live count (every pass type)
     pub max_multicast_users: u16, // 2 - max multicast users admitted (enforced on EdgeSeat only)

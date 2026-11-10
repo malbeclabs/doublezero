@@ -192,6 +192,14 @@ impl UnsubscribeFeedCommand {
         };
         if retained_pks.is_empty() {
             let kept = kept_groups(&user.subscribers, &groups);
+            for group_pk in &kept {
+                if !matches!(client.get(*group_pk), Ok(AccountData::MulticastGroup(_))) {
+                    eyre::bail!(
+                        "user {} is still in multicast group {group_pk}, which no longer exists",
+                        self.user_pk
+                    );
+                }
+            }
             groups.extend(kept);
         }
         let accounts = self.feed_pks.len() + retained_pks.len() + groups.len();
@@ -428,6 +436,88 @@ mod tests {
             groups,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn test_commands_unsubscribe_feed_refused_when_a_kept_group_no_longer_exists() {
+        let mut client = create_test_client();
+        let payer = client.get_payer();
+        let program_id = client.get_program_id();
+        let (feed_group, deleted_group) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let feed_pk = Pubkey::new_unique();
+        let user_pk = Pubkey::new_unique();
+        let (accesspass_pk, _) = get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
+
+        let user = User {
+            account_type: AccountType::User,
+            owner: payer,
+            user_type: UserType::Multicast,
+            device_pk: Pubkey::new_unique(),
+            client_ip: Ipv4Addr::new(100, 0, 0, 1),
+            status: UserStatus::Activated,
+            subscribers: vec![feed_group, deleted_group],
+            feed_pks: vec![feed_pk],
+            accesspass_pk,
+            holds_pass_seat: true,
+            ..Default::default()
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(user_pk))
+            .returning(move |_| Ok(AccountData::User(user.clone())));
+        let accesspass = AccessPass {
+            account_type: AccountType::AccessPass,
+            accesspass_type: AccessPassType::EdgeSeat(vec![FeedSeat {
+                feed_key: feed_pk,
+                max_users: 2,
+                current_users: 1,
+                ..Default::default()
+            }]),
+            client_ip: Ipv4Addr::UNSPECIFIED,
+            user_payer: payer,
+            owner: payer,
+            status: AccessPassStatus::Connected,
+            last_access_epoch: u64::MAX,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![deleted_group],
+            tenant_allowlist: vec![],
+            bump_seed: 0,
+            connection_count: 1,
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 0,
+            public_multicast_user_count: 1,
+            max_public_multicast_users: 4,
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(accesspass_pk))
+            .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
+        let feed = feed_with("f", vec![feed_group]);
+        client
+            .expect_get()
+            .with(predicate::eq(feed_pk))
+            .returning(move |_| Ok(AccountData::Feed(feed.clone())));
+        client
+            .expect_get()
+            .with(predicate::eq(deleted_group))
+            .returning(|_| Err(eyre::eyre!("account not found")));
+        client.expect_send_transaction().never();
+
+        let err = UnsubscribeFeedCommand {
+            user_pk,
+            feed_pks: vec![feed_pk],
+            accesspass_pk: None,
+        }
+        .execute(&client)
+        .unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "user {user_pk} is still in multicast group {deleted_group}, which no longer exists"
+            )
+        );
     }
 
     #[test]

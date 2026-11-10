@@ -19,7 +19,10 @@ use doublezero_sdk::{
     },
     Feed, User,
 };
-use doublezero_serviceability::state::accesspass::{AccessPass, AccessPassType, FeedSeat};
+use doublezero_serviceability::state::{
+    accesspass::{AccessPass, AccessPassType, FeedSeat},
+    user::UserType,
+};
 use solana_sdk::pubkey::Pubkey;
 use std::{
     collections::HashMap,
@@ -43,6 +46,9 @@ pub struct RemoveFeedAccessPassCliCommand {
     /// Print the plan without sending any transaction
     #[arg(long, default_value_t = false)]
     pub dry_run: bool,
+    /// Do not ask for confirmation
+    #[arg(short, long, default_value_t = false)]
+    pub yes: bool,
 }
 
 impl RemoveFeedAccessPassCliCommand {
@@ -80,11 +86,11 @@ impl RemoveFeedAccessPassCliCommand {
         let feeds = client.list_feed(ListFeedCommand {})?;
         let feed_pk = resolve_feed(&self.feed, seats, &feeds)?;
         let seated = seats.iter().any(|s| s.feed_key == feed_pk);
-        let remaining: Vec<&FeedSeat> = seats.iter().filter(|s| s.feed_key != feed_pk).collect();
         let now = Utc::now().timestamp();
-        for seat in &remaining {
-            check_kept_seat(accesspass_pk, seat, &feeds, now)?;
-        }
+        let (dead, remaining): (Vec<&FeedSeat>, Vec<&FeedSeat>) = seats
+            .iter()
+            .filter(|s| s.feed_key != feed_pk)
+            .partition(|seat| ended_or_deleted_feed_reason(seat, &feeds, now).is_some());
         let provisions: Vec<FeedSeatProvision> =
             remaining.iter().map(|seat| kept_seat(seat, now)).collect();
         let max_multicast_users = u16::try_from(
@@ -96,6 +102,23 @@ impl RemoveFeedAccessPassCliCommand {
         let cap_changes = max_multicast_users != accesspass.max_multicast_users;
 
         let tenant = tenant_for_cap_change(client, &accesspass, accesspass_pk, cap_changes)?;
+        let holders = find_holders(client, user_payer, client_ip, accesspass_pk, feed_pk)?;
+        let leaving_seat_holders = holders
+            .iter()
+            .filter(|(_, user)| {
+                user.holds_pass_seat
+                    && user.user_type == UserType::Multicast
+                    && left_with_no_feed(user, feed_pk, &remaining)
+            })
+            .count();
+        if cap_changes {
+            refuse_cap_below_public_users(
+                accesspass_pk,
+                max_multicast_users,
+                u32::from(accesspass.public_multicast_user_count)
+                    .saturating_sub(leaving_seat_holders as u32),
+            )?;
+        }
 
         let feed_name = feeds.get(&feed_pk).map_or("", |f| f.name.as_str());
         writeln!(out, "AccessPass PDA: {accesspass_pk}")?;
@@ -109,7 +132,15 @@ impl RemoveFeedAccessPassCliCommand {
         } else {
             writeln!(out, "  The seat is already off the access pass")?;
         }
-        let holders = find_holders(client, user_payer, client_ip, accesspass_pk, feed_pk)?;
+        for seat in &dead {
+            let reason = ended_or_deleted_feed_reason(seat, &feeds, now)
+                .expect("the partition keeps only seats with a reason");
+            writeln!(
+                out,
+                "  Drop the seat for feed {} because it {reason}",
+                seat.feed_key
+            )?;
+        }
         for (user_pk, user) in &holders {
             if left_with_no_feed(user, feed_pk, &remaining) {
                 writeln!(out, "  Delete user {user_pk}")?;
@@ -129,18 +160,20 @@ impl RemoveFeedAccessPassCliCommand {
             writeln!(out, "[dry-run] no transactions sent.")?;
             return Ok(());
         }
-        write!(out, "Proceed? [y/N]: ")?;
-        out.flush()?;
-        let mut answer = String::new();
-        input.read_line(&mut answer)?;
-        if !answer.trim().eq_ignore_ascii_case("y") {
-            writeln!(out, "Aborted.")?;
-            return Ok(());
+        if !self.yes {
+            write!(out, "Proceed? [y/N]: ")?;
+            out.flush()?;
+            let mut answer = String::new();
+            input.read_line(&mut answer)?;
+            if !answer.trim().eq_ignore_ascii_case("y") {
+                writeln!(out)?;
+                eyre::bail!("the answer was not y, so nothing was changed");
+            }
         }
 
         // Drop the seat before reading the holders, so no user can subscribe to the feed after
         // the read.
-        if seated {
+        if seated || !dead.is_empty() {
             let signature = client.set_accesspass_feeds(SetAccessPassFeedsCommand {
                 client_ip,
                 user_payer,
@@ -202,37 +235,56 @@ impl RemoveFeedAccessPassCliCommand {
     }
 }
 
-/// Refuses a seat that the command sends back unchanged when that seat ended or names a deleted
-/// feed. `SetAccessPassFeeds` refuses the whole request in both cases, so this check names the
-/// seat before the plan.
-pub(super) fn check_kept_seat(
+/// Returns why a seat cannot stay on the pass, or `None` when it can stay. `SetAccessPassFeeds`
+/// refuses the whole request when the request holds a seat that ended or names a deleted feed.
+pub(super) fn ended_or_deleted_feed_reason(
+    seat: &FeedSeat,
+    feeds: &HashMap<Pubkey, Feed>,
+    now: i64,
+) -> Option<String> {
+    if !feeds.contains_key(&seat.feed_key) {
+        return Some("names a feed that no longer exists".to_string());
+    }
+    if seat.terminates_at <= now {
+        let end = chrono::DateTime::from_timestamp(seat.terminates_at, 0)
+            .map_or(seat.terminates_at.to_string(), |end| end.to_rfc3339());
+        return Some(format!("ended at {end}"));
+    }
+    None
+}
+
+/// `add-feed` refuses when the pass holds such a seat. `remove-feed` drops it.
+pub(super) fn refuse_ended_or_deleted_feed(
     accesspass_pk: Pubkey,
     seat: &FeedSeat,
     feeds: &HashMap<Pubkey, Feed>,
     now: i64,
 ) -> eyre::Result<()> {
-    if !feeds.contains_key(&seat.feed_key) {
+    if let Some(reason) = ended_or_deleted_feed_reason(seat, feeds, now) {
         eyre::bail!(
-            "access pass {accesspass_pk} has a seat for feed {}, which no longer exists. Remove that seat first with `doublezero access-pass remove-feed --feed {}`",
+            "the seat for feed {} on access pass {accesspass_pk} {reason}. Remove it first with `doublezero access-pass remove-feed --feed {}`",
             seat.feed_key,
-            seat.feed_key
-        );
-    }
-    if seat.terminates_at <= now {
-        eyre::bail!(
-            "the seat for feed {} on access pass {accesspass_pk} ended at {}. Remove that seat first with `doublezero access-pass remove-feed --feed {}`",
-            seat.feed_key,
-            chrono::DateTime::from_timestamp(seat.terminates_at, 0)
-                .map_or(seat.terminates_at.to_string(), |end| end.to_rfc3339()),
             seat.feed_key
         );
     }
     Ok(())
 }
 
-/// Returns a seat that the command sends back unchanged. When the window_end of the seat passed,
-/// this function sets the cap to max_future_users and window_end to terminates_at, as the oracle
-/// does at window_end. The multicast user cap then matches the cap that the program stores.
+/// The new cap must hold the users that stay. To lower the users on a pass, the operator uses the
+/// client portal, which asks the API and the oracle to remove them.
+pub(super) fn refuse_cap_below_public_users(
+    accesspass_pk: Pubkey,
+    new_cap: u16,
+    public_users: u32,
+) -> eyre::Result<()> {
+    if u32::from(new_cap) < public_users {
+        eyre::bail!(
+            "access pass {accesspass_pk} has {public_users} public multicast users, which is more than the new cap of {new_cap}. Reduce the users through the client portal first"
+        );
+    }
+    Ok(())
+}
+
 pub(super) fn kept_seat(seat: &FeedSeat, now: i64) -> FeedSeatProvision {
     let past_window = seat.window_end <= now;
     FeedSeatProvision {
@@ -435,6 +487,7 @@ mod tests {
             user_payer: user_payer.to_string(),
             feed: feed.to_string(),
             dry_run,
+            yes: false,
         }
     }
 
@@ -686,5 +739,108 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err.to_string(), format!("feed {unknown_pk} not found"));
+    }
+
+    #[test]
+    fn test_cli_accesspass_remove_feed_drops_a_seat_that_ended_and_a_deleted_feed() {
+        let mut client = create_test_client();
+        let user_payer = Pubkey::new_unique();
+        let accesspass_pk = Pubkey::new_unique();
+        let (fra_pk, lon_pk, ams_pk) = (
+            Pubkey::new_unique(),
+            Pubkey::new_unique(),
+            Pubkey::new_unique(),
+        );
+        let ended_lon = FeedSeat {
+            window_end: 1_700_000_000,
+            terminates_at: 1_700_000_000,
+            ..seat(lon_pk, 3)
+        };
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        let pass = AccessPass {
+            public_multicast_user_count: 0,
+            ..edge_seat_pass(
+                user_payer,
+                vec![seat(fra_pk, 2), ended_lon, seat(ams_pk, 1)],
+            )
+        };
+        client
+            .expect_get_accesspass()
+            .returning(move |_| Ok(Some((accesspass_pk, pass.clone()))));
+        client.expect_list_feed().returning(move |_| {
+            Ok(HashMap::from([
+                (fra_pk, feed("solana-shreds-full", "Solana Shreds FRA")),
+                (lon_pk, feed("solana-shreds-full", "Solana Shreds LON")),
+            ]))
+        });
+        client
+            .expect_list_user()
+            .times(2)
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_set_accesspass_feeds()
+            .with(predicate::eq(SetAccessPassFeedsCommand {
+                client_ip: Ipv4Addr::UNSPECIFIED,
+                user_payer,
+                feeds: vec![],
+            }))
+            .times(1)
+            .returning(|_| Ok(Signature::new_unique()));
+        client
+            .expect_set_accesspass()
+            .times(1)
+            .returning(|_| Ok(Signature::new_unique()));
+
+        let output = run(&client, remove(user_payer, "Solana Shreds FRA", false)).unwrap();
+
+        assert!(output.contains(&format!(
+            "  Drop the seat for feed {lon_pk} because it ended at 2023-11-14T22:13:20+00:00"
+        )));
+        assert!(output.contains(&format!(
+            "  Drop the seat for feed {ams_pk} because it names a feed that no longer exists"
+        )));
+    }
+
+    #[test]
+    fn test_cli_accesspass_remove_feed_refuses_a_cap_below_the_public_users() {
+        let mut client = create_test_client();
+        let user_payer = Pubkey::new_unique();
+        let accesspass_pk = Pubkey::new_unique();
+        let (fra_pk, lon_pk) = (Pubkey::new_unique(), Pubkey::new_unique());
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        let pass = AccessPass {
+            public_multicast_user_count: 4,
+            ..edge_seat_pass(user_payer, vec![seat(fra_pk, 2), seat(lon_pk, 3)])
+        };
+        client
+            .expect_get_accesspass()
+            .returning(move |_| Ok(Some((accesspass_pk, pass.clone()))));
+        client.expect_list_feed().returning(move |_| {
+            Ok(HashMap::from([
+                (fra_pk, feed("solana-shreds-full", "Solana Shreds FRA")),
+                (lon_pk, feed("solana-shreds-full", "Solana Shreds LON")),
+            ]))
+        });
+        client
+            .expect_list_user()
+            .times(1)
+            .returning(|_| Ok(HashMap::new()));
+        client.expect_set_accesspass_feeds().never();
+        client.expect_set_accesspass().never();
+
+        let err = run(&client, remove(user_payer, "Solana Shreds FRA", false)).unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            format!("access pass {accesspass_pk} has 4 public multicast users, which is more than the new cap of 3. Reduce the users through the client portal first")
+        );
     }
 }

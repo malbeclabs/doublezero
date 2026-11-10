@@ -147,6 +147,14 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 		}
 		return read
 	}
+	// userOf fails the test when the host has no multicast user, so a missing user cannot pass a
+	// check on the zero value.
+	userOf := func(t *testing.T, host *devnet.Client) serviceability.User {
+		t.Helper()
+		user, ok := readState(t).users[hostIP(host)]
+		require.True(t, ok, "no multicast user for host %s", hostIP(host))
+		return user
+	}
 	// requireCounts waits until the pass, the feed seat and the private group hold the given
 	// counts, because a disconnect returns before the ledger shows the deleted user.
 	requireCounts := func(t *testing.T, passUsers uint16, feedSeatUsers uint8, privatePublishers, privateSubscribers uint32) {
@@ -173,7 +181,7 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 		manager(t, "doublezero access-pass set --accesspass-type edge-seat --epochs max --allow-multiple-ip"+
 			" --user-payer "+dzID+" --max-unicast-users 0 --max-multicast-users 0")
 		manager(t, "doublezero access-pass add-feed --user-payer "+dzID+" --feed solana-shreds-full-ewr --max-users 4"+
-			" --terminates-at "+time.Now().UTC().AddDate(0, 1, 0).Format("2006-01-02")+" <<< y")
+			" --terminates-at "+time.Now().UTC().AddDate(0, 1, 0).Format("2006-01-02")+" --yes")
 
 		manager(t, "doublezero multicast group update --pubkey private-e2e --private true --max-publishers 2 --max-subscribers 3")
 		manager(t, "doublezero multicast group allowlist subscriber add --code private-e2e --user-payer "+dzID+" --client-ip 0.0.0.0")
@@ -195,11 +203,11 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 	if !t.Run("host_a_subscribes_to_the_private_group_then_joins_the_feed", func(t *testing.T) {
 		connect(t, hostA, "--subscribe private-e2e")
 		requireCounts(t, 0, 0, 0, 1)
-		require.False(t, readState(t).users[hostIP(hostA)].HoldsPassSeat)
+		require.False(t, userOf(t, hostA).HoldsPassSeat)
 
 		connect(t, hostA, "--subscribe-feed solana-shreds-full")
 		requireCounts(t, 1, 1, 0, 1)
-		require.True(t, readState(t).users[hostIP(hostA)].HoldsPassSeat)
+		require.True(t, userOf(t, hostA).HoldsPassSeat)
 	}) {
 		t.FailNow()
 	}
@@ -230,7 +238,7 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 	if !t.Run("host_e_subscribes_to_the_private_group_only", func(t *testing.T) {
 		connect(t, hostE, "--subscribe private-e2e")
 		requireCounts(t, 2, 2, 0, 3)
-		user := readState(t).users[hostIP(hostE)]
+		user := userOf(t, hostE)
 		require.Empty(t, user.FeedPks)
 		require.False(t, user.HoldsPassSeat)
 	}) {
@@ -285,7 +293,7 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 		connectRefused(t, hostE, "--subscribe-feed solana-shreds-full",
 			"every purchased feed is already at capacity: solana-shreds-full (4 of 4 seats in use)")
 		requireCounts(t, 4, 4, 2, 3)
-		require.Empty(t, readState(t).users[hostIP(hostE)].FeedPks)
+		require.Empty(t, userOf(t, hostE).FeedPks)
 	}) {
 		t.FailNow()
 	}
@@ -294,14 +302,14 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 		// The feed gets a fifth seat, so the CLI sends the join. The pass-wide cap stays at 4,
 		// so the program refuses the join.
 		manager(t, "doublezero access-pass add-feed --user-payer "+dzID+" --feed solana-shreds-full-ewr --max-users 5"+
-			" --terminates-at "+time.Now().UTC().AddDate(0, 1, 0).Format("2006-01-02")+" <<< y")
+			" --terminates-at "+time.Now().UTC().AddDate(0, 1, 0).Format("2006-01-02")+" --yes")
 		manager(t, "doublezero access-pass set --accesspass-type edge-seat --epochs max --allow-multiple-ip"+
 			" --user-payer "+dzID+" --max-unicast-users 0 --max-multicast-users 4")
 		require.Equal(t, uint16(4), readState(t).passCap)
 
 		connectRefused(t, hostE, "--subscribe-feed solana-shreds-full", "Access pass max multicast users exceeded")
 		requireCounts(t, 4, 4, 2, 3)
-		require.Empty(t, readState(t).users[hostIP(hostE)].FeedPks)
+		require.Empty(t, userOf(t, hostE).FeedPks)
 	}) {
 		t.FailNow()
 	}

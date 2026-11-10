@@ -1,5 +1,8 @@
 use crate::{
-    accesspass::remove_feed::{check_kept_seat, kept_seat, resolve_feed, tenant_for_cap_change},
+    accesspass::remove_feed::{
+        kept_seat, refuse_cap_below_public_users, refuse_ended_or_deleted_feed, resolve_feed,
+        tenant_for_cap_change,
+    },
     doublezerocommand::CliCommand,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
 };
@@ -50,6 +53,9 @@ pub struct AddFeedAccessPassCliCommand {
     /// Print the plan without sending any transaction
     #[arg(long, default_value_t = false)]
     pub dry_run: bool,
+    /// Do not ask for confirmation
+    #[arg(short, long, default_value_t = false)]
+    pub yes: bool,
 }
 
 impl AddFeedAccessPassCliCommand {
@@ -120,7 +126,7 @@ impl AddFeedAccessPassCliCommand {
             _ => {}
         }
         for seat in seats.iter().filter(|s| s.feed_key != feed_pk) {
-            check_kept_seat(accesspass_pk, seat, &feeds, now)?;
+            refuse_ended_or_deleted_feed(accesspass_pk, seat, &feeds, now)?;
         }
         let new_seat = FeedSeatProvision {
             feed_key: feed_pk,
@@ -151,6 +157,13 @@ impl AddFeedAccessPassCliCommand {
                 .sum::<u32>(),
         )?;
         let cap_changes = max_multicast_users != accesspass.max_multicast_users;
+        if cap_changes {
+            refuse_cap_below_public_users(
+                accesspass_pk,
+                max_multicast_users,
+                u32::from(accesspass.public_multicast_user_count),
+            )?;
+        }
         let tenant = tenant_for_cap_change(client, &accesspass, accesspass_pk, cap_changes)?;
 
         let feed_name = feed.name.as_str();
@@ -177,13 +190,15 @@ impl AddFeedAccessPassCliCommand {
             writeln!(out, "[dry-run] no transactions sent.")?;
             return Ok(());
         }
-        write!(out, "Proceed? [y/N]: ")?;
-        out.flush()?;
-        let mut answer = String::new();
-        input.read_line(&mut answer)?;
-        if !answer.trim().eq_ignore_ascii_case("y") {
-            writeln!(out, "Aborted.")?;
-            return Ok(());
+        if !self.yes {
+            write!(out, "Proceed? [y/N]: ")?;
+            out.flush()?;
+            let mut answer = String::new();
+            input.read_line(&mut answer)?;
+            if !answer.trim().eq_ignore_ascii_case("y") {
+                writeln!(out)?;
+                eyre::bail!("the answer was not y, so nothing was changed");
+            }
         }
 
         let feed_count = provisions.len();
@@ -318,6 +333,7 @@ mod tests {
             max_users,
             terminates_at: NaiveDate::from_ymd_opt(2099, 1, 15).unwrap(),
             dry_run,
+            yes: false,
         }
     }
 
@@ -631,7 +647,7 @@ mod tests {
         let err = run(&client, add(user_payer, "solana-shreds-full-ams", 2, true)).unwrap_err();
         assert_eq!(
             err.to_string(),
-            format!("the seat for feed {lon_pk} on access pass {accesspass_pk} ended at 2023-11-14T22:13:20+00:00. Remove that seat first with `doublezero access-pass remove-feed --feed {lon_pk}`")
+            format!("the seat for feed {lon_pk} on access pass {accesspass_pk} ended at 2023-11-14T22:13:20+00:00. Remove it first with `doublezero access-pass remove-feed --feed {lon_pk}`")
         );
 
         let mut client = create_test_client();
@@ -649,7 +665,7 @@ mod tests {
         let err = run(&client, add(user_payer, "solana-shreds-full-ams", 2, true)).unwrap_err();
         assert_eq!(
             err.to_string(),
-            format!("access pass {accesspass_pk} has a seat for feed {lon_pk}, which no longer exists. Remove that seat first with `doublezero access-pass remove-feed --feed {lon_pk}`")
+            format!("the seat for feed {lon_pk} on access pass {accesspass_pk} names a feed that no longer exists. Remove it first with `doublezero access-pass remove-feed --feed {lon_pk}`")
         );
     }
 
@@ -698,6 +714,65 @@ mod tests {
         assert_eq!(
             err.to_string(),
             format!("feed solana-shreds-full-ams has 3 user(s) on access pass {accesspass_pk}, so --max-users must be at least 3")
+        );
+    }
+
+    #[test]
+    fn test_cli_accesspass_add_feed_refuses_a_cap_below_the_public_users() {
+        let user_payer = Pubkey::new_unique();
+        let accesspass_pk = Pubkey::new_unique();
+        let ams_pk = Pubkey::new_unique();
+
+        let mut client = create_test_client();
+        let crowded = AccessPass {
+            public_multicast_user_count: 4,
+            ..pass(user_payer, AccessPassType::EdgeSeat(vec![]), 5)
+        };
+        expect_pass_and_feeds(
+            &mut client,
+            user_payer,
+            accesspass_pk,
+            crowded,
+            HashMap::from([(ams_pk, feed("solana-shreds-full-ams"))]),
+        );
+
+        let err = run(&client, add(user_payer, "solana-shreds-full-ams", 2, true)).unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            format!("access pass {accesspass_pk} has 4 public multicast users, which is more than the new cap of 2. Reduce the users through the client portal first")
+        );
+    }
+
+    #[test]
+    fn test_cli_accesspass_add_feed_fails_when_the_answer_is_not_y() {
+        let user_payer = Pubkey::new_unique();
+        let accesspass_pk = Pubkey::new_unique();
+        let ams_pk = Pubkey::new_unique();
+
+        let mut client = create_test_client();
+        expect_pass_and_feeds(
+            &mut client,
+            user_payer,
+            accesspass_pk,
+            pass(user_payer, AccessPassType::EdgeSeat(vec![]), 0),
+            HashMap::from([(ams_pk, feed("solana-shreds-full-ams"))]),
+        );
+        client.expect_set_accesspass_feeds().never();
+        client.expect_set_accesspass().never();
+
+        let mut output = Vec::new();
+        let err = block_on(add(user_payer, "solana-shreds-full-ams", 2, false).execute(
+            &cli_context_default_for_tests(),
+            &client,
+            &mut output,
+            &mut "n\n".as_bytes(),
+        ))
+        .unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            "the answer was not y, so nothing was changed"
         );
     }
 }

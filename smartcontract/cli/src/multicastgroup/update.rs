@@ -51,6 +51,9 @@ pub struct UpdateMulticastGroupCliCommand {
     /// Wait for the multicast group to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
+    /// Do not ask for confirmation when the group has members
+    #[arg(short, long, default_value_t = false)]
+    pub yes: bool,
 }
 
 impl UpdateMulticastGroupCliCommand {
@@ -94,13 +97,15 @@ impl UpdateMulticastGroupCliCommand {
                     "Multicast group {} has {} publisher(s) and {} subscriber(s). Their access passes keep the multicast user counts they have now until these users disconnect.",
                     mgroup.code, mgroup.publisher_count, mgroup.subscriber_count
                 )?;
-                write!(out, "Set private to {private}? [y/N]: ")?;
-                out.flush()?;
-                let mut answer = String::new();
-                input.read_line(&mut answer)?;
-                if !answer.trim().eq_ignore_ascii_case("y") {
-                    writeln!(out, "Aborted.")?;
-                    return Ok(());
+                if !self.yes {
+                    write!(out, "Set private to {private}? [y/N]: ")?;
+                    out.flush()?;
+                    let mut answer = String::new();
+                    input.read_line(&mut answer)?;
+                    if !answer.trim().eq_ignore_ascii_case("y") {
+                        writeln!(out)?;
+                        eyre::bail!("the answer was not y, so nothing was changed");
+                    }
                 }
             }
         }
@@ -366,6 +371,7 @@ mod tests {
                 max_publishers: None,
                 max_subscribers: None,
                 wait: false,
+                yes: false,
             }
             .execute(&ctx, &client, &mut output, &mut "".as_bytes()),
         );
@@ -423,6 +429,7 @@ mod tests {
                 max_publishers: None,
                 max_subscribers: None,
                 wait: false,
+                yes: false,
             }
             .execute(&ctx, &client, &mut output, &mut "".as_bytes()),
         );
@@ -481,6 +488,7 @@ mod tests {
                 max_publishers: None,
                 max_subscribers: None,
                 wait: false,
+                yes: false,
             }
             .execute(&ctx, &client, &mut output, &mut "".as_bytes()),
         );
@@ -503,7 +511,7 @@ mod tests {
         client.expect_update_multicastgroup().never();
 
         let mut output = Vec::new();
-        block_on(
+        let err = block_on(
             UpdateMulticastGroupCliCommand {
                 pubkey: pda_pubkey.to_string(),
                 code: None,
@@ -516,6 +524,7 @@ mod tests {
                 max_publishers: None,
                 max_subscribers: None,
                 wait: false,
+                yes: false,
             }
             .execute(
                 &cli_context_default_for_tests(),
@@ -524,10 +533,14 @@ mod tests {
                 &mut "n\n".as_bytes(),
             ),
         )
-        .unwrap();
+        .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "the answer was not y, so nothing was changed"
+        );
         assert_eq!(
             String::from_utf8(output).unwrap(),
-            "Multicast group test has 5 publisher(s) and 10 subscriber(s). Their access passes keep the multicast user counts they have now until these users disconnect.\nSet private to true? [y/N]: Aborted.\n"
+            "Multicast group test has 5 publisher(s) and 10 subscriber(s). Their access passes keep the multicast user counts they have now until these users disconnect.\nSet private to true? [y/N]: \n"
         );
     }
 
@@ -566,6 +579,7 @@ mod tests {
                 max_publishers: None,
                 max_subscribers: None,
                 wait: false,
+                yes: false,
             }
             .execute(
                 &cli_context_default_for_tests(),

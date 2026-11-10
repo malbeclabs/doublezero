@@ -31,10 +31,10 @@ pub struct SetCountsAccessPassCliCommand {
     /// Number of unicast users on the pass (IBRL, IBRL with an allocated IP, edge filtering)
     #[arg(long)]
     pub unicast_users: u16,
-    /// Number of multicast users on the pass that joined a public group or a feed
+    /// Number of multicast users on the pass that hold a pass seat
     #[arg(long)]
     pub multicast_users: u16,
-    /// Number of multicast users on the pass that joined only private groups
+    /// Number of multicast users on the pass that hold no pass seat
     #[arg(long)]
     pub private_multicast_users: u16,
 }

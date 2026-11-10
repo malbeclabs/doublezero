@@ -364,9 +364,9 @@ impl AccessPass {
     /// are what an EdgeSeat sells. Does NOT touch `connection_count`, which the user
     /// create/delete processors maintain independently.
     ///
-    /// The multicast cap counts users on the pass, bare ones included (reachable since #4110);
-    /// how many users each purchased feed admits is capped separately by its [`FeedSeat`]
-    /// (see [`Self::try_take_feed_seat`]).
+    /// The multicast count includes only the multicast users that publish or subscribe. A multicast
+    /// user with no group is counted in `connection_count` alone. How many users each purchased feed
+    /// admits is capped separately by its [`FeedSeat`] (see [`Self::try_take_feed_seat`]).
     pub fn try_take_pass_seat(&mut self, user_type: UserType) -> Result<(), DoubleZeroError> {
         let enforce_caps = matches!(self.accesspass_type, AccessPassType::EdgeSeat(_));
         match user_type {
@@ -711,7 +711,7 @@ mod tests {
             DoubleZeroError::AccessPassMaxUnicastUsersExceeded
         );
 
-        // Multicast: the pass-level cap counts users, bare ones included (cap is 1).
+        // Multicast: the cap is 1.
         ap.try_take_pass_seat(UserType::Multicast).unwrap();
         assert_eq!(ap.public_multicast_user_count, 1);
         assert_eq!(

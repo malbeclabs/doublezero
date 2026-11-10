@@ -586,14 +586,15 @@ async fn test_delete_multicast_user_dynamic_pass() {
     assert_eq!(user.user_type, UserType::Multicast);
     assert_eq!(user.status, UserStatus::Activated);
 
-    // A prepaid pass counts its multicast user too.
+    // A multicast user with no group is counted in the connection count only.
     let pass = get_account_data(&mut env.banks_client, accesspass_pubkey)
         .await
         .unwrap()
         .get_accesspass()
         .unwrap();
     assert_eq!(pass.unicast_user_count, 0);
-    assert_eq!(pass.public_multicast_user_count, 1);
+    assert_eq!(pass.public_multicast_user_count, 0);
+    assert_eq!(pass.connection_count, 1);
 
     let recent_blockhash = env
         .banks_client
@@ -707,10 +708,9 @@ async fn try_create_user(
 }
 
 /// EdgeSeat passes admit at most `max_unicast_users` unicast and `max_public_multicast_users` multicast
-/// users; the (N+1)th of either is rejected with the per-category error. A bare multicast user is
-/// admitted with no feed and charges no feed seat (those are charged by SubscribeFeed), but counts
-/// against the pass-level cap. The pass lives at the UNSPECIFIED PDA so distinct client IPs all
-/// map to the same seat.
+/// users; the (N+1)th unicast user is rejected with the per-category error. A multicast user with
+/// no group is admitted with no feed, and the pass counts it in the connection count only. The
+/// pass lives at the UNSPECIFIED PDA so distinct client IPs all map to the same seat.
 #[tokio::test]
 async fn test_edge_seat_user_caps_enforced() {
     let mut env = setup_test_env().await;
@@ -765,8 +765,8 @@ async fn test_edge_seat_user_caps_enforced() {
         "expected AccessPassMaxUnicastUsersExceeded (Custom(89)), got: {err:?}"
     );
 
-    // A bare multicast user is admitted with no feed and no groups. It charges no feed seat
-    // (SubscribeFeed does that later) but takes one of the pass's multicast slots.
+    // A multicast user with no feed and no group is admitted. It is not counted in the public
+    // multicast count until it joins a public group or a feed.
     let mcast_ip: Ipv4Addr = [100, 0, 0, 12].into();
     try_create_user(&mut env, mcast_ip, UserType::Multicast, accesspass_pubkey)
         .await
@@ -781,19 +781,15 @@ async fn test_edge_seat_user_caps_enforced() {
     assert!(user.subscribers.is_empty());
     assert!(user.feed_pks.is_empty());
 
-    // A second bare multicast user exceeds the pass-level multicast cap.
-    let err = try_create_user(
+    // A second multicast user with no group is admitted too, because the pass does not count it.
+    try_create_user(
         &mut env,
         [100, 0, 0, 13].into(),
         UserType::Multicast,
         accesspass_pubkey,
     )
     .await
-    .expect_err("second multicast user should exceed the cap");
-    assert!(
-        format!("{err:?}").contains("Custom(90)"),
-        "expected AccessPassMaxMulticastUsersExceeded (Custom(90)), got: {err:?}"
-    );
+    .expect("a second multicast user with no group should be admitted");
 
     let pass = get_account_data(&mut env.banks_client, accesspass_pubkey)
         .await
@@ -801,6 +797,6 @@ async fn test_edge_seat_user_caps_enforced() {
         .get_accesspass()
         .unwrap();
     assert_eq!(pass.unicast_user_count, 1);
-    assert_eq!(pass.public_multicast_user_count, 1);
-    assert_eq!(pass.connection_count, 2);
+    assert_eq!(pass.public_multicast_user_count, 0);
+    assert_eq!(pass.connection_count, 3);
 }

@@ -1221,7 +1221,11 @@ async fn test_naked_create_then_subscribe_feed() {
     let user = read_user(&mut fixture).await;
     assert!(user.subscribers.is_empty());
     assert!(user.feed_pks.is_empty());
-    assert_eq!(seat_users(&read_pass(&mut fixture).await, &feed), 0);
+    assert!(!user.holds_pass_seat);
+    let pass = read_pass(&mut fixture).await;
+    assert_eq!(seat_users(&pass, &feed), 0);
+    assert_eq!(pass.connection_count, 1);
+    assert_eq!(pass.public_multicast_user_count, 0);
 
     join(&mut fixture, &[feed], &[groups[0], groups[1]])
         .await
@@ -1230,7 +1234,11 @@ async fn test_naked_create_then_subscribe_feed() {
     let user = read_user(&mut fixture).await;
     assert_eq!(user.subscribers, vec![groups[0], groups[1]]);
     assert_eq!(user.feed_pks, vec![feed]);
-    assert_eq!(seat_users(&read_pass(&mut fixture).await, &feed), 1);
+    assert!(user.holds_pass_seat);
+    let pass = read_pass(&mut fixture).await;
+    assert_eq!(seat_users(&pass, &feed), 1);
+    assert_eq!(pass.connection_count, 1);
+    assert_eq!(pass.public_multicast_user_count, 1);
 }
 
 // Only CreateUser is idempotent: a duplicate CreateSubscribeUser is still rejected, and neither
@@ -1991,4 +1999,70 @@ async fn test_role_removal_refuses_kept_groups_that_do_not_match() {
 
     assert_custom_error(&err, custom_code(DoubleZeroError::InvalidArgument));
     assert!(read_user(&mut fixture).await.holds_pass_seat);
+}
+
+#[tokio::test]
+async fn test_user_leaving_its_last_feed_with_no_group_is_no_longer_counted() {
+    let mut fixture = setup([100, 0, 0, 67]).await;
+    let exchange = fixture.exchange_pubkey;
+    let feed_group = fixture.groups[0];
+    let feed = create_feed(&mut fixture, "feed1", exchange, vec![feed_group]).await;
+    set_accesspass_feeds(&mut fixture, vec![seat(feed, 1)]).await;
+    create_user_on(&mut fixture, feed, feed_group).await;
+    assert_eq!(read_pass(&mut fixture).await.public_multicast_user_count, 1);
+
+    leave(&mut fixture, &[feed], &[], &[feed_group])
+        .await
+        .unwrap();
+
+    let user = read_user(&mut fixture).await;
+    assert!(user.subscribers.is_empty());
+    assert!(!user.holds_pass_seat);
+    let pass = read_pass(&mut fixture).await;
+    assert_eq!(pass.connection_count, 1);
+    assert_eq!(pass.public_multicast_user_count, 0);
+    assert_eq!(seat_users(&pass, &feed), 0);
+}
+
+#[tokio::test]
+async fn test_user_leaving_its_last_public_group_with_no_group_left_is_no_longer_counted() {
+    let mut fixture = setup([100, 0, 0, 68]).await;
+    let private_group = fixture.groups[0];
+    let public_group = fixture.groups[1];
+    make_group_private(&mut fixture, private_group).await;
+    add_group_to_subscriber_allowlist(&mut fixture, private_group).await;
+    add_group_to_subscriber_allowlist(&mut fixture, public_group).await;
+    create_private_group_user(&mut fixture, private_group).await;
+    set_subscriber_role(&mut fixture, public_group, true).await;
+    leave_private_group(&mut fixture, private_group).await;
+    assert_eq!(read_pass(&mut fixture).await.public_multicast_user_count, 1);
+
+    set_subscriber_role(&mut fixture, public_group, false).await;
+
+    let user = read_user(&mut fixture).await;
+    assert!(user.subscribers.is_empty());
+    assert!(!user.holds_pass_seat);
+    let pass = read_pass(&mut fixture).await;
+    assert_eq!(pass.connection_count, 1);
+    assert_eq!(pass.public_multicast_user_count, 0);
+}
+
+#[tokio::test]
+async fn test_deleting_a_multicast_user_with_no_group_leaves_the_public_multicast_count_at_0() {
+    let mut fixture = setup([100, 0, 0, 69]).await;
+    let private_group = fixture.groups[0];
+    let public_group = fixture.groups[1];
+    make_group_private(&mut fixture, private_group).await;
+    add_group_to_subscriber_allowlist(&mut fixture, private_group).await;
+    add_group_to_subscriber_allowlist(&mut fixture, public_group).await;
+    create_private_group_user(&mut fixture, private_group).await;
+    set_subscriber_role(&mut fixture, public_group, true).await;
+    leave_private_group(&mut fixture, private_group).await;
+    set_subscriber_role(&mut fixture, public_group, false).await;
+
+    delete_user(&mut fixture).await;
+
+    let pass = read_pass(&mut fixture).await;
+    assert_eq!(pass.connection_count, 0);
+    assert_eq!(pass.public_multicast_user_count, 0);
 }

@@ -166,17 +166,19 @@ pub fn process_unsubscribe_feed(
         }
     }
 
-    if !kept_group_accounts.is_empty() {
-        if !ctx.user.feed_pks.is_empty() {
-            msg!("kept groups are passed only when the user leaves its last feed");
-            return Err(DoubleZeroError::InvalidArgument.into());
+    if !kept_group_accounts.is_empty() && !ctx.user.feed_pks.is_empty() {
+        msg!("kept groups are passed only when the user leaves its last feed");
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+    let mut kept: Vec<Pubkey> = ctx.user.subscribers.clone();
+    for group in &ctx.user.publishers {
+        if !kept.contains(group) {
+            kept.push(*group);
         }
-        let mut kept: Vec<Pubkey> = ctx.user.subscribers.clone();
-        for group in &ctx.user.publishers {
-            if !kept.contains(group) {
-                kept.push(*group);
-            }
-        }
+    }
+    // A user that leaves its last feed and keeps no public group is no longer counted in the
+    // public multicast count. With no kept group, the program needs no kept group accounts.
+    if ctx.user.feed_pks.is_empty() && (kept.is_empty() || !kept_group_accounts.is_empty()) {
         check_group_accounts(kept_group_accounts, &kept)?;
         let mut keeps_only_private_groups = true;
         for group_account in kept_group_accounts {

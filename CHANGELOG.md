@@ -27,6 +27,8 @@ All notable changes to this project will be documented in this file.
   - `doublezero disconnect` prints one message for every user that another key owns: it names the owner, says that `disconnect` skips the user, and says that its owner can delete it. The separate shred oracle message, with its `doublezero-solana shreds withdraw` hint, is gone. It matched only the global state's legacy feed authority, which is unset on mainnet-beta and testnet.
 - E2E/QA
   - The QA agent drops the `FeedEnable`, `FeedSeatPrice`, `FeedSeatPay`, `FeedSeatWithdraw` and `GetWalletPubkey` RPCs, and the QA client drops its Solana RPC failover pool and the `SOLANA_RPC_FALLBACK_URLS` and `QA_SOLANA_RPC_*` variables it read. Only the settlement test that #4248 removed used them.
+- Collector
+  - The RIPE Atlas export excludes results per source probe rather than per measurement and re-reads the hour behind the measurement cursor. The cursor could pass a slow probe's result for an interval, which was then never fetched, so the probe's `last_response_at` froze and Step 4b marked a healthy source unresponsive, changing that metro's source probe in every measurement it feeds. Each measurement's `exported_records` should now keep pace with its source count, and `result_count` runs well above it because it includes the lookback's replays. (malbeclabs/doublezero#4153)
 
 ## [v0.47.0](https://github.com/malbeclabs/doublezero/compare/client/v0.46.0...client/v0.47.0) - 2026-11-06
 

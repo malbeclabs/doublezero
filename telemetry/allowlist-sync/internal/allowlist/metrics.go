@@ -118,10 +118,13 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 	reg.MustRegister(m.BuildInfo, m.LastSuccess, m.DryRun, m.RefusedPasses, m.Errors, m.Writes, m.ExternalChanges,
 		m.LiveDevice, m.ListedAddresses, m.ListedDevices, m.ExceptionReview,
 		m.OffchainCaller, m.OffchainCallersDropped, m.LastListedCall, m.ReportLastSuccess, m.CallerReadCut)
-	// Both targets report 0 from the start, so an alert on an increase has a
-	// series to read before the first outside edit.
+	// Both targets and every refusal reason report 0 from the start, so an
+	// alert on an increase has a series to read before the first event.
 	for _, target := range []string{"gnmic_map", "cloudflare_list"} {
 		m.ExternalChanges.WithLabelValues(target)
+	}
+	for _, reason := range []string{RefusedEmpty, RefusedTooManyDevices, RefusedTooManyAddrs} {
+		m.RefusedPasses.WithLabelValues(reason)
 	}
 	return m
 }

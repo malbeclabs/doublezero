@@ -92,6 +92,11 @@ func New(cfg Config) (*Syncer, error) {
 	if cfg.ReportTimeout <= 0 {
 		cfg.ReportTimeout = DefaultReportTimeout
 	}
+	// The caller read runs inside the pass, before the writes, so a stalled
+	// read must leave the pass time to write.
+	if cfg.PassTimeout <= cfg.ReportTimeout {
+		return nil, fmt.Errorf("pass timeout %s must be longer than the report timeout %s", cfg.PassTimeout, cfg.ReportTimeout)
+	}
 	return &Syncer{cfg: cfg}, nil
 }
 

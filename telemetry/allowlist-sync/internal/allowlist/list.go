@@ -120,9 +120,11 @@ func isLive(s serviceability.DeviceStatus) bool {
 var ErrIncompleteLedger = errors.New("incomplete ledger read")
 
 // checkComplete refuses program data that cannot be a whole ledger: no global
-// state, no devices, or a device the SDK flagged with DeserializeError (today
-// only an interface count mismatch). The SDK reads a truncated account as
-// zeros without an error, so the removal limits are what stop that.
+// state, no devices, or a device the SDK flagged with DeserializeError (an
+// interface count the account cannot hold, or two interface counts that
+// disagree). The SDK reads any other short field as zero without an error,
+// because older accounts end before newer fields, so the removal limits are
+// what stop a truncation there.
 func checkComplete(pd *serviceability.ProgramData) error {
 	if pd == nil || pd.GlobalState == nil {
 		return fmt.Errorf("%w: no global state account", ErrIncompleteLedger)

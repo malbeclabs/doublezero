@@ -252,6 +252,15 @@ func counter(c *prometheus.CounterVec, label string) float64 {
 	return testutil.ToFloat64(c.WithLabelValues(label))
 }
 
+// Counters an alert reads with increase() have every series at 0 before the
+// first event, or the first event would read as no increase.
+func TestNewMetrics_AlertedCountersStartAtZero(t *testing.T) {
+	m := NewMetrics(prometheus.NewRegistry())
+	assert.Equal(t, 2, testutil.CollectAndCount(m.ExternalChanges))
+	assert.Equal(t, 3, testutil.CollectAndCount(m.RefusedPasses))
+	assert.Equal(t, 0.0, testutil.ToFloat64(m.RefusedPasses.WithLabelValues(RefusedEmpty)))
+}
+
 func TestPass_WritesBothTargets(t *testing.T) {
 	devices := []serviceability.Device{
 		dev(1, "dz1", serviceability.DeviceStatusActivated, "45.1.1.1", "45.1.1.9/31"),
@@ -401,6 +410,23 @@ func TestPass_RemovalLimits(t *testing.T) {
 			assert.Len(t, h.cm.gnmicMap(t), tc.fleet)
 		})
 	}
+}
+
+// Duplicate items do not widen the removal limit: it is measured against the
+// distinct addresses. 3 of 23 is 13%, though 3 of 30 items would be 10%.
+func TestPass_RemovalLimitCountsCloudflareAddressesOnce(t *testing.T) {
+	h := newHarness(t, fleet(20))
+	require.NoError(t, h.pass(t))
+	for i := range 3 {
+		h.cf.items = append(h.cf.items, ListItem{IP: fmt.Sprintf("45.9.9.%d", i+1)})
+	}
+	for i := range 7 {
+		h.cf.items = append(h.cf.items, ListItem{IP: fmt.Sprintf("45.0.0.%d", i+1)})
+	}
+	var refused *RefusedError
+	require.ErrorAs(t, h.pass(t), &refused)
+	assert.Equal(t, RefusedTooManyAddrs, refused.Reason)
+	assert.Contains(t, refused.Detail, "cloudflare_list would remove 3 of 23 addresses")
 }
 
 // The Cloudflare list is checked against what it holds, not only the map: a
@@ -588,6 +614,10 @@ func TestNew_RequiresConfig(t *testing.T) {
 	cfg.ExceptionsFile = ""
 	_, err = New(cfg)
 	assert.EqualError(t, err, "exceptions file is required")
+	cfg.ExceptionsFile = h.cfg.ExceptionsFile
+	cfg.PassTimeout = DefaultReportTimeout
+	_, err = New(cfg)
+	assert.EqualError(t, err, "pass timeout 20s must be longer than the report timeout 20s")
 }
 
 // Cloudflare may return a /32 for an address the sync wrote bare: that is
@@ -832,6 +862,11 @@ func TestPass_CountsGnmicMapEditsTheSyncDidNotMake(t *testing.T) {
 
 	// A formatting change gnmic reads the same is not an edit.
 	h.cm.cm.Data["map.json"] = strings.ReplaceAll(h.cm.cm.Data["map.json"], "\n  ", "\n    ")
+	require.NoError(t, h.pass(t))
+	assert.Equal(t, 1.0, h.external("gnmic_map"))
+
+	// Nor is repeating an address the entry already holds.
+	edit(func(m GnmicAddressMap) { m[pk(1)] = append(m[pk(1)], m[pk(1)][0]) })
 	require.NoError(t, h.pass(t))
 	assert.Equal(t, 1.0, h.external("gnmic_map"))
 

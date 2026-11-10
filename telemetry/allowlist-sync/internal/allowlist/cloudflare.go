@@ -163,11 +163,14 @@ func (t *CloudflareTarget) Plan(ctx context.Context, list List) (Plan, error) {
 
 	externalAdded, externalRemoved := t.seen.observe(have)
 
-	added, removed := diffAddrs(sortedUnique(prevAddrs), list.Addrs())
+	prevAddrs = sortedUnique(prevAddrs)
+	added, removed := diffAddrs(prevAddrs, list.Addrs())
 	return Plan{
-		Target:          t.Name(),
-		Changed:         len(add) > 0 || len(deleteIDs) > 0,
-		PrevAddrs:       len(current),
+		Target:  t.Name(),
+		Changed: len(add) > 0 || len(deleteIDs) > 0,
+		// Each address once, as the limit counts removed ones: duplicate
+		// items must not widen what a pass may remove.
+		PrevAddrs:       len(prevAddrs) + len(other),
 		AddedAddrs:      added,
 		RemovedAddrs:    removed,
 		RemovedOther:    other,

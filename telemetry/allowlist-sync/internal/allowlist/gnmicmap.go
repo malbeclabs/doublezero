@@ -43,13 +43,14 @@ type GnmicMapTarget struct {
 }
 
 // gnmicItems is a map as items to compare passes by: each pubkey to its
-// addresses. Formatting is not compared, only what gnmic would read.
+// addresses. Formatting, order and repeats are not compared, only what gnmic
+// would read: each device's addresses as a set.
 func gnmicItems(m GnmicAddressMap) map[string]string {
 	out := make(map[string]string, len(m))
 	for pk, ips := range m {
 		ips = slices.Clone(ips)
 		slices.Sort(ips)
-		out[pk] = strings.Join(ips, " ")
+		out[pk] = strings.Join(slices.Compact(ips), " ")
 	}
 	return out
 }

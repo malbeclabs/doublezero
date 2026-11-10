@@ -241,13 +241,19 @@ func (s *Syncer) report(ctx context.Context, b Built) {
 	now := s.cfg.Clock.Now()
 	rctx, cancel := context.WithTimeout(ctx, s.cfg.ReportTimeout)
 	defer cancel()
-	calls, err := s.cfg.Callers.RecentCalls(rctx, now.Add(-s.cfg.CallerWindow))
+	calls, cut, err := s.cfg.Callers.RecentCalls(rctx, now.Add(-s.cfg.CallerWindow))
 	if err != nil {
 		// The report gauges keep their last values; report_last_success
 		// says how old they are.
 		s.cfg.Metrics.Errors.WithLabelValues("report").Inc()
 		s.cfg.Log.Error("reading caller addresses failed; the report is stale", "error", err)
 		return
+	}
+	if cut {
+		s.cfg.Log.Warn("caller read reached its limit; the report holds only the newest calls, and a flood of callers is the likely cause", "limit", MaxCallerRows, "oldest_kept", calls[len(calls)-1].LastSeen)
+		s.cfg.Metrics.CallerReadCut.Set(1)
+	} else {
+		s.cfg.Metrics.CallerReadCut.Set(0)
 	}
 	r := BuildReport(b, calls)
 	s.cfg.Metrics.setReport(b, r)

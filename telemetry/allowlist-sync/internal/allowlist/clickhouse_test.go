@@ -12,7 +12,8 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// fakeCHConn answers the caller read with n rows and records the query.
+// fakeCHConn answers the caller read with n rows, each a second older than
+// the one before, as the query's ORDER BY returns them, and records the query.
 type fakeCHConn struct {
 	driver.Conn
 	n     int
@@ -33,27 +34,35 @@ func (r *fakeCHRows) Next() bool { r.i++; return r.i <= r.n }
 func (r *fakeCHRows) Scan(dest ...any) error {
 	*dest[0].(*string) = pk(byte(r.i % 200))
 	*dest[1].(*string) = fmt.Sprintf("198.51.%d.%d", r.i/256%256, r.i%256)
-	*dest[2].(*time.Time) = t0
+	*dest[2].(*time.Time) = t0.Add(-time.Duration(r.i) * time.Second)
 	return nil
 }
 func (r *fakeCHRows) Err() error   { return nil }
 func (r *fakeCHRows) Close() error { return nil }
 
-func TestRecentCalls_FailsAtTheRowLimit(t *testing.T) {
+func TestRecentCalls_KeepsTheNewestAtTheRowLimit(t *testing.T) {
 	conn := &fakeCHConn{n: MaxCallerRows}
 	c := &ClickHouseCallers{conn: conn, db: "testdb"}
-	calls, err := c.RecentCalls(context.Background(), t0)
+	calls, cut, err := c.RecentCalls(context.Background(), t0)
 	require.NoError(t, err)
-	assert.Len(t, calls, MaxCallerRows, "a result at the limit is whole")
-	assert.True(t, strings.HasSuffix(strings.TrimSpace(conn.query), fmt.Sprintf("LIMIT %d", MaxCallerRows+1)), conn.query)
+	assert.False(t, cut, "a result at the limit is whole")
+	assert.Len(t, calls, MaxCallerRows)
+	// The newest pairs are the ones kept, so the order must come before the limit.
+	q := strings.Join(strings.Fields(conn.query), " ")
+	assert.True(t, strings.HasSuffix(q, fmt.Sprintf("ORDER BY last_seen DESC LIMIT %d", MaxCallerRows+1)), q)
 
 	conn.n = MaxCallerRows + 1
-	calls, err = c.RecentCalls(context.Background(), t0)
-	assert.EqualError(t, err, fmt.Sprintf("caller read reached its limit of %d device and address pairs; the report is not built, and a flood of callers is the likely cause", MaxCallerRows))
-	assert.Nil(t, calls)
+	calls, cut, err = c.RecentCalls(context.Background(), t0)
+	require.NoError(t, err, "a cut read still builds the report")
+	assert.True(t, cut)
+	require.Len(t, calls, MaxCallerRows)
+	assert.Equal(t, t0.Add(-time.Second), calls[0].LastSeen)
+	assert.Equal(t, t0.Add(-MaxCallerRows*time.Second), calls[len(calls)-1].LastSeen, "the oldest row is the one dropped")
 
 	// A server that ignored the LIMIT is still cut at it.
 	conn.n = 3 * MaxCallerRows
-	_, err = c.RecentCalls(context.Background(), t0)
-	assert.Error(t, err)
+	calls, cut, err = c.RecentCalls(context.Background(), t0)
+	require.NoError(t, err)
+	assert.True(t, cut)
+	assert.Len(t, calls, MaxCallerRows)
 }

@@ -17,9 +17,9 @@ type Call struct {
 }
 
 // CallerReader reads the addresses devices call the controller from (spec
-// section 2, step 1).
+// section 2, step 1). cut reports a read that kept only the newest calls.
 type CallerReader interface {
-	RecentCalls(ctx context.Context, since time.Time) ([]Call, error)
+	RecentCalls(ctx context.Context, since time.Time) (calls []Call, cut bool, err error)
 }
 
 // OffchainCaller is a calling address the ledger does not hold for the device

@@ -37,13 +37,14 @@ func (f *fakeLedger) GetProgramData(context.Context) (*serviceability.ProgramDat
 
 type fakeCallers struct {
 	calls []Call
+	cut   bool
 	err   error
 	since time.Time
 }
 
-func (f *fakeCallers) RecentCalls(_ context.Context, since time.Time) ([]Call, error) {
+func (f *fakeCallers) RecentCalls(_ context.Context, since time.Time) ([]Call, bool, error) {
 	f.since = since
-	return f.calls, f.err
+	return f.calls, f.cut, f.err
 }
 
 type fakeConfigMap struct {
@@ -506,6 +507,23 @@ doublezero_telemetry_allowlist_sync_offchain_caller_last_seen_timestamp_seconds{
 	require.NoError(t, testutil.CollectAndCompare(h.metrics.OffchainCaller, strings.NewReader(offchain)), "the last report stays")
 }
 
+// A caller read cut at its limit still reports what it kept, and says so.
+func TestPass_CutCallerReadStillReports(t *testing.T) {
+	h := newHarness(t, fleet(2))
+	h.callers.calls = []Call{{DevicePubkey: pk(1), CallerIP: netip.MustParseAddr("198.51.100.8"), LastSeen: t0}}
+	h.callers.cut = true
+	require.NoError(t, h.pass(t))
+	assert.Equal(t, 1.0, testutil.ToFloat64(h.metrics.CallerReadCut))
+	assert.Equal(t, 0.0, counter(h.metrics.Errors, "report"))
+	assert.Equal(t, float64(t0.Unix()), testutil.ToFloat64(h.metrics.ReportLastSuccess), "the report is fresh")
+	assert.Equal(t, 1, testutil.CollectAndCount(h.metrics.OffchainCaller), "the flood's caller is reported")
+
+	h.clock.Advance(time.Minute)
+	h.callers.cut = false
+	require.NoError(t, h.pass(t))
+	assert.Equal(t, 0.0, testutil.ToFloat64(h.metrics.CallerReadCut))
+}
+
 func TestPass_DeviceGauges(t *testing.T) {
 	h := newHarness(t, []serviceability.Device{
 		dev(1, "dz1", serviceability.DeviceStatusActivated, "45.0.0.1"),
@@ -635,9 +653,9 @@ func (c ctxConfigMap) Get(ctx context.Context) (*ConfigMap, error) {
 	return c.fakeConfigMap.Get(ctx)
 }
 
-func (hungCallers) RecentCalls(ctx context.Context, _ time.Time) ([]Call, error) {
+func (hungCallers) RecentCalls(ctx context.Context, _ time.Time) ([]Call, bool, error) {
 	<-ctx.Done()
-	return nil, ctx.Err()
+	return nil, false, ctx.Err()
 }
 
 // A ClickHouse that stalls costs the report, never the list.

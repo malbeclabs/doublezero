@@ -55,6 +55,9 @@ type Metrics struct {
 	// ReportLastSuccess is the time the caller addresses were last read.
 	// The two report gauges above are as old as this.
 	ReportLastSuccess prometheus.Gauge
+	// CallerReadCut is 1 when the last caller read reached MaxCallerRows and
+	// kept only the newest calls.
+	CallerReadCut prometheus.Gauge
 }
 
 func NewMetrics(reg prometheus.Registerer) *Metrics {
@@ -108,10 +111,13 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		ReportLastSuccess: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: metricPrefix + "report_last_success_timestamp_seconds", Help: "Unix time the caller addresses were last read.",
 		}),
+		CallerReadCut: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name: metricPrefix + "caller_read_cut", Help: "1 when the last caller read reached its row limit and kept only the newest calls.",
+		}),
 	}
 	reg.MustRegister(m.BuildInfo, m.LastSuccess, m.DryRun, m.RefusedPasses, m.Errors, m.Writes, m.ExternalChanges,
 		m.LiveDevice, m.ListedAddresses, m.ListedDevices, m.ExceptionReview,
-		m.OffchainCaller, m.OffchainCallersDropped, m.LastListedCall, m.ReportLastSuccess)
+		m.OffchainCaller, m.OffchainCallersDropped, m.LastListedCall, m.ReportLastSuccess, m.CallerReadCut)
 	// Both targets report 0 from the start, so an alert on an increase has a
 	// series to read before the first outside edit.
 	for _, target := range []string{"gnmic_map", "cloudflare_list"} {

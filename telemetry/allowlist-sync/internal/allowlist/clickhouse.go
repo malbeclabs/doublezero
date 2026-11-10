@@ -20,9 +20,13 @@ var validDBName = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 // to 3 addresses each make about 300 rows, and the report keeps at most
 // MaxOffchainCallersPerDevice (8) offchain callers per device, about 800 in
 // all, so 10,000 is over ten times what the report can use and about 1 MB.
-// Reaching it fails the report rather than truncating it: a cut across
-// devices could drop a device's own address and report it missing. The list
-// does not depend on the report, so it is still written.
+// The read keeps the newest pairs and drops the rest. Failing the read
+// instead would let a flood of callers freeze the report for as long as the
+// flood stays in the caller window. A cut keeps every device that called in
+// the last few minutes, since a device calls every 5 seconds, and keeps the
+// flood's own callers, which the report shows as unlisted. What it drops is
+// the oldest calls, so a device silent for longer than the cut reaches back
+// reads as having made no call.
 const MaxCallerRows = 10_000
 
 // ClickHouseCallers reads controller_grpc_getconfig_success, which the
@@ -62,42 +66,43 @@ func NewClickHouseCallers(addr, db, user, pass string, disableTLS bool) (*ClickH
 func (c *ClickHouseCallers) Close() error { return c.conn.Close() }
 
 // RecentCalls returns, per device pubkey and caller address, the newest call
-// since the given time. Rows written before the controller recorded caller_ip
-// carry an empty address and are left out. The query fails while the table
-// has no caller_ip column at all.
-func (c *ClickHouseCallers) RecentCalls(ctx context.Context, since time.Time) ([]Call, error) {
+// since the given time, newest first and at most MaxCallerRows of them. cut
+// reports that there were more. Rows written before the controller recorded
+// caller_ip carry an empty address and are left out. The query fails while
+// the table has no caller_ip column at all.
+func (c *ClickHouseCallers) RecentCalls(ctx context.Context, since time.Time) (calls []Call, cut bool, err error) {
 	// One row past the limit tells a full result from one that was cut.
 	rows, err := c.conn.Query(ctx, fmt.Sprintf(
 		`SELECT device_pubkey, caller_ip, max(timestamp) AS last_seen
 		 FROM "%s".controller_grpc_getconfig_success
 		 WHERE timestamp >= ? AND caller_ip != ''
 		 GROUP BY device_pubkey, caller_ip
+		 ORDER BY last_seen DESC
 		 LIMIT %d`, c.db, MaxCallerRows+1), since)
 	if err != nil {
-		return nil, fmt.Errorf("clickhouse query: %w", err)
+		return nil, false, fmt.Errorf("clickhouse query: %w", err)
 	}
 	defer rows.Close()
 
-	var calls []Call
 	for rows.Next() {
 		if len(calls) == MaxCallerRows {
-			return nil, fmt.Errorf("caller read reached its limit of %d device and address pairs; the report is not built, and a flood of callers is the likely cause", MaxCallerRows)
+			return calls, true, nil
 		}
 		var (
 			pubkey, callerIP string
 			lastSeen         time.Time
 		)
 		if err := rows.Scan(&pubkey, &callerIP, &lastSeen); err != nil {
-			return nil, fmt.Errorf("clickhouse scan: %w", err)
+			return nil, false, fmt.Errorf("clickhouse scan: %w", err)
 		}
 		ip, err := netip.ParseAddr(callerIP)
 		if err != nil {
-			return nil, fmt.Errorf("device %s: caller_ip %q is not an address: %w", pubkey, callerIP, err)
+			return nil, false, fmt.Errorf("device %s: caller_ip %q is not an address: %w", pubkey, callerIP, err)
 		}
 		calls = append(calls, Call{DevicePubkey: pubkey, CallerIP: ip.Unmap(), LastSeen: lastSeen})
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("clickhouse rows: %w", err)
+		return nil, false, fmt.Errorf("clickhouse rows: %w", err)
 	}
-	return calls, nil
+	return calls, false, nil
 }

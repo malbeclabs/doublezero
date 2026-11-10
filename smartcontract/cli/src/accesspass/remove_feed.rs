@@ -137,8 +137,8 @@ impl RemoveFeedAccessPassCliCommand {
                 .expect("the partition keeps only seats with a reason");
             writeln!(
                 out,
-                "  Drop the seat for feed {} because it {reason}",
-                seat.feed_key
+                "  Drop the seat for feed {} because it {reason}. {} user(s) still hold the seat",
+                seat.feed_key, seat.current_users
             )?;
         }
         for (user_pk, user) in &holders {
@@ -808,6 +808,7 @@ mod tests {
         let ended_lon = FeedSeat {
             window_end: 1_700_000_000,
             terminates_at: 1_700_000_000,
+            current_users: 2,
             ..seat(lon_pk, 3)
         };
 
@@ -852,10 +853,10 @@ mod tests {
         let output = run(&client, remove(user_payer, "Solana Shreds FRA", false)).unwrap();
 
         assert!(output.contains(&format!(
-            "  Drop the seat for feed {lon_pk} because it ended at 2023-11-14T22:13:20+00:00"
+            "  Drop the seat for feed {lon_pk} because it ended at 2023-11-14T22:13:20+00:00. 2 user(s) still hold the seat\n"
         )));
         assert!(output.contains(&format!(
-            "  Drop the seat for feed {ams_pk} because it names a feed that no longer exists"
+            "  Drop the seat for feed {ams_pk} because it names a feed that no longer exists. 0 user(s) still hold the seat\n"
         )));
     }
 

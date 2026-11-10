@@ -758,7 +758,7 @@ impl Connect {
         }
 
         // Which users already exist decides whether a seat cap even applies: the program
-        // ticks a seat in `try_add_user` only on create, so a pass whose seats are full
+        // ticks a seat in `try_take_pass_seat` only on create, so a pass whose seats are full
         // must still re-run cleanly for the user already holding one.
         let users = ledger.list_user()?;
         let ibrl_exists = users.values().any(|u| {
@@ -768,7 +768,7 @@ impl Connect {
         let mcast_exists = users
             .values()
             .any(|u| u.client_ip == client_ip && u.user_type == UserType::Multicast);
-        // Seat caps are EdgeSeat-only; `try_add_user` returns Ok immediately otherwise.
+        // Seat caps are EdgeSeat-only; `try_take_pass_seat` returns Ok immediately otherwise.
         let edge_seat = matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_));
 
         let epoch = ledger.get_epoch()?;
@@ -818,13 +818,28 @@ impl Connect {
         // No allowlist/feed pre-check: `execute_multicast` already reports an empty
         // allowlist itself, and its EdgeSeat path diagnoses full seats and wrong metros
         // far better than a gate here could.
-        let multicast = if edge_seat
+        let at_multicast_cap = edge_seat
             && !mcast_exists
-            && accesspass.multicast_user_count >= accesspass.max_multicast_users
-        {
+            && accesspass.public_multicast_user_count >= accesspass.max_multicast_users;
+        // A pass without feed seats joins the groups on its allowlists. When every one of those
+        // groups is private, the user does not count against the pass-wide cap, so the cap does
+        // not stop the join.
+        let joins_only_private_groups = if at_multicast_cap && accesspass.feed_seats().is_empty() {
+            let groups = ledger.list_multicastgroup()?;
+            let mut allowlisted = accesspass
+                .mgroup_pub_allowlist
+                .iter()
+                .chain(&accesspass.mgroup_sub_allowlist)
+                .filter_map(|group_pk| groups.get(group_pk))
+                .peekable();
+            allowlisted.peek().is_some() && allowlisted.all(|group| group.private)
+        } else {
+            false
+        };
+        let multicast = if at_multicast_cap && !joins_only_private_groups {
             LegOutcome::Skipped(format!(
                 "the EdgeSeat AccessPass has no free multicast seat ({} of {} in use)",
-                accesspass.multicast_user_count, accesspass.max_multicast_users
+                accesspass.public_multicast_user_count, accesspass.max_multicast_users
             ))
         } else {
             let ip_proof = IpProofFetcher::new(
@@ -1240,7 +1255,7 @@ impl Connect {
                     });
 
                     // Only devices in a metro a purchased feed with headroom actually serves can
-                    // ever admit this join — check_feed_metro_coverage enforces that onchain, so
+                    // ever admit this join — check_feed_covers_group enforces that onchain, so
                     // latency alone must not land the customer somewhere no purchased feed can
                     // follow. Full seats are excluded from `candidate_exchanges` here (not just
                     // filtered later): otherwise latency could still land the customer in a metro
@@ -2653,7 +2668,7 @@ fn compare_latency_records(a: &LatencyRecord, b: &LatencyRecord) -> std::cmp::Or
 ///
 /// Feeds are considered in code order so that which ones get taken when the feed limit binds is
 /// predictable rather than dependent on account iteration order. Headroom is measured against
-/// `max_users`, the field the program's `try_add_feed_user` actually enforces — `max_future_users`
+/// `max_users`, the field the program's `try_take_feed_seat` actually enforces — `max_future_users`
 /// is unread today, so trusting it would propose feeds the program then rejects.
 ///
 /// `MAX_USER_FEEDS` is the only bound applied. A join too large for one transaction is split by
@@ -3102,7 +3117,7 @@ mod tests {
                 flags: 0,
                 unicast_user_count: 0,
                 max_unicast_users: 1,
-                multicast_user_count: 0,
+                public_multicast_user_count: 0,
                 max_multicast_users: 1,
             }));
 
@@ -3397,6 +3412,9 @@ mod tests {
                 publisher_count: 0,
                 subscriber_count: 0,
                 bond_ref: Pubkey::default(),
+                private: false,
+                max_publishers: 0,
+                max_subscribers: 0,
             };
             mcast_groups.insert(pk, group.clone());
             (pk, group)
@@ -3673,12 +3691,12 @@ mod tests {
 
         /// Turn the fixture pass into an EdgeSeat pass carrying no feeds but explicit
         /// per-category user seats, as `(live_count, max)`. These four counters are the
-        /// ones `try_add_user` enforces, and `seat_feeds*` cannot reach them.
+        /// ones `try_take_pass_seat` enforces, and `seat_feeds*` cannot reach them.
         pub fn edge_seat_user_caps(&mut self, unicast: (u16, u16), multicast: (u16, u16)) {
             let mut ap = self.accesspass.lock().unwrap();
             ap.accesspass_type = AccessPassType::EdgeSeat(vec![]);
             (ap.unicast_user_count, ap.max_unicast_users) = unicast;
-            (ap.multicast_user_count, ap.max_multicast_users) = multicast;
+            (ap.public_multicast_user_count, ap.max_multicast_users) = multicast;
         }
 
         pub fn add_feed(&mut self, code: &str, exchange: Pubkey, groups: Vec<Pubkey>) -> Pubkey {
@@ -7095,7 +7113,7 @@ mod tests {
     }
 
     /// An EdgeSeat pass with its unicast seats full skips the IBRL leg up front rather
-    /// than letting `try_add_user` reject the transaction onchain.
+    /// than letting `try_take_pass_seat` reject the transaction onchain.
     #[test]
     fn test_connect_bare_edge_seat_unicast_cap_exhausted_skips_ibrl() {
         block_on(async {
@@ -7120,6 +7138,67 @@ mod tests {
                 "{output}"
             );
             assert!(output.contains("Multicast: provisioned"), "{output}");
+        });
+    }
+
+    /// A private group user does not count against the pass-wide multicast cap, so a full cap
+    /// does not skip the multicast leg when every allowlisted group is private.
+    #[test]
+    fn test_connect_bare_edge_seat_private_group_ignores_multicast_cap() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device1_pk, _) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let (group_pk, _) = fixture.add_multicast_group("trading-private", "239.0.0.1");
+            fixture
+                .mcast_groups
+                .lock()
+                .unwrap()
+                .get_mut(&group_pk)
+                .unwrap()
+                .private = true;
+
+            fixture.edge_seat_user_caps((1, 1), (0, 0));
+            fixture.accesspass.lock().unwrap().mgroup_sub_allowlist = vec![group_pk];
+
+            let mcast_user = fixture.create_user(UserType::Multicast, device1_pk, "1.2.3.4");
+            fixture.expect_create_subscribe_user(
+                Pubkey::new_unique(),
+                &mcast_user,
+                vec![group_pk],
+                false,
+                true,
+            );
+
+            let (result, output) = run(&fixture, bare_connect()).await;
+            assert!(result.is_ok(), "{:?}", result.err());
+            assert!(!output.contains("no free multicast seat"), "{output}");
+            assert!(output.contains("Multicast: provisioned"), "{output}");
+        });
+    }
+
+    /// A group that is not private still counts against the pass-wide multicast cap, so a full
+    /// cap skips the multicast leg.
+    #[test]
+    fn test_connect_bare_edge_seat_multicast_cap_exhausted_skips_multicast() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            fixture.add_device(DeviceType::Hybrid, 100, true);
+            let (group_pk, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
+
+            fixture.edge_seat_user_caps((1, 1), (0, 0));
+            fixture.accesspass.lock().unwrap().mgroup_sub_allowlist = vec![group_pk];
+
+            // Both legs skip, so the command reports that it connected nothing.
+            let (result, output) = run(&fixture, bare_connect()).await;
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "nothing to connect: the AccessPass authorizes no unicast connection and no \
+                 multicast groups or feeds"
+            );
+            assert!(
+                output.contains("no free multicast seat (0 of 0 in use)"),
+                "{output}"
+            );
         });
     }
 
@@ -7364,7 +7443,7 @@ mod tests {
                 flags: 0,
                 unicast_user_count: 0,
                 max_unicast_users: 1,
-                multicast_user_count: 0,
+                public_multicast_user_count: 0,
                 max_multicast_users: 1,
             }
         }

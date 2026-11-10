@@ -37,7 +37,7 @@ pub(crate) fn split_group_accounts<'a, 'b>(
 /// Check that every group a bonded feed lists is its builder's own: created on the feed's bond, or
 /// assigned to the builder by an admin with no bond.
 ///
-/// A seat on a feed lets its holder join every group the feed lists ([`check_feed_metro_coverage`]),
+/// A seat on a feed lets its holder join every group the feed lists ([`check_feed_covers_group`]),
 /// so a feed the builder admits with its own bond may list only its own groups. A group with no bond
 /// can only have been given to the builder by an admin, since a builder creates groups on a bond. A
 /// group on another of the builder's bonds is refused, because each bond backs one feed. Each
@@ -90,7 +90,7 @@ pub(crate) fn check_groups_on_bond(
 ///
 /// `feed_account` must be the `Feed` referenced by one of the pass's seats. `target_mgroup` is the
 /// multicast group being joined (None requires only metro coverage).
-pub fn check_feed_metro_coverage(
+pub fn check_feed_covers_group(
     program_id: &Pubkey,
     accesspass: &AccessPass,
     device_exchange: &Pubkey,
@@ -143,17 +143,17 @@ pub fn check_feed_metro_coverage(
 }
 
 /// Enforce the EdgeSeat feed metro gate at connect and tick the matching feed seat against its cap.
-/// Call only for EdgeSeat passes. See [`check_feed_metro_coverage`].
+/// Call only for EdgeSeat passes. See [`check_feed_covers_group`].
 /// Returns the `feed_key` whose seat was ticked, so the caller can record it on the User and
 /// release exactly that seat at disconnect.
-pub fn enforce_feed_metro_gate(
+pub fn take_feed_seat(
     program_id: &Pubkey,
     accesspass: &mut AccessPass,
     device_exchange: &Pubkey,
     target_mgroup: Option<&Pubkey>,
     feed_account: Option<&AccountInfo>,
 ) -> Result<Pubkey, ProgramError> {
-    check_feed_metro_coverage(
+    check_feed_covers_group(
         program_id,
         accesspass,
         device_exchange,
@@ -163,7 +163,7 @@ pub fn enforce_feed_metro_gate(
     // feed_account is guaranteed Some here (check returns Err otherwise).
     let feed_account = feed_account.ok_or(DoubleZeroError::FeedAccountRequired)?;
     require_feed_admits(feed_account.key, &Feed::try_from(feed_account)?)?;
-    accesspass.try_add_feed_user(feed_account.key)?;
+    accesspass.try_take_feed_seat(feed_account.key)?;
     Ok(*feed_account.key)
 }
 

@@ -16,6 +16,12 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Serviceability
+  - A multicast group has a `private` flag and `max_publishers` and `max_subscribers` caps, and `UpdateMulticastGroup` sets them with `MULTICAST_ADMIN`. The caps apply only to a private group, and a private group with a cap of 0 admits nobody in that role. A role past a cap fails with `MulticastGroupMaxPublishersExceeded` (135) or `MulticastGroupMaxSubscribersExceeded` (136). A group created before this change decodes as not private with no caps. (malbeclabs/infra#3706)
+  - On an edge_seat pass, `CreateSubscribeUser` lets a multicast user join private groups without a feed. The groups must be on the pass allowlist, and a user that joins only private groups does not count against the pass-wide multicast cap. A unicast user always counts.
+  - A user has a `holds_pass_seat` bit that records whether the user counts against the pass-wide multicast cap. A user on private groups only starts to count when it joins a feed through `SubscribeFeed`. It also starts to count when it joins a public group through `UpdateMulticastGroupRoles` or a batch `CreateSubscribeUser`. `UnsubscribeFeed` stops the count when the user leaves its last feed and keeps only private groups. `DeleteUser` lowers the count only when the bit is set. The decoder reads the missing bit of an older user as true.
+  - The access pass field `multicast_user_count` is now `public_multicast_user_count` in Rust. The bytes and the JSON name do not change. `SetAccessPassCounts` takes a `private_multicast_user_count`. It sets the connection count to the sum of the unicast, public multicast and private multicast counts.
+  - `try_add_user`, `remove_user`, `try_add_feed_user` and `remove_feed_user` on the access pass are now `try_take_pass_seat`, `release_pass_seat`, `try_take_feed_seat` and `release_feed_seat`. `enforce_feed_metro_gate` and `check_feed_metro_coverage` are now `take_feed_seat` and `check_feed_covers_group`.
 - CI
   - The Solana fork test no longer loads the shred-subscription program or runs the `doublezero-solana shreds` commands, because the program was closed on mainnet on 2026-11-05. The fork loader drops `--synthetic-validator-client-rewards-manager`.
 - Offchain
@@ -23,12 +29,17 @@ All notable changes to this project will be documented in this file.
 - Release
   - `doublezero-sentinel` 0.2.7. It carries the -32022 fix above, and the Solana 3.0 migration, the static musl binary and the move to rustls that landed since 0.2.6.
 - CLI
+  - `doublezero multicast group update` takes `--private`, `--max-publishers` and `--max-subscribers`, and `doublezero multicast group get` shows them. Bare `doublezero connect` no longer skips the multicast leg at a full pass-wide multicast cap when the pass has no feeds and every allowlisted group is private.
+  - `doublezero multicast group update --private true` refuses a group that a feed lists, and asks for confirmation when the group has members. `doublezero feed create` and `doublezero feed update` refuse a private group.
+  - `doublezero access-pass set-counts` takes `--private-multicast-users`.
   - `doublezero access-pass add-feed` adds one feed to an EdgeSeat access pass, or changes the seat of a feed the pass holds, and sets the multicast user cap to the total of the seats. It is the partner of `access-pass remove-feed` and needs `ACCESS_PASS_ADMIN`. It is for testing only, such as in the e2e suite. On mainnet-beta, a customer gets a feed through the frontend, with a normal subscription or a trial. Both `add-feed` and `remove-feed` refuse a feed name that two feeds share, and take the feed's pubkey instead. Both refuse a pass that keeps a seat that ended or names a deleted feed. (malbeclabs/infra#3717)
   - `doublezero device delete` no longer reads the device's shred-subscription `DeviceHistory` account first. The program is closed, so a device it marks enabled can no longer be disabled there, and the check refused to delete it.
   - `doublezero disconnect` prints one message for every user that another key owns: it names the owner, says that `disconnect` skips the user, and says that its owner can delete it. The separate shred oracle message, with its `doublezero-solana shreds withdraw` hint, is gone. It matched only the global state's legacy feed authority, which is unset on mainnet-beta and testnet.
 - SDK
+  - The Go, Python and TypeScript serviceability readers decode the group's `private` flag and caps and the user's `holds_pass_seat`. `doublezero-contributor-rewards` defaults the new fields in older JSON snapshots.
   - `SetAccessPassCommand` reads the tenant of the pass it writes, at the exact `client_ip`. It read the payer's 0.0.0.0 pass first, so a cap change on a pass at `1.2.3.4` whose payer also holds a 0.0.0.0 pass with another tenant lowered that other tenant's count. `access-pass set`, `access-pass apply`, `access-pass remove-feed`, `access-pass add-feed` and `tenant delete` use this command. The program still raises the tenant count by 1 when the tenant stays the same, and malbeclabs/infra#3718 tracks that fix. (malbeclabs/infra#3717)
 - E2E/QA
+  - `TestE2E_PrivateMulticastGroup` connects five hosts on one EdgeSeat pass to a feed and to a private multicast group, in both join orders, as subscribers and as publishers. It checks the pass-wide multicast count, the feed seat count and the group counts after every join and every disconnect, and then closes the pass.
   - The QA agent drops the `FeedEnable`, `FeedSeatPrice`, `FeedSeatPay`, `FeedSeatWithdraw` and `GetWalletPubkey` RPCs, and the QA client drops its Solana RPC failover pool and the `SOLANA_RPC_FALLBACK_URLS` and `QA_SOLANA_RPC_*` variables it read. Only the settlement test that #4248 removed used them.
 
 ## [v0.47.0](https://github.com/malbeclabs/doublezero/compare/client/v0.46.0...client/v0.47.0) - 2026-11-06

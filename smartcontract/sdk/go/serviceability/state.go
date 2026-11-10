@@ -990,6 +990,7 @@ type User struct {
 	// only); empty for non-EdgeSeat/unicast users. A user may hold seats on multiple feeds.
 	FeedPks          [][32]byte
 	AccessPassPubKey [32]byte
+	HoldsPassSeat    bool
 	PubKey           [32]byte
 }
 
@@ -1092,8 +1093,11 @@ type MulticastGroup struct {
 	PublisherCount  uint32
 	SubscriberCount uint32
 	// BondRef is the BuilderBond that created the group, or zero for a group an admin created.
-	BondRef [32]uint8
-	PubKey  [32]byte
+	BondRef        [32]uint8
+	Private        bool
+	MaxPublishers  uint32
+	MaxSubscribers uint32
+	PubKey         [32]byte
 }
 
 type ProgramVersion struct {
@@ -1179,6 +1183,8 @@ type AccessPass struct {
 	TenantAllowlist    [][32]byte
 	UnicastUserCount   uint16
 	MaxUnicastUsers    uint16
+	// The program names this field public_multicast_user_count. It leaves out the users that
+	// joined only private groups.
 	MulticastUserCount uint16
 	MaxMulticastUsers  uint16
 	PubKey             [32]byte

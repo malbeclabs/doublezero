@@ -132,6 +132,7 @@ pub fn process_create_user(
         value.tunnel_endpoint,
         false,
         None,
+        true,
         value.ip_proof.as_ref(),
     )?
     else {

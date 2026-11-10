@@ -169,6 +169,9 @@ mod tests {
             publisher_count: 0,
             subscriber_count: 0,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         };
 
         client
@@ -222,7 +225,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
+            public_multicast_user_count: 0,
             max_multicast_users: 1,
         };
 
@@ -300,6 +303,9 @@ mod tests {
             publisher_count: 0,
             subscriber_count: 1,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         };
         client
             .expect_get()
@@ -358,7 +364,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 1,
+            public_multicast_user_count: 1,
             max_multicast_users: 1,
         };
         client

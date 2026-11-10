@@ -34,6 +34,9 @@ struct MulticastGroupDisplay {
     pub max_bandwidth: String,
     pub publisher_count: u32,
     pub subscriber_count: u32,
+    pub private: bool,
+    pub max_publishers: u32,
+    pub max_subscribers: u32,
     pub status: String,
     pub owner: String,
 }
@@ -181,6 +184,9 @@ impl GetMulticastGroupCliCommand {
             max_bandwidth: bandwidth_to_string(&mgroup.max_bandwidth),
             publisher_count: mgroup.publisher_count,
             subscriber_count: mgroup.subscriber_count,
+            private: mgroup.private,
+            max_publishers: mgroup.max_publishers,
+            max_subscribers: mgroup.max_subscribers,
             status: mgroup.status.to_string(),
             owner: mgroup.owner.to_string(),
         };
@@ -372,6 +378,9 @@ mod tests {
             publisher_count: 5,
             subscriber_count: 10,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         };
 
         client
@@ -405,7 +414,7 @@ mod tests {
                     flags: 0,
                     unicast_user_count: 0,
                     max_unicast_users: 1,
-                    multicast_user_count: 0,
+                    public_multicast_user_count: 0,
                     max_multicast_users: 1,
                 },
             );
@@ -487,6 +496,9 @@ mod tests {
         assert_eq!(json["account"].as_str().unwrap(), mgroup_pubkey.to_string());
         assert_eq!(json["code"].as_str().unwrap(), "test");
         assert_eq!(json["status"].as_str().unwrap(), "activated");
+        assert_eq!(json["private"], serde_json::json!(false));
+        assert_eq!(json["max_publishers"], serde_json::json!(0));
+        assert_eq!(json["max_subscribers"], serde_json::json!(0));
         assert!(
             json["allowlist"].is_array(),
             "allowlist should be a JSON array"

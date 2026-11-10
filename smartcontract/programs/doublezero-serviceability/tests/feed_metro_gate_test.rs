@@ -8,6 +8,7 @@
 
 use doublezero_serviceability::{
     entrypoint::process_instruction,
+    error::DoubleZeroError,
     instructions::DoubleZeroInstruction,
     pda::{
         get_accesspass_pda, get_bond_mirror_pda, get_contributor_pda, get_device_pda,
@@ -25,7 +26,10 @@ use doublezero_serviceability::{
         feed::{create::FeedCreateArgs, halt::FeedHaltArgs, retire::FeedRetireArgs},
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
         location::create::LocationCreateArgs,
-        multicastgroup::create::MulticastGroupCreateArgs,
+        multicastgroup::{
+            allowlist::subscriber::add::AddMulticastGroupSubAllowlistArgs,
+            create::MulticastGroupCreateArgs, update::MulticastGroupUpdateArgs,
+        },
         user::create_subscribe::UserCreateSubscribeArgs,
     },
     resource::ResourceType,
@@ -312,17 +316,17 @@ async fn setup_feed_fixture(client_ip: [u8; 4]) -> FeedFixture {
 
 /// Create a feed (catalog admin = foundation payer) with the given metro map.
 async fn create_feed(
-    f: &mut FeedFixture,
+    fixture: &mut FeedFixture,
     code: &str,
     exchange: Pubkey,
     groups: Vec<Pubkey>,
 ) -> Pubkey {
-    let (feed_pubkey, _) = get_feed_pda(&f.program_id, code, &exchange);
-    let recent_blockhash = f.banks_client.get_latest_blockhash().await.unwrap();
+    let (feed_pubkey, _) = get_feed_pda(&fixture.program_id, code, &exchange);
+    let recent_blockhash = fixture.banks_client.get_latest_blockhash().await.unwrap();
     execute_transaction(
-        &mut f.banks_client,
+        &mut fixture.banks_client,
         recent_blockhash,
-        f.program_id,
+        fixture.program_id,
         DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
             code: code.to_string(),
             name: code.to_string(),
@@ -332,9 +336,9 @@ async fn create_feed(
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),
-            AccountMeta::new(f.globalstate_pubkey, false),
+            AccountMeta::new(fixture.globalstate_pubkey, false),
         ],
-        &f.payer,
+        &fixture.payer,
     )
     .await;
     feed_pubkey
@@ -342,38 +346,38 @@ async fn create_feed(
 
 /// Create a bonded RFC-29 feed against the fixture's pre-mirrored bond. It lands `Active`.
 async fn create_bonded_feed(
-    f: &mut FeedFixture,
+    fixture: &mut FeedFixture,
     code: &str,
     exchange: Pubkey,
     groups: Vec<Pubkey>,
 ) -> Pubkey {
-    let recent_blockhash = f.banks_client.get_latest_blockhash().await.unwrap();
+    let recent_blockhash = fixture.banks_client.get_latest_blockhash().await.unwrap();
     execute_transaction(
-        &mut f.banks_client,
+        &mut fixture.banks_client,
         recent_blockhash,
-        f.program_id,
+        fixture.program_id,
         DoubleZeroInstruction::SetFeatureFlags(SetFeatureFlagsArgs {
             feature_flags: FeatureFlag::AllowBondedFeeds.to_mask(),
         }),
-        vec![AccountMeta::new(f.globalstate_pubkey, false)],
-        &f.payer,
+        vec![AccountMeta::new(fixture.globalstate_pubkey, false)],
+        &fixture.payer,
     )
     .await;
 
-    let (feed_pubkey, _) = get_feed_pda(&f.program_id, code, &exchange);
-    let (mirror_pubkey, _) = get_bond_mirror_pda(&f.program_id, &f.bond_ref);
-    let recent_blockhash = f.banks_client.get_latest_blockhash().await.unwrap();
+    let (feed_pubkey, _) = get_feed_pda(&fixture.program_id, code, &exchange);
+    let (mirror_pubkey, _) = get_bond_mirror_pda(&fixture.program_id, &fixture.bond_ref);
+    let recent_blockhash = fixture.banks_client.get_latest_blockhash().await.unwrap();
     execute_transaction_with_extra_accounts(
-        &mut f.banks_client,
+        &mut fixture.banks_client,
         recent_blockhash,
-        f.program_id,
+        fixture.program_id,
         DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
             code: code.to_string(),
             name: code.to_string(),
             exchange,
             groups,
-            builder: f.builder,
-            bond_ref: f.bond_ref,
+            builder: fixture.builder,
+            bond_ref: fixture.bond_ref,
             spec_id: "top-of-book@v1.0.0".to_string(),
             sla_hash: [9u8; 32],
             committed_rate_bits_per_sec: 1_000_000_000,
@@ -381,9 +385,9 @@ async fn create_bonded_feed(
         }),
         vec![
             AccountMeta::new(feed_pubkey, false),
-            AccountMeta::new(f.globalstate_pubkey, false),
+            AccountMeta::new(fixture.globalstate_pubkey, false),
         ],
-        &f.payer,
+        &fixture.payer,
         &[AccountMeta::new(mirror_pubkey, false)],
     )
     .await;
@@ -391,23 +395,23 @@ async fn create_bonded_feed(
 }
 
 /// Provision the given feed seats onto the access pass via SetAccessPassFeeds.
-async fn set_pass_feeds(f: &mut FeedFixture, seats: Vec<FeedSeat>) {
-    let recent_blockhash = f.banks_client.get_latest_blockhash().await.unwrap();
+async fn set_accesspass_feeds(fixture: &mut FeedFixture, seats: Vec<FeedSeat>) {
+    let recent_blockhash = fixture.banks_client.get_latest_blockhash().await.unwrap();
     // Account layout: [accesspass, globalstate, feed_0..feed_N, payer, system]. The feed accounts
     // (writable for the reference_count bump) are part of the base list, before the trailing
     // payer/system appended by create_transaction.
     let mut accounts = vec![
-        AccountMeta::new(f.accesspass_pubkey, false),
-        AccountMeta::new(f.globalstate_pubkey, false),
+        AccountMeta::new(fixture.accesspass_pubkey, false),
+        AccountMeta::new(fixture.globalstate_pubkey, false),
     ];
     for s in &seats {
         accounts.push(AccountMeta::new(s.feed_key, false));
     }
     let mut tx = create_transaction(
-        f.program_id,
+        fixture.program_id,
         &DoubleZeroInstruction::SetAccessPassFeeds(SetAccessPassFeedsArgs {
-            client_ip: f.user_ip,
-            user_payer: f.payer.pubkey(),
+            client_ip: fixture.user_ip,
+            user_payer: fixture.payer.pubkey(),
             feeds: seats
                 .iter()
                 .map(|s| FeedSeatConfig {
@@ -420,19 +424,19 @@ async fn set_pass_feeds(f: &mut FeedFixture, seats: Vec<FeedSeat>) {
                 .collect(),
         }),
         &accounts,
-        &f.payer,
+        &fixture.payer,
     );
-    tx.try_sign(&[&f.payer], recent_blockhash).unwrap();
-    f.banks_client.process_transaction(tx).await.unwrap();
+    tx.try_sign(&[&fixture.payer], recent_blockhash).unwrap();
+    fixture.banks_client.process_transaction(tx).await.unwrap();
 }
 
 /// Attempt CreateSubscribeUser as a subscriber, passing `feed` as the trailing metro-gate account.
 async fn try_subscribe_with_feed(
-    f: &mut FeedFixture,
+    fixture: &mut FeedFixture,
     feed: Pubkey,
 ) -> Result<(), BanksClientError> {
-    let recent_blockhash = wait_for_new_blockhash(&mut f.banks_client).await;
-    let (user_pubkey, _) = get_user_pda(&f.program_id, &f.user_ip, UserType::Multicast);
+    let recent_blockhash = wait_for_new_blockhash(&mut fixture.banks_client).await;
+    let (user_pubkey, _) = get_user_pda(&fixture.program_id, &fixture.user_ip, UserType::Multicast);
     // The Feed (EdgeSeat metro gate) is part of the instruction's own account list, ahead of the
     // [payer, system] trailer the client appends — mirroring the SDK's create_subscribe command,
     // which pushes the feed into `accounts` before execute_transaction appends payer/system. The
@@ -441,22 +445,22 @@ async fn try_subscribe_with_feed(
     // payer/system.
     let accounts = vec![
         AccountMeta::new(user_pubkey, false),
-        AccountMeta::new(f.device_pubkey, false),
-        AccountMeta::new(f.mgroup_pubkey, false),
-        AccountMeta::new(f.accesspass_pubkey, false),
-        AccountMeta::new(f.globalstate_pubkey, false),
-        AccountMeta::new(f.user_tunnel_block, false),
-        AccountMeta::new(f.multicast_publisher_block, false),
-        AccountMeta::new(f.tunnel_ids, false),
-        AccountMeta::new(f.dz_prefix_block, false),
+        AccountMeta::new(fixture.device_pubkey, false),
+        AccountMeta::new(fixture.mgroup_pubkey, false),
+        AccountMeta::new(fixture.accesspass_pubkey, false),
+        AccountMeta::new(fixture.globalstate_pubkey, false),
+        AccountMeta::new(fixture.user_tunnel_block, false),
+        AccountMeta::new(fixture.multicast_publisher_block, false),
+        AccountMeta::new(fixture.tunnel_ids, false),
+        AccountMeta::new(fixture.dz_prefix_block, false),
         AccountMeta::new_readonly(feed, false),
     ];
     let mut tx = create_transaction_with_extra_accounts(
-        f.program_id,
+        fixture.program_id,
         &DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
             user_type: UserType::Multicast,
             cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: f.user_ip,
+            client_ip: fixture.user_ip,
             publisher: false,
             subscriber: true,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
@@ -466,11 +470,11 @@ async fn try_subscribe_with_feed(
             extra_group_count: 0,
         }),
         &accounts,
-        &f.payer,
+        &fixture.payer,
         &[],
     );
-    tx.try_sign(&[&f.payer], recent_blockhash).unwrap();
-    f.banks_client.process_transaction(tx).await
+    tx.try_sign(&[&fixture.payer], recent_blockhash).unwrap();
+    fixture.banks_client.process_transaction(tx).await
 }
 
 /// Match the error structurally rather than on its debug text, so a test cannot pass because some
@@ -487,12 +491,12 @@ fn assert_custom_error(err: &BanksClientError, code: u32) {
 
 #[tokio::test]
 async fn test_right_metro_joins_group_set() {
-    let mut f = setup_feed_fixture([100, 0, 0, 20]).await;
-    let (exchange, mgroup) = (f.exchange_pubkey, f.mgroup_pubkey);
+    let mut fixture = setup_feed_fixture([100, 0, 0, 20]).await;
+    let (exchange, mgroup) = (fixture.exchange_pubkey, fixture.mgroup_pubkey);
     // Feed serves the device's exchange with [mgroup].
-    let feed = create_feed(&mut f, "shreds", exchange, vec![mgroup]).await;
-    set_pass_feeds(
-        &mut f,
+    let feed = create_feed(&mut fixture, "shreds", exchange, vec![mgroup]).await;
+    set_accesspass_feeds(
+        &mut fixture,
         vec![FeedSeat {
             feed_key: feed,
             max_users: 2,
@@ -505,21 +509,22 @@ async fn test_right_metro_joins_group_set() {
     )
     .await;
 
-    try_subscribe_with_feed(&mut f, feed)
+    try_subscribe_with_feed(&mut fixture, feed)
         .await
         .expect("right-metro subscribe should succeed");
 
-    let (user_pubkey, _) = get_user_pda(&f.program_id, &f.user_ip, UserType::Multicast);
-    let user = get_account_data(&mut f.banks_client, user_pubkey)
+    let (user_pubkey, _) = get_user_pda(&fixture.program_id, &fixture.user_ip, UserType::Multicast);
+    let user = get_account_data(&mut fixture.banks_client, user_pubkey)
         .await
         .expect("user exists")
         .get_user()
         .unwrap();
     assert_eq!(user.status, UserStatus::Activated);
-    assert_eq!(user.subscribers, vec![f.mgroup_pubkey]);
+    assert_eq!(user.subscribers, vec![fixture.mgroup_pubkey]);
+    assert!(user.holds_pass_seat);
 
     // The feed seat was ticked, and the user records which feed it consumed.
-    let pass = get_account_data(&mut f.banks_client, f.accesspass_pubkey)
+    let pass = get_account_data(&mut fixture.banks_client, fixture.accesspass_pubkey)
         .await
         .unwrap()
         .get_accesspass()
@@ -537,13 +542,13 @@ async fn test_right_metro_joins_group_set() {
 
 #[tokio::test]
 async fn test_wrong_metro_device_rejected() {
-    let mut f = setup_feed_fixture([100, 0, 0, 21]).await;
-    let mgroup = f.mgroup_pubkey;
+    let mut fixture = setup_feed_fixture([100, 0, 0, 21]).await;
+    let mgroup = fixture.mgroup_pubkey;
     // Feed serves a DIFFERENT exchange, so the device's metro is not covered.
     let other_exchange = Pubkey::new_unique();
-    let feed = create_feed(&mut f, "shreds", other_exchange, vec![mgroup]).await;
-    set_pass_feeds(
-        &mut f,
+    let feed = create_feed(&mut fixture, "shreds", other_exchange, vec![mgroup]).await;
+    set_accesspass_feeds(
+        &mut fixture,
         vec![FeedSeat {
             feed_key: feed,
             max_users: 2,
@@ -556,7 +561,7 @@ async fn test_wrong_metro_device_rejected() {
     )
     .await;
 
-    let err = try_subscribe_with_feed(&mut f, feed)
+    let err = try_subscribe_with_feed(&mut fixture, feed)
         .await
         .expect_err("wrong-metro subscribe should be rejected");
     assert_custom_error(&err, 91); // MetroMismatch
@@ -564,13 +569,13 @@ async fn test_wrong_metro_device_rejected() {
 
 #[tokio::test]
 async fn test_multi_feed_seat_matching_admits() {
-    let mut f = setup_feed_fixture([100, 0, 0, 22]).await;
-    let (exchange, mgroup) = (f.exchange_pubkey, f.mgroup_pubkey);
+    let mut fixture = setup_feed_fixture([100, 0, 0, 22]).await;
+    let (exchange, mgroup) = (fixture.exchange_pubkey, fixture.mgroup_pubkey);
     // Two feeds: one serving a bogus metro, one serving the device's metro.
-    let feed_other = create_feed(&mut f, "tokyo", Pubkey::new_unique(), vec![mgroup]).await;
-    let feed_match = create_feed(&mut f, "fra", exchange, vec![mgroup]).await;
-    set_pass_feeds(
-        &mut f,
+    let feed_other = create_feed(&mut fixture, "tokyo", Pubkey::new_unique(), vec![mgroup]).await;
+    let feed_match = create_feed(&mut fixture, "fra", exchange, vec![mgroup]).await;
+    set_accesspass_feeds(
+        &mut fixture,
         vec![
             FeedSeat {
                 feed_key: feed_other,
@@ -595,11 +600,11 @@ async fn test_multi_feed_seat_matching_admits() {
     .await;
 
     // Subscribing with the matching feed succeeds.
-    try_subscribe_with_feed(&mut f, feed_match)
+    try_subscribe_with_feed(&mut fixture, feed_match)
         .await
         .expect("subscribe via the matching feed should succeed");
 
-    let pass = get_account_data(&mut f.banks_client, f.accesspass_pubkey)
+    let pass = get_account_data(&mut fixture.banks_client, fixture.accesspass_pubkey)
         .await
         .unwrap()
         .get_accesspass()
@@ -614,14 +619,14 @@ async fn test_multi_feed_seat_matching_admits() {
 
 #[tokio::test]
 async fn test_group_not_in_feed_rejected() {
-    let mut f = setup_feed_fixture([100, 0, 0, 23]).await;
-    let exchange = f.exchange_pubkey;
+    let mut fixture = setup_feed_fixture([100, 0, 0, 23]).await;
+    let exchange = fixture.exchange_pubkey;
     // Feed serves the device's metro but with a different group set, so the target mgroup is not
     // joinable.
     let other_group = Pubkey::new_unique();
-    let feed = create_feed(&mut f, "shreds", exchange, vec![other_group]).await;
-    set_pass_feeds(
-        &mut f,
+    let feed = create_feed(&mut fixture, "shreds", exchange, vec![other_group]).await;
+    set_accesspass_feeds(
+        &mut fixture,
         vec![FeedSeat {
             feed_key: feed,
             max_users: 2,
@@ -634,7 +639,7 @@ async fn test_group_not_in_feed_rejected() {
     )
     .await;
 
-    let err = try_subscribe_with_feed(&mut f, feed)
+    let err = try_subscribe_with_feed(&mut fixture, feed)
         .await
         .expect_err("group outside the feed should be rejected");
     assert_custom_error(&err, 94); // GroupNotInFeed
@@ -645,30 +650,31 @@ async fn test_group_not_in_feed_rejected() {
 // ============================================================================
 
 /// Create a second activated multicast group in the fixture's environment.
-async fn create_second_group(f: &mut FeedFixture) -> Pubkey {
-    let gs = get_globalstate(&mut f.banks_client, f.globalstate_pubkey).await;
-    let (mgroup2_pubkey, _) = get_multicastgroup_pda(&f.program_id, gs.account_index + 1);
-    let recent_blockhash = f.banks_client.get_latest_blockhash().await.unwrap();
+async fn create_second_group(fixture: &mut FeedFixture) -> Pubkey {
+    let gs = get_globalstate(&mut fixture.banks_client, fixture.globalstate_pubkey).await;
+    let (mgroup2_pubkey, _) = get_multicastgroup_pda(&fixture.program_id, gs.account_index + 1);
+    let recent_blockhash = fixture.banks_client.get_latest_blockhash().await.unwrap();
     execute_transaction(
-        &mut f.banks_client,
+        &mut fixture.banks_client,
         recent_blockhash,
-        f.program_id,
+        fixture.program_id,
         DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
             code: "group2".to_string(),
             max_bandwidth: 1000,
-            owner: f.payer.pubkey(),
+            owner: fixture.payer.pubkey(),
             use_onchain_allocation: true,
             bond_ref: Pubkey::default(),
         }),
         vec![
             AccountMeta::new(mgroup2_pubkey, false),
-            AccountMeta::new(f.globalstate_pubkey, false),
+            AccountMeta::new(fixture.globalstate_pubkey, false),
             AccountMeta::new(
-                get_resource_extension_pda(&f.program_id, ResourceType::MulticastGroupBlock).0,
+                get_resource_extension_pda(&fixture.program_id, ResourceType::MulticastGroupBlock)
+                    .0,
                 false,
             ),
         ],
-        &f.payer,
+        &fixture.payer,
     )
     .await;
     mgroup2_pubkey
@@ -677,31 +683,31 @@ async fn create_second_group(f: &mut FeedFixture) -> Pubkey {
 /// Attempt a batch CreateSubscribeUser (subscriber) with one extra group; the extra
 /// group account sits between the dz_prefix block and the feed.
 async fn try_subscribe_batch_with_feed(
-    f: &mut FeedFixture,
+    fixture: &mut FeedFixture,
     feed: Pubkey,
     extra_group: Pubkey,
 ) -> Result<(), BanksClientError> {
-    let recent_blockhash = wait_for_new_blockhash(&mut f.banks_client).await;
-    let (user_pubkey, _) = get_user_pda(&f.program_id, &f.user_ip, UserType::Multicast);
+    let recent_blockhash = wait_for_new_blockhash(&mut fixture.banks_client).await;
+    let (user_pubkey, _) = get_user_pda(&fixture.program_id, &fixture.user_ip, UserType::Multicast);
     let accounts = vec![
         AccountMeta::new(user_pubkey, false),
-        AccountMeta::new(f.device_pubkey, false),
-        AccountMeta::new(f.mgroup_pubkey, false),
-        AccountMeta::new(f.accesspass_pubkey, false),
-        AccountMeta::new(f.globalstate_pubkey, false),
-        AccountMeta::new(f.user_tunnel_block, false),
-        AccountMeta::new(f.multicast_publisher_block, false),
-        AccountMeta::new(f.tunnel_ids, false),
-        AccountMeta::new(f.dz_prefix_block, false),
+        AccountMeta::new(fixture.device_pubkey, false),
+        AccountMeta::new(fixture.mgroup_pubkey, false),
+        AccountMeta::new(fixture.accesspass_pubkey, false),
+        AccountMeta::new(fixture.globalstate_pubkey, false),
+        AccountMeta::new(fixture.user_tunnel_block, false),
+        AccountMeta::new(fixture.multicast_publisher_block, false),
+        AccountMeta::new(fixture.tunnel_ids, false),
+        AccountMeta::new(fixture.dz_prefix_block, false),
         AccountMeta::new(extra_group, false),
         AccountMeta::new_readonly(feed, false),
     ];
     let mut tx = create_transaction_with_extra_accounts(
-        f.program_id,
+        fixture.program_id,
         &DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
             user_type: UserType::Multicast,
             cyoa_type: UserCYOA::GREOverDIA,
-            client_ip: f.user_ip,
+            client_ip: fixture.user_ip,
             publisher: false,
             subscriber: true,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
@@ -711,24 +717,24 @@ async fn try_subscribe_batch_with_feed(
             extra_group_count: 1,
         }),
         &accounts,
-        &f.payer,
+        &fixture.payer,
         &[],
     );
-    tx.try_sign(&[&f.payer], recent_blockhash).unwrap();
-    f.banks_client.process_transaction(tx).await
+    tx.try_sign(&[&fixture.payer], recent_blockhash).unwrap();
+    fixture.banks_client.process_transaction(tx).await
 }
 
 /// A batch EdgeSeat create where every group is in the feed's set succeeds, with the
 /// seat ticked exactly once (per-user-per-feed, not per-group).
 #[tokio::test]
 async fn test_batch_within_feed_group_set_ticks_seat_once() {
-    let mut f = setup_feed_fixture([100, 0, 0, 24]).await;
-    let mgroup2 = create_second_group(&mut f).await;
-    let (exchange, mgroup) = (f.exchange_pubkey, f.mgroup_pubkey);
+    let mut fixture = setup_feed_fixture([100, 0, 0, 24]).await;
+    let mgroup2 = create_second_group(&mut fixture).await;
+    let (exchange, mgroup) = (fixture.exchange_pubkey, fixture.mgroup_pubkey);
     // Feed serves the device's exchange with BOTH groups.
-    let feed = create_feed(&mut f, "shreds", exchange, vec![mgroup, mgroup2]).await;
-    set_pass_feeds(
-        &mut f,
+    let feed = create_feed(&mut fixture, "shreds", exchange, vec![mgroup, mgroup2]).await;
+    set_accesspass_feeds(
+        &mut fixture,
         vec![FeedSeat {
             feed_key: feed,
             max_users: 2,
@@ -741,21 +747,21 @@ async fn test_batch_within_feed_group_set_ticks_seat_once() {
     )
     .await;
 
-    try_subscribe_batch_with_feed(&mut f, feed, mgroup2)
+    try_subscribe_batch_with_feed(&mut fixture, feed, mgroup2)
         .await
         .expect("batch subscribe within the feed's group set should succeed");
 
-    let (user_pubkey, _) = get_user_pda(&f.program_id, &f.user_ip, UserType::Multicast);
-    let user = get_account_data(&mut f.banks_client, user_pubkey)
+    let (user_pubkey, _) = get_user_pda(&fixture.program_id, &fixture.user_ip, UserType::Multicast);
+    let user = get_account_data(&mut fixture.banks_client, user_pubkey)
         .await
         .expect("user exists")
         .get_user()
         .unwrap();
     assert_eq!(user.status, UserStatus::Activated);
-    assert_eq!(user.subscribers, vec![f.mgroup_pubkey, mgroup2]);
+    assert_eq!(user.subscribers, vec![fixture.mgroup_pubkey, mgroup2]);
 
     // One seat tick for the whole batch: the seat is per-user-per-feed.
-    let pass = get_account_data(&mut f.banks_client, f.accesspass_pubkey)
+    let pass = get_account_data(&mut fixture.banks_client, fixture.accesspass_pubkey)
         .await
         .unwrap()
         .get_accesspass()
@@ -767,13 +773,13 @@ async fn test_batch_within_feed_group_set_ticks_seat_once() {
 /// with GroupNotInFeed and rolls back atomically — including the seat tick.
 #[tokio::test]
 async fn test_batch_extra_group_not_in_feed_rejected_and_seat_not_ticked() {
-    let mut f = setup_feed_fixture([100, 0, 0, 25]).await;
-    let mgroup2 = create_second_group(&mut f).await;
-    let (exchange, mgroup) = (f.exchange_pubkey, f.mgroup_pubkey);
+    let mut fixture = setup_feed_fixture([100, 0, 0, 25]).await;
+    let mgroup2 = create_second_group(&mut fixture).await;
+    let (exchange, mgroup) = (fixture.exchange_pubkey, fixture.mgroup_pubkey);
     // Feed serves the device's exchange with only the primary group.
-    let feed = create_feed(&mut f, "shreds", exchange, vec![mgroup]).await;
-    set_pass_feeds(
-        &mut f,
+    let feed = create_feed(&mut fixture, "shreds", exchange, vec![mgroup]).await;
+    set_accesspass_feeds(
+        &mut fixture,
         vec![FeedSeat {
             feed_key: feed,
             max_users: 2,
@@ -786,20 +792,20 @@ async fn test_batch_extra_group_not_in_feed_rejected_and_seat_not_ticked() {
     )
     .await;
 
-    let err = try_subscribe_batch_with_feed(&mut f, feed, mgroup2)
+    let err = try_subscribe_batch_with_feed(&mut fixture, feed, mgroup2)
         .await
         .expect_err("extra group outside the feed's set should be rejected");
     assert_custom_error(&err, 94); // GroupNotInFeed
 
     // The whole transaction rolled back: no user, no seat consumed.
-    let (user_pubkey, _) = get_user_pda(&f.program_id, &f.user_ip, UserType::Multicast);
+    let (user_pubkey, _) = get_user_pda(&fixture.program_id, &fixture.user_ip, UserType::Multicast);
     assert!(
-        get_account_data(&mut f.banks_client, user_pubkey)
+        get_account_data(&mut fixture.banks_client, user_pubkey)
             .await
             .is_none(),
         "user account must not be created on a failed batch"
     );
-    let pass = get_account_data(&mut f.banks_client, f.accesspass_pubkey)
+    let pass = get_account_data(&mut fixture.banks_client, fixture.accesspass_pubkey)
         .await
         .unwrap()
         .get_accesspass()
@@ -816,28 +822,28 @@ async fn test_batch_extra_group_not_in_feed_rejected_and_seat_not_ticked() {
 /// side without walking every access pass: the status is checked where the seat is spent.
 #[tokio::test]
 async fn test_non_active_feed_admits_no_subscriber() {
-    let mut f = setup_feed_fixture([100, 0, 0, 26]).await;
-    let (exchange, mgroup) = (f.exchange_pubkey, f.mgroup_pubkey);
-    let feed = create_bonded_feed(&mut f, "halted", exchange, vec![mgroup]).await;
-    let recent_blockhash = f.banks_client.get_latest_blockhash().await.unwrap();
+    let mut fixture = setup_feed_fixture([100, 0, 0, 26]).await;
+    let (exchange, mgroup) = (fixture.exchange_pubkey, fixture.mgroup_pubkey);
+    let feed = create_bonded_feed(&mut fixture, "halted", exchange, vec![mgroup]).await;
+    let recent_blockhash = fixture.banks_client.get_latest_blockhash().await.unwrap();
     execute_transaction(
-        &mut f.banks_client,
+        &mut fixture.banks_client,
         recent_blockhash,
-        f.program_id,
+        fixture.program_id,
         DoubleZeroInstruction::HaltFeed(FeedHaltArgs {}),
         vec![
             AccountMeta::new(feed, false),
-            AccountMeta::new(f.globalstate_pubkey, false),
+            AccountMeta::new(fixture.globalstate_pubkey, false),
         ],
-        &f.payer,
+        &fixture.payer,
     )
     .await;
 
     // A seat provisioner sells a seat on the halted feed, which `SetAccessPassFeeds` allows: it
     // refuses only a retiring or retired feed. Holding the seat is legitimate; connecting while
     // the feed is halted is not.
-    set_pass_feeds(
-        &mut f,
+    set_accesspass_feeds(
+        &mut fixture,
         vec![FeedSeat {
             feed_key: feed,
             max_users: 2,
@@ -850,13 +856,13 @@ async fn test_non_active_feed_admits_no_subscriber() {
     )
     .await;
 
-    let err = try_subscribe_with_feed(&mut f, feed)
+    let err = try_subscribe_with_feed(&mut fixture, feed)
         .await
         .expect_err("a halted feed should admit no subscriber");
     assert_custom_error(&err, 123); // FeedNotActive
 
     // The seat was not spent, so the subscriber keeps what they paid for.
-    let pass = get_account_data(&mut f.banks_client, f.accesspass_pubkey)
+    let pass = get_account_data(&mut fixture.banks_client, fixture.accesspass_pubkey)
         .await
         .unwrap()
         .get_accesspass()
@@ -872,11 +878,11 @@ async fn test_non_active_feed_admits_no_subscriber() {
 /// `set_access_pass_feeds_test.rs`.
 #[tokio::test]
 async fn test_a_retiring_feed_still_admits_its_seat_holders() {
-    let mut f = setup_feed_fixture([100, 0, 0, 27]).await;
-    let (exchange, mgroup) = (f.exchange_pubkey, f.mgroup_pubkey);
-    let feed = create_feed(&mut f, "closing", exchange, vec![mgroup]).await;
-    set_pass_feeds(
-        &mut f,
+    let mut fixture = setup_feed_fixture([100, 0, 0, 27]).await;
+    let (exchange, mgroup) = (fixture.exchange_pubkey, fixture.mgroup_pubkey);
+    let feed = create_feed(&mut fixture, "closing", exchange, vec![mgroup]).await;
+    set_accesspass_feeds(
+        &mut fixture,
         vec![FeedSeat {
             feed_key: feed,
             max_users: 2,
@@ -889,34 +895,245 @@ async fn test_a_retiring_feed_still_admits_its_seat_holders() {
     )
     .await;
 
-    let recent_blockhash = wait_for_new_blockhash(&mut f.banks_client).await;
+    let recent_blockhash = wait_for_new_blockhash(&mut fixture.banks_client).await;
     execute_transaction(
-        &mut f.banks_client,
+        &mut fixture.banks_client,
         recent_blockhash,
-        f.program_id,
+        fixture.program_id,
         DoubleZeroInstruction::RetireFeed(FeedRetireArgs {}),
         vec![
             AccountMeta::new(feed, false),
-            AccountMeta::new(f.globalstate_pubkey, false),
+            AccountMeta::new(fixture.globalstate_pubkey, false),
         ],
-        &f.payer,
+        &fixture.payer,
     )
     .await;
-    let retiring = get_account_data(&mut f.banks_client, feed)
+    let retiring = get_account_data(&mut fixture.banks_client, feed)
         .await
         .expect("feed exists")
         .get_feed()
         .unwrap();
     assert_eq!(retiring.status, FeedStatus::Retiring);
 
-    try_subscribe_with_feed(&mut f, feed)
+    try_subscribe_with_feed(&mut fixture, feed)
         .await
         .expect("a retiring feed should still admit its seat holders");
 
-    let pass = get_account_data(&mut f.banks_client, f.accesspass_pubkey)
+    let pass = get_account_data(&mut fixture.banks_client, fixture.accesspass_pubkey)
         .await
         .unwrap()
         .get_accesspass()
         .unwrap();
     assert_eq!(pass.feed_seats()[0].current_users, 1);
+}
+
+async fn make_group_private(fixture: &mut FeedFixture, mgroup: Pubkey) {
+    let recent_blockhash = fixture.banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut fixture.banks_client,
+        recent_blockhash,
+        fixture.program_id,
+        DoubleZeroInstruction::UpdateMulticastGroup(MulticastGroupUpdateArgs {
+            private: Some(true),
+            max_publishers: Some(10),
+            max_subscribers: Some(10),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(mgroup, false),
+            AccountMeta::new(fixture.globalstate_pubkey, false),
+        ],
+        &fixture.payer,
+    )
+    .await;
+}
+
+async fn add_group_to_subscriber_allowlist(fixture: &mut FeedFixture, mgroup: Pubkey) {
+    let recent_blockhash = fixture.banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut fixture.banks_client,
+        recent_blockhash,
+        fixture.program_id,
+        DoubleZeroInstruction::AddMulticastGroupSubAllowlist(AddMulticastGroupSubAllowlistArgs {
+            client_ip: fixture.user_ip,
+            user_payer: fixture.payer.pubkey(),
+        }),
+        vec![
+            AccountMeta::new(mgroup, false),
+            AccountMeta::new(fixture.accesspass_pubkey, false),
+            AccountMeta::new(fixture.globalstate_pubkey, false),
+            AccountMeta::new(fixture.payer.pubkey(), false),
+        ],
+        &fixture.payer,
+    )
+    .await;
+}
+
+async fn try_subscribe_without_feed(
+    fixture: &mut FeedFixture,
+    extra_groups: &[Pubkey],
+) -> Result<(), BanksClientError> {
+    let recent_blockhash = wait_for_new_blockhash(&mut fixture.banks_client).await;
+    let (user_pubkey, _) = get_user_pda(&fixture.program_id, &fixture.user_ip, UserType::Multicast);
+    let mut accounts = vec![
+        AccountMeta::new(user_pubkey, false),
+        AccountMeta::new(fixture.device_pubkey, false),
+        AccountMeta::new(fixture.mgroup_pubkey, false),
+        AccountMeta::new(fixture.accesspass_pubkey, false),
+        AccountMeta::new(fixture.globalstate_pubkey, false),
+        AccountMeta::new(fixture.user_tunnel_block, false),
+        AccountMeta::new(fixture.multicast_publisher_block, false),
+        AccountMeta::new(fixture.tunnel_ids, false),
+        AccountMeta::new(fixture.dz_prefix_block, false),
+    ];
+    accounts.extend(
+        extra_groups
+            .iter()
+            .map(|group| AccountMeta::new(*group, false)),
+    );
+    let mut tx = create_transaction_with_extra_accounts(
+        fixture.program_id,
+        &DoubleZeroInstruction::CreateSubscribeUser(UserCreateSubscribeArgs {
+            user_type: UserType::Multicast,
+            cyoa_type: UserCYOA::GREOverDIA,
+            client_ip: fixture.user_ip,
+            publisher: false,
+            subscriber: true,
+            tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+            dz_prefix_count: 1,
+            owner: Pubkey::default(),
+            ip_proof: None,
+            extra_group_count: extra_groups.len() as u8,
+        }),
+        &accounts,
+        &fixture.payer,
+        &[],
+    );
+    tx.try_sign(&[&fixture.payer], recent_blockhash).unwrap();
+    fixture.banks_client.process_transaction(tx).await
+}
+
+#[tokio::test]
+async fn test_private_group_joins_without_feed_or_pass_seat() {
+    let mut fixture = setup_feed_fixture([100, 0, 0, 40]).await;
+    let mgroup = fixture.mgroup_pubkey;
+    make_group_private(&mut fixture, mgroup).await;
+    add_group_to_subscriber_allowlist(&mut fixture, mgroup).await;
+
+    try_subscribe_without_feed(&mut fixture, &[])
+        .await
+        .expect("a private group needs no feed");
+
+    let (user_pubkey, _) = get_user_pda(&fixture.program_id, &fixture.user_ip, UserType::Multicast);
+    let user = get_account_data(&mut fixture.banks_client, user_pubkey)
+        .await
+        .expect("user exists")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Activated);
+    assert_eq!(user.subscribers, vec![mgroup]);
+    assert!(user.feed_pks.is_empty());
+    assert!(!user.holds_pass_seat);
+
+    let pass = get_account_data(&mut fixture.banks_client, fixture.accesspass_pubkey)
+        .await
+        .unwrap()
+        .get_accesspass()
+        .unwrap();
+    assert_eq!(pass.public_multicast_user_count, 0);
+    assert_eq!(pass.connection_count, 1);
+
+    let group = get_account_data(&mut fixture.banks_client, mgroup)
+        .await
+        .unwrap()
+        .get_multicastgroup()
+        .unwrap();
+    assert_eq!(group.subscriber_count, 1);
+}
+
+#[tokio::test]
+async fn test_private_group_not_on_allowlist_rejected() {
+    let mut fixture = setup_feed_fixture([100, 0, 0, 41]).await;
+    let mgroup = fixture.mgroup_pubkey;
+    make_group_private(&mut fixture, mgroup).await;
+
+    let err = try_subscribe_without_feed(&mut fixture, &[])
+        .await
+        .unwrap_err();
+    assert_custom_error(&err, custom_code(DoubleZeroError::NotAllowed));
+}
+
+#[tokio::test]
+async fn test_group_that_is_not_private_still_needs_a_feed() {
+    let mut fixture = setup_feed_fixture([100, 0, 0, 42]).await;
+    let mgroup = fixture.mgroup_pubkey;
+    add_group_to_subscriber_allowlist(&mut fixture, mgroup).await;
+
+    let err = try_subscribe_without_feed(&mut fixture, &[])
+        .await
+        .unwrap_err();
+    assert_custom_error(&err, custom_code(DoubleZeroError::FeedAccountRequired));
+}
+
+#[tokio::test]
+async fn test_private_group_with_feed_group_needs_a_feed() {
+    let mut fixture = setup_feed_fixture([100, 0, 0, 43]).await;
+    let mgroup = fixture.mgroup_pubkey;
+    make_group_private(&mut fixture, mgroup).await;
+    add_group_to_subscriber_allowlist(&mut fixture, mgroup).await;
+    let feed_group = create_second_group(&mut fixture).await;
+
+    let err = try_subscribe_without_feed(&mut fixture, &[feed_group])
+        .await
+        .unwrap_err();
+    assert_custom_error(&err, custom_code(DoubleZeroError::FeedAccountRequired));
+
+    let (user_pubkey, _) = get_user_pda(&fixture.program_id, &fixture.user_ip, UserType::Multicast);
+    assert!(get_account_data(&mut fixture.banks_client, user_pubkey)
+        .await
+        .is_none());
+}
+
+#[tokio::test]
+async fn test_feed_group_with_private_extra_group_joins_both() {
+    let mut fixture = setup_feed_fixture([100, 0, 0, 44]).await;
+    let (exchange, mgroup) = (fixture.exchange_pubkey, fixture.mgroup_pubkey);
+    let feed = create_feed(&mut fixture, "shreds", exchange, vec![mgroup]).await;
+    set_accesspass_feeds(
+        &mut fixture,
+        vec![FeedSeat {
+            feed_key: feed,
+            max_users: 2,
+            max_future_users: 2,
+            current_users: 0,
+            anniversary_day: 15,
+            window_end: TEST_WINDOW_END,
+            terminates_at: TEST_TERMINATES_AT,
+        }],
+    )
+    .await;
+    let private_group = create_second_group(&mut fixture).await;
+    make_group_private(&mut fixture, private_group).await;
+    add_group_to_subscriber_allowlist(&mut fixture, private_group).await;
+
+    try_subscribe_batch_with_feed(&mut fixture, feed, private_group)
+        .await
+        .expect("a feed group and a private group join in one create");
+
+    let (user_pubkey, _) = get_user_pda(&fixture.program_id, &fixture.user_ip, UserType::Multicast);
+    let user = get_account_data(&mut fixture.banks_client, user_pubkey)
+        .await
+        .expect("user exists")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.subscribers, vec![mgroup, private_group]);
+    assert_eq!(user.feed_pks, vec![feed]);
+
+    let pass = get_account_data(&mut fixture.banks_client, fixture.accesspass_pubkey)
+        .await
+        .unwrap()
+        .get_accesspass()
+        .unwrap();
+    assert_eq!(pass.feed_seats()[0].current_users, 1);
+    assert_eq!(pass.public_multicast_user_count, 1);
 }

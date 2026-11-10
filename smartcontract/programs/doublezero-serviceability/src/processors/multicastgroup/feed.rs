@@ -9,7 +9,7 @@ use crate::{
     authorize::{authorize, split_trailing_permission},
     error::DoubleZeroError,
     pda::{get_accesspass_pda, get_globalstate_pda},
-    processors::{feed::check_feed_metro_coverage, validation::validate_program_account},
+    processors::{feed::check_feed_covers_group, validation::validate_program_account},
     serializer::try_acc_write,
     state::{
         accesspass::{AccessPass, AccessPassType},
@@ -199,7 +199,7 @@ pub fn load_feeds(
             .iter()
             .any(|s| s.feed_key == *feed_account.key);
         if provisioned {
-            check_feed_metro_coverage(
+            check_feed_covers_group(
                 program_id,
                 accesspass,
                 device_exchange,

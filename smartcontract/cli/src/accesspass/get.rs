@@ -188,7 +188,7 @@ impl GetAccessPassCliCommand {
             ),
             multicast_users: format!(
                 "{} / {}",
-                accesspass.multicast_user_count, accesspass.max_multicast_users
+                accesspass.public_multicast_user_count, accesspass.max_multicast_users
             ),
             status: accesspass.status.to_string(),
             owner: accesspass.owner.to_string(),
@@ -269,6 +269,9 @@ mod tests {
             publisher_count: 1,
             subscriber_count: 5,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         };
 
         let accesspass = AccessPass {
@@ -287,7 +290,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 2,
             max_unicast_users: 5,
-            multicast_user_count: 1,
+            public_multicast_user_count: 1,
             max_multicast_users: 3,
         };
 
@@ -447,7 +450,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 0,
-            multicast_user_count: 1,
+            public_multicast_user_count: 1,
             max_multicast_users: 2,
         };
 
@@ -475,6 +478,9 @@ mod tests {
             publisher_count: 0,
             subscriber_count: 1,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         };
 
         client
@@ -640,7 +646,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 0,
-            multicast_user_count: 0,
+            public_multicast_user_count: 0,
             max_multicast_users: 1,
         };
 
@@ -733,7 +739,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 0,
-            multicast_user_count: 0,
+            public_multicast_user_count: 0,
             max_multicast_users: 3,
         };
 
@@ -841,7 +847,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 0,
-            multicast_user_count: 0,
+            public_multicast_user_count: 0,
             max_multicast_users: 1,
         };
 

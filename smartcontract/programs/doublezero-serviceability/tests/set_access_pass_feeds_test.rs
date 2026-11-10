@@ -634,7 +634,7 @@ async fn test_cannot_set_max_users_below_current_users() {
         tenant_allowlist: vec![],
         unicast_user_count: 0,
         max_unicast_users: 1,
-        multicast_user_count: 3,
+        public_multicast_user_count: 3,
         max_multicast_users: 4,
     };
     program_test.add_account(

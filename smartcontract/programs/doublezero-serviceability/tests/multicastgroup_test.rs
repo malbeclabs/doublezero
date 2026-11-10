@@ -1,4 +1,5 @@
 use doublezero_serviceability::{
+    error::DoubleZeroError,
     instructions::*,
     pda::*,
     processors::{
@@ -73,6 +74,9 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
             subscriber_count: Some(1),
             use_onchain_allocation: true,
             owner: None,
+            private: None,
+            max_publishers: None,
+            max_subscribers: None,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -408,6 +412,9 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
             subscriber_count: Some(0),
             use_onchain_allocation: true,
             owner: None,
+            private: None,
+            max_publishers: None,
+            max_subscribers: None,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -456,6 +463,9 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
             subscriber_count: Some(1),
             use_onchain_allocation: true,
             owner: None,
+            private: None,
+            max_publishers: None,
+            max_subscribers: None,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -504,6 +514,9 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
             subscriber_count: Some(0),
             use_onchain_allocation: true,
             owner: None,
+            private: None,
+            max_publishers: None,
+            max_subscribers: None,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -614,4 +627,174 @@ async fn test_multicastgroup_create_with_permission_account_allowed() {
     assert_eq!(mgroup.owner, group_owner);
 
     println!("✅ CreateMulticastGroup with MULTICAST_ADMIN permission succeeded");
+}
+
+#[tokio::test]
+async fn test_multicastgroup_update_sets_private_and_caps() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (multicastgroup_pubkey, _) =
+        get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "trading-company-private".to_string(),
+            max_bandwidth: 1000,
+            owner: Pubkey::new_unique(),
+            use_onchain_allocation: true,
+            bond_ref: Pubkey::default(),
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
+        ],
+        &payer,
+    )
+    .await;
+
+    let created = get_account_data(&mut banks_client, multicastgroup_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_multicastgroup()
+        .unwrap();
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroup(MulticastGroupUpdateArgs {
+            private: Some(true),
+            max_publishers: Some(2),
+            max_subscribers: Some(10),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let capped = get_account_data(&mut banks_client, multicastgroup_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_multicastgroup()
+        .unwrap();
+    assert_eq!(
+        capped,
+        MulticastGroup {
+            private: true,
+            max_publishers: 2,
+            max_subscribers: 10,
+            ..created
+        }
+    );
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroup(MulticastGroupUpdateArgs {
+            max_bandwidth: Some(2000),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &payer,
+    )
+    .await;
+
+    let updated = get_account_data(&mut banks_client, multicastgroup_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_multicastgroup()
+        .unwrap();
+    assert_eq!(
+        updated,
+        MulticastGroup {
+            max_bandwidth: 2000,
+            ..capped
+        }
+    );
+}
+
+#[tokio::test]
+async fn test_multicastgroup_update_private_requires_multicast_admin() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let globalstate_account = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (multicastgroup_pubkey, _) =
+        get_multicastgroup_pda(&program_id, globalstate_account.account_index + 1);
+
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+            code: "trading-company-private".to_string(),
+            max_bandwidth: 1000,
+            owner: Pubkey::new_unique(),
+            use_onchain_allocation: true,
+            bond_ref: Pubkey::default(),
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock).0,
+                false,
+            ),
+        ],
+        &payer,
+    )
+    .await;
+
+    let stranger = Keypair::new();
+    transfer(&mut banks_client, &payer, &stranger.pubkey(), 1_000_000_000).await;
+
+    let err = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroup(MulticastGroupUpdateArgs {
+            private: Some(true),
+            max_publishers: Some(2),
+            max_subscribers: Some(10),
+            ..Default::default()
+        }),
+        vec![
+            AccountMeta::new(multicastgroup_pubkey, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        &stranger,
+    )
+    .await
+    .unwrap_err();
+    assert_custom_error(&err, DoubleZeroError::NotAllowed);
+
+    let group = get_account_data(&mut banks_client, multicastgroup_pubkey)
+        .await
+        .expect("Unable to get Account")
+        .get_multicastgroup()
+        .unwrap();
+    assert!(!group.private);
+    assert_eq!(group.max_publishers, 0);
+    assert_eq!(group.max_subscribers, 0);
 }

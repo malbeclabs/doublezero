@@ -867,11 +867,12 @@ export interface User {
    */
   feedPks: PublicKey[];
   accessPassPubKey: PublicKey;
+  holdsPassSeat: boolean;
 }
 
 export function deserializeUser(data: Uint8Array): User {
   const r = new DefensiveReader(data);
-  return {
+  const u: User = {
     accountType: r.readU8(),
     owner: readPubkey(r),
     index: r.readU128(),
@@ -900,8 +901,18 @@ export function deserializeUser(data: Uint8Array): User {
     // read as an empty vec with the leftover zero bytes ignored as trailing data. readPubkeyVec
     // returns [] on EOF, so accounts predating the slot default to empty too.
     feedPks: readPubkeyVec(r),
-    accessPassPubKey: readPubkey(r),
+    accessPassPubKey: PublicKey.default,
+    holdsPassSeat: true,
   };
+  // When fewer than 32 bytes remain, the program skips the rest of the account. It then reads
+  // holdsPassSeat as true. An account in the old feed_pk layout ends with 28 zero bytes here.
+  if (r.remaining >= 32) {
+    u.accessPassPubKey = readPubkey(r);
+    if (r.remaining >= 1) {
+      u.holdsPassSeat = r.readU8() !== 0;
+    }
+  }
+  return u;
 }
 
 // ---------------------------------------------------------------------------
@@ -922,11 +933,14 @@ export interface MulticastGroup {
   subscriberCount: number;
   /** The BuilderBond that created the group, or the default key for a group an admin created. */
   bondRef: PublicKey;
+  private: boolean;
+  maxPublishers: number;
+  maxSubscribers: number;
 }
 
 export function deserializeMulticastGroup(data: Uint8Array): MulticastGroup {
   const r = new DefensiveReader(data);
-  return {
+  const mg: MulticastGroup = {
     accountType: r.readU8(),
     owner: readPubkey(r),
     index: r.readU128(),
@@ -940,7 +954,16 @@ export function deserializeMulticastGroup(data: Uint8Array): MulticastGroup {
     subscriberCount: r.readU32(),
     // A group created before the field existed ends here, and the reader throws past the end.
     bondRef: r.remaining >= 32 ? readPubkey(r) : PublicKey.default,
+    private: false,
+    maxPublishers: 0,
+    maxSubscribers: 0,
   };
+  if (r.remaining >= 9) {
+    mg.private = r.readU8() !== 0;
+    mg.maxPublishers = r.readU32();
+    mg.maxSubscribers = r.readU32();
+  }
+  return mg;
 }
 
 // ---------------------------------------------------------------------------
@@ -1101,6 +1124,8 @@ export interface AccessPass {
   tenantAllowlist: PublicKey[];
   unicastUserCount: number;
   maxUnicastUsers: number;
+  // The program names this field public_multicast_user_count. It leaves out the users that
+  // joined only private groups.
   multicastUserCount: number;
   maxMulticastUsers: number;
 }

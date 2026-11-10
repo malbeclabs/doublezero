@@ -283,6 +283,10 @@ pub enum DoubleZeroError {
         "The access pass counts are not the expected current values; read the pass again and recount"
     )]
     AccessPassCountsChanged, // variant 134
+    #[error("This multicast group already has as many publishers as its max_publishers allows")]
+    MulticastGroupMaxPublishersExceeded, // variant 135
+    #[error("This multicast group already has as many subscribers as its max_subscribers allows")]
+    MulticastGroupMaxSubscribersExceeded, // variant 136
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -423,6 +427,8 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::BondGroupLimitReached => ProgramError::Custom(132),
             DoubleZeroError::GroupNotOnBond => ProgramError::Custom(133),
             DoubleZeroError::AccessPassCountsChanged => ProgramError::Custom(134),
+            DoubleZeroError::MulticastGroupMaxPublishersExceeded => ProgramError::Custom(135),
+            DoubleZeroError::MulticastGroupMaxSubscribersExceeded => ProgramError::Custom(136),
         }
     }
 }
@@ -564,6 +570,8 @@ impl From<u32> for DoubleZeroError {
             132 => DoubleZeroError::BondGroupLimitReached,
             133 => DoubleZeroError::GroupNotOnBond,
             134 => DoubleZeroError::AccessPassCountsChanged,
+            135 => DoubleZeroError::MulticastGroupMaxPublishersExceeded,
+            136 => DoubleZeroError::MulticastGroupMaxSubscribersExceeded,
             _ => DoubleZeroError::Custom(e),
         }
     }
@@ -609,7 +617,7 @@ mod tests {
         }
 
         // EnumIter generates Custom(0) by default, so we explicitly test values
-        // outside the known variant range (currently 0-134) to ensure the conversion
+        // outside the known variant range (currently 0-136) to ensure the conversion
         // logic handles arbitrary custom codes correctly.
         for code in [1000u32, 100_000, u32::MAX] {
             let err = DoubleZeroError::Custom(code);

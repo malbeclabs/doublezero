@@ -172,6 +172,28 @@ impl UnsubscribeFeedCommand {
         // (see `send_leave`). Either way a worst-case single-feed leave (one target, four
         // retained, twenty groups) fits one transaction.
         let omit_permission = payer_needs_no_permission(client, &accesspass)?;
+        // When the user leaves its last feed, the program reads the groups it keeps to decide
+        // whether the user gives back its pass-wide seat.
+        let kept_groups = |subscribers: &[Pubkey], departing: &[Pubkey]| -> Vec<Pubkey> {
+            if !user.holds_pass_seat {
+                return vec![];
+            }
+            let mut kept: Vec<Pubkey> = subscribers
+                .iter()
+                .filter(|group| !departing.contains(group))
+                .copied()
+                .collect();
+            for group in &user.publishers {
+                if !kept.contains(group) {
+                    kept.push(*group);
+                }
+            }
+            kept
+        };
+        if retained_pks.is_empty() {
+            let kept = kept_groups(&user.subscribers, &groups);
+            groups.extend(kept);
+        }
         let accounts = self.feed_pks.len() + retained_pks.len() + groups.len();
         if accounts <= MAX_FEED_TX_ACCOUNTS {
             return send_leave(
@@ -215,7 +237,7 @@ impl UnsubscribeFeedCommand {
                 .chain(retained_pks.iter().copied())
                 .collect();
 
-            let tx_groups: Vec<Pubkey> = target_feed
+            let departing: Vec<Pubkey> = target_feed
                 .groups
                 .iter()
                 .filter(|group| {
@@ -227,6 +249,10 @@ impl UnsubscribeFeedCommand {
                 })
                 .copied()
                 .collect();
+            let mut tx_groups = departing.clone();
+            if tx_retained_pks.is_empty() {
+                tx_groups.extend(kept_groups(&subscribers, &departing));
+            }
 
             let result = send_leave(
                 client,
@@ -259,7 +285,7 @@ impl UnsubscribeFeedCommand {
                     )
                 })?
             };
-            subscribers.retain(|group| !tx_groups.contains(group));
+            subscribers.retain(|group| !departing.contains(group));
         }
         Ok(signature)
     }
@@ -369,7 +395,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 0,
-            multicast_user_count: 1,
+            public_multicast_user_count: 1,
             max_multicast_users: 4,
         };
         client
@@ -630,7 +656,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 0,
-            multicast_user_count: 1,
+            public_multicast_user_count: 1,
             max_multicast_users: 4,
         };
         client

@@ -212,7 +212,7 @@ pub fn process_set_access_pass(
             flags,
             unicast_user_count: 0,
             max_unicast_users: value.max_unicast_users,
-            multicast_user_count: 0,
+            public_multicast_user_count: 0,
             max_multicast_users: value.max_multicast_users,
         };
 
@@ -268,7 +268,7 @@ pub fn process_set_access_pass(
                 tenant_allowlist: vec![],
                 unicast_user_count: 0,
                 max_unicast_users: value.max_unicast_users,
-                multicast_user_count: 0,
+                public_multicast_user_count: 0,
                 max_multicast_users: value.max_multicast_users,
             }
         };
@@ -439,6 +439,7 @@ mod tests {
             bgp_rtt_ns: 0,
             feed_pks: vec![],
             accesspass_pk: Pubkey::new_unique(),
+            holds_pass_seat: false,
         };
 
         // User with 1 subscriber only (publisher use case)
@@ -467,6 +468,7 @@ mod tests {
             bgp_rtt_ns: 0,
             feed_pks: vec![],
             accesspass_pk: Pubkey::new_unique(),
+            holds_pass_seat: false,
         };
 
         // User with 1 publisher, 1 subscriber, and 1 feed seat (EdgeSeat both-roles create)
@@ -495,6 +497,7 @@ mod tests {
             bgp_rtt_ns: 0,
             feed_pks: vec![Pubkey::new_unique()],
             accesspass_pk: Pubkey::new_unique(),
+            holds_pass_seat: false,
         };
 
         let size_with_publisher = borsh::object_length(&user_with_publisher).unwrap();
@@ -502,26 +505,27 @@ mod tests {
         let size_with_both = borsh::object_length(&user_with_both).unwrap();
 
         // Verify our understanding of the sizes
-        // Base User size (empty vecs) = 238 bytes (includes tunnel_flags, bgp_status, last_bgp_up_at,
-        // last_bgp_reported_at, bgp_rtt_ns, the feed_pks length prefix, and accesspass_pk)
+        // Base User size (empty vecs) = 239 bytes (includes tunnel_flags, bgp_status, last_bgp_up_at,
+        // last_bgp_reported_at, bgp_rtt_ns, the feed_pks length prefix, accesspass_pk and
+        // holds_pass_seat)
         // Each Pubkey in publishers/subscribers/feed_pks adds 32 bytes
         assert_eq!(
-            size_with_publisher, 270,
-            "User with 1 publisher should be 270 bytes"
+            size_with_publisher, 271,
+            "User with 1 publisher should be 271 bytes"
         );
         assert_eq!(
-            size_with_subscriber, 270,
-            "User with 1 subscriber should be 270 bytes"
+            size_with_subscriber, 271,
+            "User with 1 subscriber should be 271 bytes"
         );
         assert_eq!(
-            size_with_both, 334,
-            "User with 1 publisher + 1 subscriber + 1 feed should be 334 bytes"
+            size_with_both, 335,
+            "User with 1 publisher + 1 subscriber + 1 feed should be 335 bytes"
         );
 
-        // The constant should be sized for 3 accounts with pub+sub+feed (334 * 3 = 1,002)
+        // The constant should be sized for 3 accounts with pub+sub+feed (335 * 3 = 1,005)
         assert_eq!(
             AIRDROP_USER_RENT_LAMPORTS_BYTES,
-            334 * 3,
+            335 * 3,
             "AIRDROP_USER_RENT_LAMPORTS_BYTES should be sized for 3 User accounts with pub+sub+feed"
         );
 

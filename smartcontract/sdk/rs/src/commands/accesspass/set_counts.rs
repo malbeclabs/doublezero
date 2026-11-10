@@ -4,8 +4,9 @@ use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 use crate::DoubleZeroClient;
 
-/// Replace the unicast and multicast user counts of an existing access pass. The program sets
-/// the connection count to their sum. Use it after counting the users on the pass offchain.
+/// Replace the unicast and public multicast user counts of an existing access pass. The program
+/// sets the connection count to the sum of these two counts and the private multicast count. Use
+/// it after you count the users on the pass offchain.
 ///
 /// The `expected_*` fields are the counts read from the pass when the users were counted. The
 /// program refuses the write with `AccessPassCountsChanged` when the pass no longer holds them.
@@ -16,9 +17,10 @@ pub struct SetAccessPassCountsCommand {
     pub pubkey: Pubkey,
     pub expected_connection_count: u16,
     pub expected_unicast_user_count: u16,
-    pub expected_multicast_user_count: u16,
+    pub expected_public_multicast_user_count: u16,
     pub unicast_user_count: u16,
-    pub multicast_user_count: u16,
+    pub public_multicast_user_count: u16,
+    pub private_multicast_user_count: u16,
 }
 
 impl SetAccessPassCountsCommand {
@@ -30,9 +32,10 @@ impl SetAccessPassCountsCommand {
             SetAccessPassCountsArgs {
                 expected_connection_count: self.expected_connection_count,
                 expected_unicast_user_count: self.expected_unicast_user_count,
-                expected_multicast_user_count: self.expected_multicast_user_count,
+                expected_public_multicast_user_count: self.expected_public_multicast_user_count,
                 unicast_user_count: self.unicast_user_count,
-                multicast_user_count: self.multicast_user_count,
+                public_multicast_user_count: self.public_multicast_user_count,
+                private_multicast_user_count: self.private_multicast_user_count,
             },
         ))
     }
@@ -64,9 +67,10 @@ mod tests {
             SetAccessPassCountsArgs {
                 expected_connection_count: 2,
                 expected_unicast_user_count: 0,
-                expected_multicast_user_count: 0,
+                expected_public_multicast_user_count: 0,
                 unicast_user_count: 3,
-                multicast_user_count: 1,
+                public_multicast_user_count: 1,
+                private_multicast_user_count: 1,
             },
         );
         client
@@ -79,9 +83,10 @@ mod tests {
             pubkey: accesspass,
             expected_connection_count: 2,
             expected_unicast_user_count: 0,
-            expected_multicast_user_count: 0,
+            expected_public_multicast_user_count: 0,
             unicast_user_count: 3,
-            multicast_user_count: 1,
+            public_multicast_user_count: 1,
+            private_multicast_user_count: 1,
         }
         .execute(&client);
         assert!(res.is_ok());

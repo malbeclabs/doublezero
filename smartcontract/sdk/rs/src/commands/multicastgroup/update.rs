@@ -14,6 +14,9 @@ pub struct UpdateMulticastGroupCommand {
     pub publisher_count: Option<u32>,
     pub subscriber_count: Option<u32>,
     pub owner: Option<Pubkey>,
+    pub private: Option<bool>,
+    pub max_publishers: Option<u32>,
+    pub max_subscribers: Option<u32>,
 }
 
 impl UpdateMulticastGroupCommand {
@@ -39,6 +42,9 @@ impl UpdateMulticastGroupCommand {
                 subscriber_count: self.subscriber_count,
                 use_onchain_allocation: self.multicast_ip.is_some(),
                 owner: self.owner,
+                private: self.private,
+                max_publishers: self.max_publishers,
+                max_subscribers: self.max_subscribers,
             },
         ))
     }
@@ -77,6 +83,9 @@ mod tests {
                 subscriber_count: Some(100),
                 use_onchain_allocation: true,
                 owner: None,
+                private: None,
+                max_publishers: None,
+                max_subscribers: None,
             },
         );
         client
@@ -92,6 +101,9 @@ mod tests {
             publisher_count: Some(10),
             subscriber_count: Some(100),
             owner: None,
+            private: None,
+            max_publishers: None,
+            max_subscribers: None,
         };
 
         let update_invalid_command = UpdateMulticastGroupCommand {
@@ -126,6 +138,9 @@ mod tests {
                 subscriber_count: None,
                 use_onchain_allocation: false,
                 owner: None,
+                private: None,
+                max_publishers: None,
+                max_subscribers: None,
             },
         );
         client
@@ -141,6 +156,9 @@ mod tests {
             publisher_count: None,
             subscriber_count: None,
             owner: None,
+            private: None,
+            max_publishers: None,
+            max_subscribers: None,
         }
         .execute(&client);
         assert!(res.is_ok());

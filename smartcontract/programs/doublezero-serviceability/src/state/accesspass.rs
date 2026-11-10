@@ -239,15 +239,20 @@ pub struct AccessPass {
     )]
     pub user_payer: Pubkey, // 32
     pub last_access_epoch: u64,    // 8 / 0-Rejected / u64::MAX unlimited
-    pub connection_count: u16,     // 2
-    pub status: AccessPassStatus,  // 1
+    // The connection count includes a multicast user that joined only private groups. The
+    // unicast and public multicast counts leave that user out.
+    pub connection_count: u16,             // 2
+    pub status: AccessPassStatus,          // 1
     pub mgroup_pub_allowlist: Vec<Pubkey>, // Vec<32> - List of multicast groups this AccessPass can publish to
     pub mgroup_sub_allowlist: Vec<Pubkey>, // Vec<32> - List of multicast groups this AccessPass can subscribe to
     pub flags: u8,                         // 1
     pub tenant_allowlist: Vec<Pubkey>, // Vec<32> - List of tenants this AccessPass can connect to
     pub unicast_user_count: u16,       // 2 - live count of unicast users (every pass type)
     pub max_unicast_users: u16,        // 2 - max unicast users admitted (enforced on EdgeSeat only)
-    pub multicast_user_count: u16,     // 2 - live count of multicast users (every pass type)
+    // This count includes the multicast users on a public group or a feed. It leaves out a user
+    // that joined only private groups. The JSON name stays `multicast_user_count`.
+    #[cfg_attr(feature = "serde", serde(rename = "multicast_user_count"))]
+    pub public_multicast_user_count: u16, // 2 - live count (every pass type)
     pub max_multicast_users: u16, // 2 - max multicast users admitted (enforced on EdgeSeat only)
 }
 
@@ -296,7 +301,7 @@ impl TryFrom<&[u8]> for AccessPass {
             tenant_allowlist: deserialize_vec_with_capacity(&mut data).unwrap_or_default(),
             unicast_user_count: BorshDeserialize::deserialize(&mut data).unwrap_or(0),
             max_unicast_users: BorshDeserialize::deserialize(&mut data).unwrap_or(1),
-            multicast_user_count: BorshDeserialize::deserialize(&mut data).unwrap_or(0),
+            public_multicast_user_count: BorshDeserialize::deserialize(&mut data).unwrap_or(0),
             max_multicast_users: BorshDeserialize::deserialize(&mut data).unwrap_or(1),
         };
 
@@ -359,15 +364,16 @@ impl AccessPass {
     ///
     /// The multicast cap counts users on the pass, bare ones included (reachable since #4110);
     /// how many users each purchased feed admits is capped separately by its [`FeedSeat`]
-    /// (see [`Self::try_add_feed_user`]).
-    pub fn try_add_user(&mut self, user_type: UserType) -> Result<(), DoubleZeroError> {
+    /// (see [`Self::try_take_feed_seat`]).
+    pub fn try_take_pass_seat(&mut self, user_type: UserType) -> Result<(), DoubleZeroError> {
         let enforce_caps = matches!(self.accesspass_type, AccessPassType::EdgeSeat(_));
         match user_type {
             UserType::Multicast => {
-                if enforce_caps && self.multicast_user_count >= self.max_multicast_users {
+                if enforce_caps && self.public_multicast_user_count >= self.max_multicast_users {
                     return Err(DoubleZeroError::AccessPassMaxMulticastUsersExceeded);
                 }
-                self.multicast_user_count = self.multicast_user_count.saturating_add(1);
+                self.public_multicast_user_count =
+                    self.public_multicast_user_count.saturating_add(1);
                 Ok(())
             }
             _ => {
@@ -381,10 +387,10 @@ impl AccessPass {
     }
 
     /// Uncount a user that leaves the pass, by category, on every pass type. Does NOT touch
-    /// `connection_count`. Feed seats are released separately (see [`Self::remove_feed_user`]).
-    pub fn remove_user(&mut self, user_type: UserType) {
+    /// `connection_count`. Feed seats are released separately (see [`Self::release_feed_seat`]).
+    pub fn release_pass_seat(&mut self, user_type: UserType) {
         if user_type == UserType::Multicast {
-            self.multicast_user_count = self.multicast_user_count.saturating_sub(1);
+            self.public_multicast_user_count = self.public_multicast_user_count.saturating_sub(1);
         } else {
             self.unicast_user_count = self.unicast_user_count.saturating_sub(1);
         }
@@ -408,7 +414,7 @@ impl AccessPass {
     /// Tick the matching feed seat's `current_users` against its `max_users`. Returns
     /// `FeedNotOnAccessPass` if the pass carries no seat for `feed_key`, or `FeedSeatFull` if the
     /// feed cap is full.
-    pub fn try_add_feed_user(&mut self, feed_key: &Pubkey) -> Result<(), DoubleZeroError> {
+    pub fn try_take_feed_seat(&mut self, feed_key: &Pubkey) -> Result<(), DoubleZeroError> {
         match self.feed_seat_mut(feed_key) {
             Some(seat) => {
                 if seat.current_users >= seat.max_users {
@@ -422,7 +428,7 @@ impl AccessPass {
     }
 
     /// Release a seat held against `feed_key`. No-op if the feed is not on the pass.
-    pub fn remove_feed_user(&mut self, feed_key: &Pubkey) {
+    pub fn release_feed_seat(&mut self, feed_key: &Pubkey) {
         if let Some(seat) = self.feed_seat_mut(feed_key) {
             seat.current_users = seat.current_users.saturating_sub(1);
         }
@@ -516,7 +522,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
+            public_multicast_user_count: 0,
             max_multicast_users: 1,
         };
 
@@ -572,7 +578,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
+            public_multicast_user_count: 0,
             max_multicast_users: 1,
         };
 
@@ -620,7 +626,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
+            public_multicast_user_count: 0,
             max_multicast_users: 1,
         };
 
@@ -662,7 +668,7 @@ mod tests {
         // user per category once gated.
         assert_eq!(val.unicast_user_count, 0);
         assert_eq!(val.max_unicast_users, 1);
-        assert_eq!(val.multicast_user_count, 0);
+        assert_eq!(val.public_multicast_user_count, 0);
         assert_eq!(val.max_multicast_users, 1);
     }
 
@@ -683,7 +689,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 2,
-            multicast_user_count: 0,
+            public_multicast_user_count: 0,
             max_multicast_users: 1,
         }
     }
@@ -693,26 +699,26 @@ mod tests {
         let mut ap = test_accesspass(AccessPassType::EdgeSeat(vec![]));
 
         // Unicast: per-category cap is enforced (cap is 2).
-        ap.try_add_user(UserType::IBRL).unwrap();
-        ap.try_add_user(UserType::EdgeFiltering).unwrap();
+        ap.try_take_pass_seat(UserType::IBRL).unwrap();
+        ap.try_take_pass_seat(UserType::EdgeFiltering).unwrap();
         assert_eq!(ap.unicast_user_count, 2);
         assert_eq!(
-            ap.try_add_user(UserType::IBRL).unwrap_err(),
+            ap.try_take_pass_seat(UserType::IBRL).unwrap_err(),
             DoubleZeroError::AccessPassMaxUnicastUsersExceeded
         );
 
         // Multicast: the pass-level cap counts users, bare ones included (cap is 1).
-        ap.try_add_user(UserType::Multicast).unwrap();
-        assert_eq!(ap.multicast_user_count, 1);
+        ap.try_take_pass_seat(UserType::Multicast).unwrap();
+        assert_eq!(ap.public_multicast_user_count, 1);
         assert_eq!(
-            ap.try_add_user(UserType::Multicast).unwrap_err(),
+            ap.try_take_pass_seat(UserType::Multicast).unwrap_err(),
             DoubleZeroError::AccessPassMaxMulticastUsersExceeded
         );
 
-        ap.remove_user(UserType::IBRL);
+        ap.release_pass_seat(UserType::IBRL);
         assert_eq!(ap.unicast_user_count, 1);
-        ap.remove_user(UserType::Multicast);
-        assert_eq!(ap.multicast_user_count, 0);
+        ap.release_pass_seat(UserType::Multicast);
+        assert_eq!(ap.public_multicast_user_count, 0);
 
         // connection_count is never touched by the seat helpers.
         assert_eq!(ap.connection_count, 0);
@@ -744,29 +750,29 @@ mod tests {
         ]));
 
         // feed_a admits 2 then rejects.
-        ap.try_add_feed_user(&feed_a).unwrap();
-        ap.try_add_feed_user(&feed_a).unwrap();
+        ap.try_take_feed_seat(&feed_a).unwrap();
+        ap.try_take_feed_seat(&feed_a).unwrap();
         assert_eq!(ap.feed_seats()[0].current_users, 2);
         assert_eq!(
-            ap.try_add_feed_user(&feed_a).unwrap_err(),
+            ap.try_take_feed_seat(&feed_a).unwrap_err(),
             DoubleZeroError::FeedSeatFull
         );
 
         // feed_b is independent.
-        ap.try_add_feed_user(&feed_b).unwrap();
+        ap.try_take_feed_seat(&feed_b).unwrap();
         assert_eq!(ap.feed_seats()[1].current_users, 1);
 
         // Unknown feed → FeedNotOnAccessPass.
         assert_eq!(
-            ap.try_add_feed_user(&Pubkey::new_unique()).unwrap_err(),
+            ap.try_take_feed_seat(&Pubkey::new_unique()).unwrap_err(),
             DoubleZeroError::FeedNotOnAccessPass
         );
 
         // Release frees a seat; saturating.
-        ap.remove_feed_user(&feed_a);
+        ap.release_feed_seat(&feed_a);
         assert_eq!(ap.feed_seats()[0].current_users, 1);
-        ap.remove_feed_user(&feed_b);
-        ap.remove_feed_user(&feed_b);
+        ap.release_feed_seat(&feed_b);
+        ap.release_feed_seat(&feed_b);
         assert_eq!(ap.feed_seats()[1].current_users, 0);
     }
 
@@ -782,20 +788,20 @@ mod tests {
             ap.max_unicast_users = 0;
             ap.max_multicast_users = 0;
             // Even with zero caps, non-EdgeSeat passes admit every user, and they count each one.
-            ap.try_add_user(UserType::IBRL).unwrap();
-            ap.try_add_user(UserType::EdgeFiltering).unwrap();
-            ap.try_add_user(UserType::Multicast).unwrap();
+            ap.try_take_pass_seat(UserType::IBRL).unwrap();
+            ap.try_take_pass_seat(UserType::EdgeFiltering).unwrap();
+            ap.try_take_pass_seat(UserType::Multicast).unwrap();
             assert_eq!(ap.unicast_user_count, 2);
-            assert_eq!(ap.multicast_user_count, 1);
+            assert_eq!(ap.public_multicast_user_count, 1);
 
-            ap.remove_user(UserType::IBRL);
-            ap.remove_user(UserType::Multicast);
+            ap.release_pass_seat(UserType::IBRL);
+            ap.release_pass_seat(UserType::Multicast);
             assert_eq!(ap.unicast_user_count, 1);
-            assert_eq!(ap.multicast_user_count, 0);
+            assert_eq!(ap.public_multicast_user_count, 0);
 
             // A stale count does not go below zero.
-            ap.remove_user(UserType::Multicast);
-            assert_eq!(ap.multicast_user_count, 0);
+            ap.release_pass_seat(UserType::Multicast);
+            assert_eq!(ap.public_multicast_user_count, 0);
 
             // connection_count is never touched by the seat helpers.
             assert_eq!(ap.connection_count, 0);
@@ -806,7 +812,7 @@ mod tests {
     fn test_non_edge_seat_user_count_saturates() {
         let mut ap = test_accesspass(AccessPassType::Prepaid);
         ap.unicast_user_count = u16::MAX;
-        ap.try_add_user(UserType::IBRL).unwrap();
+        ap.try_take_pass_seat(UserType::IBRL).unwrap();
         assert_eq!(ap.unicast_user_count, u16::MAX);
     }
 
@@ -828,7 +834,7 @@ mod tests {
             tenant_allowlist: vec![],
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
+            public_multicast_user_count: 0,
             max_multicast_users: 1,
         };
 
@@ -871,7 +877,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
+            public_multicast_user_count: 0,
             max_multicast_users: 1,
         };
         let err = val.validate();
@@ -897,7 +903,7 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
+            public_multicast_user_count: 0,
             max_multicast_users: 1,
         };
         let err = val.validate();

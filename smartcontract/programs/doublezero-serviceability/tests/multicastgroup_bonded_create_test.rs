@@ -349,6 +349,9 @@ impl Cluster {
                 publisher_count: 0,
                 subscriber_count: 0,
                 bond_ref: args.bond_ref,
+                private: false,
+                max_publishers: 0,
+                max_subscribers: 0,
             }
         );
 

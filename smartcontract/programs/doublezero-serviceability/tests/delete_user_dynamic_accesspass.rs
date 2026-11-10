@@ -497,7 +497,7 @@ async fn test_delete_user_specific_ip_pass() {
         .get_accesspass()
         .unwrap();
     assert_eq!(pass.unicast_user_count, 1);
-    assert_eq!(pass.multicast_user_count, 0);
+    assert_eq!(pass.public_multicast_user_count, 0);
 
     let recent_blockhash = env
         .banks_client
@@ -592,7 +592,7 @@ async fn test_delete_multicast_user_dynamic_pass() {
         .get_accesspass()
         .unwrap();
     assert_eq!(pass.unicast_user_count, 0);
-    assert_eq!(pass.multicast_user_count, 1);
+    assert_eq!(pass.public_multicast_user_count, 1);
 
     let recent_blockhash = env
         .banks_client
@@ -650,7 +650,7 @@ async fn test_delete_multicast_user_dynamic_pass() {
         .get_accesspass()
         .unwrap();
     assert_eq!(pass.connection_count, 0);
-    assert_eq!(pass.multicast_user_count, 0);
+    assert_eq!(pass.public_multicast_user_count, 0);
     assert_eq!(pass.status, AccessPassStatus::Disconnected);
 }
 
@@ -800,6 +800,6 @@ async fn test_edge_seat_user_caps_enforced() {
         .get_accesspass()
         .unwrap();
     assert_eq!(pass.unicast_user_count, 1);
-    assert_eq!(pass.multicast_user_count, 1);
+    assert_eq!(pass.public_multicast_user_count, 1);
     assert_eq!(pass.connection_count, 2);
 }

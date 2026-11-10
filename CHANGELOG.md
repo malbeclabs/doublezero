@@ -16,6 +16,8 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- Serviceability
+  - `SetAccessPassFeeds` no longer refuses a seat that the request copies unchanged from the pass after its `window_end` passed. It sets the seat's cap to `max_future_users` and its `window_end` to `terminates_at`, as the oracle does at `window_end`. When a caller adds or removes another feed, the program then refuses the request only when that seat's `terminates_at` passed too.
 - CI
   - The Solana fork test no longer loads the shred-subscription program or runs the `doublezero-solana shreds` commands, because the program was closed on mainnet on 2026-11-05. The fork loader drops `--synthetic-validator-client-rewards-manager`.
 - Offchain

@@ -53,7 +53,7 @@ pub struct SetAccessPassCliCommand {
     #[arg(long, default_value_t = 1)]
     pub max_unicast_users: u16,
     /// Max public multicast users admitted by an EdgeSeat access pass. Users that hold no pass seat do not count.
-    #[arg(long, default_value_t = 1)]
+    #[arg(long, alias = "max-multicast-users", default_value_t = 1)]
     pub max_public_multicast_users: u16,
 }
 

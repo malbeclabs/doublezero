@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.
   - The old program ignores the new private fields of `UpdateMulticastGroup`, so `doublezero multicast group update --private` changes nothing there. It also ignores the private count of `SetAccessPassCounts`, so `doublezero access-pass set-counts` writes a connection count that is too low.
   - `SetAccessPassCounts` takes a payload of 12 bytes, and the program refuses a payload of 10 bytes with `InvalidArgument`. A `doublezero access-pass set-counts` from an older release fails on the new program.
 - CLI
-  - `doublezero access-pass set --max-multicast-users` is now `--max-public-multicast-users`, because the cap counts only the users that hold a pass seat. A script that passes the old flag fails.
+  - `doublezero access-pass set --max-multicast-users` is now `--max-public-multicast-users`, because the cap counts only the users that hold a pass seat. The old flag still works as an alias.
   - `doublezero-solana` drops the `shreds` command group, including `shreds withdraw`, `shreds publisher-rewards` and `shreds validator-client-rewards`. The shred-subscription program it called is closed on Solana mainnet-beta and devnet, so every `shreds` command failed. The `feeds` commands serve the feed subscription program that replaced it.
 - SDK
   - The Rust crate renames `multicast_user_count` to `public_multicast_user_count` and `max_multicast_users` to `max_public_multicast_users`, and it renames the access pass methods and the functions that the Serviceability entry under Changes lists. Code that calls the old names must change.

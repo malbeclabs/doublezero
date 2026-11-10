@@ -215,6 +215,10 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 	length := reader.ReadU32()
 	if length > 0 && (length*18) > reader.Remaining() {
 		log.Println("DeserializeDevice: Not enough data for interfaces (# of interfaces = ", length, ")")
+		dev.DeserializeError = fmt.Errorf(
+			"DeserializeDevice: %d interfaces need at least %d bytes, %d remain",
+			length, length*18, reader.Remaining(),
+		)
 		return
 	}
 	for i := uint32(0); i < length; i++ {

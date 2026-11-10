@@ -13,6 +13,7 @@ import (
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/bgp"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/latency"
+	"github.com/malbeclabs/doublezero/client/doublezerod/internal/liveness"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/routing"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/services"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -56,6 +57,12 @@ type Fetcher interface {
 // LatencyProvider is the interface for retrieving cached latency results.
 type LatencyProvider interface {
 	GetResultsCache() []latency.LatencyResult
+}
+
+// LivenessManager reads route liveness for the IBRL route summary.
+type LivenessManager interface {
+	GetSessions() []liveness.SessionSnapshot
+	RouteAction() liveness.RouteAction
 }
 
 // Option configures a NetlinkManager.
@@ -126,6 +133,13 @@ func WithLatencyProvider(lp LatencyProvider) Option {
 	}
 }
 
+// WithLivenessManager sets the route liveness manager the IBRL route summary reads.
+func WithLivenessManager(lm LivenessManager) Option {
+	return func(n *NetlinkManager) {
+		n.liveness = lm
+	}
+}
+
 // WithNetwork sets the network moniker (e.g. "mainnet", "testnet").
 func WithNetwork(network string) Option {
 	return func(n *NetlinkManager) {
@@ -189,6 +203,7 @@ type NetlinkManager struct {
 	// Status enrichment fields
 	latencyProvider LatencyProvider
 	network         string
+	liveness        LivenessManager
 }
 
 // CreateService creates the appropriate service based on the provisioned

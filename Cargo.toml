@@ -40,8 +40,6 @@ exclude = [
     # under this workspace's lockfile, which would change the compiled bytes and
     # break `solana/programs/sha256sums_*.txt`.
     "solana",
-    # Not a member in doublezero-offchain either.
-    "offchain/programs/mock-shred-subscription-program",
     "sdk/revdist/testdata/fixtures/generate-fixtures",
     "sdk/serviceability/testdata/fixtures/generate-fixtures",
     "sdk/telemetry/testdata/fixtures/generate-fixtures",
@@ -50,7 +48,7 @@ exclude = [
 resolver = "2"
 
 [workspace.package]
-version = "0.46.0"
+version = "0.47.0"
 authors = ["Malbec Labs <dev@malbeclabs.com>"]
 readme = "README.md"
 edition = "2021"

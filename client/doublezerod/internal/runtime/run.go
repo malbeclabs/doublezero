@@ -203,6 +203,9 @@ func Run(ctx context.Context, sockFile string, routeConfigPath string, enableLat
 	if latencyManager != nil {
 		nlmOpts = append(nlmOpts, manager.WithLatencyProvider(latencyManager))
 	}
+	if lm != nil {
+		nlmOpts = append(nlmOpts, manager.WithLivenessManager(lm))
+	}
 	nlm := manager.NewNetlinkManager(nlr, bgp, pim, heartbeat, register, nlmOpts...)
 
 	errCh := make(chan error)

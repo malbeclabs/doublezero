@@ -21,7 +21,7 @@ use doublezero_sdk::{
         },
         user::{create::CreateUserCommand, create_subscribe::CreateSubscribeUserCommand},
     },
-    Device, Exchange, Feed, User, UserCYOA, UserStatus, UserType,
+    Device, DeviceStatus, DeviceType, Exchange, Feed, User, UserCYOA, UserStatus, UserType,
 };
 use doublezero_serviceability::{
     processors::multicastgroup::subscribe_feed::MAX_USER_FEEDS,
@@ -1312,7 +1312,7 @@ impl Connect {
                 }
                 let exclude_ips = exclude_ips(&users, &client_ip, &devices);
                 let (device_pk, device, tunnel_endpoint) = self
-                    .find_or_create_device(ledger, daemon, &devices, spinner, &exclude_ips)
+                    .find_or_create_device(ledger, daemon, &devices, spinner, &exclude_ips, false)
                     .await?;
                 writeln!(out, "    Device selected: {}", device.code)?;
                 if let Some(err_msg) = device.check_user_type_capacity(UserType::Multicast, false) {
@@ -1591,7 +1591,7 @@ impl Connect {
                 let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, &client_ip, &devices);
 
                 let (device_pk, device, tunnel_endpoint) = self
-                    .find_or_create_device(ledger, daemon, &devices, spinner, &exclude_ips)
+                    .find_or_create_device(ledger, daemon, &devices, spinner, &exclude_ips, false)
                     .await?;
                 writeln!(out, "    Device selected: {}", device.code)?;
 
@@ -1814,6 +1814,7 @@ impl Connect {
         devices: &HashMap<Pubkey, Device>,
         spinner: &ProgressBar,
         exclude_ips: &[Ipv4Addr],
+        capacity_exempt: bool,
     ) -> eyre::Result<(Pubkey, Device, Ipv4Addr)> {
         spinner.set_message("Searching for the nearest device...");
         // filter out existing devices for users with existing tunnels
@@ -1882,10 +1883,21 @@ impl Connect {
             .map_err(|_| eyre::eyre!("Unable to get device"))?;
 
         // If user explicitly specified a device, check if it's eligible
-        if self.device.is_some() && !device.is_device_eligible_for_provisioning() {
-            return Err(eyre::eyre!(
-                "Device is not accepting more users (at capacity or max_users=0)"
-            ));
+        if self.device.is_some() {
+            if capacity_exempt {
+                // `is_device_eligible_for_provisioning` without its capacity clause.
+                if device.status != DeviceStatus::Activated
+                    || !matches!(device.device_type, DeviceType::Edge | DeviceType::Hybrid)
+                {
+                    return Err(eyre::eyre!(
+                        "Device is not accepting users (not an activated edge or hybrid device)"
+                    ));
+                }
+            } else if !device.is_device_eligible_for_provisioning() {
+                return Err(eyre::eyre!(
+                    "Device is not accepting more users (at capacity or max_users=0)"
+                ));
+            }
         }
 
         Ok((device_pk, device, tunnel_endpoint))
@@ -1935,8 +1947,22 @@ impl Connect {
             None => {
                 let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, client_ip, &devices);
 
+                // The program exempts QA from device capacity (`is_qa` in `create_core`).
+                let capacity_exempt = self.device.is_some()
+                    && ledger
+                        .get_globalstate()?
+                        .qa_allowlist
+                        .contains(&ledger.get_payer());
+
                 let (device_pk, device, tunnel_endpoint) = self
-                    .find_or_create_device(ledger, daemon, &devices, spinner, &exclude_ips)
+                    .find_or_create_device(
+                        ledger,
+                        daemon,
+                        &devices,
+                        spinner,
+                        &exclude_ips,
+                        capacity_exempt,
+                    )
                     .await?;
 
                 writeln!(out, "    Creating account...")?;
@@ -1944,8 +1970,10 @@ impl Connect {
                 spinner.inc(1);
 
                 // Check per-type user limit before attempting to create
-                if let Some(err_msg) = device.check_user_type_capacity(user_type, false) {
-                    return Err(eyre::eyre!(err_msg));
+                if !capacity_exempt {
+                    if let Some(err_msg) = device.check_user_type_capacity(user_type, false) {
+                        return Err(eyre::eyre!(err_msg));
+                    }
                 }
 
                 let accesspass = ledger
@@ -2086,7 +2114,7 @@ impl Connect {
                 let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, client_ip, &devices);
 
                 let (device_pk, device, tunnel_endpoint) = self
-                    .find_or_create_device(ledger, daemon, &devices, spinner, &exclude_ips)
+                    .find_or_create_device(ledger, daemon, &devices, spinner, &exclude_ips, false)
                     .await?;
 
                 writeln!(
@@ -2228,7 +2256,7 @@ impl Connect {
                 let exclude_ips: Vec<Ipv4Addr> = exclude_ips(&users, client_ip, &devices);
 
                 let (device_pk, device, tunnel_endpoint) = self
-                    .find_or_create_device(ledger, daemon, &devices, spinner, &exclude_ips)
+                    .find_or_create_device(ledger, daemon, &devices, spinner, &exclude_ips, false)
                     .await?;
 
                 writeln!(out, "    Creating account for IP: {client_ip}")?;
@@ -2771,6 +2799,7 @@ mod tests {
         accounttype::AccountType,
         device::{Device, DeviceStatus, DeviceType},
         exchange::{Exchange, ExchangeStatus},
+        globalstate::GlobalState,
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
         tenant::{Tenant, TenantBillingConfig, TenantPaymentStatus},
     };
@@ -3446,6 +3475,17 @@ mod tests {
                 .expect_list_user()
                 .returning_st(move || Ok(users.lock().unwrap().clone()));
             pk
+        }
+
+        /// Only the IBRL `--device` path reads the global state.
+        pub fn expect_qa_allowlist(&mut self, qa_allowlist: Vec<Pubkey>) {
+            let globalstate = GlobalState {
+                qa_allowlist,
+                ..GlobalState::default()
+            };
+            self.ledger
+                .expect_get_globalstate()
+                .returning_st(move || Ok(globalstate.clone()));
         }
 
         pub fn expect_create_user(&mut self, pk: Pubkey, user: &User) {
@@ -5204,6 +5244,7 @@ mod tests {
     fn test_connect_to_device_at_max_users() {
         block_on(async {
             let mut fixture = TestFixture::new();
+            fixture.expect_qa_allowlist(vec![]);
 
             // Add a device with max_users = 0
             let (device_pk, mut device) = fixture.add_device(DeviceType::Hybrid, 100, true);
@@ -5248,6 +5289,7 @@ mod tests {
     fn test_connect_to_device_at_capacity() {
         block_on(async {
             let mut fixture = TestFixture::new();
+            fixture.expect_qa_allowlist(vec![]);
 
             // Add a device that's at capacity (users_count >= max_users)
             let (device_pk, mut device) = fixture.add_device(DeviceType::Hybrid, 100, true);
@@ -5281,6 +5323,125 @@ mod tests {
                 "Expected error about device not accepting users, got: {}",
                 err_msg
             );
+        });
+    }
+
+    fn ibrl_on_device(code: &str) -> Connect {
+        Connect {
+            dz_mode: Some(DzMode::IBRL {
+                tenant: Some("test-tenant".to_string()),
+                allocate_addr: false,
+            }),
+            device: Some(code.to_string()),
+            ..Default::default()
+        }
+    }
+
+    /// The program exempts a QA payer from `max_users` and the per-type limits, so connect does too.
+    #[test]
+    fn test_connect_qa_payer_to_device_at_max_users() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let payer = fixture.ledger.get_payer();
+            fixture.expect_qa_allowlist(vec![payer]);
+
+            let (device_pk, mut device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            device.max_users = 0;
+            device.max_unicast_users = 1;
+            device.unicast_users_count = 1;
+            fixture
+                .devices
+                .lock()
+                .unwrap()
+                .insert(device_pk, device.clone());
+            let user = fixture.create_user(UserType::IBRL, device_pk, "1.2.3.4");
+            fixture.expect_create_user(Pubkey::new_unique(), &user);
+
+            let (result, output) = run(&fixture, ibrl_on_device(&device.code)).await;
+            assert!(result.is_ok(), "{result:?}\n{output}");
+        });
+    }
+
+    #[test]
+    fn test_connect_qa_payer_to_transit_device() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let payer = fixture.ledger.get_payer();
+            fixture.expect_qa_allowlist(vec![payer]);
+            let (_, device) = fixture.add_device(DeviceType::Transit, 100, true);
+
+            let (result, _) = run(&fixture, ibrl_on_device(&device.code)).await;
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "Device is not accepting users (not an activated edge or hybrid device)"
+            );
+        });
+    }
+
+    #[test]
+    fn test_connect_qa_payer_to_drained_device() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let payer = fixture.ledger.get_payer();
+            fixture.expect_qa_allowlist(vec![payer]);
+            let (device_pk, mut device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            device.status = DeviceStatus::Drained;
+            fixture
+                .devices
+                .lock()
+                .unwrap()
+                .insert(device_pk, device.clone());
+            // Latency retrieval refuses first when no device is activated.
+            fixture.add_device(DeviceType::Hybrid, 200, true);
+
+            let (result, _) = run(&fixture, ibrl_on_device(&device.code)).await;
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "Device is not accepting users (not an activated edge or hybrid device)"
+            );
+        });
+    }
+
+    /// Another key on the allowlist does not exempt this payer.
+    #[test]
+    fn test_connect_non_qa_payer_to_device_at_max_users() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            fixture.expect_qa_allowlist(vec![Pubkey::new_unique()]);
+            let (device_pk, mut device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            device.max_users = 0;
+            fixture
+                .devices
+                .lock()
+                .unwrap()
+                .insert(device_pk, device.clone());
+
+            let (result, _) = run(&fixture, ibrl_on_device(&device.code)).await;
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "Device is not accepting more users (at capacity or max_users=0)"
+            );
+        });
+    }
+
+    #[test]
+    fn test_auto_select_does_not_read_globalstate() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            fixture.ledger.expect_get_globalstate().times(0);
+            let (device_pk, _) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let user = fixture.create_user(UserType::IBRL, device_pk, "1.2.3.4");
+            fixture.expect_create_user(Pubkey::new_unique(), &user);
+
+            let command = Connect {
+                dz_mode: Some(DzMode::IBRL {
+                    tenant: Some("test-tenant".to_string()),
+                    allocate_addr: false,
+                }),
+                ..Default::default()
+            };
+            let (result, output) = run(&fixture, command).await;
+            assert!(result.is_ok(), "{result:?}\n{output}");
         });
     }
 
@@ -5523,6 +5684,7 @@ mod tests {
     fn test_connect_to_nonexistent_device() {
         block_on(async {
             let mut fixture = TestFixture::new();
+            fixture.expect_qa_allowlist(vec![]);
 
             fixture.add_device(DeviceType::Hybrid, 100, true); // Add a device, but we'll try to connect to a different one
 

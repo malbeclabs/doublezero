@@ -1,6 +1,5 @@
 
 /target
-programs/mock-shred-history-program/target
 
 # IDE
 .vscode

@@ -245,10 +245,10 @@ pub struct AccessPass {
     pub mgroup_sub_allowlist: Vec<Pubkey>, // Vec<32> - List of multicast groups this AccessPass can subscribe to
     pub flags: u8,                         // 1
     pub tenant_allowlist: Vec<Pubkey>, // Vec<32> - List of tenants this AccessPass can connect to
-    pub unicast_user_count: u16,       // 2 - live count of unicast users (EdgeSeat only)
-    pub max_unicast_users: u16,        // 2 - max unicast users admitted (EdgeSeat only)
-    pub multicast_user_count: u16,     // 2 - live count of multicast users (EdgeSeat only)
-    pub max_multicast_users: u16,      // 2 - max multicast users admitted (EdgeSeat only)
+    pub unicast_user_count: u16,       // 2 - live count of unicast users (every pass type)
+    pub max_unicast_users: u16,        // 2 - max unicast users admitted (enforced on EdgeSeat only)
+    pub multicast_user_count: u16,     // 2 - live count of multicast users (every pass type)
+    pub max_multicast_users: u16, // 2 - max multicast users admitted (enforced on EdgeSeat only)
 }
 
 impl fmt::Display for AccessPass {
@@ -352,41 +352,37 @@ impl AccessPass {
         flags.join(", ")
     }
 
-    /// Admit a user against the per-category caps. EdgeSeat-only: for all other access-pass
-    /// types this is a no-op and always succeeds. Does NOT touch `connection_count`, which the
-    /// user create/delete processors maintain independently.
+    /// Count a new user on the pass, by category. Every pass type keeps the counts, but only an
+    /// EdgeSeat pass enforces `max_unicast_users` and `max_multicast_users`, because those caps
+    /// are what an EdgeSeat sells. Does NOT touch `connection_count`, which the user
+    /// create/delete processors maintain independently.
     ///
     /// The multicast cap counts users on the pass, bare ones included (reachable since #4110);
     /// how many users each purchased feed admits is capped separately by its [`FeedSeat`]
     /// (see [`Self::try_add_feed_user`]).
     pub fn try_add_user(&mut self, user_type: UserType) -> Result<(), DoubleZeroError> {
-        if !matches!(self.accesspass_type, AccessPassType::EdgeSeat(_)) {
-            return Ok(());
-        }
+        let enforce_caps = matches!(self.accesspass_type, AccessPassType::EdgeSeat(_));
         match user_type {
             UserType::Multicast => {
-                if self.multicast_user_count >= self.max_multicast_users {
+                if enforce_caps && self.multicast_user_count >= self.max_multicast_users {
                     return Err(DoubleZeroError::AccessPassMaxMulticastUsersExceeded);
                 }
-                self.multicast_user_count += 1;
+                self.multicast_user_count = self.multicast_user_count.saturating_add(1);
                 Ok(())
             }
             _ => {
-                if self.unicast_user_count >= self.max_unicast_users {
+                if enforce_caps && self.unicast_user_count >= self.max_unicast_users {
                     return Err(DoubleZeroError::AccessPassMaxUnicastUsersExceeded);
                 }
-                self.unicast_user_count += 1;
+                self.unicast_user_count = self.unicast_user_count.saturating_add(1);
                 Ok(())
             }
         }
     }
 
-    /// Release a seat held by a user. EdgeSeat-only: no-op for all other access-pass types. Does NOT
-    /// touch `connection_count`. Feed seats are released separately (see [`Self::remove_feed_user`]).
+    /// Uncount a user that leaves the pass, by category, on every pass type. Does NOT touch
+    /// `connection_count`. Feed seats are released separately (see [`Self::remove_feed_user`]).
     pub fn remove_user(&mut self, user_type: UserType) {
-        if !matches!(self.accesspass_type, AccessPassType::EdgeSeat(_)) {
-            return;
-        }
         if user_type == UserType::Multicast {
             self.multicast_user_count = self.multicast_user_count.saturating_sub(1);
         } else {
@@ -775,22 +771,43 @@ mod tests {
     }
 
     #[test]
-    fn test_non_edge_seat_user_caps_are_noop() {
+    fn test_non_edge_seat_passes_count_users_without_caps() {
         for accesspass_type in [
             AccessPassType::Prepaid,
             AccessPassType::SolanaValidator(Pubkey::new_unique()),
+            AccessPassType::SolanaRPC(Pubkey::new_unique()),
+            AccessPassType::Others("other".to_string(), "key".to_string()),
         ] {
             let mut ap = test_accesspass(accesspass_type);
             ap.max_unicast_users = 0;
             ap.max_multicast_users = 0;
-            // Even with zero caps, non-EdgeSeat passes admit any user and never increment counters.
+            // Even with zero caps, non-EdgeSeat passes admit every user, and they count each one.
             ap.try_add_user(UserType::IBRL).unwrap();
+            ap.try_add_user(UserType::EdgeFiltering).unwrap();
             ap.try_add_user(UserType::Multicast).unwrap();
-            assert_eq!(ap.unicast_user_count, 0);
-            assert_eq!(ap.multicast_user_count, 0);
+            assert_eq!(ap.unicast_user_count, 2);
+            assert_eq!(ap.multicast_user_count, 1);
+
             ap.remove_user(UserType::IBRL);
-            assert_eq!(ap.unicast_user_count, 0);
+            ap.remove_user(UserType::Multicast);
+            assert_eq!(ap.unicast_user_count, 1);
+            assert_eq!(ap.multicast_user_count, 0);
+
+            // A stale count does not go below zero.
+            ap.remove_user(UserType::Multicast);
+            assert_eq!(ap.multicast_user_count, 0);
+
+            // connection_count is never touched by the seat helpers.
+            assert_eq!(ap.connection_count, 0);
         }
+    }
+
+    #[test]
+    fn test_non_edge_seat_user_count_saturates() {
+        let mut ap = test_accesspass(AccessPassType::Prepaid);
+        ap.unicast_user_count = u16::MAX;
+        ap.try_add_user(UserType::IBRL).unwrap();
+        assert_eq!(ap.unicast_user_count, u16::MAX);
     }
 
     #[test]

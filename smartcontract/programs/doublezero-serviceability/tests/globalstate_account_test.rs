@@ -15,8 +15,8 @@ use doublezero_serviceability::{
     processors::{
         accesspass::{
             check_status::CheckStatusAccessPassArgs, close::CloseAccessPassArgs,
-            set::SetAccessPassArgs, set_feeds::SetAccessPassFeedsArgs,
-            set_flags::SetAccessPassFlagsArgs,
+            set::SetAccessPassArgs, set_counts::SetAccessPassCountsArgs,
+            set_feeds::SetAccessPassFeedsArgs, set_flags::SetAccessPassFlagsArgs,
         },
         allowlist::{
             foundation::{add::AddFoundationAllowlistArgs, remove::RemoveFoundationAllowlistArgs},
@@ -831,6 +831,20 @@ async fn set_access_pass_flags(env: &mut Env) -> Case {
     .await
 }
 
+async fn set_access_pass_counts(env: &mut Env) -> Case {
+    other_pass_case(
+        env,
+        DoubleZeroInstruction::SetAccessPassCounts(SetAccessPassCountsArgs {
+            expected_connection_count: 0,
+            expected_unicast_user_count: 0,
+            expected_multicast_user_count: 0,
+            unicast_user_count: 1,
+            multicast_user_count: 0,
+        }),
+    )
+    .await
+}
+
 /// The pass is already `Requested`, so only the result is observable.
 async fn check_status_access_pass(env: &mut Env) -> Case {
     other_pass_case(
@@ -1184,6 +1198,7 @@ cases! {
     close_access_pass => Expect::OwnerAsserted,
     close_prepaid_access_pass => Expect::OwnerAsserted,
     set_access_pass_flags => Expect::OwnerAsserted,
+    set_access_pass_counts => Expect::OwnerAsserted,
     set_access_pass_feeds => Expect::OwnerAsserted,
     check_status_access_pass => Expect::OwnerAsserted,
     create_permission => Expect::OwnerAsserted,

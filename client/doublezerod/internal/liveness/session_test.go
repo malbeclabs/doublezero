@@ -544,6 +544,7 @@ func TestClient_Liveness_Session_HoldDownGrowsAndDecays(t *testing.T) {
 	for i, want := range []time.Duration{0, 0, base, 2 * base, 4 * base, 8 * base, max, max} {
 		hold, _ := s.holdDown(now, base, max)
 		require.Equalf(t, want, hold, "Up %d", i)
+		require.Equalf(t, want > 0, now.Before(s.Snapshot().HoldDownUntil), "Up %d hold-down pending", i)
 		now = now.Add(time.Second)
 		s.recordFlap(now, max)
 	}

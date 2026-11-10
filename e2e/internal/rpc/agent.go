@@ -10,20 +10,16 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"os"
 	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/malbeclabs/doublezero/e2e/internal/netutil"
 	pb "github.com/malbeclabs/doublezero/e2e/proto/qa/gen/pb-go"
-	"github.com/mr-tron/base58"
 	probing "github.com/prometheus-community/pro-bing"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/sys/unix"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -335,194 +331,6 @@ func (q *QAAgent) Disconnect(ctx context.Context, req *emptypb.Empty) (*pb.Resul
 	}
 
 	return res, nil
-}
-
-// FeedEnable implements the FeedEnable RPC, which enables the reconciler on doublezerod.
-// This is equivalent to running `doublezero enable`.
-func (q *QAAgent) FeedEnable(ctx context.Context, req *emptypb.Empty) (*pb.Result, error) {
-	q.log.Debug("Received FeedEnable request")
-	cmd := exec.CommandContext(ctx, "doublezero", "enable")
-	res, err := runCmd(cmd)
-	if err != nil {
-		q.log.Error("Failed to enable reconciler", "output", res.GetOutput())
-		return res, fmt.Errorf("failed to enable reconciler: %w", err)
-	}
-	q.log.Debug("Reconciler enabled", "output", res.GetOutput())
-	return res, nil
-}
-
-// FeedSeatPrice implements the FeedSeatPrice RPC, which queries device seat prices.
-// This executes `doublezero-solana shreds price --json` and parses the output.
-func (q *QAAgent) FeedSeatPrice(ctx context.Context, req *pb.FeedSeatPriceRequest) (*pb.FeedSeatPriceResponse, error) {
-	q.log.Debug("Received FeedSeatPrice request")
-
-	args := []string{"shreds"}
-	if req.GetDzLedgerUrl() != "" {
-		args = append(args, "--dz-ledger-url", req.GetDzLedgerUrl())
-	}
-	args = append(args, "price", "--json")
-	if req.GetSolanaRpcUrl() != "" {
-		args = append(args, "--url", req.GetSolanaRpcUrl())
-	}
-	// Query a single device by pubkey rather than listing all. The list path
-	// resolves device codes via serviceability, which the CLI refuses when it
-	// can't classify the cluster (e.g. a private Solana devnet RPC URL, seen as
-	// localnet); passing --device sidesteps code resolution entirely.
-	if req.GetDevicePubkey() != "" {
-		args = append(args, "--device", req.GetDevicePubkey())
-	}
-
-	cmdCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(cmdCtx, "doublezero-solana", args...)
-	if req.GetShredSubscriptionProgramId() != "" {
-		cmd.Env = append(cmd.Environ(), "SHRED_SUBSCRIPTION_PROGRAM_ID="+req.GetShredSubscriptionProgramId())
-	}
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		q.log.Error("Failed to get seat prices", "error", err, "output", string(out))
-		return nil, fmt.Errorf("failed to get seat prices: %w, output: %s", err, string(out))
-	}
-
-	prices, err := parseDevicePrices(out)
-	if err != nil {
-		q.log.Error("Failed to parse seat prices", "output", string(out), "error", err)
-		return nil, err
-	}
-
-	q.log.Debug("Seat prices retrieved", "count", len(prices))
-	return &pb.FeedSeatPriceResponse{Prices: prices}, nil
-}
-
-// parseDevicePrices converts the JSON emitted by `doublezero-solana shreds
-// price --json` into DevicePrice messages. Split out from FeedSeatPrice so the
-// three-state handling of instant_allocation_price is directly testable.
-func parseDevicePrices(out []byte) ([]*pb.DevicePrice, error) {
-	var rawPrices []struct {
-		DeviceCode     string `json:"device_code"`
-		Device         string `json:"device"`
-		MetroCode      string `json:"metro_code"`
-		MetroName      string `json:"metro_name"`
-		Status         string `json:"status"`
-		SettledSeats   uint32 `json:"settled_seats"`
-		AvailableSeats uint32 `json:"available_seats"`
-		BasePrice      uint64 `json:"base_price"`
-		Premium        uint64 `json:"premium"`
-		EpochPrice     uint64 `json:"epoch_price"`
-		// Raw, not *uint64: three states have to survive the hop to the test. An
-		// absent key means the installed CLI predates the field (QA hosts pin
-		// doublezero-solana by apt, so that lags a release); an explicit null
-		// means the CLI could not find the settled-epoch ring entry, which is a
-		// real condition rather than a rollout gap; a number is the price, and 0
-		// is a legitimate one. A *uint64 would collapse absent and null into nil.
-		InstantAllocationPrice json.RawMessage `json:"instant_allocation_price"`
-	}
-	if err := json.Unmarshal(out, &rawPrices); err != nil {
-		return nil, fmt.Errorf("failed to parse seat prices: %w", err)
-	}
-
-	prices := make([]*pb.DevicePrice, 0, len(rawPrices))
-	for _, p := range rawPrices {
-		price := &pb.DevicePrice{
-			DeviceCode:     p.DeviceCode,
-			DevicePubkey:   p.Device,
-			MetroCode:      p.MetroCode,
-			MetroName:      p.MetroName,
-			Status:         p.Status,
-			SettledSeats:   p.SettledSeats,
-			AvailableSeats: p.AvailableSeats,
-			BasePrice:      p.BasePrice,
-			Premium:        p.Premium,
-			EpochPrice:     p.EpochPrice,
-		}
-		if raw := strings.TrimSpace(string(p.InstantAllocationPrice)); raw != "" {
-			price.ReportsInstantAllocationPrice = true
-			if raw != "null" {
-				var instant uint64
-				if err := json.Unmarshal(p.InstantAllocationPrice, &instant); err != nil {
-					return nil, fmt.Errorf("failed to parse instant_allocation_price %q: %w", raw, err)
-				}
-				price.InstantAllocationPrice = &instant
-			}
-		}
-		prices = append(prices, price)
-	}
-	return prices, nil
-}
-
-func (q *QAAgent) FeedSeatPay(context.Context, *pb.FeedSeatPayRequest) (*pb.Result, error) {
-	return nil, status.Error(codes.Unimplemented, "FeedSeatPay was removed")
-}
-
-// FeedSeatWithdraw implements the FeedSeatWithdraw RPC, which withdraws a seat from a device.
-// This executes `doublezero-solana shreds withdraw` with the provided parameters.
-// Instant withdrawal is always the default in the CLI (--unsafe-now was removed).
-func (q *QAAgent) FeedSeatWithdraw(ctx context.Context, req *pb.FeedSeatWithdrawRequest) (*pb.Result, error) {
-	if req.GetDevicePubkey() == "" {
-		return nil, fmt.Errorf("device_pubkey is required")
-	}
-	if req.GetClientIp() == "" {
-		return nil, fmt.Errorf("client_ip is required")
-	}
-	q.log.Debug("Received SeatWithdraw request", "device", req.GetDevicePubkey(), "clientIP", req.GetClientIp())
-
-	args := []string{"shreds"}
-	if req.GetDzLedgerUrl() != "" {
-		args = append(args, "--dz-ledger-url", req.GetDzLedgerUrl())
-	}
-	args = append(args, "withdraw", "--device", req.GetDevicePubkey(), "--client-ip", req.GetClientIp())
-	if req.GetSolanaRpcUrl() != "" {
-		args = append(args, "--url", req.GetSolanaRpcUrl())
-	}
-	if req.GetUsdcMint() != "" {
-		args = append(args, "--usdc-mint", req.GetUsdcMint())
-	}
-	if req.GetKeypair() != "" {
-		args = append(args, "--keypair", os.ExpandEnv(req.GetKeypair()))
-	}
-
-	cmdCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
-	defer cancel()
-
-	cmd := exec.CommandContext(cmdCtx, "doublezero-solana", args...)
-	if req.GetShredSubscriptionProgramId() != "" {
-		cmd.Env = append(cmd.Environ(), "SHRED_SUBSCRIPTION_PROGRAM_ID="+req.GetShredSubscriptionProgramId())
-	}
-	res, err := runCmd(cmd)
-	if err != nil {
-		q.log.Error("Failed to withdraw seat", "device", req.GetDevicePubkey(), "output", res.GetOutput())
-		return res, fmt.Errorf("failed to withdraw seat on device %s: %w", req.GetDevicePubkey(), err)
-	}
-	q.log.Debug("Seat withdrawal successful", "device", req.GetDevicePubkey(), "output", res.GetOutput())
-	return res, nil
-}
-
-// GetWalletPubkey reads a Solana keypair JSON file and returns the base58-encoded
-// public key. The keypair format is a JSON array of 64 bytes: the first 32 are the
-// private key, the last 32 are the public key.
-func (q *QAAgent) GetWalletPubkey(_ context.Context, req *pb.GetWalletPubkeyRequest) (*pb.GetWalletPubkeyResponse, error) {
-	keypairPath := os.ExpandEnv(req.GetKeypair())
-	if keypairPath == "" {
-		return nil, fmt.Errorf("keypair path is required")
-	}
-
-	data, err := os.ReadFile(keypairPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read keypair file %s: %w", keypairPath, err)
-	}
-
-	var keyBytes []byte
-	if err := json.Unmarshal(data, &keyBytes); err != nil {
-		return nil, fmt.Errorf("failed to parse keypair JSON from %s: %w", keypairPath, err)
-	}
-	if len(keyBytes) != 64 {
-		return nil, fmt.Errorf("invalid keypair length %d (expected 64) in %s", len(keyBytes), keypairPath)
-	}
-
-	pubkey := base58.Encode(keyBytes[32:])
-	q.log.Debug("Wallet pubkey retrieved", "keypair", keypairPath, "pubkey", pubkey)
-	return &pb.GetWalletPubkeyResponse{Pubkey: pubkey}, nil
 }
 
 type StatusResponse struct {

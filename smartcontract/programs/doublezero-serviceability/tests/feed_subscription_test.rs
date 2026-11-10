@@ -2066,3 +2066,23 @@ async fn test_deleting_a_multicast_user_with_no_group_leaves_the_public_multicas
     assert_eq!(pass.connection_count, 0);
     assert_eq!(pass.public_multicast_user_count, 0);
 }
+
+#[tokio::test]
+async fn test_ibrl_user_leaving_its_last_public_group_keeps_its_pass_seat() {
+    let mut fixture = setup([100, 0, 0, 70]).await;
+    let public_group = fixture.groups[0];
+    add_group_to_subscriber_allowlist(&mut fixture, public_group).await;
+    let user_ip = fixture.user_ip;
+    create_ibrl_user(&mut fixture, user_ip).await;
+    (fixture.user_pubkey, _) = get_user_pda(&fixture.program_id, &user_ip, UserType::IBRL);
+    set_subscriber_role(&mut fixture, public_group, true).await;
+
+    set_subscriber_role(&mut fixture, public_group, false).await;
+
+    let user = read_user(&mut fixture).await;
+    assert!(user.subscribers.is_empty());
+    assert!(user.holds_pass_seat);
+    let pass = read_pass(&mut fixture).await;
+    assert_eq!(pass.connection_count, 1);
+    assert_eq!(pass.unicast_user_count, 1);
+}

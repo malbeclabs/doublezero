@@ -576,10 +576,18 @@ func TestCreateTablesRetriesFailedStepsUntilTheySucceed(t *testing.T) {
 	}) {
 		t.Fatal("no INFO line when the retry succeeded")
 	}
-	n := len(conn.execsSnapshot())
+	// A loop still running would run ensureSchema again, which does no I/O
+	// once every write is on, so count the success line instead: each pass
+	// that finds nothing pending logs it. 20ms is five passes at the 4ms cap.
 	time.Sleep(20 * time.Millisecond)
-	if got := len(conn.execsSnapshot()); got != n {
-		t.Errorf("retry loop kept running after success: %d execs, then %d", n, got)
+	var succeeded int
+	for _, e := range h.snapshot() {
+		if e.Level == slog.LevelInfo {
+			succeeded++
+		}
+	}
+	if succeeded != 1 {
+		t.Errorf("retry loop kept running after success: %d INFO lines, want 1", succeeded)
 	}
 }
 

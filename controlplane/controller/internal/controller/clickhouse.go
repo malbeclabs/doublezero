@@ -233,14 +233,16 @@ func (cw *ClickhouseWriter) ensureSchema(ctx context.Context, level slog.Level) 
 		versions = versionsErr == nil
 	}
 
+	// The gauges change under the lock with the flags, so anyone who reads
+	// the flags enabled also reads the gauges at 1.
 	cw.mu.Lock()
 	cw.eventsEnabled = events
 	cw.callerIPEnabled = callerIP
 	cw.versionsEnabled = versions
-	cw.mu.Unlock()
 	setWriteEnabled(writeGetConfigEvents, events)
 	setWriteEnabled(writeCallerIP, callerIP)
 	setWriteEnabled(writeAgentVersions, versions)
+	cw.mu.Unlock()
 
 	return !events || !callerIP || !versions
 }

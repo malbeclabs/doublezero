@@ -930,6 +930,7 @@ async fn setup_device_and_tenants() -> (BanksClient, Keypair, Pubkey, Pubkey, Pu
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

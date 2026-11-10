@@ -74,6 +74,7 @@ func TestFixtureDevice(t *testing.T) {
 	assert.Equal(t, "dz1", dev.Code)
 	assert.Equal(t, "mgmt", dev.MgmtVrf)
 	assert.Equal(t, [4]byte{203, 0, 113, 1}, dev.PublicIp)
+	assert.Equal(t, [4]byte{203, 0, 113, 9}, dev.AgentIp)
 
 	// Legacy slot is the V2 projection of new_interfaces (always V2 per #3653);
 	// both entries carry version 1 and no FlexAlgoNodeSegments.
@@ -135,6 +136,8 @@ func TestFixtureDeviceLegacy(t *testing.T) {
 	assert.Equal(t, serviceability.LoopbackTypeVpnv4, dev.Interfaces[0].LoopbackType)
 	assert.Equal(t, "Ethernet1", dev.Interfaces[1].Name)
 	assert.True(t, dev.Interfaces[1].UserTunnelEndpoint)
+	// Written before AgentIp existed: reads as unset.
+	assert.Equal(t, [4]byte{}, dev.AgentIp)
 }
 
 // Same on-disk shape as device.bin, but the last trailing-vec element is
@@ -162,6 +165,8 @@ func TestFixtureDeviceFutureVersion(t *testing.T) {
 	assert.Equal(t, expectedInterfaceSize(ni1)+8, ni1.Size)
 	assert.Equal(t, "Ethernet1", ni1.Name)
 	assert.True(t, ni1.UserTunnelEndpoint)
+	// AgentIp follows the skipped junk.
+	assert.Equal(t, [4]byte{203, 0, 113, 9}, dev.AgentIp)
 }
 
 func TestFixtureAccessPass(t *testing.T) {

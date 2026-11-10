@@ -679,6 +679,10 @@ export interface Device {
   // deprecatedInterfaces by deserializeDevice. When populated from the wire,
   // length parity with deprecatedInterfaces is enforced.
   interfaces: DeviceInterface[];
+  // agentIp is the public address the device's agents connect from, when it is
+  // neither publicIp nor an interface address. All zeros means unset, and
+  // accounts written before the field existed read as zeros.
+  agentIp: Uint8Array;
 }
 
 export function deserializeDevice(data: Uint8Array): Device {
@@ -742,6 +746,7 @@ export function deserializeDevice(data: Uint8Array): Device {
       interfaces.push(deserializeInterfaceSized(r));
     }
   }
+  const agentIp = r.readIPv4();
 
   return {
     accountType,
@@ -772,6 +777,7 @@ export function deserializeDevice(data: Uint8Array): Device {
     multicastPublishersCount,
     maxMulticastPublishers,
     interfaces,
+    agentIp,
   };
 }
 

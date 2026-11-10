@@ -118,6 +118,7 @@ make generate-fixtures   # Regenerate .bin/.json fixtures from Rust
 ## Style & Terminology
 
 - Use "onchain" (one word, no hyphen), never "on-chain"
+- Write code comments in Simplified Technical English, with the same rules as the PR Summary of Changes (see "Simplified Technical English" under Pull Requests).
 
 ## Git Commits
 

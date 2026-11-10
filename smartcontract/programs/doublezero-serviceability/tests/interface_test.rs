@@ -129,6 +129,7 @@ async fn test_interface_create_invalid_mtu_non_cyoa() {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -301,6 +302,7 @@ async fn test_interface_create_invalid_mtu_cyoa() {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

@@ -259,6 +259,8 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 			DeserializeInterfaceSized(reader, &dev.Interfaces[i])
 		}
 	}
+	// Agent IP follows the trailing interfaces vec. Absent (zero) on older accounts.
+	dev.AgentIp = reader.ReadIPv4()
 	// Note: dev.PubKey is set separately in client.go after deserialization
 }
 

@@ -120,6 +120,7 @@ async fn setup(client_ip: [u8; 4]) -> Fixture {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

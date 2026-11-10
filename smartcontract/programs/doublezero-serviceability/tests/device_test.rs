@@ -219,6 +219,7 @@ async fn test_device() {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -404,6 +405,7 @@ async fn test_device() {
             max_multicast_publishers: None,
             multicast_subscribers_count: None,
             multicast_publishers_count: None,
+            agent_ip: None,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -556,6 +558,7 @@ async fn test_device_update_metrics_publisher_by_foundation_allowlist_account() 
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -632,6 +635,7 @@ async fn test_device_update_metrics_publisher_by_foundation_allowlist_account() 
             max_multicast_publishers: None,
             multicast_subscribers_count: None,
             multicast_publishers_count: None,
+            agent_ip: None,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -691,6 +695,7 @@ async fn test_device_update_user_counts_by_foundation() {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -778,6 +783,7 @@ async fn test_device_update_multicast_counts_by_foundation_allowlist_account() {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -890,6 +896,7 @@ async fn test_device_update_multicast_counts_ignored_for_non_foundation_payer() 
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1166,6 +1173,7 @@ async fn test_delete_device_fails_with_reference_count_not_zero() {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1356,6 +1364,7 @@ async fn test_device_delete_from_drained() {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1528,6 +1537,7 @@ async fn test_delete_device_atomic_close() {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1730,6 +1740,7 @@ async fn assert_delete_device_rejects_globalstate_in_slot(as_contributor_owner: 
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1863,6 +1874,7 @@ async fn test_delete_device_atomic_close_fails_with_references() {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

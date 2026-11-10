@@ -237,6 +237,7 @@ describe("Device fixture", () => {
 
     // publicIp
     expect(formatIPv4(dev.publicIp)).toBe("203.0.113.1");
+    expect(formatIPv4(dev.agentIp)).toBe("203.0.113.9");
 
     // code
     expect(dev.code).toBe("dz1");
@@ -329,6 +330,8 @@ describe("Device legacy fixture", () => {
     expect(dev.interfaces[0].loopbackType).toBe(1); // Vpnv4
     expect(dev.interfaces[1].name).toBe("Ethernet1");
     expect(dev.interfaces[1].userTunnelEndpoint).toBe(true);
+    // Written before agentIp existed: reads as unset.
+    expect(formatIPv4(dev.agentIp)).toBe("0.0.0.0");
   });
 });
 
@@ -354,6 +357,8 @@ describe("Device future-version fixture", () => {
     expect(ni1.size).toBe(expectedInterfaceSize(ni1) + 8);
     expect(ni1.name).toBe("Ethernet1");
     expect(ni1.userTunnelEndpoint).toBe(true);
+    // agentIp follows the skipped junk.
+    expect(formatIPv4(dev.agentIp)).toBe("203.0.113.9");
   });
 });
 

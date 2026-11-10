@@ -484,6 +484,10 @@ type Device struct {
 	// accounts (no trailing bytes), this is rebuilt from DeprecatedInterfaces by DeserializeDevice.
 	// When populated from the wire, len(Interfaces) == len(DeprecatedInterfaces) is enforced.
 	Interfaces []Interface `influx:"-" json:",omitempty"`
+	// AgentIp is the public address the device's agents connect from, when it is
+	// neither PublicIp nor an interface address. Zero means unset, and accounts
+	// written before the field existed read as zero.
+	AgentIp [4]uint8 `influx:"-"`
 	// DeserializeError is set when DeserializeDevice encounters a recoverable but
 	// account-malformed condition (e.g. trailing interfaces length mismatch with
 	// the deprecated_interfaces vec). Consumers should check this before trusting the
@@ -501,6 +505,7 @@ func (d Device) MarshalJSON() ([]byte, error) {
 		LocationPubKey         string   `json:"LocationPubKey"`
 		ExchangePubKey         string   `json:"ExchangePubKey"`
 		PublicIp               string   `json:"PublicIp"`
+		AgentIp                string   `json:"AgentIp"`
 		DzPrefixes             []string `json:"DzPrefixes"`
 		MetricsPublisherPubKey string   `json:"MetricsPublisherPubKey"`
 		ContributorPubKey      string   `json:"ContributorPubKey"`
@@ -520,6 +525,9 @@ func (d Device) MarshalJSON() ([]byte, error) {
 	jsonDevice.PubKey = base58.Encode(d.PubKey[:])
 
 	jsonDevice.PublicIp = net.IP(d.PublicIp[:]).String()
+	if d.AgentIp != [4]uint8{} {
+		jsonDevice.AgentIp = net.IP(d.AgentIp[:]).String()
+	}
 
 	prefixes := make([]string, len(d.DzPrefixes))
 	for i, p := range d.DzPrefixes {

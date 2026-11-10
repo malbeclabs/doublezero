@@ -22,6 +22,7 @@ pub struct CreateDeviceCommand {
     pub metrics_publisher: Pubkey,
     pub mgmt_vrf: String,
     pub desired_status: Option<DeviceDesiredStatus>,
+    pub agent_ip: Option<Ipv4Addr>,
 }
 
 impl CreateDeviceCommand {
@@ -69,6 +70,7 @@ impl CreateDeviceCommand {
                 mgmt_vrf: self.mgmt_vrf.clone(),
                 desired_status: self.desired_status,
                 resource_count: 0,
+                agent_ip: self.agent_ip.unwrap_or(Ipv4Addr::UNSPECIFIED),
             },
         );
 
@@ -119,6 +121,7 @@ mod tests {
                 mgmt_vrf: "mgmt".to_string(),
                 desired_status: None,
                 resource_count: 0,
+                agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
             },
         );
         client
@@ -138,6 +141,7 @@ mod tests {
             metrics_publisher,
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
+            agent_ip: None,
         };
 
         let invalid_command = CreateDeviceCommand {

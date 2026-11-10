@@ -208,6 +208,7 @@ async fn setup() -> BgpStatusTestEnv {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -634,6 +635,7 @@ async fn test_bgp_status_user_device_mismatch() {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey_2, false),

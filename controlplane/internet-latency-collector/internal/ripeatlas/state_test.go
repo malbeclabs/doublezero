@@ -787,6 +787,92 @@ func TestInternetLatency_RIPEAtlas_State_MigratesLegacyTargetMarks(t *testing.T)
 	require.True(t, reloaded.IsProbeUnresponsive(targetProbe))
 }
 
+func TestInternetLatency_RIPEAtlas_State_SeedsExportMarks(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now().Unix()
+	past := now - 3600
+	older := past - 3600
+	future := now + 48*3600
+
+	writeState := func(t *testing.T, lastResponseAt, lastExportAt int64) string {
+		t.Helper()
+		filename := filepath.Join(t.TempDir(), "timestamps.json")
+		contents := fmt.Sprintf(`{"metadata": {"1": {
+			"target_location": "cmh",
+			"target_probe_id": 12651,
+			"sources": [{"location_code": "nyc", "probe_id": 100, "last_response_at": %d}],
+			"created_at": 1,
+			"last_export_at": %d
+		}}}`, lastResponseAt, lastExportAt)
+		require.NoError(t, os.WriteFile(filename, []byte(contents), 0o600))
+		return filename
+	}
+	exportMark := func(t *testing.T, ms *MeasurementState) int64 {
+		t.Helper()
+		meta, ok := ms.GetMetadata(1)
+		require.True(t, ok)
+		return meta.Sources[0].LastExportedAt
+	}
+
+	for _, tc := range []struct {
+		name           string
+		lastResponseAt int64
+		lastExportAt   int64
+		want           int64
+	}{
+		{"a probe behind the cursor keeps its late results recoverable", older, past, older},
+		{"a probe ahead of the cursor leaves a failed write retryable", past, older, older},
+		{"a future-dated cursor does not hide the probe's own mark", past, future, past},
+		{"future-dated marks are held to wall clock", future, future, now},
+		{"a measurement with no cursor has exported nothing", past, 0, 0},
+		{"a probe that never reported has exported nothing", 0, past, 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ms := NewMeasurementState(writeState(t, tc.lastResponseAt, tc.lastExportAt))
+			require.NoError(t, ms.Load())
+			require.InDelta(t, tc.want, exportMark(t, ms), 5)
+		})
+	}
+
+	t.Run("it runs once", func(t *testing.T) {
+		t.Parallel()
+
+		filename := writeState(t, older, past)
+		ms := NewMeasurementState(filename)
+		require.NoError(t, ms.Load())
+
+		// A late upload behind the cursor whose write failed: liveness moves and is saved,
+		// the export mark does not.
+		ms.UpdateSourceProbeResponse(1, 100, past-60)
+		require.NoError(t, ms.Save())
+
+		reloaded := NewMeasurementState(filename)
+		require.NoError(t, reloaded.Load())
+		require.Equal(t, older, exportMark(t, reloaded), "reseeding would drop the failed write's batch")
+	})
+
+	t.Run("a file this build created is never seeded", func(t *testing.T) {
+		t.Parallel()
+
+		filename := filepath.Join(t.TempDir(), "timestamps.json")
+		ms := NewMeasurementState(filename)
+		require.NoError(t, ms.Load(), "a first deploy has no file to read")
+		ms.SetMetadata(1, MeasurementMeta{
+			TargetLocation: "cmh",
+			Sources:        []SourceProbeMeta{{LocationCode: "nyc", ProbeID: 100, LastResponseAt: past}},
+			LastExportAt:   past,
+		})
+		require.NoError(t, ms.Save())
+
+		reloaded := NewMeasurementState(filename)
+		require.NoError(t, reloaded.Load())
+		require.Zero(t, exportMark(t, reloaded))
+	})
+}
+
 func TestInternetLatency_RIPEAtlas_State_UnresponsiveTargetExpiry(t *testing.T) {
 	t.Parallel()
 

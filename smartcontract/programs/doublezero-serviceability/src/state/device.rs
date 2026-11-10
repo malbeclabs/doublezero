@@ -287,6 +287,10 @@ pub struct Device {
     /// `interfaces` (always as `InterfaceDeprecated::V2`) by the custom `BorshSerialize`
     /// impl, keeping older readers byte-compatible.
     pub interfaces: Vec<Interface>,
+    /// Public address the device's agents connect from, when it is neither
+    /// `public_ip` nor an interface address (a management VRF, an upstream NAT).
+    /// Written after `interfaces`; `0.0.0.0` means unset.
+    pub agent_ip: Ipv4Addr, // 4
 }
 
 impl Default for Device {
@@ -320,6 +324,7 @@ impl Default for Device {
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
             interfaces: Vec::new(),
+            agent_ip: Ipv4Addr::UNSPECIFIED,
         }
     }
 }
@@ -496,12 +501,12 @@ impl fmt::Display for Device {
             public_ip: {}, dz_prefixes: {}, status: {}, code: {}, metrics_publisher_pk: {}, mgmt_vrf: {}, interfaces: {:?}, \
             reference_count: {}, users_count: {}, max_users: {}, device_health: {}, desired_status: {}, \
             unicast_users_count: {}, multicast_subscribers_count: {}, max_unicast_users: {}, max_multicast_subscribers: {}, reserved_seats: {}, \
-            multicast_publishers_count: {}, max_multicast_publishers: {}",
+            multicast_publishers_count: {}, max_multicast_publishers: {}, agent_ip: {}",
             self.account_type, self.owner, self.index, self.contributor_pk, self.location_pk, self.exchange_pk, self.device_type,
             self.public_ip, self.dz_prefixes, self.status, self.code, self.metrics_publisher_pk, self.mgmt_vrf, self.interfaces,
             self.reference_count, self.users_count, self.max_users, self.device_health, self.desired_status,
             self.unicast_users_count, self.multicast_subscribers_count, self.max_unicast_users, self.max_multicast_subscribers, self.reserved_seats,
-            self.multicast_publishers_count, self.max_multicast_publishers
+            self.multicast_publishers_count, self.max_multicast_publishers, self.agent_ip
         )
     }
 }
@@ -551,6 +556,7 @@ impl borsh::BorshSerialize for Device {
         self.multicast_publishers_count.serialize(writer)?;
         self.max_multicast_publishers.serialize(writer)?;
         self.interfaces.serialize(writer)?;
+        self.agent_ip.serialize(writer)?;
         Ok(())
     }
 }
@@ -601,6 +607,9 @@ impl TryFrom<&[u8]> for Device {
         // Trailing forward-compat vec: present on accounts written by the current
         // serializer, absent on legacy accounts.
         let trailing: Vec<Interface> = BorshDeserialize::deserialize(&mut data).unwrap_or_default();
+        // Absent on accounts written before the field existed.
+        let agent_ip: Ipv4Addr =
+            BorshDeserialize::deserialize(&mut data).unwrap_or(Ipv4Addr::UNSPECIFIED);
 
         let interfaces = if trailing.is_empty() {
             // Legacy account: rebuild from the legacy enum vec via per-variant
@@ -653,6 +662,7 @@ impl TryFrom<&[u8]> for Device {
             multicast_publishers_count,
             max_multicast_publishers,
             interfaces,
+            agent_ip,
         };
 
         if out.account_type != AccountType::Device {
@@ -712,6 +722,11 @@ impl Validate for Device {
         if self.device_type != DeviceType::Transit && !is_global(self.public_ip) {
             msg!("Invalid public IP: {}", self.public_ip);
             return Err(DoubleZeroError::InvalidPublicIp);
+        }
+        // Agent IP, when set, must be a global address
+        if !self.agent_ip.is_unspecified() && !is_global(self.agent_ip) {
+            msg!("Invalid agent IP: {}", self.agent_ip);
+            return Err(DoubleZeroError::InvalidAgentIp);
         }
         // Device prefixes must be present
         if self.dz_prefixes.is_empty() {
@@ -850,6 +865,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            agent_ip: Ipv4Addr::UNSPECIFIED,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidAccountType);
@@ -886,6 +902,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            agent_ip: Ipv4Addr::UNSPECIFIED,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::CodeTooLong);
@@ -922,6 +939,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            agent_ip: Ipv4Addr::UNSPECIFIED,
         };
         assert!(valid.validate().is_ok());
 
@@ -985,6 +1003,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            agent_ip: Ipv4Addr::UNSPECIFIED,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidLocation);
@@ -1021,6 +1040,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            agent_ip: Ipv4Addr::UNSPECIFIED,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -1058,6 +1078,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            agent_ip: Ipv4Addr::UNSPECIFIED,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidPublicIp);
@@ -1094,6 +1115,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            agent_ip: Ipv4Addr::UNSPECIFIED,
         };
         let err = val.validate();
         assert_eq!(err.unwrap_err(), DoubleZeroError::InvalidDzPrefix);
@@ -1130,6 +1152,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            agent_ip: Ipv4Addr::UNSPECIFIED,
         };
         // max_users == 0 means "locked", so validation should still succeed
         val.validate().unwrap();
@@ -1168,6 +1191,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 2,
             max_multicast_publishers: 1,
+            agent_ip: Ipv4Addr::UNSPECIFIED,
         };
 
         assert!(val.validate().is_ok());
@@ -1204,6 +1228,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            agent_ip: Ipv4Addr::UNSPECIFIED,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -1389,6 +1414,7 @@ mod tests {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            agent_ip: Ipv4Addr::UNSPECIFIED,
         };
 
         let oldsize = size_of_pre_dzd_metadata_device(val.code.len(), val.dz_prefixes.len());
@@ -1440,6 +1466,7 @@ mod test_device_validate {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            agent_ip: Ipv4Addr::UNSPECIFIED,
         };
         assert!(device.validate().is_ok());
     }
@@ -1479,6 +1506,7 @@ mod test_device_validate_errors {
             reserved_seats: 0,
             multicast_publishers_count: 0,
             max_multicast_publishers: 0,
+            agent_ip: Ipv4Addr::UNSPECIFIED,
         }
     }
 
@@ -1748,10 +1776,12 @@ mod test_device_interfaces_vec {
     #[test]
     fn test_device_try_from_rejects_mismatched_interface_vecs() {
         let mut bytes = borsh::to_vec(&sample_device_with_n_interfaces(0)).unwrap();
-        // The trailing `interfaces` vec is the last field: replace its empty length with one
-        // interface while the legacy vec stays empty.
+        // The trailing `interfaces` vec is followed only by the 4-byte agent_ip: replace its
+        // empty length with one interface while the legacy vec stays empty.
+        let agent_ip = bytes.split_off(bytes.len() - 4);
         bytes.truncate(bytes.len() - 4);
         bytes.extend(borsh::to_vec(&vec![sample_iface("Switch1/1/1", 100)]).unwrap());
+        bytes.extend(agent_ip);
 
         assert_eq!(
             Device::try_from(&bytes[..]).unwrap_err(),
@@ -1883,14 +1913,18 @@ mod test_device_interfaces_vec {
         new_trailing.extend_from_slice(&normal_second_bytes);
 
         // Compute the offset of the trailing vec in the original bytes: it equals
-        // the original byte length minus the original trailing vec size.
+        // the original byte length minus the trailing vec size and the 4-byte agent_ip
+        // that follows it.
         let original_trailing_len = 4 + normal_first_bytes.len() + normal_second_bytes.len();
-        let prefix_len = bytes.len() - original_trailing_len;
-        let mut forged_bytes = Vec::with_capacity(prefix_len + new_trailing.len());
+        let prefix_len = bytes.len() - original_trailing_len - 4;
+        let mut forged_bytes = Vec::with_capacity(prefix_len + new_trailing.len() + 4);
         forged_bytes.extend_from_slice(&bytes[..prefix_len]);
         forged_bytes.extend_from_slice(&new_trailing);
+        forged_bytes.extend_from_slice(&[203, 0, 113, 9]);
 
         let decoded = Device::try_from(&forged_bytes[..]).unwrap();
+        // agent_ip follows the skipped junk.
+        assert_eq!(decoded.agent_ip, Ipv4Addr::new(203, 0, 113, 9));
         assert_eq!(decoded.interfaces.len(), 2);
         assert_eq!(decoded.interfaces[0].version, 5);
         assert_eq!(decoded.interfaces[0].name, "Switch1/1/0");
@@ -1934,5 +1968,67 @@ mod test_device_interfaces_vec {
         let legacy_v2 = decoded.deprecated_interfaces[0].to_v2();
         assert_eq!(legacy_v2.name, decoded.interfaces[0].name);
         assert_eq!(legacy_v2.loopback_type, LoopbackType::Vpnv4);
+    }
+
+    fn agent_ip_test_device(agent_ip: Ipv4Addr) -> Device {
+        Device {
+            code: "dz1".to_string(),
+            device_type: DeviceType::Hybrid,
+            location_pk: Pubkey::new_unique(),
+            exchange_pk: Pubkey::new_unique(),
+            dz_prefixes: "100.0.0.1/24".parse().unwrap(),
+            public_ip: [1, 2, 3, 4].into(),
+            agent_ip,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn test_state_device_agent_ip_roundtrip() {
+        let val = agent_ip_test_device(Ipv4Addr::new(203, 0, 113, 9));
+        let data = borsh::to_vec(&val).unwrap();
+        assert_eq!(&data[data.len() - 4..], &[203, 0, 113, 9]);
+        assert_eq!(Device::try_from(&data[..]).unwrap(), val);
+    }
+
+    #[test]
+    fn test_state_device_agent_ip_absent_on_older_account() {
+        // An account written before agent_ip existed ends at the interfaces vec.
+        let val = agent_ip_test_device(Ipv4Addr::new(203, 0, 113, 9));
+        let data = borsh::to_vec(&val).unwrap();
+        let decoded = Device::try_from(&data[..data.len() - 4]).unwrap();
+        assert_eq!(
+            decoded,
+            Device {
+                agent_ip: Ipv4Addr::UNSPECIFIED,
+                ..val
+            }
+        );
+    }
+
+    #[test]
+    fn test_state_device_validate_agent_ip() {
+        // Unset and global addresses pass. A documentation-range address is
+        // not global, so a placeholder stands in for a real one here.
+        agent_ip_test_device(Ipv4Addr::UNSPECIFIED)
+            .validate()
+            .unwrap();
+        agent_ip_test_device(Ipv4Addr::new(5, 6, 7, 8))
+            .validate()
+            .unwrap();
+        // Anything else that is not global fails.
+        for ip in [
+            Ipv4Addr::new(10, 0, 0, 1),
+            Ipv4Addr::new(127, 0, 0, 1),
+            Ipv4Addr::new(100, 64, 0, 1),
+            Ipv4Addr::new(0, 1, 2, 3),
+            Ipv4Addr::new(203, 0, 113, 9),
+        ] {
+            assert_eq!(
+                agent_ip_test_device(ip).validate(),
+                Err(DoubleZeroError::InvalidAgentIp),
+                "agent_ip {ip}"
+            );
+        }
     }
 }

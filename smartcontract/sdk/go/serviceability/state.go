@@ -490,7 +490,8 @@ type Device struct {
 	AgentIp [4]uint8 `influx:"-"`
 	// DeserializeError is set when DeserializeDevice encounters a recoverable but
 	// account-malformed condition (e.g. trailing interfaces length mismatch with
-	// the deprecated_interfaces vec). Consumers should check this before trusting the
+	// the deprecated_interfaces vec, or more interfaces declared than the account
+	// holds). Consumers should check this before trusting the
 	// deserialized fields.
 	DeserializeError error    `influx:"-" json:"-"`
 	PubKey           [32]byte `influx:"tag,pubkey,pubkey"`

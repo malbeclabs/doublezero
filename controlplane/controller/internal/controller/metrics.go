@@ -87,6 +87,16 @@ var (
 		[]string{"link_pubkey", "device_code", "interface"},
 	)
 
+	// clickhouseWriteEnabled is 1 while the ClickHouse writer includes a
+	// table or column in its inserts. caller_ip at 0 means getconfig rows
+	// carry no caller address, so a reader of caller_ip sees no callers.
+	clickhouseWriteEnabled = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Name: "controller_clickhouse_write_enabled",
+		Help: "1 while the ClickHouse writer writes this table or column, 0 otherwise",
+	},
+		[]string{"write"},
+	)
+
 	srvMetrics = grpcprom.NewServerMetrics(
 		grpcprom.WithServerHandlingTimeHistogram(
 			grpcprom.WithHistogramBuckets([]float64{0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 5}),
@@ -115,8 +125,30 @@ func init() {
 	prometheus.MustRegister(linkMetrics)
 	prometheus.MustRegister(linkMetricInvalid)
 
+	// clickhouse writer metrics. Every label starts at 0, so a controller
+	// with no ClickHouse writer reports 0 rather than no series.
+	prometheus.MustRegister(clickhouseWriteEnabled)
+	for _, w := range []string{writeGetConfigEvents, writeCallerIP, writeAgentVersions} {
+		clickhouseWriteEnabled.WithLabelValues(w).Set(0)
+	}
+
 	// gRPC middleware metrics
 	prometheus.MustRegister(srvMetrics)
+}
+
+// Values of the write label on controller_clickhouse_write_enabled.
+const (
+	writeGetConfigEvents = "getconfig_events"
+	writeCallerIP        = "caller_ip"
+	writeAgentVersions   = "agent_versions"
+)
+
+func setWriteEnabled(write string, enabled bool) {
+	v := 0.0
+	if enabled {
+		v = 1
+	}
+	clickhouseWriteEnabled.WithLabelValues(write).Set(v)
 }
 
 // deleteDeviceMetrics drops every per-device series carrying the given device

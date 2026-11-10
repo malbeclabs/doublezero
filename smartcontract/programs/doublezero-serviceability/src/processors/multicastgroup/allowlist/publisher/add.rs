@@ -151,7 +151,7 @@ pub fn process_add_multicastgroup_pub_allowlist(
             unicast_user_count: 0,
             max_unicast_users: 1,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
 
         try_acc_create(
@@ -219,7 +219,7 @@ pub fn process_add_multicastgroup_pub_allowlist(
         funded_user_payer = accesspass.user_payer;
         multiplier = if accesspass.allow_multiple_ip() {
             (accesspass.max_unicast_users as u64)
-                .saturating_add(accesspass.max_multicast_users as u64)
+                .saturating_add(accesspass.max_public_multicast_users as u64)
         } else {
             1
         };

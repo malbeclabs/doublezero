@@ -93,13 +93,13 @@ impl RemoveFeedAccessPassCliCommand {
             .partition(|seat| ended_or_deleted_feed_reason(seat, &feeds, now).is_some());
         let provisions: Vec<FeedSeatProvision> =
             remaining.iter().map(|seat| kept_seat(seat, now)).collect();
-        let max_multicast_users = u16::try_from(
+        let max_public_multicast_users = u16::try_from(
             provisions
                 .iter()
                 .map(|s| u32::from(s.max_users))
                 .sum::<u32>(),
         )?;
-        let cap_changes = max_multicast_users != accesspass.max_multicast_users;
+        let cap_changes = max_public_multicast_users != accesspass.max_public_multicast_users;
 
         let tenant = tenant_for_cap_change(client, &accesspass, accesspass_pk, cap_changes)?;
         let holders = find_holders(client, user_payer, client_ip, accesspass_pk, feed_pk)?;
@@ -114,7 +114,7 @@ impl RemoveFeedAccessPassCliCommand {
         if cap_changes {
             refuse_cap_below_public_users(
                 accesspass_pk,
-                max_multicast_users,
+                max_public_multicast_users,
                 u32::from(accesspass.public_multicast_user_count)
                     .saturating_sub(leaving_seat_holders as u32),
             )?;
@@ -151,8 +151,8 @@ impl RemoveFeedAccessPassCliCommand {
         if cap_changes {
             writeln!(
                 out,
-                "  Set max multicast users from {} to {max_multicast_users}",
-                accesspass.max_multicast_users
+                "  Set max multicast users from {} to {max_public_multicast_users}",
+                accesspass.max_public_multicast_users
             )?;
         }
 
@@ -222,12 +222,12 @@ impl RemoveFeedAccessPassCliCommand {
                 allow_multiple_ip: accesspass.allow_multiple_ip(),
                 tenant,
                 max_unicast_users: accesspass.max_unicast_users,
-                max_multicast_users,
+                max_public_multicast_users,
             })?;
             writeln!(
                 out,
-                "Set max multicast users from {} to {max_multicast_users}: {signature}",
-                accesspass.max_multicast_users
+                "Set max multicast users from {} to {max_public_multicast_users}: {signature}",
+                accesspass.max_public_multicast_users
             )?;
         }
 
@@ -470,7 +470,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 0,
             public_multicast_user_count: 1,
-            max_multicast_users: 5,
+            max_public_multicast_users: 5,
         }
     }
 
@@ -577,7 +577,7 @@ mod tests {
                 allow_multiple_ip: false,
                 tenant: Pubkey::default(),
                 max_unicast_users: 0,
-                max_multicast_users: 3,
+                max_public_multicast_users: 3,
             }))
             .times(1)
             .in_sequence(&mut seq)

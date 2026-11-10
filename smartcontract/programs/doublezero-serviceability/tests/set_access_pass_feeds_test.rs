@@ -171,7 +171,7 @@ async fn create_edge_seat_pass(
             last_access_epoch: u64::MAX,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 4,
+            max_public_multicast_users: 4,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -635,7 +635,7 @@ async fn test_cannot_set_max_users_below_current_users() {
         unicast_user_count: 0,
         max_unicast_users: 1,
         public_multicast_user_count: 3,
-        max_multicast_users: 4,
+        max_public_multicast_users: 4,
     };
     program_test.add_account(
         accesspass_pubkey,

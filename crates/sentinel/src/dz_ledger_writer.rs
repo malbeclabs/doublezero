@@ -67,7 +67,7 @@ pub fn build_create_multicast_publisher_instructions(
             last_access_epoch: u64::MAX,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         },
     );
 
@@ -179,7 +179,7 @@ mod tests {
             last_access_epoch: u64::MAX,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
         assert_eq!(
             ixs.set_access_pass,

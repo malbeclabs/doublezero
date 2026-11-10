@@ -230,7 +230,7 @@ fn set_access_pass_until(client_ip: Ipv4Addr, last_access_epoch: u64) -> DoubleZ
         last_access_epoch,
         allow_multiple_ip: false,
         max_unicast_users: 1,
-        max_multicast_users: 1,
+        max_public_multicast_users: 1,
     })
 }
 

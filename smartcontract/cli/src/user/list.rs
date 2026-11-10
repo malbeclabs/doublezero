@@ -889,7 +889,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 1,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
 
         let user2 = User {
@@ -937,7 +937,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 1,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -2190,7 +2190,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 1,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }
     }
 

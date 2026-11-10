@@ -1108,6 +1108,7 @@ class AccessPass:
     # The program names this field public_multicast_user_count. It leaves out the users that
     # hold no pass seat.
     multicast_user_count: int = 0
+    # The program names this field max_public_multicast_users. It caps the users that hold a pass seat.
     max_multicast_users: int = 1
 
     @classmethod

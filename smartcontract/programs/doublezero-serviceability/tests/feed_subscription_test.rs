@@ -198,7 +198,7 @@ async fn setup(client_ip: [u8; 4]) -> Fixture {
             last_access_epoch: 9999,
             allow_multiple_ip: true,
             max_unicast_users: 1,
-            max_multicast_users: 4,
+            max_public_multicast_users: 4,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -957,7 +957,7 @@ async fn test_non_edgeseat_pass_rejected() {
             last_access_epoch: 9999,
             allow_multiple_ip: true,
             max_unicast_users: 1,
-            max_multicast_users: 4,
+            max_public_multicast_users: 4,
         }),
         vec![
             AccountMeta::new(fixture.accesspass_pubkey, false),

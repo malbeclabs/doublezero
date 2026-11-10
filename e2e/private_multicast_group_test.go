@@ -179,7 +179,7 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 		manager(t, "doublezero feed create --code solana-shreds-full --name solana-shreds-full-ewr --exchange "+device.Spec.Exchange+
 			" --group feed-e2e-a --group feed-e2e-b")
 		manager(t, "doublezero access-pass set --accesspass-type edge-seat --epochs max --allow-multiple-ip"+
-			" --user-payer "+dzID+" --max-unicast-users 0 --max-multicast-users 0")
+			" --user-payer "+dzID+" --max-unicast-users 0 --max-public-multicast-users 0")
 		manager(t, "doublezero access-pass add-feed --user-payer "+dzID+" --feed solana-shreds-full-ewr --max-users 4"+
 			" --terminates-at "+time.Now().UTC().AddDate(0, 1, 0).Format("2006-01-02")+" --yes")
 
@@ -304,7 +304,7 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 		manager(t, "doublezero access-pass add-feed --user-payer "+dzID+" --feed solana-shreds-full-ewr --max-users 5"+
 			" --terminates-at "+time.Now().UTC().AddDate(0, 1, 0).Format("2006-01-02")+" --yes")
 		manager(t, "doublezero access-pass set --accesspass-type edge-seat --epochs max --allow-multiple-ip"+
-			" --user-payer "+dzID+" --max-unicast-users 0 --max-multicast-users 4")
+			" --user-payer "+dzID+" --max-unicast-users 0 --max-public-multicast-users 4")
 		require.Equal(t, uint16(4), readState(t).passCap)
 
 		connectRefused(t, hostE, "--subscribe-feed solana-shreds-full", "Access pass max multicast users exceeded")

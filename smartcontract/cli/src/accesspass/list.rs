@@ -425,7 +425,7 @@ impl ListAccessPassCliCommand {
                     multicast_users: format_user_count(
                         &access_pass.accesspass_type,
                         access_pass.public_multicast_user_count,
-                        access_pass.max_multicast_users,
+                        access_pass.max_public_multicast_users,
                     ),
                     status: access_pass.status,
                     owner: access_pass.owner,
@@ -535,7 +535,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 1,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
 
         let access2_pubkey = Pubkey::from_str_const("1111111QLbz7JHiBTspS962RLKV8GndWFwiEaqKM");
@@ -558,7 +558,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 1,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
 
         let access3_pubkey = Pubkey::from_str_const("11111115q4EpJaTXAZWpCg3J2zppWGSZ46KXozzo9");
@@ -579,7 +579,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 1,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
 
         client.expect_get_epoch().returning(move || Ok(123));
@@ -829,7 +829,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 1,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
 
         // access2: subscriber of "test", IP 0.0.0.0
@@ -851,7 +851,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 1,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
 
         // access3: publisher of "test", IP 2.3.4.5
@@ -873,7 +873,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 1,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
 
         client.expect_list_multicastgroup().returning(move |_| {
@@ -1086,7 +1086,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 1,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
 
         client.expect_get_epoch().returning(move || Ok(123));

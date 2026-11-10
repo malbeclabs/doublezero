@@ -1127,6 +1127,7 @@ export interface AccessPass {
   // The program names this field public_multicast_user_count. It leaves out the users that
   // hold no pass seat.
   multicastUserCount: number;
+  // The program names this field max_public_multicast_users. It caps the users that hold a pass seat.
   maxMulticastUsers: number;
 }
 

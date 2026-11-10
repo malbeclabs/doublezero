@@ -253,7 +253,9 @@ pub struct AccessPass {
     // holds none. The JSON name stays `multicast_user_count`.
     #[cfg_attr(feature = "serde", serde(rename = "multicast_user_count"))]
     pub public_multicast_user_count: u16, // 2 - live count (every pass type)
-    pub max_multicast_users: u16, // 2 - max multicast users admitted (enforced on EdgeSeat only)
+    // This cap counts the users that hold a pass seat. The JSON name stays `max_multicast_users`.
+    #[cfg_attr(feature = "serde", serde(rename = "max_multicast_users"))]
+    pub max_public_multicast_users: u16, // 2 - max public multicast users admitted (enforced on EdgeSeat only)
 }
 
 impl fmt::Display for AccessPass {
@@ -302,7 +304,7 @@ impl TryFrom<&[u8]> for AccessPass {
             unicast_user_count: BorshDeserialize::deserialize(&mut data).unwrap_or(0),
             max_unicast_users: BorshDeserialize::deserialize(&mut data).unwrap_or(1),
             public_multicast_user_count: BorshDeserialize::deserialize(&mut data).unwrap_or(0),
-            max_multicast_users: BorshDeserialize::deserialize(&mut data).unwrap_or(1),
+            max_public_multicast_users: BorshDeserialize::deserialize(&mut data).unwrap_or(1),
         };
 
         if out.account_type != AccountType::AccessPass {
@@ -358,7 +360,7 @@ impl AccessPass {
     }
 
     /// Count a new user on the pass, by category. Every pass type keeps the counts, but only an
-    /// EdgeSeat pass enforces `max_unicast_users` and `max_multicast_users`, because those caps
+    /// EdgeSeat pass enforces `max_unicast_users` and `max_public_multicast_users`, because those caps
     /// are what an EdgeSeat sells. Does NOT touch `connection_count`, which the user
     /// create/delete processors maintain independently.
     ///
@@ -369,7 +371,9 @@ impl AccessPass {
         let enforce_caps = matches!(self.accesspass_type, AccessPassType::EdgeSeat(_));
         match user_type {
             UserType::Multicast => {
-                if enforce_caps && self.public_multicast_user_count >= self.max_multicast_users {
+                if enforce_caps
+                    && self.public_multicast_user_count >= self.max_public_multicast_users
+                {
                     return Err(DoubleZeroError::AccessPassMaxMulticastUsersExceeded);
                 }
                 self.public_multicast_user_count =
@@ -523,7 +527,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 1,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
 
         // No bits set.
@@ -579,7 +583,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 1,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -627,7 +631,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 1,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
 
         let data = borsh::to_vec(&val).unwrap();
@@ -669,7 +673,7 @@ mod tests {
         assert_eq!(val.unicast_user_count, 0);
         assert_eq!(val.max_unicast_users, 1);
         assert_eq!(val.public_multicast_user_count, 0);
-        assert_eq!(val.max_multicast_users, 1);
+        assert_eq!(val.max_public_multicast_users, 1);
     }
 
     fn test_accesspass(accesspass_type: AccessPassType) -> AccessPass {
@@ -690,7 +694,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 2,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }
     }
 
@@ -786,7 +790,7 @@ mod tests {
         ] {
             let mut ap = test_accesspass(accesspass_type);
             ap.max_unicast_users = 0;
-            ap.max_multicast_users = 0;
+            ap.max_public_multicast_users = 0;
             // Even with zero caps, non-EdgeSeat passes admit every user, and they count each one.
             ap.try_take_pass_seat(UserType::IBRL).unwrap();
             ap.try_take_pass_seat(UserType::EdgeFiltering).unwrap();
@@ -835,7 +839,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 1,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
 
         let mut data = borsh::to_vec(&val).unwrap();
@@ -878,7 +882,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 1,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -904,7 +908,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 1,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
         let err = val.validate();
         assert!(err.is_err());

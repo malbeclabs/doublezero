@@ -1344,7 +1344,7 @@ fn generate_access_pass(dir: &Path) {
         unicast_user_count: 2,
         max_unicast_users: 4,
         public_multicast_user_count: 1,
-        max_multicast_users: 3,
+        max_public_multicast_users: 3,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -1400,7 +1400,7 @@ fn generate_access_pass_validator(dir: &Path) {
         unicast_user_count: 0,
         max_unicast_users: 5,
         public_multicast_user_count: 0,
-        max_multicast_users: 2,
+        max_public_multicast_users: 2,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -1468,7 +1468,7 @@ fn generate_access_pass_edge_seat(dir: &Path) {
         unicast_user_count: 2,
         max_unicast_users: 4,
         public_multicast_user_count: 1,
-        max_multicast_users: 3,
+        max_public_multicast_users: 3,
     };
 
     let data = borsh::to_vec(&val).unwrap();

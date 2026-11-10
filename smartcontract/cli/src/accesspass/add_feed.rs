@@ -150,17 +150,17 @@ impl AddFeedAccessPassCliCommand {
         if !seated {
             provisions.push(new_seat);
         }
-        let max_multicast_users = u16::try_from(
+        let max_public_multicast_users = u16::try_from(
             provisions
                 .iter()
                 .map(|seat| u32::from(seat.max_users))
                 .sum::<u32>(),
         )?;
-        let cap_changes = max_multicast_users != accesspass.max_multicast_users;
+        let cap_changes = max_public_multicast_users != accesspass.max_public_multicast_users;
         if cap_changes {
             refuse_cap_below_public_users(
                 accesspass_pk,
-                max_multicast_users,
+                max_public_multicast_users,
                 u32::from(accesspass.public_multicast_user_count),
             )?;
         }
@@ -181,8 +181,8 @@ impl AddFeedAccessPassCliCommand {
         if cap_changes {
             writeln!(
                 out,
-                "  Set max multicast users from {} to {max_multicast_users}",
-                accesspass.max_multicast_users
+                "  Set max multicast users from {} to {max_public_multicast_users}",
+                accesspass.max_public_multicast_users
             )?;
         }
 
@@ -221,13 +221,13 @@ impl AddFeedAccessPassCliCommand {
                 allow_multiple_ip: accesspass.allow_multiple_ip(),
                 tenant,
                 max_unicast_users: accesspass.max_unicast_users,
-                max_multicast_users,
+                max_public_multicast_users,
             })
             .wrap_err("add-feed set the feeds on the access pass but not the multicast user cap. Run add-feed again with the same arguments to set the cap")?;
             writeln!(
                 out,
-                "Set max multicast users from {} to {max_multicast_users}: {signature}",
-                accesspass.max_multicast_users
+                "Set max multicast users from {} to {max_public_multicast_users}: {signature}",
+                accesspass.max_public_multicast_users
             )?;
         }
 
@@ -297,7 +297,7 @@ mod tests {
     fn pass(
         user_payer: Pubkey,
         accesspass_type: AccessPassType,
-        max_multicast_users: u16,
+        max_public_multicast_users: u16,
     ) -> AccessPass {
         AccessPass {
             account_type: AccountType::AccessPass,
@@ -316,7 +316,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 0,
             public_multicast_user_count: 0,
-            max_multicast_users,
+            max_public_multicast_users,
         }
     }
 
@@ -370,7 +370,7 @@ mod tests {
     fn expect_cap(
         client: &mut crate::doublezerocommand::MockCliCommand,
         user_payer: Pubkey,
-        max_multicast_users: u16,
+        max_public_multicast_users: u16,
         seq: &mut mockall::Sequence,
     ) {
         client
@@ -383,7 +383,7 @@ mod tests {
                 allow_multiple_ip: false,
                 tenant: Pubkey::default(),
                 max_unicast_users: 0,
-                max_multicast_users,
+                max_public_multicast_users,
             }))
             .times(1)
             .in_sequence(seq)

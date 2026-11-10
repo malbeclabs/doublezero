@@ -253,7 +253,7 @@ impl Fixture {
                 last_access_epoch: 9999,
                 allow_multiple_ip: true,
                 max_unicast_users: 4,
-                max_multicast_users: 4,
+                max_public_multicast_users: 4,
             }),
             vec![
                 AccountMeta::new(accesspass, false),
@@ -284,7 +284,7 @@ impl Fixture {
                 last_access_epoch: 9999,
                 allow_multiple_ip: false,
                 max_unicast_users: 4,
-                max_multicast_users: 4,
+                max_public_multicast_users: 4,
             }),
             vec![
                 AccountMeta::new(wildcard, false),
@@ -411,7 +411,7 @@ impl Fixture {
                 last_access_epoch: 9999,
                 allow_multiple_ip,
                 max_unicast_users: 4,
-                max_multicast_users: 4,
+                max_public_multicast_users: 4,
             }),
             vec![
                 AccountMeta::new(accesspass, false),
@@ -707,7 +707,7 @@ async fn setup() -> Fixture {
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 4,
-            max_multicast_users: 4,
+            max_public_multicast_users: 4,
         }),
         vec![
             AccountMeta::new(accesspass, false),

@@ -249,7 +249,7 @@ async fn create_and_activate_user(
             last_access_epoch: 9999,
             allow_multiple_ip,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -705,7 +705,7 @@ async fn try_create_user(
     .await
 }
 
-/// EdgeSeat passes admit at most `max_unicast_users` unicast and `max_multicast_users` multicast
+/// EdgeSeat passes admit at most `max_unicast_users` unicast and `max_public_multicast_users` multicast
 /// users; the (N+1)th of either is rejected with the per-category error. A bare multicast user is
 /// admitted with no feed and charges no feed seat (those are charged by SubscribeFeed), but counts
 /// against the pass-level cap. The pass lives at the UNSPECIFIED PDA so distinct client IPs all
@@ -729,7 +729,7 @@ async fn test_edge_seat_user_caps_enforced() {
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),

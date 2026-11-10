@@ -242,7 +242,7 @@ async fn measure(with_proof: bool) -> u64 {
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 4,
-            max_multicast_users: 4,
+            max_public_multicast_users: 4,
         }),
         vec![
             AccountMeta::new(accesspass, false),

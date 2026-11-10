@@ -17,7 +17,7 @@ pub struct SetAccessPassCommand {
     pub allow_multiple_ip: bool,
     pub tenant: Pubkey,
     pub max_unicast_users: u16,
-    pub max_multicast_users: u16,
+    pub max_public_multicast_users: u16,
 }
 
 impl SetAccessPassCommand {
@@ -56,7 +56,7 @@ impl SetAccessPassCommand {
                 last_access_epoch: self.last_access_epoch,
                 allow_multiple_ip: self.allow_multiple_ip,
                 max_unicast_users: self.max_unicast_users,
-                max_multicast_users: self.max_multicast_users,
+                max_public_multicast_users: self.max_public_multicast_users,
             },
         ))
     }
@@ -118,7 +118,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 1,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
         let account = accesspass_account(program_id, &accesspass);
         client
@@ -140,7 +140,7 @@ mod tests {
                 last_access_epoch: 0,
                 allow_multiple_ip: false,
                 max_unicast_users: 1,
-                max_multicast_users: 1,
+                max_public_multicast_users: 1,
             },
         );
         client
@@ -156,7 +156,7 @@ mod tests {
             allow_multiple_ip: false,
             tenant: Pubkey::default(),
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }
         .execute(&client);
         assert!(res.is_ok());
@@ -193,7 +193,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 0,
             public_multicast_user_count: 0,
-            max_multicast_users: 2,
+            max_public_multicast_users: 2,
         };
         let account = accesspass_account(program_id, &accesspass);
         client
@@ -208,7 +208,7 @@ mod tests {
             last_access_epoch: u64::MAX,
             allow_multiple_ip: false,
             max_unicast_users: 0,
-            max_multicast_users: 4,
+            max_public_multicast_users: 4,
         };
         client
             .expect_send_transaction()
@@ -231,7 +231,7 @@ mod tests {
             allow_multiple_ip: false,
             tenant: acme,
             max_unicast_users: 0,
-            max_multicast_users: 4,
+            max_public_multicast_users: 4,
         }
         .execute(&client)
         .unwrap();

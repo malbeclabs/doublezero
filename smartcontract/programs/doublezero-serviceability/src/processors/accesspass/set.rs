@@ -37,20 +37,20 @@ pub struct SetAccessPassArgs {
     #[incremental(default = 1)]
     pub max_unicast_users: u16, // 2
     #[incremental(default = 1)]
-    pub max_multicast_users: u16, // 2
+    pub max_public_multicast_users: u16, // 2
 }
 
 impl fmt::Debug for SetAccessPassArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "accesspass_type: {}, ip: {}, last_access_epoch: {}, allow_multiple_ip: {}, max_unicast_users: {}, max_multicast_users: {}",
+            "accesspass_type: {}, ip: {}, last_access_epoch: {}, allow_multiple_ip: {}, max_unicast_users: {}, max_public_multicast_users: {}",
             self.accesspass_type,
             self.client_ip,
             self.last_access_epoch,
             self.allow_multiple_ip,
             self.max_unicast_users,
-            self.max_multicast_users,
+            self.max_public_multicast_users,
         )
     }
 }
@@ -213,7 +213,7 @@ pub fn process_set_access_pass(
             unicast_user_count: 0,
             max_unicast_users: value.max_unicast_users,
             public_multicast_user_count: 0,
-            max_multicast_users: value.max_multicast_users,
+            max_public_multicast_users: value.max_public_multicast_users,
         };
 
         try_acc_create(
@@ -269,7 +269,7 @@ pub fn process_set_access_pass(
                 unicast_user_count: 0,
                 max_unicast_users: value.max_unicast_users,
                 public_multicast_user_count: 0,
-                max_multicast_users: value.max_multicast_users,
+                max_public_multicast_users: value.max_public_multicast_users,
             }
         };
 
@@ -293,7 +293,7 @@ pub fn process_set_access_pass(
         // an unrelated update automatically.
         accesspass.flags = (accesspass.flags & !ALLOW_MULTIPLE_IP) | flags;
         accesspass.max_unicast_users = value.max_unicast_users;
-        accesspass.max_multicast_users = value.max_multicast_users;
+        accesspass.max_public_multicast_users = value.max_public_multicast_users;
 
         if let Some(tenant_remove) = tenant_remove_account {
             accesspass
@@ -380,7 +380,7 @@ pub fn process_set_access_pass(
     // the per-category caps so the keypair holds enough SOL to pay for every create_user it admits.
     // Passes without the flag keep today's fixed (1x) airdrop.
     let multiplier = if value.allow_multiple_ip {
-        (value.max_unicast_users as u64).saturating_add(value.max_multicast_users as u64)
+        (value.max_unicast_users as u64).saturating_add(value.max_public_multicast_users as u64)
     } else {
         1
     };

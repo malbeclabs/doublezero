@@ -270,7 +270,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 1,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
 
         // AccessPass with group in subscriber allowlist
@@ -293,7 +293,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 1,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
 
         // AccessPass with no reference to the group (should not trigger remove)
@@ -314,7 +314,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 1,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
 
         client

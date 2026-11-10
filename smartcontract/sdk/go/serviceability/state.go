@@ -1186,8 +1186,9 @@ type AccessPass struct {
 	// The program names this field public_multicast_user_count. It leaves out the users that
 	// hold no pass seat.
 	MulticastUserCount uint16
-	MaxMulticastUsers  uint16
-	PubKey             [32]byte
+	// The program names this field max_public_multicast_users. It caps the users that hold a pass seat.
+	MaxMulticastUsers uint16
+	PubKey            [32]byte
 }
 
 func onChainNetToString(n [5]uint8) string {

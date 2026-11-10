@@ -188,7 +188,7 @@ impl GetAccessPassCliCommand {
             ),
             multicast_users: format!(
                 "{} / {}",
-                accesspass.public_multicast_user_count, accesspass.max_multicast_users
+                accesspass.public_multicast_user_count, accesspass.max_public_multicast_users
             ),
             status: accesspass.status.to_string(),
             owner: accesspass.owner.to_string(),
@@ -291,7 +291,7 @@ mod tests {
             unicast_user_count: 2,
             max_unicast_users: 5,
             public_multicast_user_count: 1,
-            max_multicast_users: 3,
+            max_public_multicast_users: 3,
         };
 
         let accesspass_clone = accesspass.clone();
@@ -451,7 +451,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 0,
             public_multicast_user_count: 1,
-            max_multicast_users: 2,
+            max_public_multicast_users: 2,
         };
 
         let feed = Feed {
@@ -647,7 +647,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 0,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
 
         client
@@ -740,7 +740,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 0,
             public_multicast_user_count: 0,
-            max_multicast_users: 3,
+            max_public_multicast_users: 3,
         };
 
         // Three separate feed accounts that happen to share a code, one per metro.
@@ -848,7 +848,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 0,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
 
         let feed = Feed {

@@ -109,7 +109,7 @@ impl Env {
                 last_access_epoch: 9999,
                 allow_multiple_ip,
                 max_unicast_users: 1,
-                max_multicast_users: 1,
+                max_public_multicast_users: 1,
             }),
             vec![
                 AccountMeta::new(pass, false),

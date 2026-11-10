@@ -73,7 +73,7 @@ impl DeleteTenantCommand {
                     allow_multiple_ip: ap.allow_multiple_ip(),
                     tenant: Pubkey::default(),
                     max_unicast_users: ap.max_unicast_users,
-                    max_multicast_users: ap.max_multicast_users,
+                    max_public_multicast_users: ap.max_public_multicast_users,
                 }
                 .execute(client)?;
             }
@@ -118,7 +118,7 @@ impl DeleteTenantCommand {
                     allow_multiple_ip: ap.allow_multiple_ip(),
                     tenant: Pubkey::default(),
                     max_unicast_users: ap.max_unicast_users,
-                    max_multicast_users: ap.max_multicast_users,
+                    max_public_multicast_users: ap.max_public_multicast_users,
                 }
                 .execute(client)?;
             }
@@ -265,7 +265,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 1,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
 
         let tenant_after = Tenant {
@@ -399,7 +399,7 @@ mod tests {
                     last_access_epoch: 0,
                     allow_multiple_ip: false,
                     max_unicast_users: 1,
-                    max_multicast_users: 1,
+                    max_public_multicast_users: 1,
                 },
             )))
             .times(1)
@@ -467,7 +467,7 @@ mod tests {
             unicast_user_count: 0,
             max_unicast_users: 1,
             public_multicast_user_count: 0,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         };
 
         let mut seq = Sequence::new();
@@ -510,7 +510,7 @@ mod tests {
                     last_access_epoch: 0,
                     allow_multiple_ip: false,
                     max_unicast_users: 1,
-                    max_multicast_users: 1,
+                    max_public_multicast_users: 1,
                 },
             )))
             .times(1)

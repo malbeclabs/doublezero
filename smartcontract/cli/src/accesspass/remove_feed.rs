@@ -856,7 +856,7 @@ mod tests {
             "  Drop the seat for feed {lon_pk} because it ended at 2023-11-14T22:13:20+00:00. 2 user(s) still hold the seat\n"
         )));
         assert!(output.contains(&format!(
-            "  Drop the seat for feed {ams_pk} because it names a feed that no longer exists. 0 user(s) still hold the seat\n"
+            "  Drop the seat for feed {ams_pk} because it names a feed that no longer exists. 1 user(s) still hold the seat\n"
         )));
     }
 

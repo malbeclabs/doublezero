@@ -15,8 +15,12 @@ type Target interface {
 	// writes nothing.
 	Plan(ctx context.Context, list List) (Plan, error)
 	// Apply makes the target hold the list. It is called only with a Plan this
-	// target returned for that list in the same pass.
+	// target returned for that list in the same pass, or with that Plan after
+	// HoldRemovals.
 	Apply(ctx context.Context, plan Plan) error
+	// HoldRemovals is plan without its removals: Apply then only adds what
+	// the list has and the target lacks. A refused pass writes this.
+	HoldRemovals(plan Plan) Plan
 }
 
 // Plan is what a pass would change in one target.
@@ -44,6 +48,12 @@ type Plan struct {
 	ExternalRemoved []string
 
 	list List
+	// gnmicRaw is the map as read, and gnmicPrev the same parsed. gnmicWant
+	// is the map a write leaves.
+	gnmicRaw             string
+	gnmicPrev, gnmicWant GnmicAddressMap
+	// cfHave is what the list holds now, by address.
+	cfHave map[string]string
 	// cfAdd and cfDeleteIDs are the Cloudflare items to add and the ids to
 	// delete.
 	cfAdd       []ListItem

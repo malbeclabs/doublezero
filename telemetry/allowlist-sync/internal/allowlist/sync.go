@@ -46,9 +46,9 @@ type Config struct {
 	// no call from its own addresses in it reads 0.
 	CallerWindow time.Duration
 	// Targets are written in order, gnmic's map first: gnmic refuses a pubkey
-	// with no entry (spec section 5, step 3). A failed write does not stop
-	// the next target: Cloudflare is still written when the map write fails,
-	// and the failed target is written again on the next pass.
+	// with no entry (spec section 5, step 3). A target that fails to read or
+	// write does not stop the others: Cloudflare is still written when the
+	// map cannot be, and the failed target is tried again on the next pass.
 	Targets []Target
 
 	Interval    time.Duration
@@ -133,8 +133,11 @@ func (e *RefusedError) Error() string {
 }
 
 // Pass reads, builds, checks and applies once. It writes nothing unless the
-// ledger and exception file read whole, the list is not empty, and no target
-// loses more than the removal limits allow or AllowShrinkTo names the list.
+// ledger and exception file read whole and the list is not empty. A target it
+// cannot read is skipped, and the others are still written. When a target
+// would lose more than the removal limits allow, and AllowShrinkTo does not
+// name the list, the pass is refused: every target gets the list's additions
+// and keeps everything it holds.
 func (s *Syncer) Pass(ctx context.Context) error {
 	m := s.cfg.Metrics
 	fail := func(stage string, err error) error {
@@ -168,34 +171,49 @@ func (s *Syncer) Pass(ctx context.Context) error {
 		return s.refuse(&RefusedError{Reason: RefusedEmpty, Detail: "the list has no address"})
 	}
 
-	plans := make([]Plan, 0, len(s.cfg.Targets))
+	type planned struct {
+		target Target
+		plan   Plan
+	}
+	var errs []error
+	plans := make([]planned, 0, len(s.cfg.Targets))
 	for _, t := range s.cfg.Targets {
 		p, err := t.Plan(ctx, list)
 		if err != nil {
-			return fail("read_"+t.Name(), err)
+			errs = append(errs, fail("read_"+t.Name(), err))
+			continue
 		}
 		if len(p.ExternalAdded) > 0 || len(p.ExternalRemoved) > 0 {
 			m.ExternalChanges.WithLabelValues(p.Target).Inc()
 			s.cfg.Log.Warn("target changed since the last pass by a write the sync did not make",
 				"target", p.Target, "added_or_changed", p.ExternalAdded, "removed", p.ExternalRemoved)
 		}
-		plans = append(plans, p)
+		plans = append(plans, planned{t, p})
 	}
 
+	// A refusal holds every target's removals, not only the refused target's,
+	// so the targets never disagree about a device the ledger dropped.
 	digest := list.Digest()
+	var refusal *RefusedError
 	for _, p := range plans {
-		if refusal := checkRemovals(p); refusal != nil {
-			if s.cfg.AllowShrinkTo == digest {
-				s.cfg.Log.Warn("removal limit overridden for this list", "target", p.Target, "reason", refusal.Reason, "detail", refusal.Detail, "digest", digest)
-				continue
-			}
-			refusal.Detail += fmt.Sprintf("; after checking the ledger, set --allow-shrink-to=%s to apply this list once", digest)
-			return s.refuse(refusal)
+		r := checkRemovals(p.plan)
+		switch {
+		case r == nil:
+		case s.cfg.AllowShrinkTo == digest:
+			s.cfg.Log.Warn("removal limit overridden for this list", "target", p.plan.Target, "reason", r.Reason, "detail", r.Detail, "digest", digest)
+		case refusal == nil:
+			refusal = r
+		}
+	}
+	if refusal != nil {
+		refusal.Detail += fmt.Sprintf("; additions are written and every removal is held; after checking the ledger, set --allow-shrink-to=%s to apply this list once", digest)
+		for i := range plans {
+			plans[i].plan = plans[i].target.HoldRemovals(plans[i].plan)
 		}
 	}
 
-	var writeErrs []error
-	for i, p := range plans {
+	for _, pl := range plans {
+		p := pl.plan
 		log := s.cfg.Log.With("target", p.Target, "dry_run", s.cfg.DryRun)
 		if !p.Changed {
 			log.Debug("target unchanged")
@@ -207,17 +225,20 @@ func (s *Syncer) Pass(ctx context.Context) error {
 		if s.cfg.DryRun {
 			continue
 		}
-		if err := s.cfg.Targets[i].Apply(ctx, p); err != nil {
+		if err := pl.target.Apply(ctx, p); err != nil {
 			m.Errors.WithLabelValues("write_" + p.Target).Inc()
-			writeErrs = append(writeErrs, fmt.Errorf("write %s: %w", p.Target, err))
+			errs = append(errs, fmt.Errorf("write %s: %w", p.Target, err))
 			continue
 		}
 		m.Writes.WithLabelValues(p.Target).Inc()
 	}
-	if len(writeErrs) > 0 {
+	if refusal != nil {
+		errs = append(errs, s.refuse(refusal))
+	}
+	if len(errs) > 0 {
 		// Retried on the next pass: each target is compared with what it
 		// holds then.
-		return errors.Join(writeErrs...)
+		return errors.Join(errs...)
 	}
 	m.LastSuccess.Set(unixOrZero(s.cfg.Clock.Now()))
 	return nil

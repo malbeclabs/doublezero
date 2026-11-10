@@ -108,6 +108,9 @@ func (t *GnmicMapTarget) Plan(ctx context.Context, list List) (Plan, error) {
 	return Plan{
 		Target:          t.Name(),
 		Changed:         raw != want,
+		gnmicRaw:        raw,
+		gnmicPrev:       prev,
+		gnmicWant:       list.GnmicMap(),
 		TracksDevices:   true,
 		PrevDevices:     len(prev),
 		RemovedDevices:  removedDevices,
@@ -124,7 +127,7 @@ func (t *GnmicMapTarget) Apply(ctx context.Context, plan Plan) error {
 	if t.current == nil {
 		return errors.New("apply without a plan")
 	}
-	want, err := RenderGnmicMap(plan.list.GnmicMap())
+	want, err := RenderGnmicMap(plan.gnmicWant)
 	if err != nil {
 		return err
 	}
@@ -142,6 +145,40 @@ func (t *GnmicMapTarget) Apply(ctx context.Context, plan Plan) error {
 	if err := t.API.Update(ctx, &cm); err != nil {
 		return err
 	}
-	t.seen.wrote(gnmicItems(plan.list.GnmicMap()))
+	t.seen.wrote(gnmicItems(plan.gnmicWant))
 	return nil
+}
+
+// HoldRemovals keeps every entry and address the map holds, and adds the
+// list's: a device the ledger dropped keeps its entry.
+func (t *GnmicMapTarget) HoldRemovals(p Plan) Plan {
+	held := make(GnmicAddressMap, len(p.gnmicPrev)+len(p.gnmicWant))
+	for pk, ips := range p.gnmicPrev {
+		held[pk] = unionAddrs(ips, nil)
+	}
+	for pk, ips := range p.gnmicWant {
+		held[pk] = unionAddrs(held[pk], ips)
+	}
+	want, err := RenderGnmicMap(held)
+	p.Changed = err != nil || want != p.gnmicRaw
+	p.gnmicWant = held
+	p.RemovedDevices, p.RemovedAddrs, p.RemovedOther = nil, nil, nil
+	return p
+}
+
+// unionAddrs is the addresses in a or b, sorted as GnmicMap sorts them, each
+// once. Plan has already parsed every address the map holds.
+func unionAddrs(a, b []string) []string {
+	var addrs []netip.Addr
+	for _, s := range slices.Concat(a, b) {
+		if ip, err := netip.ParseAddr(s); err == nil {
+			addrs = append(addrs, ip)
+		}
+	}
+	addrs = sortedUnique(addrs)
+	out := make([]string, len(addrs))
+	for i, ip := range addrs {
+		out[i] = ip.String()
+	}
+	return out
 }

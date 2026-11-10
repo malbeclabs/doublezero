@@ -309,7 +309,9 @@ func TestPass_WritesOnlyWhenSomethingChanged(t *testing.T) {
 	assert.Contains(t, h.cfItems(), ListItem{IP: "45.0.0.9", Comment: "dz9"})
 }
 
-func TestPass_ReadFailuresWriteNothing(t *testing.T) {
+// A failed ledger or exception file read writes nothing. A target that cannot
+// be read is skipped, and the other target is still written.
+func TestPass_ReadFailures(t *testing.T) {
 	malformed := dev(9, "dz9", serviceability.DeviceStatusActivated, "45.0.0.9")
 	malformed.DeserializeError = errors.New("trailing interfaces length mismatch")
 
@@ -317,22 +319,26 @@ func TestPass_ReadFailuresWriteNothing(t *testing.T) {
 		breakIt func(h *harness)
 		stage   string
 		err     string
+		writes  [2]int // map updates, Cloudflare writes
 	}{
-		"ledger error": {func(h *harness) { h.ledger.err = errors.New("rpc down") }, "ledger", "ledger: rpc down"},
+		"ledger error": {func(h *harness) { h.ledger.err = errors.New("rpc down") }, "ledger", "ledger: rpc down", [2]int{}},
 		"no devices": {func(h *harness) { h.ledger.pd.Devices = nil }, "ledger",
-			"ledger: incomplete ledger read: no device accounts"},
+			"ledger: incomplete ledger read: no device accounts", [2]int{}},
 		"no global state": {func(h *harness) { h.ledger.pd.GlobalState = nil }, "ledger",
-			"ledger: incomplete ledger read: no global state account"},
+			"ledger: incomplete ledger read: no global state account", [2]int{}},
 		"malformed device": {func(h *harness) { h.ledger.pd.Devices = append(h.ledger.pd.Devices, malformed) }, "ledger",
-			"ledger: incomplete ledger read: device " + pk(9) + " (dz9) did not deserialize: trailing interfaces length mismatch"},
+			"ledger: incomplete ledger read: device " + pk(9) + " (dz9) did not deserialize: trailing interfaces length mismatch", [2]int{}},
 		"exception file missing": {func(h *harness) { h.cfg.ExceptionsFile = "/nonexistent/exceptions.yaml" }, "exceptions",
-			"exceptions: reading exception file: open /nonexistent/exceptions.yaml: no such file or directory"},
-		"configmap read":   {func(h *harness) { h.cm.getErr = errors.New("forbidden") }, "read_gnmic_map", "read_gnmic_map: forbidden"},
-		"configmap absent": {func(h *harness) { h.cm.cm = nil }, "read_gnmic_map", "read_gnmic_map: configmap not found"},
+			"exceptions: reading exception file: open /nonexistent/exceptions.yaml: no such file or directory", [2]int{}},
+		"configmap read": {func(h *harness) { h.cm.getErr = errors.New("forbidden") }, "read_gnmic_map", "read_gnmic_map: forbidden",
+			[2]int{0, 1}},
+		"configmap absent": {func(h *harness) { h.cm.cm = nil }, "read_gnmic_map", "read_gnmic_map: configmap not found",
+			[2]int{0, 1}},
 		"configmap garbage": {func(h *harness) { h.cm.cm.Data = map[string]string{"map.json": "{"} }, "read_gnmic_map",
-			`read_gnmic_map: configmap key "map.json" holds no address map, so the sync cannot tell what a write would remove; fix or empty the key: unexpected end of JSON input`},
-		// The map read succeeds, and still nothing is written to it.
-		"cloudflare read": {func(h *harness) { h.cf.itemsErr = errors.New("HTTP 403") }, "read_cloudflare_list", "read_cloudflare_list: HTTP 403"},
+			`read_gnmic_map: configmap key "map.json" holds no address map, so the sync cannot tell what a write would remove; fix or empty the key: unexpected end of JSON input`,
+			[2]int{0, 1}},
+		"cloudflare read": {func(h *harness) { h.cf.itemsErr = errors.New("HTTP 403") }, "read_cloudflare_list", "read_cloudflare_list: HTTP 403",
+			[2]int{1, 0}},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -341,7 +347,7 @@ func TestPass_ReadFailuresWriteNothing(t *testing.T) {
 			err := h.pass(t)
 			assert.EqualError(t, err, tc.err)
 			cmUpdates, cfReplaces := h.wrote()
-			assert.Equal(t, [2]int{0, 0}, [2]int{cmUpdates, cfReplaces})
+			assert.Equal(t, tc.writes, [2]int{cmUpdates, cfReplaces})
 			assert.Equal(t, 1.0, counter(h.metrics.Errors, tc.stage))
 			assert.Equal(t, 0.0, testutil.ToFloat64(h.metrics.LastSuccess))
 		})
@@ -445,6 +451,65 @@ func TestPass_RemovalLimitAppliesToCloudflareOnItsOwn(t *testing.T) {
 	assert.Contains(t, refused.Detail, "cloudflare_list would remove 4 of 14 addresses")
 	_, cfReplaces := h.wrote()
 	assert.Equal(t, 1, cfReplaces)
+}
+
+// A refused pass still writes the list's additions to both targets and holds
+// every removal, so one contributor retiring devices does not hold back
+// another's new device. The override then applies the removals.
+func TestPass_RefusedPassWritesAdditionsAndHoldsRemovals(t *testing.T) {
+	h := newHarness(t, fleet(60))
+	require.NoError(t, h.pass(t))
+	t0 := testutil.ToFloat64(h.metrics.LastSuccess)
+	h.clock.Advance(time.Minute)
+	h.ledger.pd.Devices = append(h.ledger.pd.Devices[:54:54], dev(61, "dz61", serviceability.DeviceStatusActivated, "45.0.0.61"))
+
+	var refused *RefusedError
+	require.ErrorAs(t, h.pass(t), &refused)
+	assert.Equal(t, RefusedTooManyDevices, refused.Reason)
+	assert.Contains(t, refused.Detail, "additions are written and every removal is held")
+	assert.Equal(t, 1.0, counter(h.metrics.RefusedPasses, RefusedTooManyDevices))
+	assert.Equal(t, t0, testutil.ToFloat64(h.metrics.LastSuccess), "a refused pass is not a success")
+	m := h.cm.gnmicMap(t)
+	assert.Len(t, m, 61)
+	assert.Equal(t, []string{"45.0.0.61"}, m[pk(61)])
+	assert.Equal(t, []string{"45.0.0.60"}, m[pk(60)], "a device the ledger dropped keeps its entry")
+	assert.Len(t, h.cfIPs(), 61)
+	assert.Contains(t, h.cfIPs(), "45.0.0.61")
+	cmUpdates, cfWrites := h.wrote()
+	assert.Equal(t, [2]int{2, 2}, [2]int{cmUpdates, cfWrites})
+
+	// The next pass has nothing to add: it writes nothing, is refused again,
+	// and does not count its own held write as an outside edit.
+	require.ErrorAs(t, h.pass(t), &refused)
+	cmUpdates, cfWrites = h.wrote()
+	assert.Equal(t, [2]int{2, 2}, [2]int{cmUpdates, cfWrites})
+	assert.Equal(t, 2.0, counter(h.metrics.RefusedPasses, RefusedTooManyDevices))
+	assert.Equal(t, 0.0, h.external("gnmic_map"))
+	assert.Equal(t, 0.0, h.external("cloudflare_list"))
+
+	h.cfg.AllowShrinkTo = mustBuild(t, h.ledger.pd.Devices, Exceptions{}).List.Digest()
+	require.NoError(t, h.pass(t))
+	assert.Len(t, h.cm.gnmicMap(t), 55)
+	assert.Len(t, h.cfIPs(), 55)
+}
+
+// Stray Cloudflare items past the address limit refuse every pass, and a new
+// device still reaches both targets while the strays stay.
+func TestPass_StrayItemsDoNotHoldBackANewDevice(t *testing.T) {
+	h := newHarness(t, fleet(10))
+	require.NoError(t, h.pass(t))
+	for i := range 3 {
+		h.cf.items = append(h.cf.items, ListItem{IP: fmt.Sprintf("45.9.9.%d", i+1)})
+	}
+	h.ledger.pd.Devices = append(h.ledger.pd.Devices, dev(11, "dz11", serviceability.DeviceStatusActivated, "45.0.0.11"))
+
+	var refused *RefusedError
+	require.ErrorAs(t, h.pass(t), &refused)
+	assert.Equal(t, RefusedTooManyAddrs, refused.Reason)
+	assert.Contains(t, h.cfIPs(), "45.0.0.11")
+	assert.Contains(t, h.cfIPs(), "45.9.9.1")
+	assert.Len(t, h.cfIPs(), 14)
+	assert.Equal(t, []string{"45.0.0.11"}, h.cm.gnmicMap(t)[pk(11)])
 }
 
 func TestPass_AllowShrinkToAppliesOnlyThatList(t *testing.T) {

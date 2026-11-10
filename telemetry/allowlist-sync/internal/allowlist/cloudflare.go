@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/netip"
 	"net/url"
@@ -177,6 +178,7 @@ func (t *CloudflareTarget) Plan(ctx context.Context, list List) (Plan, error) {
 		ExternalAdded:   externalAdded,
 		ExternalRemoved: externalRemoved,
 		list:            list,
+		cfHave:          have,
 		cfAdd:           add,
 		cfDeleteIDs:     deleteIDs,
 		cfAfter:         after,
@@ -202,6 +204,19 @@ func (t *CloudflareTarget) Apply(ctx context.Context, plan Plan) error {
 	}
 	t.seen.wrote(plan.cfAfter)
 	return nil
+}
+
+// HoldRemovals adds the missing addresses and deletes nothing, not even a
+// second item for one address.
+func (t *CloudflareTarget) HoldRemovals(p Plan) Plan {
+	after := maps.Clone(p.cfHave)
+	for _, it := range p.cfAdd {
+		after[it.IP] = it.Comment
+	}
+	p.Changed = len(p.cfAdd) > 0
+	p.cfDeleteIDs, p.cfAfter = nil, after
+	p.RemovedAddrs, p.RemovedOther = nil, nil
+	return p
 }
 
 // parseListIP reads an item's address. Cloudflare returns a /32 as a bare

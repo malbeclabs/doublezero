@@ -1,4 +1,5 @@
 use doublezero_serviceability::{
+    error::DoubleZeroError,
     instructions::*,
     pda::*,
     processors::{
@@ -16,6 +17,7 @@ use doublezero_serviceability::{
             },
             create::MulticastGroupCreateArgs,
             subscribe::UpdateMulticastGroupRolesArgs,
+            update::MulticastGroupUpdateArgs,
         },
         permission::create::PermissionCreateArgs,
         user::create::UserCreateArgs,
@@ -265,7 +267,7 @@ async fn setup_fixture() -> TestFixture {
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -356,6 +358,7 @@ async fn setup_fixture() -> TestFixture {
         .get_user()
         .unwrap();
     assert_eq!(user.status, UserStatus::Activated);
+    assert!(!user.holds_pass_seat);
 
     TestFixture {
         banks_client,
@@ -374,7 +377,7 @@ async fn setup_fixture() -> TestFixture {
 
 #[tokio::test]
 async fn test_adds_publisher_without_reauthorizing_existing_subscriber() {
-    let f = setup_fixture().await;
+    let fixture = setup_fixture().await;
     let TestFixture {
         mut banks_client,
         payer,
@@ -385,7 +388,7 @@ async fn test_adds_publisher_without_reauthorizing_existing_subscriber() {
         mgroup1_pubkey,
         _user_ip: user_ip,
         ..
-    } = f;
+    } = fixture;
     let multicast_publisher_block =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock).0;
 
@@ -469,7 +472,7 @@ async fn test_adds_publisher_without_reauthorizing_existing_subscriber() {
 /// using payer_account.key instead of user.owner.
 #[tokio::test]
 async fn test_subscribe_foundation_admin_payer_differs_from_user_owner() {
-    let f = setup_fixture().await;
+    let fixture = setup_fixture().await;
     let TestFixture {
         mut banks_client,
         payer, // payer is user.owner (alice)
@@ -479,7 +482,7 @@ async fn test_subscribe_foundation_admin_payer_differs_from_user_owner() {
         mgroup1_pubkey,
         globalstate_pubkey,
         ..
-    } = f;
+    } = fixture;
 
     // foundation_admin is a different keypair — simulates a foundation admin acting on behalf of the user
     let foundation_admin = solana_sdk::signature::Keypair::new();
@@ -550,7 +553,7 @@ async fn test_subscribe_foundation_admin_payer_differs_from_user_owner() {
 /// exact path taken by `user delete` when clearing subscriptions before deleting the user.
 #[tokio::test]
 async fn test_unsubscribe_foundation_admin_payer_differs_from_user_owner() {
-    let f = setup_fixture().await;
+    let fixture = setup_fixture().await;
     let TestFixture {
         mut banks_client,
         payer, // payer is user.owner (alice)
@@ -560,7 +563,7 @@ async fn test_unsubscribe_foundation_admin_payer_differs_from_user_owner() {
         mgroup1_pubkey,
         globalstate_pubkey,
         ..
-    } = f;
+    } = fixture;
 
     // First subscribe the user as user.owner (alice) so there is a subscription to remove.
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
@@ -663,7 +666,7 @@ async fn test_unsubscribe_foundation_admin_payer_differs_from_user_owner() {
 /// A payer who is not the access pass owner and not in the foundation allowlist is rejected.
 #[tokio::test]
 async fn test_subscribe_unauthorized_payer_rejected() {
-    let f = setup_fixture().await;
+    let fixture = setup_fixture().await;
     let TestFixture {
         mut banks_client,
         payer,
@@ -673,7 +676,7 @@ async fn test_subscribe_unauthorized_payer_rejected() {
         mgroup1_pubkey,
         globalstate_pubkey,
         ..
-    } = f;
+    } = fixture;
 
     let other_payer = solana_sdk::signature::Keypair::new();
     transfer(&mut banks_client, &payer, &other_payer.pubkey(), 10_000_000).await;
@@ -720,7 +723,7 @@ async fn test_subscribe_unauthorized_payer_rejected() {
 /// passed as the trailing account, mirroring the SDK's authorized-transaction path.
 #[tokio::test]
 async fn test_unsubscribe_user_admin_permission_allowed() {
-    let f = setup_fixture().await;
+    let fixture = setup_fixture().await;
     let TestFixture {
         mut banks_client,
         payer, // foundation + user.owner (alice)
@@ -730,7 +733,7 @@ async fn test_unsubscribe_user_admin_permission_allowed() {
         mgroup1_pubkey,
         globalstate_pubkey,
         ..
-    } = f;
+    } = fixture;
 
     // Subscribe the user (as owner) so there is a role to remove.
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
@@ -825,7 +828,7 @@ async fn test_unsubscribe_user_admin_permission_allowed() {
 /// attached — that still requires the access-pass owner or a foundation member.
 #[tokio::test]
 async fn test_subscribe_user_admin_permission_rejected() {
-    let f = setup_fixture().await;
+    let fixture = setup_fixture().await;
     let TestFixture {
         mut banks_client,
         payer,
@@ -835,7 +838,7 @@ async fn test_subscribe_user_admin_permission_rejected() {
         mgroup1_pubkey,
         globalstate_pubkey,
         ..
-    } = f;
+    } = fixture;
 
     let user_admin = solana_sdk::signature::Keypair::new();
     transfer(&mut banks_client, &payer, &user_admin.pubkey(), 10_000_000).await;
@@ -903,7 +906,7 @@ async fn test_subscribe_user_admin_permission_rejected() {
 /// subscribe succeeds.
 #[tokio::test]
 async fn test_subscribe_access_pass_admin_permission_allowed() {
-    let f = setup_fixture().await;
+    let fixture = setup_fixture().await;
     let TestFixture {
         mut banks_client,
         payer, // foundation + user.owner (alice)
@@ -913,7 +916,7 @@ async fn test_subscribe_access_pass_admin_permission_allowed() {
         mgroup1_pubkey,
         globalstate_pubkey,
         ..
-    } = f;
+    } = fixture;
 
     // access_pass_admin: not the owner, not in the foundation allowlist, granted ACCESS_PASS_ADMIN.
     let access_pass_admin = solana_sdk::signature::Keypair::new();
@@ -987,7 +990,7 @@ async fn test_subscribe_access_pass_admin_permission_allowed() {
 /// user stays Activated (no Updating round-trip).
 #[tokio::test]
 async fn test_subscribe_onchain_first_publisher_allocates_dz_ip() {
-    let f = setup_fixture().await;
+    let fixture = setup_fixture().await;
     let TestFixture {
         mut banks_client,
         payer,
@@ -998,7 +1001,7 @@ async fn test_subscribe_onchain_first_publisher_allocates_dz_ip() {
         user_pubkey,
         mgroup1_pubkey,
         ..
-    } = f;
+    } = fixture;
 
     let user_before = get_account_data(&mut banks_client, user_pubkey)
         .await
@@ -1062,7 +1065,7 @@ async fn test_subscribe_onchain_first_publisher_allocates_dz_ip() {
 /// Subscriber subscribe with onchain allocation should not allocate dz_ip.
 #[tokio::test]
 async fn test_subscribe_onchain_subscriber_no_allocation() {
-    let f = setup_fixture().await;
+    let fixture = setup_fixture().await;
     let TestFixture {
         mut banks_client,
         payer,
@@ -1073,7 +1076,7 @@ async fn test_subscribe_onchain_subscriber_no_allocation() {
         user_pubkey,
         mgroup1_pubkey,
         ..
-    } = f;
+    } = fixture;
 
     let user_before = get_account_data(&mut banks_client, user_pubkey)
         .await
@@ -1123,7 +1126,7 @@ async fn test_subscribe_onchain_subscriber_no_allocation() {
 /// Second publisher subscribe with onchain allocation should not reallocate dz_ip.
 #[tokio::test]
 async fn test_subscribe_onchain_second_publisher_no_reallocation() {
-    let f = setup_fixture().await;
+    let fixture = setup_fixture().await;
     let TestFixture {
         mut banks_client,
         payer,
@@ -1135,7 +1138,7 @@ async fn test_subscribe_onchain_second_publisher_no_reallocation() {
         mgroup1_pubkey,
         mgroup2_pubkey,
         ..
-    } = f;
+    } = fixture;
 
     let (multicast_publisher_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
@@ -1211,7 +1214,7 @@ async fn test_subscribe_onchain_second_publisher_no_reallocation() {
 /// status unchanged, no double-counting on `user.publishers` or `mgroup.publisher_count`.
 #[tokio::test]
 async fn test_duplicate_publisher_subscribe_is_noop() {
-    let f = setup_fixture().await;
+    let fixture = setup_fixture().await;
     let TestFixture {
         mut banks_client,
         payer,
@@ -1222,7 +1225,7 @@ async fn test_duplicate_publisher_subscribe_is_noop() {
         mgroup1_pubkey,
         globalstate_pubkey,
         ..
-    } = f;
+    } = fixture;
 
     let (multicast_publisher_block_pda, _, _) =
         get_resource_extension_pda(&program_id, ResourceType::MulticastPublisherBlock);
@@ -1323,7 +1326,7 @@ async fn test_duplicate_publisher_subscribe_is_noop() {
 /// each group's subscriber_count is incremented.
 #[tokio::test]
 async fn test_batch_subscribe_two_groups_one_transaction() {
-    let f = setup_fixture().await;
+    let fixture = setup_fixture().await;
     let TestFixture {
         mut banks_client,
         payer,
@@ -1334,7 +1337,7 @@ async fn test_batch_subscribe_two_groups_one_transaction() {
         mgroup1_pubkey,
         mgroup2_pubkey,
         ..
-    } = f;
+    } = fixture;
 
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
     try_execute_transaction(
@@ -1386,7 +1389,7 @@ async fn test_batch_subscribe_two_groups_one_transaction() {
 /// all publisher roles deallocates it (dz_ip reverts to client_ip).
 #[tokio::test]
 async fn test_batch_publisher_add_and_remove_allocates_dz_ip_once() {
-    let f = setup_fixture().await;
+    let fixture = setup_fixture().await;
     let TestFixture {
         mut banks_client,
         payer,
@@ -1397,7 +1400,7 @@ async fn test_batch_publisher_add_and_remove_allocates_dz_ip_once() {
         mgroup1_pubkey,
         mgroup2_pubkey,
         ..
-    } = f;
+    } = fixture;
 
     let accounts = vec![
         AccountMeta::new(mgroup1_pubkey, false),
@@ -1497,7 +1500,7 @@ async fn test_batch_publisher_add_and_remove_allocates_dz_ip_once() {
 /// transaction and no group or user state changes.
 #[tokio::test]
 async fn test_batch_atomicity_group_off_allowlist_rolls_back() {
-    let f = setup_fixture().await;
+    let fixture = setup_fixture().await;
     let TestFixture {
         mut banks_client,
         payer,
@@ -1507,7 +1510,7 @@ async fn test_batch_atomicity_group_off_allowlist_rolls_back() {
         user_pubkey,
         mgroup1_pubkey,
         ..
-    } = f;
+    } = fixture;
 
     // A third activated group, NOT in the pass's allowlists.
     let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
@@ -1593,7 +1596,7 @@ async fn test_batch_atomicity_group_off_allowlist_rolls_back() {
 /// InvalidArgument instead of misparsing the trailing region.
 #[tokio::test]
 async fn test_batch_extra_group_count_exceeding_accounts_rejected() {
-    let f = setup_fixture().await;
+    let fixture = setup_fixture().await;
     let TestFixture {
         mut banks_client,
         payer,
@@ -1603,7 +1606,7 @@ async fn test_batch_extra_group_count_exceeding_accounts_rejected() {
         user_pubkey,
         mgroup1_pubkey,
         ..
-    } = f;
+    } = fixture;
 
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
     let result = try_execute_transaction(
@@ -1647,7 +1650,7 @@ async fn test_batch_extra_group_count_exceeding_accounts_rejected() {
 /// a single-group role change — wire compatibility for old clients.
 #[tokio::test]
 async fn test_batch_old_encoding_without_count_byte_single_group() {
-    let f = setup_fixture().await;
+    let fixture = setup_fixture().await;
     let TestFixture {
         mut banks_client,
         payer,
@@ -1657,7 +1660,7 @@ async fn test_batch_old_encoding_without_count_byte_single_group() {
         user_pubkey,
         mgroup1_pubkey,
         ..
-    } = f;
+    } = fixture;
 
     // Serialize the new args and strip the trailing extra_group_count byte to get
     // the exact bytes an old client emits.
@@ -1708,7 +1711,7 @@ async fn test_batch_old_encoding_without_count_byte_single_group() {
 /// InvalidArgument: aliased accounts would make counter state depend on write order.
 #[tokio::test]
 async fn test_batch_duplicate_group_rejected() {
-    let f = setup_fixture().await;
+    let fixture = setup_fixture().await;
     let TestFixture {
         mut banks_client,
         payer,
@@ -1718,7 +1721,7 @@ async fn test_batch_duplicate_group_rejected() {
         user_pubkey,
         mgroup1_pubkey,
         ..
-    } = f;
+    } = fixture;
 
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
     let result = try_execute_transaction(
@@ -1770,7 +1773,7 @@ async fn test_batch_duplicate_group_rejected() {
 /// InvalidArgument, exercising the pairwise branch of the duplicate scan.
 #[tokio::test]
 async fn test_batch_duplicate_extra_group_rejected() {
-    let f = setup_fixture().await;
+    let fixture = setup_fixture().await;
     let TestFixture {
         mut banks_client,
         payer,
@@ -1781,7 +1784,7 @@ async fn test_batch_duplicate_extra_group_rejected() {
         mgroup1_pubkey,
         mgroup2_pubkey,
         ..
-    } = f;
+    } = fixture;
 
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
     let result = try_execute_transaction(
@@ -1835,7 +1838,7 @@ async fn test_batch_duplicate_extra_group_rejected() {
 /// the leading region — split_trailing_permission peels it by PDA match.
 #[tokio::test]
 async fn test_batch_removal_with_trailing_permission_pda() {
-    let f = setup_fixture().await;
+    let fixture = setup_fixture().await;
     let TestFixture {
         mut banks_client,
         payer, // foundation + user.owner
@@ -1846,7 +1849,7 @@ async fn test_batch_removal_with_trailing_permission_pda() {
         mgroup1_pubkey,
         mgroup2_pubkey,
         ..
-    } = f;
+    } = fixture;
 
     // Subscribe the user to both groups (as owner, batched) so there are roles to strip.
     let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
@@ -1946,4 +1949,251 @@ async fn test_batch_removal_with_trailing_permission_pda() {
             .unwrap();
         assert_eq!(mgroup.subscriber_count, 0);
     }
+}
+
+async fn set_group_counts_and_caps(
+    fixture: &mut TestFixture,
+    mgroup_pubkey: Pubkey,
+    args: MulticastGroupUpdateArgs,
+) {
+    let recent_blockhash = fixture.banks_client.get_latest_blockhash().await.unwrap();
+    execute_transaction(
+        &mut fixture.banks_client,
+        recent_blockhash,
+        fixture.program_id,
+        DoubleZeroInstruction::UpdateMulticastGroup(args),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(fixture.globalstate_pubkey, false),
+        ],
+        &fixture.payer,
+    )
+    .await;
+}
+
+async fn try_set_roles(
+    fixture: &mut TestFixture,
+    mgroup_pubkey: Pubkey,
+    publisher: bool,
+    subscriber: bool,
+) -> Result<(), BanksClientError> {
+    let recent_blockhash = fixture.banks_client.get_latest_blockhash().await.unwrap();
+    try_execute_transaction(
+        &mut fixture.banks_client,
+        recent_blockhash,
+        fixture.program_id,
+        DoubleZeroInstruction::UpdateMulticastGroupRoles(UpdateMulticastGroupRolesArgs {
+            client_ip: fixture._user_ip,
+            publisher,
+            subscriber,
+            use_onchain_allocation: true,
+            extra_group_count: 0,
+        }),
+        vec![
+            AccountMeta::new(mgroup_pubkey, false),
+            AccountMeta::new(fixture.accesspass_pubkey, false),
+            AccountMeta::new(fixture.user_pubkey, false),
+            AccountMeta::new(fixture.globalstate_pubkey, false),
+            AccountMeta::new(
+                get_resource_extension_pda(
+                    &fixture.program_id,
+                    ResourceType::MulticastPublisherBlock,
+                )
+                .0,
+                false,
+            ),
+        ],
+        &fixture.payer,
+    )
+    .await
+}
+
+#[tokio::test]
+async fn test_subscribe_refused_at_max_subscribers() {
+    let mut fixture = setup_fixture().await;
+    let mgroup_pubkey = fixture.mgroup1_pubkey;
+
+    set_group_counts_and_caps(
+        &mut fixture,
+        mgroup_pubkey,
+        MulticastGroupUpdateArgs {
+            private: Some(true),
+            subscriber_count: Some(1),
+            max_subscribers: Some(1),
+            ..Default::default()
+        },
+    )
+    .await;
+
+    let err = try_set_roles(&mut fixture, mgroup_pubkey, false, true)
+        .await
+        .unwrap_err();
+    assert_custom_error(&err, DoubleZeroError::MulticastGroupMaxSubscribersExceeded);
+
+    set_group_counts_and_caps(
+        &mut fixture,
+        mgroup_pubkey,
+        MulticastGroupUpdateArgs {
+            max_subscribers: Some(2),
+            ..Default::default()
+        },
+    )
+    .await;
+
+    try_set_roles(&mut fixture, mgroup_pubkey, false, true)
+        .await
+        .unwrap();
+
+    let mgroup = get_account_data(&mut fixture.banks_client, mgroup_pubkey)
+        .await
+        .unwrap()
+        .get_multicastgroup()
+        .unwrap();
+    assert_eq!(mgroup.subscriber_count, 2);
+    let user = get_account_data(&mut fixture.banks_client, fixture.user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    assert_eq!(user.subscribers, vec![mgroup_pubkey]);
+}
+
+#[tokio::test]
+async fn test_publish_refused_at_max_publishers() {
+    let mut fixture = setup_fixture().await;
+    let mgroup_pubkey = fixture.mgroup1_pubkey;
+
+    set_group_counts_and_caps(
+        &mut fixture,
+        mgroup_pubkey,
+        MulticastGroupUpdateArgs {
+            private: Some(true),
+            publisher_count: Some(1),
+            max_publishers: Some(1),
+            ..Default::default()
+        },
+    )
+    .await;
+
+    let err = try_set_roles(&mut fixture, mgroup_pubkey, true, false)
+        .await
+        .unwrap_err();
+    assert_custom_error(&err, DoubleZeroError::MulticastGroupMaxPublishersExceeded);
+
+    set_group_counts_and_caps(
+        &mut fixture,
+        mgroup_pubkey,
+        MulticastGroupUpdateArgs {
+            max_publishers: Some(2),
+            ..Default::default()
+        },
+    )
+    .await;
+
+    try_set_roles(&mut fixture, mgroup_pubkey, true, false)
+        .await
+        .unwrap();
+
+    let mgroup = get_account_data(&mut fixture.banks_client, mgroup_pubkey)
+        .await
+        .unwrap()
+        .get_multicastgroup()
+        .unwrap();
+    assert_eq!(mgroup.publisher_count, 2);
+    let user = get_account_data(&mut fixture.banks_client, fixture.user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    assert_eq!(user.publishers, vec![mgroup_pubkey]);
+}
+
+#[tokio::test]
+async fn test_unsubscribe_allowed_at_max_subscribers() {
+    let mut fixture = setup_fixture().await;
+    let mgroup_pubkey = fixture.mgroup1_pubkey;
+
+    try_set_roles(&mut fixture, mgroup_pubkey, false, true)
+        .await
+        .unwrap();
+    set_group_counts_and_caps(
+        &mut fixture,
+        mgroup_pubkey,
+        MulticastGroupUpdateArgs {
+            private: Some(true),
+            max_subscribers: Some(1),
+            ..Default::default()
+        },
+    )
+    .await;
+
+    try_set_roles(&mut fixture, mgroup_pubkey, false, false)
+        .await
+        .unwrap();
+
+    let mgroup = get_account_data(&mut fixture.banks_client, mgroup_pubkey)
+        .await
+        .unwrap()
+        .get_multicastgroup()
+        .unwrap();
+    assert_eq!(mgroup.subscriber_count, 0);
+    let user = get_account_data(&mut fixture.banks_client, fixture.user_pubkey)
+        .await
+        .unwrap()
+        .get_user()
+        .unwrap();
+    assert!(user.subscribers.is_empty());
+}
+
+#[tokio::test]
+async fn test_subscribe_ignores_max_subscribers_on_group_that_is_not_private() {
+    let mut fixture = setup_fixture().await;
+    let mgroup_pubkey = fixture.mgroup1_pubkey;
+
+    set_group_counts_and_caps(
+        &mut fixture,
+        mgroup_pubkey,
+        MulticastGroupUpdateArgs {
+            subscriber_count: Some(1),
+            max_subscribers: Some(1),
+            ..Default::default()
+        },
+    )
+    .await;
+
+    try_set_roles(&mut fixture, mgroup_pubkey, false, true)
+        .await
+        .unwrap();
+
+    let mgroup = get_account_data(&mut fixture.banks_client, mgroup_pubkey)
+        .await
+        .unwrap()
+        .get_multicastgroup()
+        .unwrap();
+    assert_eq!(mgroup.subscriber_count, 2);
+}
+
+#[tokio::test]
+async fn test_private_group_with_caps_of_0_admits_nobody() {
+    let mut fixture = setup_fixture().await;
+    let mgroup_pubkey = fixture.mgroup1_pubkey;
+
+    set_group_counts_and_caps(
+        &mut fixture,
+        mgroup_pubkey,
+        MulticastGroupUpdateArgs {
+            private: Some(true),
+            ..Default::default()
+        },
+    )
+    .await;
+
+    let err = try_set_roles(&mut fixture, mgroup_pubkey, false, true)
+        .await
+        .unwrap_err();
+    assert_custom_error(&err, DoubleZeroError::MulticastGroupMaxSubscribersExceeded);
+    let err = try_set_roles(&mut fixture, mgroup_pubkey, true, false)
+        .await
+        .unwrap_err();
+    assert_custom_error(&err, DoubleZeroError::MulticastGroupMaxPublishersExceeded);
 }

@@ -190,6 +190,9 @@ mod tests {
             publisher_count: 1,
             subscriber_count: 2,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         };
         client.expect_list_multicastgroup().returning(move |_| {
             let mut mgroups = HashMap::new();

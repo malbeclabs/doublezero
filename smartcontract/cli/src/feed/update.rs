@@ -1,7 +1,7 @@
 use crate::{
     doublezerocommand::CliCommand,
     feed::{guard::unsubscribe_orphans, resolve::FeedTargetArgs},
-    helpers::resolve_multicastgroup_pk,
+    helpers::resolve_feed_group_pk,
     validators::validate_pubkey_or_code,
 };
 use clap::Args;
@@ -58,7 +58,7 @@ impl UpdateFeedCliCommand {
             Some(
                 self.groups
                     .iter()
-                    .map(|g| resolve_multicastgroup_pk(client, g))
+                    .map(|g| resolve_feed_group_pk(client, g))
                     .collect::<eyre::Result<Vec<_>>>()?,
             )
         };
@@ -555,6 +555,9 @@ mod tests {
             publisher_count: 0,
             subscriber_count: 0,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         };
         client
             .expect_get_multicastgroup()

@@ -9,7 +9,7 @@ use solana_sdk::pubkey::Pubkey;
 use std::io::Write;
 
 /// Replace the user counts of an access pass with the users you counted on it. The program sets
-/// `connections` to the sum of the two counts. Requires `ACCESS_PASS_ADMIN`.
+/// `connections` to the sum of the three counts. Requires `ACCESS_PASS_ADMIN`.
 ///
 /// The `--expected-*` flags are the counts the pass held when you counted its users. The command
 /// fails, and changes nothing, when the pass no longer holds them: a user connected or
@@ -25,15 +25,18 @@ pub struct SetCountsAccessPassCliCommand {
     /// Unicast user count the pass holds now
     #[arg(long)]
     pub expected_unicast_users: u16,
-    /// Multicast user count the pass holds now
+    /// Public multicast user count the pass holds now
     #[arg(long)]
     pub expected_multicast_users: u16,
     /// Number of unicast users on the pass (IBRL, IBRL with an allocated IP, edge filtering)
     #[arg(long)]
     pub unicast_users: u16,
-    /// Number of multicast users on the pass
+    /// Number of multicast users on the pass that hold a pass seat
     #[arg(long)]
     pub multicast_users: u16,
+    /// Number of multicast users on the pass that hold no pass seat
+    #[arg(long)]
+    pub private_multicast_users: u16,
 }
 
 impl SetCountsAccessPassCliCommand {
@@ -48,8 +51,9 @@ impl SetCountsAccessPassCliCommand {
         let connections = self
             .unicast_users
             .checked_add(self.multicast_users)
+            .and_then(|count| count.checked_add(self.private_multicast_users))
             .ok_or_else(|| {
-                eyre::eyre!("--unicast-users plus --multicast-users must be 65535 or less")
+                eyre::eyre!("--unicast-users plus --multicast-users plus --private-multicast-users must be 65535 or less")
             })?;
 
         let accesspass = client
@@ -61,7 +65,7 @@ impl SetCountsAccessPassCliCommand {
         let current = (
             accesspass.connection_count,
             accesspass.unicast_user_count,
-            accesspass.multicast_user_count,
+            accesspass.public_multicast_user_count,
         );
         let expected = (
             self.expected_connections,
@@ -82,22 +86,24 @@ impl SetCountsAccessPassCliCommand {
         }
         writeln!(
             out,
-            "Access pass {}: connections {} -> {connections}, unicast users {} -> {}, multicast users {} -> {}",
+            "Access pass {}: connections {} -> {connections}, unicast users {} -> {}, multicast users {} -> {}, private multicast users {}",
             self.pubkey,
             accesspass.connection_count,
             accesspass.unicast_user_count,
             self.unicast_users,
-            accesspass.multicast_user_count,
+            accesspass.public_multicast_user_count,
             self.multicast_users,
+            self.private_multicast_users,
         )?;
 
         let signature = client.set_accesspass_counts(SetAccessPassCountsCommand {
             pubkey: self.pubkey,
             expected_connection_count: self.expected_connections,
             expected_unicast_user_count: self.expected_unicast_users,
-            expected_multicast_user_count: self.expected_multicast_users,
+            expected_public_multicast_user_count: self.expected_multicast_users,
             unicast_user_count: self.unicast_users,
-            multicast_user_count: self.multicast_users,
+            public_multicast_user_count: self.multicast_users,
+            private_multicast_user_count: self.private_multicast_users,
         })?;
         writeln!(out, "Signature: {signature}")?;
 
@@ -140,8 +146,8 @@ mod tests {
             tenant_allowlist: vec![],
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
-            max_multicast_users: 1,
+            public_multicast_user_count: 0,
+            max_public_multicast_users: 1,
         }
     }
 
@@ -165,9 +171,10 @@ mod tests {
                 pubkey,
                 expected_connection_count: 2,
                 expected_unicast_user_count: 0,
-                expected_multicast_user_count: 0,
+                expected_public_multicast_user_count: 0,
                 unicast_user_count: 1,
-                multicast_user_count: 0,
+                public_multicast_user_count: 0,
+                private_multicast_user_count: 1,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -181,6 +188,7 @@ mod tests {
                 expected_multicast_users: 0,
                 unicast_users: 1,
                 multicast_users: 0,
+                private_multicast_users: 1,
             }
             .execute(&cli_context_default_for_tests(), &client, &mut output),
         );
@@ -188,7 +196,7 @@ mod tests {
         assert_eq!(
             String::from_utf8(output).unwrap(),
             format!(
-                "Access pass {pubkey}: connections 2 -> 1, unicast users 0 -> 1, multicast users 0 -> 0\nSignature: {signature}\n"
+                "Access pass {pubkey}: connections 2 -> 2, unicast users 0 -> 1, multicast users 0 -> 0, private multicast users 1\nSignature: {signature}\n"
             )
         );
     }
@@ -217,6 +225,7 @@ mod tests {
                 expected_multicast_users: 0,
                 unicast_users: 0,
                 multicast_users: 0,
+                private_multicast_users: 0,
             }
             .execute(&cli_context_default_for_tests(), &client, &mut output),
         )
@@ -242,8 +251,9 @@ mod tests {
                 expected_connections: 0,
                 expected_unicast_users: 0,
                 expected_multicast_users: 0,
-                unicast_users: u16::MAX,
-                multicast_users: 1,
+                unicast_users: u16::MAX - 1,
+                multicast_users: 0,
+                private_multicast_users: 2,
             }
             .execute(&cli_context_default_for_tests(), &client, &mut output),
         )
@@ -275,6 +285,7 @@ mod tests {
                 expected_multicast_users: 0,
                 unicast_users: 0,
                 multicast_users: 0,
+                private_multicast_users: 0,
             }
             .execute(&cli_context_default_for_tests(), &client, &mut output),
         )

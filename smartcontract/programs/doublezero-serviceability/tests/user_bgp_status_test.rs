@@ -256,7 +256,7 @@ async fn setup() -> BgpStatusTestEnv {
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),

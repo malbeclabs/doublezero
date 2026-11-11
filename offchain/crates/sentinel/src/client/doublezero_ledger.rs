@@ -181,7 +181,7 @@ impl DzRpcClient {
                 allow_multiple_ip: false,
                 // NOTE: Setting both to max allowed values
                 max_unicast_users: u16::MAX,
-                max_multicast_users: u16::MAX,
+                max_public_multicast_users: u16::MAX,
             },
         );
         let signer = &self.payer;

@@ -3,6 +3,7 @@ use crate::{
     error::DoubleZeroError,
     pda::{get_accesspass_pda, get_globalstate_pda, get_resource_extension_pda},
     processors::{
+        multicastgroup::feed::check_group_accounts,
         resource::{allocate_ip, deallocate_ip},
         validation::validate_program_account,
     },
@@ -13,7 +14,7 @@ use crate::{
         globalstate::GlobalState,
         multicastgroup::{MulticastGroup, MulticastGroupStatus},
         permission::permission_flags,
-        user::{User, UserStatus},
+        user::{User, UserStatus, UserType},
     },
 };
 use borsh::BorshSerialize;
@@ -114,6 +115,14 @@ pub fn update_user_multicastgroup_roles(
     match publisher {
         true => {
             if !user.publishers.contains(mgroup_account.key) {
+                if mgroup.private && mgroup.publisher_count >= mgroup.max_publishers {
+                    msg!(
+                        "Multicast group publishers at cap: count={}, max={}",
+                        mgroup.publisher_count,
+                        mgroup.max_publishers
+                    );
+                    return Err(DoubleZeroError::MulticastGroupMaxPublishersExceeded.into());
+                }
                 let was_empty = user.publishers.is_empty();
                 mgroup.publisher_count = mgroup.publisher_count.saturating_add(1);
                 user.publishers.push(*mgroup_account.key);
@@ -137,6 +146,14 @@ pub fn update_user_multicastgroup_roles(
     match subscriber {
         true => {
             if !user.subscribers.contains(mgroup_account.key) {
+                if mgroup.private && mgroup.subscriber_count >= mgroup.max_subscribers {
+                    msg!(
+                        "Multicast group subscribers at cap: count={}, max={}",
+                        mgroup.subscriber_count,
+                        mgroup.max_subscribers
+                    );
+                    return Err(DoubleZeroError::MulticastGroupMaxSubscribersExceeded.into());
+                }
                 mgroup.subscriber_count = mgroup.subscriber_count.saturating_add(1);
                 user.subscribers.push(*mgroup_account.key);
             }
@@ -180,11 +197,9 @@ pub fn process_update_multicastgroup_roles(
     let globalstate = GlobalState::load(program_id, gs_account)?;
     let multicast_publisher_block_ext = next_account_info(accounts_iter)?;
 
-    // Trailing layout: [mgroup₁..mgroupₙ, payer, system, permission?]. The extra
-    // multicast groups (batch role change, counted by args.extra_group_count) come
-    // first; the SDK appends the payer's Permission PDA last (via
-    // execute_authorized_transaction), and split_trailing_permission identifies it by
-    // PDA match rather than by position, so the variable-length extras never confuse it.
+    // Trailing layout: [extra groups, kept groups, payer, system, permission?]. The kept groups
+    // are the groups the user stays in, which the program reads to release the pass seat. The SDK
+    // appends the Permission PDA last, and split_trailing_permission finds it by PDA match.
     let remaining: Vec<&AccountInfo> = accounts_iter.collect();
     let (payer_account, system_program, leading, permission_account) =
         split_trailing_permission(program_id, &remaining)?;
@@ -197,7 +212,7 @@ pub fn process_update_multicastgroup_roles(
         );
         return Err(DoubleZeroError::InvalidArgument.into());
     }
-    let (extra_group_accounts, _rest) = leading.split_at(extra_group_count);
+    let (extra_group_accounts, kept_group_accounts) = leading.split_at(extra_group_count);
 
     #[cfg(test)]
     msg!("process_update_multicastgroup_roles({:?})", value);
@@ -238,7 +253,7 @@ pub fn process_update_multicastgroup_roles(
     validate_program_account!(
         accesspass_account,
         program_id,
-        writable = false,
+        writable = true,
         "AccessPass"
     );
     validate_program_account!(user_account, program_id, writable = true, "User");
@@ -258,7 +273,7 @@ pub fn process_update_multicastgroup_roles(
         return Err(DoubleZeroError::InvalidStatus.into());
     }
 
-    let accesspass = AccessPass::try_from(accesspass_account)?;
+    let mut accesspass = AccessPass::try_from(accesspass_account)?;
 
     let (accesspass_pda, _) = get_accesspass_pda(program_id, &user.client_ip, &user.owner);
     let (accesspass_dynamic_pda, _) =
@@ -329,8 +344,13 @@ pub fn process_update_multicastgroup_roles(
     // below: on batch adds only the first add sees empty→non-empty; on batch
     // removes only the last removal sees non-empty→empty.
     let mut publisher_list_transitioned = false;
+    let mut joins_public_group = false;
+    let mut leaves_public_group = false;
+    let mut changed_groups: Vec<(Pubkey, bool)> = Vec::new();
     for group_account in std::iter::once(mgroup_account).chain(extra_group_accounts.iter().copied())
     {
+        let was_member = user.publishers.contains(group_account.key)
+            || user.subscribers.contains(group_account.key);
         check_mgroup_allowlists(
             &accesspass,
             group_account.key,
@@ -344,7 +364,61 @@ pub fn process_update_multicastgroup_roles(
             value.subscriber,
         )?;
         publisher_list_transitioned |= result.publisher_list_transitioned;
+        joins_public_group |= has_role && !result.mgroup.private;
+        let is_member = user.publishers.contains(group_account.key)
+            || user.subscribers.contains(group_account.key);
+        leaves_public_group |= was_member && !is_member && !result.mgroup.private;
+        changed_groups.push((*group_account.key, result.mgroup.private));
         try_acc_write(&result.mgroup, group_account, payer_account, accounts)?;
+    }
+
+    // A user that joined only private groups takes a pass-wide seat when it joins its first
+    // group that is not private, the same way SubscribeFeed does.
+    if joins_public_group && !user.holds_pass_seat {
+        accesspass.try_take_pass_seat(user.user_type)?;
+        user.holds_pass_seat = true;
+        try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;
+    }
+
+    // A multicast user that leaves its last public group, with no feed, no longer needs its pass
+    // seat. A user of another type took its seat at connect, so it keeps the seat until DeleteUser.
+    // The caller passes the groups the user stays in. Without them the user keeps the seat.
+    if leaves_public_group
+        && user.user_type == UserType::Multicast
+        && user.holds_pass_seat
+        && user.feed_pks.is_empty()
+    {
+        let mut staying: Vec<Pubkey> = user.subscribers.clone();
+        for group in &user.publishers {
+            if !staying.contains(group) {
+                staying.push(*group);
+            }
+        }
+        let mut stays_only_in_private_groups = true;
+        let mut unchanged_groups: Vec<Pubkey> = Vec::new();
+        for group in &staying {
+            match changed_groups.iter().find(|(key, _)| key == group) {
+                Some((_, private)) => stays_only_in_private_groups &= *private,
+                None => unchanged_groups.push(*group),
+            }
+        }
+        if unchanged_groups.is_empty() || !kept_group_accounts.is_empty() {
+            check_group_accounts(kept_group_accounts, &unchanged_groups)?;
+            for group_account in kept_group_accounts {
+                validate_program_account!(
+                    *group_account,
+                    program_id,
+                    writable = false,
+                    "MulticastGroup"
+                );
+                stays_only_in_private_groups &= MulticastGroup::try_from(*group_account)?.private;
+            }
+            if stays_only_in_private_groups {
+                accesspass.release_pass_seat(user.user_type);
+                user.holds_pass_seat = false;
+                try_acc_write(&accesspass, accesspass_account, payer_account, accounts)?;
+            }
+        }
     }
 
     // Allocate dz_ip when gaining first publisher

@@ -376,7 +376,7 @@ fn send_ibrl<C: CliCommand>(client: &C, change: &IbrlChange) -> eyre::Result<Str
         allow_multiple_ip: pass.allow_multiple_ip(),
         tenant: change.to_pk,
         max_unicast_users: pass.max_unicast_users,
-        max_multicast_users: pass.max_multicast_users,
+        max_public_multicast_users: pass.max_public_multicast_users,
     })?;
 
     Ok(signature.to_string())
@@ -491,6 +491,9 @@ mod tests {
                     publisher_count: 0,
                     subscriber_count: 0,
                     bond_ref: Pubkey::default(),
+                    private: false,
+                    max_publishers: 0,
+                    max_subscribers: 0,
                 },
             )]))
         });
@@ -516,8 +519,8 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
-            max_multicast_users: 1,
+            public_multicast_user_count: 0,
+            max_public_multicast_users: 1,
         };
         client
             .expect_resolve_accesspass()
@@ -796,8 +799,8 @@ mod tests {
             flags: ALLOW_MULTIPLE_IP,
             unicast_user_count: 1,
             max_unicast_users: 3,
-            multicast_user_count: 2,
-            max_multicast_users: 5,
+            public_multicast_user_count: 2,
+            max_public_multicast_users: 5,
         };
         client
             .expect_resolve_accesspass()
@@ -811,7 +814,7 @@ mod tests {
                     && cmd.last_access_epoch == u64::MAX        // a declared ibrl pins the epoch
                     && cmd.allow_multiple_ip
                     && cmd.max_unicast_users == 3
-                    && cmd.max_multicast_users == 5
+                    && cmd.max_public_multicast_users == 5
                     && matches!(cmd.accesspass_type, AccessPassType::EdgeSeat(_))
             })
             .times(1)
@@ -1034,8 +1037,8 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
-            max_multicast_users: 1,
+            public_multicast_user_count: 0,
+            max_public_multicast_users: 1,
         };
         client
             .expect_resolve_accesspass()
@@ -1137,8 +1140,8 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
-            max_multicast_users: 1,
+            public_multicast_user_count: 0,
+            max_public_multicast_users: 1,
         };
         client
             .expect_resolve_accesspass()
@@ -1275,6 +1278,9 @@ mod tests {
                     publisher_count: 0,
                     subscriber_count: 0,
                     bond_ref: Pubkey::default(),
+                    private: false,
+                    max_publishers: 0,
+                    max_subscribers: 0,
                 },
             )]))
         });
@@ -1295,8 +1301,8 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
-            max_multicast_users: 1,
+            public_multicast_user_count: 0,
+            max_public_multicast_users: 1,
         };
         // One entry has a pass, the other does not and is therefore blocked.
         client.expect_resolve_accesspass().returning(move |cmd| {

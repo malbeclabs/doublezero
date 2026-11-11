@@ -36,9 +36,10 @@ fn set_counts_args(expected: Counts, unicast: u16, multicast: u16) -> SetAccessP
     SetAccessPassCountsArgs {
         expected_connection_count: expected.0,
         expected_unicast_user_count: expected.1,
-        expected_multicast_user_count: expected.2,
+        expected_public_multicast_user_count: expected.2,
         unicast_user_count: unicast,
-        multicast_user_count: multicast,
+        public_multicast_user_count: multicast,
+        private_multicast_user_count: 0,
     }
 }
 
@@ -108,7 +109,7 @@ impl Env {
                 last_access_epoch: 9999,
                 allow_multiple_ip,
                 max_unicast_users: 1,
-                max_multicast_users: 1,
+                max_public_multicast_users: 1,
             }),
             vec![
                 AccountMeta::new(pass, false),
@@ -134,7 +135,7 @@ impl Env {
         (
             ap.connection_count,
             ap.unicast_user_count,
-            ap.multicast_user_count,
+            ap.public_multicast_user_count,
         )
     }
 
@@ -220,7 +221,7 @@ async fn test_set_access_pass_counts_repairs_a_stale_pass() {
     let ap = env.pass(pass).await.unwrap();
     assert_eq!(ap.connection_count, 3);
     assert_eq!(ap.unicast_user_count, 2);
-    assert_eq!(ap.multicast_user_count, 1);
+    assert_eq!(ap.public_multicast_user_count, 1);
     assert_eq!(ap.status, AccessPassStatus::Connected);
     assert_eq!(ap.client_ip, client_ip);
 
@@ -242,7 +243,7 @@ async fn test_set_access_pass_counts_repairs_a_stale_pass() {
     let ap = env.pass(pass).await.unwrap();
     assert_eq!(ap.connection_count, 0);
     assert_eq!(ap.unicast_user_count, 0);
-    assert_eq!(ap.multicast_user_count, 0);
+    assert_eq!(ap.public_multicast_user_count, 0);
     assert_eq!(ap.status, AccessPassStatus::Disconnected);
     assert_eq!(ap.client_ip, Ipv4Addr::UNSPECIFIED);
 
@@ -386,4 +387,40 @@ async fn test_set_access_pass_counts_feed_authority_limited_to_own_passes() {
     let ap = env.pass(feed_pass).await.unwrap();
     assert_eq!(ap.owner, feed.pubkey());
     assert_eq!(ap.connection_count, 1);
+}
+
+/// The test sends 1 public multicast user and 1 private multicast user. The program sets the
+/// connection count to 2 and the public multicast count to 1. The pass stores no private count.
+#[tokio::test]
+async fn test_set_access_pass_counts_adds_private_multicast_users_to_connections() {
+    let mut env = setup().await;
+    let payer = env.payer.insecure_clone();
+    let pass = env
+        .create_pass(
+            Ipv4Addr::new(100, 0, 0, 3),
+            Pubkey::new_unique(),
+            false,
+            &payer,
+        )
+        .await;
+
+    let expected = env.current_counts(pass).await;
+    let accounts = env.set_counts_accounts(pass);
+    execute_transaction(
+        &mut env.banks_client,
+        env.recent_blockhash,
+        env.program_id,
+        DoubleZeroInstruction::SetAccessPassCounts(SetAccessPassCountsArgs {
+            private_multicast_user_count: 1,
+            ..set_counts_args(expected, 0, 1)
+        }),
+        accounts,
+        &payer,
+    )
+    .await;
+
+    let ap = env.pass(pass).await.unwrap();
+    assert_eq!(ap.connection_count, 2);
+    assert_eq!(ap.unicast_user_count, 0);
+    assert_eq!(ap.public_multicast_user_count, 1);
 }

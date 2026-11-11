@@ -35,14 +35,17 @@ pub struct MulticastGroupUpdateArgs {
     #[incremental(default = false)]
     pub use_onchain_allocation: bool,
     pub owner: Option<Pubkey>,
+    pub private: Option<bool>,
+    pub max_publishers: Option<u32>,
+    pub max_subscribers: Option<u32>,
 }
 
 impl fmt::Debug for MulticastGroupUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {:?}, multicast_ip: {:?}, max_bandwidth: {:?}, publisher_count: {:?}, subscriber_count: {:?}, use_onchain_allocation: {}, owner: {:?}",
-            self.code, self.multicast_ip, self.max_bandwidth, self.publisher_count, self.subscriber_count, self.use_onchain_allocation, self.owner
+            "code: {:?}, multicast_ip: {:?}, max_bandwidth: {:?}, publisher_count: {:?}, subscriber_count: {:?}, use_onchain_allocation: {}, owner: {:?}, private: {:?}, max_publishers: {:?}, max_subscribers: {:?}",
+            self.code, self.multicast_ip, self.max_bandwidth, self.publisher_count, self.subscriber_count, self.use_onchain_allocation, self.owner, self.private, self.max_publishers, self.max_subscribers
         )
     }
 }
@@ -158,6 +161,15 @@ pub fn process_update_multicastgroup(
     }
     if let Some(ref owner) = value.owner {
         multicastgroup.owner = *owner;
+    }
+    if let Some(private) = value.private {
+        multicastgroup.private = private;
+    }
+    if let Some(max_publishers) = value.max_publishers {
+        multicastgroup.max_publishers = max_publishers;
+    }
+    if let Some(max_subscribers) = value.max_subscribers {
+        multicastgroup.max_subscribers = max_subscribers;
     }
 
     try_acc_write(

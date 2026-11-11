@@ -291,7 +291,7 @@ async fn test_user() {
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -925,7 +925,7 @@ async fn test_user_create_tenant_allowlist_validation() {
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_1_pubkey, false),
@@ -996,7 +996,7 @@ async fn test_user_create_tenant_allowlist_validation() {
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_2_pubkey, false),
@@ -1251,7 +1251,7 @@ async fn setup_activated_user() -> (BanksClient, Keypair, Pubkey, Pubkey, Pubkey
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1424,7 +1424,7 @@ async fn test_user_check_access_pass_expired_epoch_stays_activated_and_delete() 
             last_access_epoch: 0,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1828,7 +1828,7 @@ async fn test_user_create_existing_different_owner_rejected() {
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_b, false),

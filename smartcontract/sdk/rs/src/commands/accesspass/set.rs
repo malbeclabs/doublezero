@@ -6,7 +6,7 @@ use doublezero_serviceability::{
 use doublezero_serviceability_instruction::accesspass::set_access_pass;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
-use crate::{commands::accesspass::get::ResolveAccessPassCommand, DoubleZeroClient};
+use crate::{commands::accesspass::get::GetAccessPassCommand, DoubleZeroClient};
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct SetAccessPassCommand {
@@ -17,7 +17,7 @@ pub struct SetAccessPassCommand {
     pub allow_multiple_ip: bool,
     pub tenant: Pubkey,
     pub max_unicast_users: u16,
-    pub max_multicast_users: u16,
+    pub max_public_multicast_users: u16,
 }
 
 impl SetAccessPassCommand {
@@ -33,14 +33,12 @@ impl SetAccessPassCommand {
             }
         }
 
-        let accesspass = ResolveAccessPassCommand {
+        let accesspass = GetAccessPassCommand {
             client_ip: self.client_ip,
             user_payer: self.user_payer,
         }
         .execute(client)?;
 
-        // Get the current tenant from the existing access pass (if any). The builder appends the
-        // `[current_tenant, new_tenant]` pair itself when either is non-default.
         let current_tenant = accesspass
             .as_ref()
             .and_then(|(_, ap)| ap.tenant_allowlist.first().copied())
@@ -58,7 +56,7 @@ impl SetAccessPassCommand {
                 last_access_epoch: self.last_access_epoch,
                 allow_multiple_ip: self.allow_multiple_ip,
                 max_unicast_users: self.max_unicast_users,
-                max_multicast_users: self.max_multicast_users,
+                max_public_multicast_users: self.max_public_multicast_users,
             },
         ))
     }
@@ -75,14 +73,22 @@ mod tests {
         processors::accesspass::set::SetAccessPassArgs,
         state::{
             accesspass::{AccessPass, AccessPassStatus, AccessPassType},
-            accountdata::AccountData,
             accounttype::AccountType,
         },
     };
     use doublezero_serviceability_instruction::accesspass::set_access_pass;
     use mockall::predicate;
-    use solana_sdk::{pubkey::Pubkey, signature::Signature};
-    use std::net::Ipv4Addr;
+    use solana_sdk::{account::Account, pubkey::Pubkey, signature::Signature};
+
+    fn accesspass_account(program_id: Pubkey, pass: &AccessPass) -> Account {
+        Account {
+            lamports: 1,
+            data: borsh::to_vec(pass).unwrap(),
+            owner: program_id,
+            executable: false,
+            rent_epoch: 0,
+        }
+    }
 
     #[test]
     fn test_commands_set_accesspass_command() {
@@ -111,22 +117,15 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
-            max_multicast_users: 1,
+            public_multicast_user_count: 0,
+            max_public_multicast_users: 1,
         };
+        let account = accesspass_account(program_id, &accesspass);
         client
-            .expect_get()
-            .with(predicate::eq(pda_pubkey))
-            .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
-
-        // ResolveAccessPassCommand checks the UNSPECIFIED (dynamic) PDA first; no pass
-        // exists there, so it falls back to the exact-IP PDA above.
-        let (dynamic_pubkey, _) =
-            get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &user_payer);
-        client
-            .expect_get()
-            .with(predicate::eq(dynamic_pubkey))
-            .returning(|_| Err(eyre::eyre!("account not found")));
+            .expect_get_multiple_accounts()
+            .with(predicate::eq(vec![pda_pubkey]))
+            .times(1)
+            .returning(move |_| Ok(vec![Some(account.clone())]));
 
         // No tenant on the existing pass and no new tenant, so the builder omits the tenant pair.
         let expected = set_access_pass(
@@ -141,7 +140,7 @@ mod tests {
                 last_access_epoch: 0,
                 allow_multiple_ip: false,
                 max_unicast_users: 1,
-                max_multicast_users: 1,
+                max_public_multicast_users: 1,
             },
         );
         client
@@ -157,9 +156,84 @@ mod tests {
             allow_multiple_ip: false,
             tenant: Pubkey::default(),
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }
         .execute(&client);
         assert!(res.is_ok());
+    }
+    /// A cap change on the pass at 10.0.0.1 must send that pass's tenant as both the current and
+    /// the new tenant. The command must not read the payer's 0.0.0.0 pass, which has another
+    /// tenant, so the mock answers only the exact address. The program still raises the count of
+    /// that tenant by 1, and malbeclabs/infra#3718 tracks that fix.
+    #[test]
+    fn test_commands_set_accesspass_reads_the_tenant_of_the_exact_pass() {
+        let mut client = create_test_client();
+
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let client_ip = [10, 0, 0, 1].into();
+        let user_payer = Pubkey::new_unique();
+        let acme = Pubkey::new_unique();
+        let (pda_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &user_payer);
+
+        let accesspass = AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 0,
+            accesspass_type: AccessPassType::EdgeSeat(vec![]),
+            client_ip,
+            user_payer,
+            last_access_epoch: u64::MAX,
+            connection_count: 0,
+            status: AccessPassStatus::Requested,
+            owner: payer,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![acme],
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 0,
+            public_multicast_user_count: 0,
+            max_public_multicast_users: 2,
+        };
+        let account = accesspass_account(program_id, &accesspass);
+        client
+            .expect_get_multiple_accounts()
+            .with(predicate::eq(vec![pda_pubkey]))
+            .times(1)
+            .returning(move |_| Ok(vec![Some(account.clone())]));
+
+        let args = SetAccessPassArgs {
+            accesspass_type: AccessPassType::EdgeSeat(vec![]),
+            client_ip,
+            last_access_epoch: u64::MAX,
+            allow_multiple_ip: false,
+            max_unicast_users: 0,
+            max_public_multicast_users: 4,
+        };
+        client
+            .expect_send_transaction()
+            .with(predicate::eq(set_access_pass(
+                &program_id,
+                &payer,
+                &user_payer,
+                &acme,
+                &acme,
+                args,
+            )))
+            .times(1)
+            .returning(|_| Ok(Signature::new_unique()));
+
+        SetAccessPassCommand {
+            accesspass_type: AccessPassType::EdgeSeat(vec![]),
+            client_ip,
+            user_payer,
+            last_access_epoch: u64::MAX,
+            allow_multiple_ip: false,
+            tenant: acme,
+            max_unicast_users: 0,
+            max_public_multicast_users: 4,
+        }
+        .execute(&client)
+        .unwrap();
     }
 }

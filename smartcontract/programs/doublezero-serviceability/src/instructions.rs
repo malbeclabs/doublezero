@@ -1139,6 +1139,9 @@ mod tests {
                 subscriber_count: None,
                 use_onchain_allocation: false,
                 owner: None,
+                private: None,
+                max_publishers: None,
+                max_subscribers: None,
             }),
             "UpdateMulticastGroup",
         );
@@ -1275,7 +1278,7 @@ mod tests {
                 last_access_epoch: 123,
                 allow_multiple_ip: false,
                 max_unicast_users: 1,
-                max_multicast_users: 1,
+                max_public_multicast_users: 1,
             }),
             "SetAccessPass",
         );
@@ -1349,9 +1352,10 @@ mod tests {
             DoubleZeroInstruction::SetAccessPassCounts(SetAccessPassCountsArgs {
                 expected_connection_count: 3,
                 expected_unicast_user_count: 1,
-                expected_multicast_user_count: 1,
+                expected_public_multicast_user_count: 1,
                 unicast_user_count: 2,
-                multicast_user_count: 1,
+                public_multicast_user_count: 1,
+                private_multicast_user_count: 0,
             }),
             "SetAccessPassCounts",
         );

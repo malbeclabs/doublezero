@@ -11,7 +11,7 @@ use doublezero_serviceability::{
     processors::multicastgroup::subscribe::UpdateMulticastGroupRolesArgs,
     state::multicastgroup::MulticastGroupStatus,
 };
-use doublezero_serviceability_instruction::multicastgroup::update_multicast_group_roles;
+use doublezero_serviceability_instruction::multicastgroup::update_multicast_group_roles_with_kept_groups;
 use eyre::Context;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
@@ -107,13 +107,39 @@ impl UpdateMulticastGroupRolesCommand {
         // the `update_multicast_group_roles` layout has no slot for them via this path.
         // Post-activation re-gating is deferred to the oracle lifecycle
         // (see malbeclabs/infra#1700 / doublezero #1699).
-        let ix = update_multicast_group_roles(
+        // The program reads the groups the user stays in to decide whether to release its seat.
+        let mut kept_group_pks: Vec<Pubkey> = Vec::new();
+        if !self.publisher && !self.subscriber && user.holds_pass_seat && user.feed_pks.is_empty() {
+            for group_pk in user.subscribers.iter().chain(user.publishers.iter()) {
+                if !group_pks.contains(group_pk) && !kept_group_pks.contains(group_pk) {
+                    kept_group_pks.push(*group_pk);
+                }
+            }
+            if group_pks.len() + kept_group_pks.len() > MAX_GROUPS_PER_TRANSACTION {
+                kept_group_pks.clear();
+            }
+            for group_pk in &kept_group_pks {
+                GetMulticastGroupCommand {
+                    pubkey_or_code: group_pk.to_string(),
+                }
+                .execute(client)
+                .wrap_err_with(|| {
+                    format!(
+                        "user {} is still in multicast group {group_pk}, which no longer exists",
+                        self.user_pk
+                    )
+                })?;
+            }
+        }
+
+        let ix = update_multicast_group_roles_with_kept_groups(
             &client.get_program_id(),
             &client.get_payer(),
             first_group_pk,
             &accesspass_pubkey,
             &self.user_pk,
             extra_group_pks,
+            &kept_group_pks,
             UpdateMulticastGroupRolesArgs {
                 publisher: self.publisher,
                 subscriber: self.subscriber,
@@ -169,6 +195,9 @@ mod tests {
             publisher_count: 0,
             subscriber_count: 0,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         };
 
         client
@@ -222,8 +251,8 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
-            max_multicast_users: 1,
+            public_multicast_user_count: 0,
+            max_public_multicast_users: 1,
         };
 
         // First call in UpdateMulticastGroupRolesCommand::execute tries the dynamic (UNSPECIFIED) PDA,
@@ -300,6 +329,9 @@ mod tests {
             publisher_count: 0,
             subscriber_count: 1,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         };
         client
             .expect_get()
@@ -358,8 +390,8 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 1,
-            max_multicast_users: 1,
+            public_multicast_user_count: 1,
+            max_public_multicast_users: 1,
         };
         client
             .expect_get()
@@ -398,6 +430,108 @@ mod tests {
         .execute(&client);
 
         assert!(res.is_ok());
+    }
+
+    #[test]
+    fn test_removal_refused_when_a_kept_group_no_longer_exists() {
+        let mut client = create_test_client();
+
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let (public_group, _) = get_multicastgroup_pda(&program_id, 1);
+        let (deleted_group, _) = get_multicastgroup_pda(&program_id, 2);
+        let mgroup = MulticastGroup {
+            account_type: AccountType::MulticastGroup,
+            owner: payer,
+            bump_seed: 0,
+            index: 1,
+            code: "test".to_string(),
+            max_bandwidth: 1000,
+            status: MulticastGroupStatus::Activated,
+            tenant_pk: Pubkey::default(),
+            multicast_ip: "223.0.0.1".parse().unwrap(),
+            publisher_count: 0,
+            subscriber_count: 1,
+            bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(public_group))
+            .returning(move |_| Ok(AccountData::MulticastGroup(mgroup.clone())));
+        client
+            .expect_get()
+            .with(predicate::eq(deleted_group))
+            .returning(|_| Err(eyre::eyre!("account not found")));
+
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+        let user_pubkey = Pubkey::new_unique();
+        let user = User {
+            account_type: AccountType::User,
+            owner: payer,
+            user_type: UserType::Multicast,
+            client_ip,
+            status: UserStatus::Activated,
+            subscribers: vec![public_group, deleted_group],
+            holds_pass_seat: true,
+            ..Default::default()
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(user_pubkey))
+            .returning(move |_| Ok(AccountData::User(user.clone())));
+
+        let (dynamic_accesspass_pubkey, _) =
+            get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
+        client
+            .expect_get()
+            .with(predicate::eq(dynamic_accesspass_pubkey))
+            .returning(|_| Err(eyre::eyre!("account not found")));
+        let (accesspass_pubkey, _) = get_accesspass_pda(&program_id, &client_ip, &payer);
+        let accesspass = doublezero_serviceability::state::accesspass::AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 0,
+            accesspass_type: doublezero_serviceability::state::accesspass::AccessPassType::Prepaid,
+            client_ip,
+            user_payer: payer,
+            last_access_epoch: 0,
+            connection_count: 1,
+            status: doublezero_serviceability::state::accesspass::AccessPassStatus::Connected,
+            owner: payer,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![public_group],
+            tenant_allowlist: vec![],
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            public_multicast_user_count: 1,
+            max_public_multicast_users: 1,
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(accesspass_pubkey))
+            .returning(move |_| Ok(AccountData::AccessPass(accesspass.clone())));
+
+        let err = UpdateMulticastGroupRolesCommand {
+            group_pks: vec![public_group],
+            user_pk: user_pubkey,
+            client_ip,
+            publisher: false,
+            subscriber: false,
+            device_pk: None,
+            feed_pk: None,
+        }
+        .execute(&client)
+        .unwrap_err();
+
+        assert_eq!(
+            err.to_string(),
+            format!(
+                "user {user_pubkey} is still in multicast group {deleted_group}, which no longer exists"
+            )
+        );
     }
 
     /// A max-size batch (MAX_GROUPS_PER_TRANSACTION groups + Permission PDA) must fit

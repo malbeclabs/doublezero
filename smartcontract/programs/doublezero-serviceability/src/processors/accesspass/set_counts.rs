@@ -18,8 +18,10 @@ use solana_program::{
 use std::net::Ipv4Addr;
 
 /// The user counts an admin sets on an existing access pass after it counts the users on the pass
-/// offchain. `connection_count` is not a new value: every user counts once in it and once in its
-/// category, so the program sets it to the sum of the two.
+/// offchain. `connection_count` is not a new value: the program sets it to the sum of the
+/// unicast users, the multicast users that hold a pass seat and the multicast users that hold
+/// none. The pass does not store the count of users that hold none. A user holds a pass seat when
+/// its `holds_pass_seat` bit is set.
 ///
 /// The `expected_*` fields are the counts the admin read when it counted the users. The program
 /// writes only when all three still match the pass, so a user created or deleted between the
@@ -31,9 +33,10 @@ use std::net::Ipv4Addr;
 pub struct SetAccessPassCountsArgs {
     pub expected_connection_count: u16,
     pub expected_unicast_user_count: u16,
-    pub expected_multicast_user_count: u16,
+    pub expected_public_multicast_user_count: u16,
     pub unicast_user_count: u16,
-    pub multicast_user_count: u16,
+    pub public_multicast_user_count: u16,
+    pub private_multicast_user_count: u16,
 }
 
 impl TryFrom<&[u8]> for SetAccessPassCountsArgs {
@@ -112,12 +115,14 @@ pub fn process_set_access_pass_counts(
 
     let Some(connection_count) = value
         .unicast_user_count
-        .checked_add(value.multicast_user_count)
+        .checked_add(value.public_multicast_user_count)
+        .and_then(|count| count.checked_add(value.private_multicast_user_count))
     else {
         msg!(
-            "unicast_user_count {} plus multicast_user_count {} must fit in a u16",
+            "unicast users {} plus public multicast users {} plus private multicast users {} must fit in a u16",
             value.unicast_user_count,
-            value.multicast_user_count
+            value.public_multicast_user_count,
+            value.private_multicast_user_count
         );
         return Err(DoubleZeroError::InvalidArgument.into());
     };
@@ -134,16 +139,16 @@ pub fn process_set_access_pass_counts(
     // Compare-and-swap: refuse to write over counts that changed since the admin read them.
     if accesspass.connection_count != value.expected_connection_count
         || accesspass.unicast_user_count != value.expected_unicast_user_count
-        || accesspass.multicast_user_count != value.expected_multicast_user_count
+        || accesspass.public_multicast_user_count != value.expected_public_multicast_user_count
     {
         msg!(
             "Expected connections {}, unicast users {}, multicast users {}, but the pass has connections {}, unicast users {}, multicast users {}",
             value.expected_connection_count,
             value.expected_unicast_user_count,
-            value.expected_multicast_user_count,
+            value.expected_public_multicast_user_count,
             accesspass.connection_count,
             accesspass.unicast_user_count,
-            accesspass.multicast_user_count
+            accesspass.public_multicast_user_count
         );
         return Err(DoubleZeroError::AccessPassCountsChanged.into());
     }
@@ -154,13 +159,13 @@ pub fn process_set_access_pass_counts(
         connection_count,
         accesspass.unicast_user_count,
         value.unicast_user_count,
-        accesspass.multicast_user_count,
-        value.multicast_user_count
+        accesspass.public_multicast_user_count,
+        value.public_multicast_user_count
     );
 
     accesspass.connection_count = connection_count;
     accesspass.unicast_user_count = value.unicast_user_count;
-    accesspass.multicast_user_count = value.multicast_user_count;
+    accesspass.public_multicast_user_count = value.public_multicast_user_count;
 
     // Leave the pass in the state the last user delete would have left it in.
     if connection_count > 0 {
@@ -188,12 +193,13 @@ mod tests {
         let args = SetAccessPassCountsArgs {
             expected_connection_count: 4,
             expected_unicast_user_count: 5,
-            expected_multicast_user_count: 0x0206,
+            expected_public_multicast_user_count: 0x0206,
             unicast_user_count: 2,
-            multicast_user_count: 0x0103,
+            public_multicast_user_count: 0x0103,
+            private_multicast_user_count: 7,
         };
         let payload = borsh::to_vec(&args).unwrap();
-        assert_eq!(payload, [4, 0, 5, 0, 6, 2, 2, 0, 3, 1]);
+        assert_eq!(payload, [4, 0, 5, 0, 6, 2, 2, 0, 3, 1, 7, 0]);
         assert_eq!(
             SetAccessPassCountsArgs::try_from(&payload[..]).unwrap(),
             args
@@ -204,7 +210,8 @@ mod tests {
     #[test]
     fn test_set_access_pass_counts_args_refuses_a_short_payload() {
         assert_eq!(
-            SetAccessPassCountsArgs::try_from(&[4u8, 0, 5, 0, 6, 2, 2, 0, 3][..]).unwrap_err(),
+            SetAccessPassCountsArgs::try_from(&[4u8, 0, 5, 0, 6, 2, 2, 0, 3, 1, 7][..])
+                .unwrap_err(),
             DoubleZeroError::InvalidArgument
         );
         assert_eq!(

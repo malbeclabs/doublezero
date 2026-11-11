@@ -7,10 +7,14 @@ use crate::{
 };
 use clap::Args;
 use doublezero_cli_core::CliContext;
-use doublezero_sdk::commands::multicastgroup::{
-    get::GetMulticastGroupCommand, update::UpdateMulticastGroupCommand,
+use doublezero_sdk::commands::{
+    feed::list::ListFeedCommand,
+    multicastgroup::{get::GetMulticastGroupCommand, update::UpdateMulticastGroupCommand},
 };
-use std::{io::Write, net::Ipv4Addr};
+use std::{
+    io::{BufRead, Write},
+    net::Ipv4Addr,
+};
 
 #[derive(Args, Debug)]
 pub struct UpdateMulticastGroupCliCommand {
@@ -35,24 +39,76 @@ pub struct UpdateMulticastGroupCliCommand {
     /// Updated owner pubkey for the multicast group
     #[arg(long, value_parser = validate_pubkey)]
     pub owner: Option<String>,
+    /// Mark the multicast group as private (true or false)
+    #[arg(long)]
+    pub private: Option<bool>,
+    /// Maximum number of publishers on a private multicast group. A private group with 0 admits no publisher
+    #[arg(long)]
+    pub max_publishers: Option<u32>,
+    /// Maximum number of subscribers on a private multicast group. A private group with 0 admits no subscriber
+    #[arg(long)]
+    pub max_subscribers: Option<u32>,
     /// Wait for the multicast group to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
+    /// Do not ask for confirmation when the group has members
+    #[arg(short, long, default_value_t = false)]
+    pub yes: bool,
 }
 
 impl UpdateMulticastGroupCliCommand {
-    pub async fn execute<C: CliCommand, W: Write>(
+    pub async fn execute<C: CliCommand, W: Write, R: BufRead>(
         self,
         _ctx: &CliContext,
         client: &C,
         out: &mut W,
+        input: &mut R,
     ) -> eyre::Result<()> {
         // Check requirements
         client.check_requirements(CHECK_ID_JSON | CHECK_BALANCE)?;
 
-        let (pubkey, _) = client.get_multicastgroup(GetMulticastGroupCommand {
+        let (pubkey, mgroup) = client.get_multicastgroup(GetMulticastGroupCommand {
             pubkey_or_code: self.pubkey,
         })?;
+
+        // A change to the private flag does not change the counts on the access passes of the
+        // users already on the group. The new flag applies only to a user that joins later.
+        if self.private == Some(true) && !mgroup.private {
+            let mut feeds: Vec<String> = client
+                .list_feed(ListFeedCommand {})?
+                .into_iter()
+                .filter(|(_, feed)| feed.groups.contains(&pubkey))
+                .map(|(feed_pk, feed)| format!("{} ({feed_pk})", feed.name))
+                .collect();
+            feeds.sort();
+            if !feeds.is_empty() {
+                eyre::bail!(
+                    "multicast group {} is listed by feed(s) {}. Remove it from those feeds before you mark it private",
+                    mgroup.code,
+                    feeds.join(", ")
+                );
+            }
+        }
+        if let Some(private) = self.private {
+            let members = mgroup.publisher_count + mgroup.subscriber_count;
+            if private != mgroup.private && members > 0 {
+                writeln!(
+                    out,
+                    "Multicast group {} has {} publisher(s) and {} subscriber(s). Their access passes keep the multicast user counts they have now until these users disconnect.",
+                    mgroup.code, mgroup.publisher_count, mgroup.subscriber_count
+                )?;
+                if !self.yes {
+                    write!(out, "Set private to {private}? [y/N]: ")?;
+                    out.flush()?;
+                    let mut answer = String::new();
+                    input.read_line(&mut answer)?;
+                    if !answer.trim().eq_ignore_ascii_case("y") {
+                        writeln!(out)?;
+                        eyre::bail!("the answer was not y, so nothing was changed");
+                    }
+                }
+            }
+        }
 
         let signature = client.update_multicastgroup(UpdateMulticastGroupCommand {
             pubkey,
@@ -68,6 +124,9 @@ impl UpdateMulticastGroupCliCommand {
                     s.parse().unwrap()
                 }
             }),
+            private: self.private,
+            max_publishers: self.max_publishers,
+            max_subscribers: self.max_subscribers,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -124,6 +183,9 @@ mod tests {
             publisher_count: 5,
             subscriber_count: 10,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         }
     }
 
@@ -288,6 +350,9 @@ mod tests {
                 publisher_count: Some(5),
                 subscriber_count: Some(10),
                 owner: None,
+                private: None,
+                max_publishers: None,
+                max_subscribers: None,
             }))
             .returning(move |_| Ok(signature));
 
@@ -302,9 +367,13 @@ mod tests {
                 publisher_count: Some(5),
                 subscriber_count: Some(10),
                 owner: None,
+                private: None,
+                max_publishers: None,
+                max_subscribers: None,
                 wait: false,
+                yes: false,
             }
-            .execute(&ctx, &client, &mut output),
+            .execute(&ctx, &client, &mut output, &mut "".as_bytes()),
         );
         assert!(res.is_ok());
         assert_eq!(String::from_utf8(output).unwrap(), EXPECTED_SIGNATURE_STR);
@@ -339,6 +408,9 @@ mod tests {
                 publisher_count: None,
                 subscriber_count: None,
                 owner: Some(explicit_owner),
+                private: None,
+                max_publishers: None,
+                max_subscribers: None,
             }))
             .returning(move |_| Ok(signature));
 
@@ -353,9 +425,13 @@ mod tests {
                 publisher_count: None,
                 subscriber_count: None,
                 owner: Some(explicit_owner.to_string()),
+                private: None,
+                max_publishers: None,
+                max_subscribers: None,
                 wait: false,
+                yes: false,
             }
-            .execute(&ctx, &client, &mut output),
+            .execute(&ctx, &client, &mut output, &mut "".as_bytes()),
         );
         assert!(res.is_ok());
         assert_eq!(String::from_utf8(output).unwrap(), EXPECTED_SIGNATURE_STR);
@@ -391,6 +467,9 @@ mod tests {
                 publisher_count: None,
                 subscriber_count: None,
                 owner: Some(payer),
+                private: None,
+                max_publishers: None,
+                max_subscribers: None,
             }))
             .returning(move |_| Ok(signature));
 
@@ -405,11 +484,114 @@ mod tests {
                 publisher_count: None,
                 subscriber_count: None,
                 owner: Some("me".to_string()),
+                private: None,
+                max_publishers: None,
+                max_subscribers: None,
                 wait: false,
+                yes: false,
             }
-            .execute(&ctx, &client, &mut output),
+            .execute(&ctx, &client, &mut output, &mut "".as_bytes()),
         );
         assert!(res.is_ok());
         assert_eq!(String::from_utf8(output).unwrap(), EXPECTED_SIGNATURE_STR);
+    }
+
+    #[test]
+    fn test_cli_multicastgroup_update_private_asks_when_the_group_has_members() {
+        let mut client = create_test_client();
+        let (pda_pubkey, _) = get_multicastgroup_pda(&client.get_program_id(), 1);
+        let multicastgroup = make_multicastgroup(pda_pubkey);
+        client.expect_check_requirements().returning(|_| Ok(()));
+        client
+            .expect_get_multicastgroup()
+            .returning(move |_| Ok((pda_pubkey, multicastgroup.clone())));
+        client
+            .expect_list_feed()
+            .returning(|_| Ok(std::collections::HashMap::new()));
+        client.expect_update_multicastgroup().never();
+
+        let mut output = Vec::new();
+        let err = block_on(
+            UpdateMulticastGroupCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                code: None,
+                multicast_ip: None,
+                max_bandwidth: None,
+                publisher_count: None,
+                subscriber_count: None,
+                owner: None,
+                private: Some(true),
+                max_publishers: None,
+                max_subscribers: None,
+                wait: false,
+                yes: false,
+            }
+            .execute(
+                &cli_context_default_for_tests(),
+                &client,
+                &mut output,
+                &mut "n\n".as_bytes(),
+            ),
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "the answer was not y, so nothing was changed"
+        );
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            "Multicast group test has 5 publisher(s) and 10 subscriber(s). Their access passes keep the multicast user counts they have now until these users disconnect.\nSet private to true? [y/N]: \n"
+        );
+    }
+
+    #[test]
+    fn test_cli_multicastgroup_update_private_refuses_a_group_that_a_feed_lists() {
+        let mut client = create_test_client();
+        let (pda_pubkey, _) = get_multicastgroup_pda(&client.get_program_id(), 1);
+        let multicastgroup = make_multicastgroup(pda_pubkey);
+        let feed_pk = Pubkey::new_unique();
+        client.expect_check_requirements().returning(|_| Ok(()));
+        client
+            .expect_get_multicastgroup()
+            .returning(move |_| Ok((pda_pubkey, multicastgroup.clone())));
+        client.expect_list_feed().returning(move |_| {
+            Ok(std::collections::HashMap::from([(
+                feed_pk,
+                doublezero_sdk::Feed {
+                    name: "solana-shreds-full-ewr".to_string(),
+                    groups: vec![pda_pubkey],
+                    ..Default::default()
+                },
+            )]))
+        });
+        client.expect_update_multicastgroup().never();
+
+        let err = block_on(
+            UpdateMulticastGroupCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                code: None,
+                multicast_ip: None,
+                max_bandwidth: None,
+                publisher_count: None,
+                subscriber_count: None,
+                owner: None,
+                private: Some(true),
+                max_publishers: None,
+                max_subscribers: None,
+                wait: false,
+                yes: false,
+            }
+            .execute(
+                &cli_context_default_for_tests(),
+                &client,
+                &mut Vec::new(),
+                &mut "y\n".as_bytes(),
+            ),
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            format!("multicast group test is listed by feed(s) solana-shreds-full-ewr ({feed_pk}). Remove it from those feeds before you mark it private")
+        );
     }
 }

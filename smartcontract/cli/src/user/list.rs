@@ -607,6 +607,9 @@ mod tests {
                 publisher_count: 0,
                 subscriber_count: 0,
                 bond_ref: Pubkey::default(),
+                private: false,
+                max_publishers: 0,
+                max_subscribers: 0,
             }
         }
         let g1 = Pubkey::new_unique();
@@ -807,6 +810,9 @@ mod tests {
             publisher_count: 0,
             subscriber_count: 0,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         };
 
         client.expect_list_location().returning(move |_| {
@@ -882,8 +888,8 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
-            max_multicast_users: 1,
+            public_multicast_user_count: 0,
+            max_public_multicast_users: 1,
         };
 
         let user2 = User {
@@ -930,8 +936,8 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
-            max_multicast_users: 1,
+            public_multicast_user_count: 0,
+            max_public_multicast_users: 1,
         };
 
         client.expect_list_user().returning(move |_| {
@@ -1688,6 +1694,9 @@ mod tests {
             publisher_count: 0,
             subscriber_count: 0,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         };
 
         let user1 = User {
@@ -2180,8 +2189,8 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
-            max_multicast_users: 1,
+            public_multicast_user_count: 0,
+            max_public_multicast_users: 1,
         }
     }
 

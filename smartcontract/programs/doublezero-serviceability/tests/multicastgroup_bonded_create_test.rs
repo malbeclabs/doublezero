@@ -349,6 +349,9 @@ impl Cluster {
                 publisher_count: 0,
                 subscriber_count: 0,
                 bond_ref: args.bond_ref,
+                private: false,
+                max_publishers: 0,
+                max_subscribers: 0,
             }
         );
 
@@ -691,7 +694,7 @@ async fn test_a_bonded_groups_owner_cannot_reach_another_users_pass() {
             last_access_epoch: 100,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass, false),

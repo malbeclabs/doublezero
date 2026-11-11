@@ -275,7 +275,7 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -661,7 +661,7 @@ async fn test_create_subscribe_user_ignores_tenant_allowlist() {
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -791,7 +791,7 @@ async fn test_create_subscribe_user_ignores_expired_epoch() {
             last_access_epoch: 0,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -926,7 +926,7 @@ async fn test_check_access_pass_multicast_stays_activated() {
             last_access_epoch: 0,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1170,7 +1170,7 @@ async fn test_create_subscribe_user_foundation_owner_override() {
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1479,7 +1479,7 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1776,7 +1776,7 @@ async fn test_create_subscribe_user_user_admin_owner_override() {
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -2066,7 +2066,7 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),

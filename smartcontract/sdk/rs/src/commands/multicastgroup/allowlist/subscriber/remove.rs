@@ -76,6 +76,9 @@ mod tests {
             publisher_count: 5,
             subscriber_count: 10,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         };
 
         let cloned_mgroup = mgroup.clone();

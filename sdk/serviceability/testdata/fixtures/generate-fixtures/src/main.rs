@@ -1163,6 +1163,7 @@ fn generate_user(dir: &Path) {
         bgp_rtt_ns: 5_500_000,
         feed_pks: vec![feed_pk_a, feed_pk_b],
         accesspass_pk,
+        holds_pass_seat: false,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -1199,6 +1200,7 @@ fn generate_user(dir: &Path) {
             FieldValue { name: "FeedPks0".into(), value: pubkey_bs58(&feed_pk_a), typ: "pubkey".into() },
             FieldValue { name: "FeedPks1".into(), value: pubkey_bs58(&feed_pk_b), typ: "pubkey".into() },
             FieldValue { name: "AccessPassPk".into(), value: pubkey_bs58(&accesspass_pk), typ: "pubkey".into() },
+            FieldValue { name: "HoldsPassSeat".into(), value: "false".into(), typ: "bool".into() },
         ],
     };
 
@@ -1224,6 +1226,9 @@ fn generate_multicast_group(dir: &Path) {
         publisher_count: 2,
         subscriber_count: 10,
         bond_ref,
+        private: true,
+        max_publishers: 2,
+        max_subscribers: 10,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -1244,6 +1249,9 @@ fn generate_multicast_group(dir: &Path) {
             FieldValue { name: "PublisherCount".into(), value: "2".into(), typ: "u32".into() },
             FieldValue { name: "SubscriberCount".into(), value: "10".into(), typ: "u32".into() },
             FieldValue { name: "BondRef".into(), value: pubkey_bs58(&bond_ref), typ: "pubkey".into() },
+            FieldValue { name: "Private".into(), value: "true".into(), typ: "bool".into() },
+            FieldValue { name: "MaxPublishers".into(), value: "2".into(), typ: "u32".into() },
+            FieldValue { name: "MaxSubscribers".into(), value: "10".into(), typ: "u32".into() },
         ],
     };
 
@@ -1341,8 +1349,8 @@ fn generate_access_pass(dir: &Path) {
         tenant_allowlist: vec![],
         unicast_user_count: 2,
         max_unicast_users: 4,
-        multicast_user_count: 1,
-        max_multicast_users: 3,
+        public_multicast_user_count: 1,
+        max_public_multicast_users: 3,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -1397,8 +1405,8 @@ fn generate_access_pass_validator(dir: &Path) {
         tenant_allowlist: vec![],
         unicast_user_count: 0,
         max_unicast_users: 5,
-        multicast_user_count: 0,
-        max_multicast_users: 2,
+        public_multicast_user_count: 0,
+        max_public_multicast_users: 2,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -1465,8 +1473,8 @@ fn generate_access_pass_edge_seat(dir: &Path) {
         tenant_allowlist: vec![],
         unicast_user_count: 2,
         max_unicast_users: 4,
-        multicast_user_count: 1,
-        max_multicast_users: 3,
+        public_multicast_user_count: 1,
+        max_public_multicast_users: 3,
     };
 
     let data = borsh::to_vec(&val).unwrap();

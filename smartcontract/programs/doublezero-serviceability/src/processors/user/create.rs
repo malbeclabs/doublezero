@@ -132,6 +132,9 @@ pub fn process_create_user(
         value.tunnel_endpoint,
         false,
         None,
+        // A multicast user with no group is counted only in the connection count. It is counted
+        // in the public multicast count when it joins a public group or a feed.
+        value.user_type != UserType::Multicast,
         value.ip_proof.as_ref(),
     )?
     else {

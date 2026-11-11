@@ -194,8 +194,11 @@ pub fn process_delete_user(
     }
 
     accesspass.connection_count = accesspass.connection_count.saturating_sub(1);
-    // Uncount the user from the pass by category, on every pass type.
-    accesspass.remove_user(user.user_type);
+    // Uncount the user from the pass by category, on every pass type. The pass did not count a
+    // user that joined only private groups, so DeleteUser skips that user.
+    if user.holds_pass_seat {
+        accesspass.release_pass_seat(user.user_type);
+    }
     // Release every feed-scoped seat this user consumed at connect. The feeds are read from the
     // User (recorded when the seats were ticked), so each release is bound to exactly that seat
     // and cannot be misdirected to another metro's feed by a caller-supplied account.

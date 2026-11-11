@@ -639,6 +639,9 @@ mod tests {
             publisher_count: 0,
             subscriber_count: 0,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         }
     }
 
@@ -664,8 +667,8 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
-            max_multicast_users: 1,
+            public_multicast_user_count: 0,
+            max_public_multicast_users: 1,
         }
     }
 

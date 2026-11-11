@@ -380,14 +380,16 @@ class TestFixtureUser:
         for i in range(feed_pks_len):
             assert u.feed_pks[i] == Pubkey.from_string(fields[f"FeedPks{i}"])
         assert u.access_pass_pub_key == Pubkey.from_string(fields["AccessPassPk"])
+        assert u.holds_pass_seat == (fields["HoldsPassSeat"] == "true")
 
     def test_backward_compat_old_layout(self):
         # Deserializing an account binary that predates the BGP fields must
         # return zero values for those fields rather than failing.
         data, _ = _load_fixture("user")
         # Remove feed_pks (4 + 2*32 = 68) + bgp_rtt_ns (8) + last_bgp_reported_at (8)
-        # + last_bgp_up_at (8) + bgp_status (1) + accesspass_pk (32) = 125 bytes.
-        truncated = data[:-125]
+        # + last_bgp_up_at (8) + bgp_status (1) + accesspass_pk (32) + holds_pass_seat (1)
+        # = 126 bytes.
+        truncated = data[:-126]
         u = User.from_bytes(truncated)
         assert u.bgp_status == BGPStatus.UNKNOWN
         assert u.last_bgp_up_at == 0
@@ -395,19 +397,39 @@ class TestFixtureUser:
         assert u.bgp_rtt_ns == 0
         assert u.feed_pks == []
         assert u.access_pass_pub_key == Pubkey.default()
+        assert u.holds_pass_seat is True
+
+    def test_user_without_holds_pass_seat_reads_the_access_pass_key(self):
+        # Every user on mainnet has the access pass key and no holds_pass_seat byte.
+        data, meta = _load_fixture("user")
+        fields = {f["name"]: f["value"] for f in meta["fields"]}
+        u = User.from_bytes(data[:-1])
+        assert u.access_pass_pub_key == Pubkey.from_string(fields["AccessPassPk"])
+        assert u.holds_pass_seat is True
 
     def test_old_layout_zero_feed_slot_reads_as_empty_vec(self):
         # An account written by the previous layout carries a 32-zero-byte scalar
         # feed_pk slot where feed_pks now lives (never written with a real feed on
         # any cluster). It must read as an empty list, trailing zeros ignored.
         data, _ = _load_fixture("user")
-        old = data[:-100] + bytes(32)
+        old = data[:-101] + bytes(32)
         u = User.from_bytes(old)
         assert u.feed_pks == []
         assert u.access_pass_pub_key == Pubkey.default()
+        assert u.holds_pass_seat is True
 
 
 class TestFixtureMulticastGroup:
+    def test_group_before_private_and_caps_reads_as_not_private(self):
+        # A group from before the private flag and the caps has no bytes for them.
+        data, meta = _load_fixture("multicast_group")
+        fields = {f["name"]: f["value"] for f in meta["fields"]}
+        mg = MulticastGroup.from_bytes(data[:-9])
+        assert mg.bond_ref == Pubkey.from_string(fields["BondRef"])
+        assert mg.private is False
+        assert mg.max_publishers == 0
+        assert mg.max_subscribers == 0
+
     def test_deserialize(self):
         data, meta = _load_fixture("multicast_group")
         mg = MulticastGroup.from_bytes(data)
@@ -423,6 +445,9 @@ class TestFixtureMulticastGroup:
                 "PublisherCount": mg.publisher_count,
                 "SubscriberCount": mg.subscriber_count,
                 "BondRef": mg.bond_ref,
+                "Private": mg.private,
+                "MaxPublishers": mg.max_publishers,
+                "MaxSubscribers": mg.max_subscribers,
             },
         )
 

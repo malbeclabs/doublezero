@@ -329,6 +329,9 @@ mod tests {
             publisher_count: 0,
             subscriber_count: 1,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         };
 
         let user = User {
@@ -375,8 +378,8 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
-            max_multicast_users: 1,
+            public_multicast_user_count: 0,
+            max_public_multicast_users: 1,
         };
 
         client
@@ -506,6 +509,7 @@ mod tests {
             last_bgp_reported_at: 0,
             bgp_rtt_ns: 0,
             accesspass_pk: Pubkey::new_unique(),
+            holds_pass_seat: false,
         };
 
         let mgroup = MulticastGroup {
@@ -521,6 +525,9 @@ mod tests {
             publisher_count: 0,
             subscriber_count: 1,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
         };
 
         let feed = Feed {
@@ -792,8 +799,8 @@ mod tests {
             tenant_allowlist: vec![],
             unicast_user_count: 1,
             max_unicast_users: 1,
-            multicast_user_count: 0,
-            max_multicast_users: 1,
+            public_multicast_user_count: 0,
+            max_public_multicast_users: 1,
         };
 
         client

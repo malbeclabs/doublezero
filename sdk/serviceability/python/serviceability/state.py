@@ -882,6 +882,7 @@ class User:
     # the former scalar feed_pk slot, which was never written with a real feed on any cluster.
     feed_pks: list[Pubkey] = field(default_factory=list)
     access_pass_pub_key: Pubkey = Pubkey.default()
+    holds_pass_seat: bool = True
 
     @classmethod
     def from_bytes(cls, data: bytes) -> User:
@@ -915,7 +916,13 @@ class User:
         # which read as an empty vec with the leftover zero bytes ignored as trailing data.
         # _read_pubkey_vec returns [] on EOF, so accounts predating the slot default to empty too.
         u.feed_pks = _read_pubkey_vec(r)
-        u.access_pass_pub_key = _read_pubkey(r)
+        # When fewer than 32 bytes remain, the program skips the rest of the account. It then
+        # reads holds_pass_seat as true. An account in the old feed_pk layout ends with 28 zero
+        # bytes here.
+        if r.remaining >= 32:
+            u.access_pass_pub_key = _read_pubkey(r)
+            if r.remaining >= 1:
+                u.holds_pass_seat = r.read_u8() != 0
         return u
 
 
@@ -934,6 +941,9 @@ class MulticastGroup:
     subscriber_count: int = 0
     # The BuilderBond that created the group, or the default key for a group an admin created.
     bond_ref: Pubkey = Pubkey.default()
+    private: bool = False
+    max_publishers: int = 0
+    max_subscribers: int = 0
 
     @classmethod
     def from_bytes(cls, data: bytes) -> MulticastGroup:
@@ -953,6 +963,10 @@ class MulticastGroup:
         # A group created before the field existed ends here, and the reader raises past the end.
         if r.remaining >= 32:
             mg.bond_ref = _read_pubkey(r)
+        if r.remaining >= 9:
+            mg.private = r.read_u8() != 0
+            mg.max_publishers = r.read_u32()
+            mg.max_subscribers = r.read_u32()
         return mg
 
 
@@ -1096,7 +1110,10 @@ class AccessPass:
     tenant_allowlist: list[Pubkey] = field(default_factory=list)
     unicast_user_count: int = 0
     max_unicast_users: int = 1
+    # The program names this field public_multicast_user_count. It leaves out the users that
+    # hold no pass seat.
     multicast_user_count: int = 0
+    # The program names this field max_public_multicast_users. It caps the users that hold a pass seat.
     max_multicast_users: int = 1
 
     @classmethod

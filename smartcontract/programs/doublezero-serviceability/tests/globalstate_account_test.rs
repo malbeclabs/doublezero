@@ -304,7 +304,7 @@ impl Env {
                 last_access_epoch: 9999,
                 allow_multiple_ip: false,
                 max_unicast_users: 1,
-                max_multicast_users: 1,
+                max_public_multicast_users: 1,
             }),
             vec![
                 AccountMeta::new(pk, false),
@@ -779,7 +779,7 @@ async fn set_access_pass(env: &mut Env) -> Case {
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
         }),
         accounts: env.signed(vec![
             AccountMeta::new(pass, false),
@@ -838,9 +838,10 @@ async fn set_access_pass_counts(env: &mut Env) -> Case {
         DoubleZeroInstruction::SetAccessPassCounts(SetAccessPassCountsArgs {
             expected_connection_count: 0,
             expected_unicast_user_count: 0,
-            expected_multicast_user_count: 0,
+            expected_public_multicast_user_count: 0,
             unicast_user_count: 1,
-            multicast_user_count: 0,
+            public_multicast_user_count: 0,
+            private_multicast_user_count: 0,
         }),
     )
     .await

@@ -289,6 +289,10 @@ pub enum DoubleZeroError {
     MulticastGroupMaxPublishersExceeded, // variant 136
     #[error("This multicast group already has as many subscribers as its max_subscribers allows")]
     MulticastGroupMaxSubscribersExceeded, // variant 137
+    #[error("A feed cannot list a private multicast group")]
+    PrivateGroupInFeed, // variant 138
+    #[error("A multicast group that a feed lists cannot become private")]
+    GroupListedByFeed, // variant 139
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -432,6 +436,8 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::InvalidAgentIp => ProgramError::Custom(135),
             DoubleZeroError::MulticastGroupMaxPublishersExceeded => ProgramError::Custom(136),
             DoubleZeroError::MulticastGroupMaxSubscribersExceeded => ProgramError::Custom(137),
+            DoubleZeroError::PrivateGroupInFeed => ProgramError::Custom(138),
+            DoubleZeroError::GroupListedByFeed => ProgramError::Custom(139),
         }
     }
 }
@@ -576,6 +582,8 @@ impl From<u32> for DoubleZeroError {
             135 => DoubleZeroError::InvalidAgentIp,
             136 => DoubleZeroError::MulticastGroupMaxPublishersExceeded,
             137 => DoubleZeroError::MulticastGroupMaxSubscribersExceeded,
+            138 => DoubleZeroError::PrivateGroupInFeed,
+            139 => DoubleZeroError::GroupListedByFeed,
             _ => DoubleZeroError::Custom(e),
         }
     }

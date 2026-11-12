@@ -1106,6 +1106,7 @@ type MulticastGroup struct {
 	Private        bool
 	MaxPublishers  uint32
 	MaxSubscribers uint32
+	FeedCount      uint32
 	PubKey         [32]byte
 }
 

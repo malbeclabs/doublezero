@@ -354,6 +354,7 @@ func DeserializeMulticastGroup(reader *ByteReader, mg *MulticastGroup) {
 	mg.Private = reader.ReadU8() != 0
 	mg.MaxPublishers = reader.ReadU32()
 	mg.MaxSubscribers = reader.ReadU32()
+	mg.FeedCount = reader.ReadU32()
 }
 
 func DeserializeTenant(reader *ByteReader, tenant *Tenant) {

@@ -942,6 +942,7 @@ export interface MulticastGroup {
   private: boolean;
   maxPublishers: number;
   maxSubscribers: number;
+  feedCount: number;
 }
 
 export function deserializeMulticastGroup(data: Uint8Array): MulticastGroup {
@@ -963,11 +964,15 @@ export function deserializeMulticastGroup(data: Uint8Array): MulticastGroup {
     private: false,
     maxPublishers: 0,
     maxSubscribers: 0,
+    feedCount: 0,
   };
   if (r.remaining >= 9) {
     mg.private = r.readU8() !== 0;
     mg.maxPublishers = r.readU32();
     mg.maxSubscribers = r.readU32();
+  }
+  if (r.remaining >= 4) {
+    mg.feedCount = r.readU32();
   }
   return mg;
 }

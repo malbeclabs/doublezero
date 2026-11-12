@@ -424,11 +424,19 @@ class TestFixtureMulticastGroup:
         # A group from before the private flag and the caps has no bytes for them.
         data, meta = _load_fixture("multicast_group")
         fields = {f["name"]: f["value"] for f in meta["fields"]}
-        mg = MulticastGroup.from_bytes(data[:-9])
+        mg = MulticastGroup.from_bytes(data[:-13])
         assert mg.bond_ref == Pubkey.from_string(fields["BondRef"])
         assert mg.private is False
         assert mg.max_publishers == 0
         assert mg.max_subscribers == 0
+        assert mg.feed_count == 0
+
+    def test_group_before_feed_count_reads_a_count_of_zero(self):
+        data, _ = _load_fixture("multicast_group")
+        mg = MulticastGroup.from_bytes(data[:-4])
+        assert mg.private is True
+        assert mg.max_subscribers == 10
+        assert mg.feed_count == 0
 
     def test_deserialize(self):
         data, meta = _load_fixture("multicast_group")
@@ -448,6 +456,7 @@ class TestFixtureMulticastGroup:
                 "Private": mg.private,
                 "MaxPublishers": mg.max_publishers,
                 "MaxSubscribers": mg.max_subscribers,
+                "FeedCount": mg.feed_count,
             },
         )
 

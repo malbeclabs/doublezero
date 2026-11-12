@@ -96,6 +96,38 @@ pub async fn init_test() -> (BanksClient, Pubkey, Keypair, solana_program::hash:
 /// Some accounts are written by an offchain service rather than by an instruction — `BondMirror`
 /// is written by the cross-chain relayer. Seeding one directly is how a test exercises the read
 /// path before the writer exists.
+/// Same as `init_test`, with each of `groups` seeded as an activated group that an admin created.
+#[allow(dead_code)]
+pub async fn init_test_with_groups(
+    groups: &[Pubkey],
+) -> (BanksClient, Pubkey, Keypair, solana_program::hash::Hash) {
+    let program_id = Pubkey::new_unique();
+    let (banks_client, payer, recent_blockhash) =
+        init_test_with_accounts(program_id, &seeded_groups(groups)).await;
+    (banks_client, program_id, payer, recent_blockhash)
+}
+
+#[allow(dead_code)]
+pub fn seeded_groups(groups: &[Pubkey]) -> Vec<(Pubkey, Vec<u8>)> {
+    groups
+        .iter()
+        .map(|group| {
+            (
+                *group,
+                multicast_group(Pubkey::default(), Pubkey::default()),
+            )
+        })
+        .collect()
+}
+
+#[allow(dead_code)]
+pub fn group_metas(groups: &[Pubkey]) -> Vec<AccountMeta> {
+    groups
+        .iter()
+        .map(|group| AccountMeta::new(*group, false))
+        .collect()
+}
+
 #[allow(dead_code)]
 pub async fn init_test_with_accounts(
     program_id: Pubkey,
@@ -1178,6 +1210,7 @@ pub fn multicast_group(owner: Pubkey, bond_ref: Pubkey) -> Vec<u8> {
         private: false,
         max_publishers: 0,
         max_subscribers: 0,
+        feed_count: 0,
     })
     .unwrap()
 }

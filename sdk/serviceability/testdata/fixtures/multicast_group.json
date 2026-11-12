@@ -76,6 +76,11 @@
       "name": "MaxSubscribers",
       "value": "10",
       "typ": "u32"
+    },
+    {
+      "name": "FeedCount",
+      "value": "3",
+      "typ": "u32"
     }
   ]
 }

@@ -515,6 +515,7 @@ mod tests {
             private: false,
             max_publishers: 0,
             max_subscribers: 0,
+            feed_count: 0,
         };
 
         let access1_pubkey = Pubkey::from_str_const("1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB");
@@ -808,6 +809,7 @@ mod tests {
             private: false,
             max_publishers: 0,
             max_subscribers: 0,
+            feed_count: 0,
         };
 
         // access1: publisher of "test", IP 1.2.3.4
@@ -1046,6 +1048,7 @@ mod tests {
             private: false,
             max_publishers: 0,
             max_subscribers: 0,
+            feed_count: 0,
         };
         let feed_group = group("qa-payments-group");
         let comped_group = group("comped");

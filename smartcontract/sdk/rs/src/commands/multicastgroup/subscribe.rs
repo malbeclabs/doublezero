@@ -198,6 +198,7 @@ mod tests {
             private: false,
             max_publishers: 0,
             max_subscribers: 0,
+            feed_count: 0,
         };
 
         client
@@ -332,6 +333,7 @@ mod tests {
             private: false,
             max_publishers: 0,
             max_subscribers: 0,
+            feed_count: 0,
         };
         client
             .expect_get()
@@ -456,6 +458,7 @@ mod tests {
             private: false,
             max_publishers: 0,
             max_subscribers: 0,
+            feed_count: 0,
         };
         client
             .expect_get()

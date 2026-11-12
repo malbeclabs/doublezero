@@ -48,6 +48,9 @@ pub struct UpdateMulticastGroupCliCommand {
     /// Maximum number of subscribers on a private multicast group. A private group with 0 admits no subscriber
     #[arg(long)]
     pub max_subscribers: Option<u32>,
+    /// Number of feeds that list the multicast group. Set it on a group created before the program counted feeds
+    #[arg(long)]
+    pub feed_count: Option<u32>,
     /// Wait for the multicast group to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -127,6 +130,7 @@ impl UpdateMulticastGroupCliCommand {
             private: self.private,
             max_publishers: self.max_publishers,
             max_subscribers: self.max_subscribers,
+            feed_count: self.feed_count,
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -186,6 +190,7 @@ mod tests {
             private: false,
             max_publishers: 0,
             max_subscribers: 0,
+            feed_count: 0,
         }
     }
 
@@ -353,6 +358,7 @@ mod tests {
                 private: None,
                 max_publishers: None,
                 max_subscribers: None,
+                feed_count: None,
             }))
             .returning(move |_| Ok(signature));
 
@@ -372,6 +378,7 @@ mod tests {
                 max_subscribers: None,
                 wait: false,
                 yes: false,
+                feed_count: None,
             }
             .execute(&ctx, &client, &mut output, &mut "".as_bytes()),
         );
@@ -411,6 +418,7 @@ mod tests {
                 private: None,
                 max_publishers: None,
                 max_subscribers: None,
+                feed_count: None,
             }))
             .returning(move |_| Ok(signature));
 
@@ -430,6 +438,7 @@ mod tests {
                 max_subscribers: None,
                 wait: false,
                 yes: false,
+                feed_count: None,
             }
             .execute(&ctx, &client, &mut output, &mut "".as_bytes()),
         );
@@ -470,6 +479,7 @@ mod tests {
                 private: None,
                 max_publishers: None,
                 max_subscribers: None,
+                feed_count: None,
             }))
             .returning(move |_| Ok(signature));
 
@@ -489,6 +499,7 @@ mod tests {
                 max_subscribers: None,
                 wait: false,
                 yes: false,
+                feed_count: None,
             }
             .execute(&ctx, &client, &mut output, &mut "".as_bytes()),
         );
@@ -525,6 +536,7 @@ mod tests {
                 max_subscribers: None,
                 wait: false,
                 yes: false,
+                feed_count: None,
             }
             .execute(
                 &cli_context_default_for_tests(),
@@ -580,6 +592,7 @@ mod tests {
                 max_subscribers: None,
                 wait: false,
                 yes: false,
+                feed_count: None,
             }
             .execute(
                 &cli_context_default_for_tests(),

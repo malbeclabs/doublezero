@@ -1229,6 +1229,7 @@ fn generate_multicast_group(dir: &Path) {
         private: true,
         max_publishers: 2,
         max_subscribers: 10,
+        feed_count: 3,
     };
 
     let data = borsh::to_vec(&val).unwrap();
@@ -1252,6 +1253,7 @@ fn generate_multicast_group(dir: &Path) {
             FieldValue { name: "Private".into(), value: "true".into(), typ: "bool".into() },
             FieldValue { name: "MaxPublishers".into(), value: "2".into(), typ: "u32".into() },
             FieldValue { name: "MaxSubscribers".into(), value: "10".into(), typ: "u32".into() },
+            FieldValue { name: "FeedCount".into(), value: "3".into(), typ: "u32".into() },
         ],
     };
 

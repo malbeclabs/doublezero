@@ -15,7 +15,7 @@ use doublezero_serviceability::{
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
         multicastgroup::{
             allowlist::publisher::add::AddMulticastGroupPubAllowlistArgs,
-            create::MulticastGroupCreateArgs,
+            create::MulticastGroupCreateArgs, update::MulticastGroupUpdateArgs,
         },
         permission::create::PermissionCreateArgs,
     },
@@ -25,6 +25,7 @@ use doublezero_serviceability::{
         bond_mirror::{BondMirror, BondTier},
         feature_flags::FeatureFlag,
         feed::{Feed, FeedChain, FeedStatus},
+        multicastgroup::MulticastGroup,
         permission::permission_flags,
     },
 };
@@ -34,6 +35,22 @@ use solana_sdk::{instruction::AccountMeta, pubkey::Pubkey, signature::Signer};
 mod test_helpers;
 use test_helpers::*;
 
+// The groups the feeds in this file list. Each test seeds them, so a feed instruction can count
+// them.
+const GROUP_A: Pubkey = Pubkey::new_from_array([1; 32]);
+const GROUP_B: Pubkey = Pubkey::new_from_array([2; 32]);
+const GROUP_C: Pubkey = Pubkey::new_from_array([3; 32]);
+const GROUPS: [Pubkey; 3] = [GROUP_A, GROUP_B, GROUP_C];
+
+async fn feed_count(banks_client: &mut BanksClient, group: Pubkey) -> u32 {
+    get_account_data(banks_client, group)
+        .await
+        .expect("Unable to get MulticastGroup")
+        .get_multicastgroup()
+        .unwrap()
+        .feed_count
+}
+
 /// Plausible RFC-29 bond terms: a builder, the bond behind it, the spec it conforms to, the SLA
 /// it declared, and a 1 Gbps commitment.
 fn bonded_args(code: &str, exchange: Pubkey) -> FeedCreateArgs {
@@ -41,7 +58,7 @@ fn bonded_args(code: &str, exchange: Pubkey) -> FeedCreateArgs {
         code: code.to_string(),
         name: "Bonded".to_string(),
         exchange,
-        groups: vec![Pubkey::new_unique()],
+        group_count: 1,
         builder: Pubkey::new_unique(),
         bond_ref: Pubkey::new_unique(),
         spec_id: "top-of-book@v1.0.0".to_string(),
@@ -88,18 +105,17 @@ async fn init_globalstate(
 
 #[tokio::test]
 async fn test_feed_create_get_update_delete() {
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let (mut banks_client, program_id, payer, recent_blockhash) =
+        init_test_with_groups(&GROUPS).await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
     let exchange = Pubkey::new_unique();
     let (feed_pubkey, _) = get_feed_pda(&program_id, "shreds", &exchange);
 
-    let g1 = Pubkey::new_unique();
-    let g2 = Pubkey::new_unique();
-    let groups = vec![g1, g2];
+    let groups = vec![GROUP_A, GROUP_B];
 
-    execute_transaction(
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -107,7 +123,7 @@ async fn test_feed_create_get_update_delete() {
             code: "shreds".to_string(),
             name: "Shreds".to_string(),
             exchange,
-            groups: groups.clone(),
+            group_count: 2,
             ..Default::default()
         }),
         vec![
@@ -115,30 +131,29 @@ async fn test_feed_create_get_update_delete() {
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
+        &group_metas(&groups),
     )
     .await;
 
-    let feed = get_account_data(&mut banks_client, feed_pubkey)
-        .await
-        .expect("Unable to get Feed")
-        .get_feed()
-        .unwrap();
+    let feed = get_feed(&mut banks_client, feed_pubkey).await;
     assert_eq!(feed.account_type, AccountType::Feed);
     assert_eq!(feed.code, "shreds".to_string());
     assert_eq!(feed.name, "Shreds".to_string());
     assert_eq!(feed.owner, payer.pubkey());
     assert_eq!(feed.exchange, exchange);
     assert_eq!(feed.groups, groups);
+    assert_eq!(feed_count(&mut banks_client, GROUP_A).await, 1);
+    assert_eq!(feed_count(&mut banks_client, GROUP_B).await, 1);
 
-    // Update name and groups (exchange is immutable — it's a seed).
-    let new_groups = vec![Pubkey::new_unique()];
-    execute_transaction(
+    // Rename the feed and swap both groups for GROUP_C (exchange is immutable, it is a seed).
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
             name: Some("Shreds v2".to_string()),
-            groups: Some(new_groups.clone()),
+            added_group_count: 1,
+            removed_group_count: 2,
             feed_chain: None,
         }),
         vec![
@@ -146,20 +161,19 @@ async fn test_feed_create_get_update_delete() {
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
+        &group_metas(&[GROUP_C, GROUP_A, GROUP_B]),
     )
     .await;
 
-    let feed = get_account_data(&mut banks_client, feed_pubkey)
-        .await
-        .expect("Unable to get Feed")
-        .get_feed()
-        .unwrap();
+    let feed = get_feed(&mut banks_client, feed_pubkey).await;
     assert_eq!(feed.name, "Shreds v2".to_string());
     assert_eq!(feed.exchange, exchange);
-    assert_eq!(feed.groups, new_groups);
+    assert_eq!(feed.groups, vec![GROUP_C]);
+    assert_eq!(feed_count(&mut banks_client, GROUP_A).await, 0);
+    assert_eq!(feed_count(&mut banks_client, GROUP_B).await, 0);
+    assert_eq!(feed_count(&mut banks_client, GROUP_C).await, 1);
 
-    // Delete.
-    execute_transaction(
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -169,15 +183,18 @@ async fn test_feed_create_get_update_delete() {
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
+        &group_metas(&[GROUP_C]),
     )
     .await;
 
     assert_eq!(get_account_data(&mut banks_client, feed_pubkey).await, None);
+    assert_eq!(feed_count(&mut banks_client, GROUP_C).await, 0);
 }
 
 #[tokio::test]
 async fn test_feed_create_and_update_persist_chain() {
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let (mut banks_client, program_id, payer, recent_blockhash) =
+        init_test_with_groups(&GROUPS).await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
@@ -188,7 +205,7 @@ async fn test_feed_create_and_update_persist_chain() {
         AccountMeta::new(globalstate_pubkey, false),
     ];
 
-    execute_transaction(
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -196,12 +213,13 @@ async fn test_feed_create_and_update_persist_chain() {
             code: "shreds".to_string(),
             name: "Shreds".to_string(),
             exchange,
-            groups: vec![Pubkey::new_unique()],
+            group_count: 1,
             feed_chain: FeedChain::Solana,
             ..Default::default()
         }),
         accounts.clone(),
         &payer,
+        &group_metas(&[GROUP_A]),
     )
     .await;
 
@@ -214,9 +232,8 @@ async fn test_feed_create_and_update_persist_chain() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
-            name: None,
-            groups: None,
             feed_chain: Some(FeedChain::Hyperliquid),
+            ..Default::default()
         }),
         accounts,
         &payer,
@@ -231,7 +248,8 @@ async fn test_feed_create_and_update_persist_chain() {
 #[tokio::test]
 async fn test_feed_same_code_different_exchange_allowed() {
     // One code is one SKU offered in many metros; each (code, exchange) is a distinct feed account.
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let (mut banks_client, program_id, payer, recent_blockhash) =
+        init_test_with_groups(&GROUPS).await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
@@ -242,7 +260,7 @@ async fn test_feed_same_code_different_exchange_allowed() {
     assert_ne!(tokyo_feed, london_feed);
 
     for (exchange, feed_pubkey) in [(tokyo, tokyo_feed), (london, london_feed)] {
-        execute_transaction(
+        execute_transaction_with_extra_accounts(
             &mut banks_client,
             recent_blockhash,
             program_id,
@@ -250,7 +268,7 @@ async fn test_feed_same_code_different_exchange_allowed() {
                 code: "shreds".to_string(),
                 name: "Shreds".to_string(),
                 exchange,
-                groups: vec![Pubkey::new_unique()],
+                group_count: 1,
                 ..Default::default()
             }),
             vec![
@@ -258,9 +276,11 @@ async fn test_feed_same_code_different_exchange_allowed() {
                 AccountMeta::new(globalstate_pubkey, false),
             ],
             &payer,
+            &group_metas(&[GROUP_A]),
         )
         .await;
     }
+    assert_eq!(feed_count(&mut banks_client, GROUP_A).await, 2);
 
     for (exchange, feed_pubkey) in [(tokyo, tokyo_feed), (london, london_feed)] {
         let feed = get_account_data(&mut banks_client, feed_pubkey)
@@ -277,7 +297,8 @@ async fn test_feed_same_code_different_exchange_allowed() {
 async fn test_feed_create_duplicate_rejected() {
     // The same (code, exchange) derives the same PDA, so a second create hits the already-created
     // account.
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let (mut banks_client, program_id, payer, recent_blockhash) =
+        init_test_with_groups(&GROUPS).await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
@@ -289,12 +310,12 @@ async fn test_feed_create_duplicate_rejected() {
             code: "dupe".to_string(),
             name: name.to_string(),
             exchange,
-            groups: vec![Pubkey::new_unique()],
+            group_count: 1,
             ..Default::default()
         })
     };
 
-    execute_transaction(
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -304,10 +325,11 @@ async fn test_feed_create_duplicate_rejected() {
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
+        &group_metas(&[GROUP_A]),
     )
     .await;
 
-    let result = try_execute_transaction(
+    let result = try_execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -317,6 +339,7 @@ async fn test_feed_create_duplicate_rejected() {
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
+        &group_metas(&[GROUP_A]),
     )
     .await;
 
@@ -329,7 +352,8 @@ async fn test_feed_create_duplicate_rejected() {
 
 #[tokio::test]
 async fn test_feed_create_empty_groups_rejected() {
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let (mut banks_client, program_id, payer, recent_blockhash) =
+        init_test_with_groups(&GROUPS).await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
@@ -343,7 +367,6 @@ async fn test_feed_create_empty_groups_rejected() {
             code: "empty".to_string(),
             name: "Empty".to_string(),
             exchange,
-            groups: vec![],
             ..Default::default()
         }),
         vec![
@@ -360,14 +383,14 @@ async fn test_feed_create_empty_groups_rejected() {
 
 #[tokio::test]
 async fn test_feed_create_duplicate_group_rejected() {
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let (mut banks_client, program_id, payer, recent_blockhash) =
+        init_test_with_groups(&GROUPS).await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
     let exchange = Pubkey::new_unique();
     let (feed_pubkey, _) = get_feed_pda(&program_id, "dupgrp", &exchange);
 
-    let group = Pubkey::new_unique();
     let result = try_execute_and_get_error(
         &mut banks_client,
         program_id,
@@ -375,7 +398,7 @@ async fn test_feed_create_duplicate_group_rejected() {
             code: "dupgrp".to_string(),
             name: "Dup group".to_string(),
             exchange,
-            groups: vec![group, group],
+            group_count: 2,
             ..Default::default()
         }),
         vec![
@@ -383,7 +406,7 @@ async fn test_feed_create_duplicate_group_rejected() {
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
-        &[],
+        &group_metas(&[GROUP_A, GROUP_A]),
     )
     .await;
 
@@ -393,7 +416,8 @@ async fn test_feed_create_duplicate_group_rejected() {
 #[tokio::test]
 async fn test_feed_create_default_exchange_rejected() {
     // Every feed is scoped to a real metro; the default pubkey is not a valid exchange.
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let (mut banks_client, program_id, payer, recent_blockhash) =
+        init_test_with_groups(&GROUPS).await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
@@ -406,7 +430,7 @@ async fn test_feed_create_default_exchange_rejected() {
             code: "nodef".to_string(),
             name: "No default".to_string(),
             exchange: Pubkey::default(),
-            groups: vec![Pubkey::new_unique()],
+            group_count: 1,
             ..Default::default()
         }),
         vec![
@@ -414,7 +438,7 @@ async fn test_feed_create_default_exchange_rejected() {
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
-        &[],
+        &group_metas(&[GROUP_A]),
     )
     .await;
 
@@ -423,7 +447,8 @@ async fn test_feed_create_default_exchange_rejected() {
 
 #[tokio::test]
 async fn test_feed_create_unauthorized_caller_rejected() {
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let (mut banks_client, program_id, payer, recent_blockhash) =
+        init_test_with_groups(&GROUPS).await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
@@ -439,7 +464,7 @@ async fn test_feed_create_unauthorized_caller_rejected() {
             code: "unauth".to_string(),
             name: "Unauthorized".to_string(),
             exchange,
-            groups: vec![Pubkey::new_unique()],
+            group_count: 1,
             ..Default::default()
         }),
         vec![
@@ -447,7 +472,7 @@ async fn test_feed_create_unauthorized_caller_rejected() {
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &unauthorized,
-        &[],
+        &group_metas(&[GROUP_A]),
     )
     .await;
 
@@ -479,7 +504,8 @@ async fn enable_bonded_feeds(
 /// create carrying a builder is refused outright rather than silently dropping the bond terms.
 #[tokio::test]
 async fn test_feed_create_bonded_rejected_while_flag_clear() {
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let (mut banks_client, program_id, payer, recent_blockhash) =
+        init_test_with_groups(&GROUPS).await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
@@ -495,7 +521,7 @@ async fn test_feed_create_bonded_rejected_while_flag_clear() {
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
-        &[],
+        &group_metas(&[GROUP_A]),
     )
     .await;
 
@@ -506,7 +532,8 @@ async fn test_feed_create_bonded_rejected_while_flag_clear() {
 /// feed has no builder to attest, so nothing gates it.
 #[tokio::test]
 async fn test_feed_create_catalog_stays_active_with_flag_clear() {
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let (mut banks_client, program_id, payer, recent_blockhash) =
+        init_test_with_groups(&GROUPS).await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
@@ -514,7 +541,7 @@ async fn test_feed_create_catalog_stays_active_with_flag_clear() {
     let (feed_pubkey, _) = get_feed_pda(&program_id, "catalog", &exchange);
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
-    execute_transaction(
+    execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
         program_id,
@@ -522,7 +549,7 @@ async fn test_feed_create_catalog_stays_active_with_flag_clear() {
             code: "catalog".to_string(),
             name: "Catalog".to_string(),
             exchange,
-            groups: vec![Pubkey::new_unique()],
+            group_count: 1,
             ..Default::default()
         }),
         vec![
@@ -530,6 +557,7 @@ async fn test_feed_create_catalog_stays_active_with_flag_clear() {
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
+        &group_metas(&[GROUP_A]),
     )
     .await;
 
@@ -543,7 +571,8 @@ async fn test_feed_create_catalog_stays_active_with_flag_clear() {
 /// hash is the one term a bonded feed may leave unset.
 #[tokio::test]
 async fn test_feed_create_partial_bond_terms_rejected() {
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let (mut banks_client, program_id, payer, recent_blockhash) =
+        init_test_with_groups(&GROUPS).await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
     enable_bonded_feeds(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
@@ -571,7 +600,7 @@ async fn test_feed_create_partial_bond_terms_rejected() {
                 AccountMeta::new(globalstate_pubkey, false),
             ],
             &payer,
-            &[],
+            &group_metas(&[GROUP_A]),
         )
         .await;
 
@@ -583,7 +612,8 @@ async fn test_feed_create_partial_bond_terms_rejected() {
 /// who gets the rewards.
 #[tokio::test]
 async fn test_feed_create_bonded_with_a_chain_rejected() {
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let (mut banks_client, program_id, payer, recent_blockhash) =
+        init_test_with_groups(&GROUPS).await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
     enable_bonded_feeds(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
@@ -602,7 +632,7 @@ async fn test_feed_create_bonded_with_a_chain_rejected() {
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
-        &[],
+        &group_metas(&[GROUP_A]),
     )
     .await;
 
@@ -612,7 +642,8 @@ async fn test_feed_create_bonded_with_a_chain_rejected() {
 /// Bond terms without a builder are refused too: they would be recorded against nobody.
 #[tokio::test]
 async fn test_feed_create_bond_terms_without_builder_rejected() {
-    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let (mut banks_client, program_id, payer, recent_blockhash) =
+        init_test_with_groups(&GROUPS).await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
     enable_bonded_feeds(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
@@ -631,7 +662,7 @@ async fn test_feed_create_bond_terms_without_builder_rejected() {
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
-        &[],
+        &group_metas(&[GROUP_A]),
     )
     .await;
 
@@ -727,7 +758,14 @@ async fn init_bonded_for(
                 multicast_group(builder, bond_ref),
                 Pubkey::new_unique(),
             ),
-        ],
+        ]
+        .into_iter()
+        .chain(
+            seeded_groups(&GROUPS)
+                .into_iter()
+                .map(|(group, data)| (group, data, program_id)),
+        )
+        .collect::<Vec<_>>(),
     )
     .await;
 
@@ -802,7 +840,10 @@ async fn test_feed_create_covered_by_bond_tier() {
         DoubleZeroInstruction::CreateFeed(args),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &payer,
-        &[AccountMeta::new(mirror_pubkey, false)],
+        &[
+            AccountMeta::new(GROUP_A, false),
+            AccountMeta::new(mirror_pubkey, false),
+        ],
     )
     .await;
 
@@ -846,7 +887,10 @@ async fn test_feed_update_refuses_a_chain_on_a_bonded_feed() {
         DoubleZeroInstruction::CreateFeed(args),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &payer,
-        &[AccountMeta::new(mirror_pubkey, false)],
+        &[
+            AccountMeta::new(GROUP_A, false),
+            AccountMeta::new(mirror_pubkey, false),
+        ],
     )
     .await;
 
@@ -854,9 +898,8 @@ async fn test_feed_update_refuses_a_chain_on_a_bonded_feed() {
         &mut banks_client,
         program_id,
         DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
-            name: None,
-            groups: None,
             feed_chain: Some(FeedChain::Solana),
+            ..Default::default()
         }),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &payer,
@@ -871,9 +914,8 @@ async fn test_feed_update_refuses_a_chain_on_a_bonded_feed() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
-            name: None,
-            groups: None,
             feed_chain: Some(FeedChain::Unspecified),
+            ..Default::default()
         }),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &payer,
@@ -907,7 +949,10 @@ async fn test_feed_create_rate_above_tier_rejected() {
         DoubleZeroInstruction::CreateFeed(args),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &payer,
-        &[AccountMeta::new(mirror_pubkey, false)],
+        &[
+            AccountMeta::new(GROUP_A, false),
+            AccountMeta::new(mirror_pubkey, false),
+        ],
     )
     .await;
 
@@ -938,7 +983,10 @@ async fn test_feed_create_without_bond_mirror_rejected() {
         DoubleZeroInstruction::CreateFeed(args),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &payer,
-        &[AccountMeta::new(mirror_pubkey, false)],
+        &[
+            AccountMeta::new(GROUP_A, false),
+            AccountMeta::new(mirror_pubkey, false),
+        ],
     )
     .await;
 
@@ -970,7 +1018,10 @@ async fn test_feed_create_second_feed_on_same_bond_rejected() {
         DoubleZeroInstruction::CreateFeed(first),
         feed_accounts(first_pubkey, globalstate_pubkey),
         &payer,
-        &[AccountMeta::new(mirror_pubkey, false)],
+        &[
+            AccountMeta::new(GROUP_A, false),
+            AccountMeta::new(mirror_pubkey, false),
+        ],
     )
     .await;
 
@@ -986,7 +1037,10 @@ async fn test_feed_create_second_feed_on_same_bond_rejected() {
         DoubleZeroInstruction::CreateFeed(second),
         feed_accounts(second_pubkey, globalstate_pubkey),
         &payer,
-        &[AccountMeta::new(mirror_pubkey, false)],
+        &[
+            AccountMeta::new(GROUP_A, false),
+            AccountMeta::new(mirror_pubkey, false),
+        ],
     )
     .await;
 
@@ -1017,7 +1071,10 @@ async fn test_bonded_feed_cannot_be_deleted() {
         DoubleZeroInstruction::CreateFeed(args),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &payer,
-        &[AccountMeta::new(mirror_pubkey, false)],
+        &[
+            AccountMeta::new(GROUP_A, false),
+            AccountMeta::new(mirror_pubkey, false),
+        ],
     )
     .await;
 
@@ -1027,7 +1084,7 @@ async fn test_bonded_feed_cannot_be_deleted() {
         DoubleZeroInstruction::DeleteFeed(FeedDeleteArgs {}),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &payer,
-        &[],
+        &group_metas(&[GROUP_A]),
     )
     .await;
 
@@ -1063,7 +1120,7 @@ async fn test_feed_create_omitting_bond_mirror_rejected() {
             AccountMeta::new(globalstate_pubkey, false),
         ],
         &payer,
-        &[],
+        &group_metas(&[GROUP_A]),
     )
     .await;
 
@@ -1140,7 +1197,7 @@ async fn test_builder_grants_its_own_publish_rights() {
     let mut args = bonded_args("rights", exchange);
     args.builder = builder.pubkey();
     args.bond_ref = bond_ref;
-    args.groups = groups.clone();
+    args.group_count = 2;
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     execute_transaction_with_extra_accounts(
@@ -1150,7 +1207,11 @@ async fn test_builder_grants_its_own_publish_rights() {
         DoubleZeroInstruction::CreateFeed(args),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &admin,
-        &[AccountMeta::new(mirror_pubkey, false)],
+        &[
+            group_metas(&groups),
+            vec![AccountMeta::new(mirror_pubkey, false)],
+        ]
+        .concat(),
     )
     .await;
 
@@ -1216,7 +1277,7 @@ async fn test_a_mirror_update_keeps_the_claiming_feed() {
     let bond_ref = Pubkey::new_unique();
 
     let (mut banks_client, payer, recent_blockhash) =
-        init_test_with_accounts(program_id, &[]).await;
+        init_test_with_accounts(program_id, &seeded_groups(&GROUPS)).await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
     enable_bonded_feeds(&mut banks_client, program_id, globalstate_pubkey, &payer).await;
@@ -1278,7 +1339,10 @@ async fn test_a_mirror_update_keeps_the_claiming_feed() {
         DoubleZeroInstruction::CreateFeed(args),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &payer,
-        &[AccountMeta::new(mirror_pubkey, false)],
+        &[
+            AccountMeta::new(GROUP_A, false),
+            AccountMeta::new(mirror_pubkey, false),
+        ],
     )
     .await;
 
@@ -1340,7 +1404,6 @@ async fn test_a_builder_with_no_permission_deploys_against_its_own_bond() {
     args.builder = builder.pubkey();
     args.bond_ref = bond_ref;
     args.committed_rate_bits_per_sec = 5_000_000_000;
-    args.groups = vec![builder_group(&program_id)];
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     execute_transaction_with_extra_accounts(
@@ -1351,8 +1414,8 @@ async fn test_a_builder_with_no_permission_deploys_against_its_own_bond() {
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &builder,
         &[
+            AccountMeta::new(builder_group(&program_id), false),
             AccountMeta::new(mirror_pubkey, false),
-            AccountMeta::new_readonly(builder_group(&program_id), false),
         ],
     )
     .await;
@@ -1390,7 +1453,10 @@ async fn test_a_bond_does_not_authorize_a_builder_that_did_not_post_it() {
         DoubleZeroInstruction::CreateFeed(args),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &test_payer(),
-        &[AccountMeta::new(mirror_pubkey, false)],
+        &[
+            AccountMeta::new(GROUP_A, false),
+            AccountMeta::new(mirror_pubkey, false),
+        ],
     )
     .await;
 
@@ -1420,7 +1486,7 @@ async fn test_a_builder_with_no_bond_is_refused() {
         DoubleZeroInstruction::CreateFeed(args),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &builder,
-        &[],
+        &group_metas(&[GROUP_A]),
     )
     .await;
 
@@ -1444,7 +1510,6 @@ async fn test_a_builder_whose_tier_falls_short_is_told_which() {
     args.builder = builder.pubkey();
     args.bond_ref = bond_ref;
     args.committed_rate_bits_per_sec = 5_000_000_000;
-    args.groups = vec![builder_group(&program_id)];
 
     let result = try_execute_and_get_error(
         &mut banks_client,
@@ -1453,8 +1518,8 @@ async fn test_a_builder_whose_tier_falls_short_is_told_which() {
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &builder,
         &[
+            AccountMeta::new(builder_group(&program_id), false),
             AccountMeta::new(mirror_pubkey, false),
-            AccountMeta::new_readonly(builder_group(&program_id), false),
         ],
     )
     .await;
@@ -1492,7 +1557,10 @@ async fn test_an_empty_account_at_the_mirror_address_authorizes_nothing() {
         DoubleZeroInstruction::CreateFeed(args),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &builder,
-        &[AccountMeta::new(hollow_mirror, false)],
+        &[
+            AccountMeta::new(GROUP_A, false),
+            AccountMeta::new(hollow_mirror, false),
+        ],
     )
     .await;
 
@@ -1526,7 +1594,10 @@ async fn test_another_builders_mirror_does_not_authorize_the_payer() {
         DoubleZeroInstruction::CreateFeed(args),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &test_payer(),
-        &[AccountMeta::new(mirror_pubkey, false)],
+        &[
+            AccountMeta::new(GROUP_A, false),
+            AccountMeta::new(mirror_pubkey, false),
+        ],
     )
     .await;
 
@@ -1542,21 +1613,16 @@ async fn test_a_builder_may_list_only_its_own_groups() {
         init_bonded_for(builder.pubkey(), BondTier::UpTo5Gbps).await;
     let (mirror_pubkey, _) = get_bond_mirror_pda(&program_id, &bond_ref);
 
-    for (code, group, pass_its_account) in [
-        ("strangers", strangers_group(&program_id), true),
-        ("otherbond", other_bond_group(&program_id), true),
-        ("noaccount", builder_group(&program_id), false),
+    for (code, group) in [
+        ("strangers", strangers_group(&program_id)),
+        ("otherbond", other_bond_group(&program_id)),
+        ("foreign", foreign_group(&program_id)),
     ] {
         let exchange = Pubkey::new_unique();
         let (feed_pubkey, _) = get_feed_pda(&program_id, code, &exchange);
         let mut args = bonded_args(code, exchange);
         args.builder = builder.pubkey();
         args.bond_ref = bond_ref;
-        args.groups = vec![group];
-        let mut extra = vec![AccountMeta::new(mirror_pubkey, false)];
-        if pass_its_account {
-            extra.push(AccountMeta::new_readonly(group, false));
-        }
 
         let result = try_execute_and_get_error(
             &mut banks_client,
@@ -1564,7 +1630,10 @@ async fn test_a_builder_may_list_only_its_own_groups() {
             DoubleZeroInstruction::CreateFeed(args),
             feed_accounts(feed_pubkey, globalstate_pubkey),
             &builder,
-            &extra,
+            &[
+                AccountMeta::new(group, false),
+                AccountMeta::new(mirror_pubkey, false),
+            ],
         )
         .await;
 
@@ -1587,7 +1656,6 @@ async fn test_a_builder_changes_its_feeds_groups_within_its_own() {
     let mut args = bonded_args("mine", exchange);
     args.builder = builder.pubkey();
     args.bond_ref = bond_ref;
-    args.groups = vec![builder_group(&program_id)];
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     execute_transaction_with_extra_accounts(
         &mut banks_client,
@@ -1597,8 +1665,8 @@ async fn test_a_builder_changes_its_feeds_groups_within_its_own() {
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &builder,
         &[
+            AccountMeta::new(builder_group(&program_id), false),
             AccountMeta::new(mirror_pubkey, false),
-            AccountMeta::new_readonly(builder_group(&program_id), false),
         ],
     )
     .await;
@@ -1611,12 +1679,11 @@ async fn test_a_builder_changes_its_feeds_groups_within_its_own() {
         program_id,
         DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
             name: Some("Renamed".to_string()),
-            groups: Some(vec![builder_group(&program_id)]),
-            feed_chain: None,
+            ..Default::default()
         }),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &builder,
-        &[AccountMeta::new_readonly(builder_group(&program_id), false)],
+        &[],
     )
     .await;
     assert_eq!(
@@ -1624,7 +1691,7 @@ async fn test_a_builder_changes_its_feeds_groups_within_its_own() {
         "Renamed"
     );
 
-    // The builder adds a second group of its own, passing only the added group's account.
+    // The builder adds a second group of its own.
     let both = vec![
         builder_group(&program_id),
         second_builder_group(&program_id),
@@ -1635,15 +1702,12 @@ async fn test_a_builder_changes_its_feeds_groups_within_its_own() {
         recent_blockhash,
         program_id,
         DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
-            groups: Some(both.clone()),
+            added_group_count: 1,
             ..Default::default()
         }),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &builder,
-        &[AccountMeta::new_readonly(
-            second_builder_group(&program_id),
-            false,
-        )],
+        &group_metas(&[second_builder_group(&program_id)]),
     )
     .await;
     assert_eq!(get_feed(&mut banks_client, feed_pubkey).await.groups, both);
@@ -1653,12 +1717,12 @@ async fn test_a_builder_changes_its_feeds_groups_within_its_own() {
         &mut banks_client,
         program_id,
         DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
-            groups: Some(vec![builder_group(&program_id)]),
+            removed_group_count: 1,
             ..Default::default()
         }),
         feed_accounts(feed_pubkey, globalstate_pubkey),
         &builder,
-        &[],
+        &group_metas(&[builder_group(&program_id)]),
     )
     .await;
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
@@ -1670,18 +1734,16 @@ async fn test_a_builder_changes_its_feeds_groups_within_its_own() {
         other_bond_group(&program_id),
         foreign_group(&program_id),
     ] {
-        let mut groups = both.clone();
-        groups.push(refused);
         let result = try_execute_and_get_error(
             &mut banks_client,
             program_id,
             DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
-                groups: Some(groups),
+                added_group_count: 1,
                 ..Default::default()
             }),
             feed_accounts(feed_pubkey, globalstate_pubkey),
             &builder,
-            &[AccountMeta::new_readonly(refused, false)],
+            &group_metas(&[refused]),
         )
         .await;
         assert_custom_at_ix0(&result, custom_code(DoubleZeroError::GroupNotOnBond));
@@ -1781,4 +1843,321 @@ async fn test_a_builder_changes_its_feeds_groups_within_its_own() {
     )
     .await;
     assert_custom_at_ix0(&result, custom_code(DoubleZeroError::NotAllowed));
+}
+
+async fn update_group(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    payer: &solana_sdk::signature::Keypair,
+    group: Pubkey,
+    args: MulticastGroupUpdateArgs,
+) -> Result<(), solana_sdk::transaction::TransactionError> {
+    try_execute_and_get_error(
+        banks_client,
+        program_id,
+        DoubleZeroInstruction::UpdateMulticastGroup(args),
+        vec![
+            AccountMeta::new(group, false),
+            AccountMeta::new(globalstate_pubkey, false),
+        ],
+        payer,
+        &[],
+    )
+    .await
+}
+
+async fn create_catalog_feed(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    globalstate_pubkey: Pubkey,
+    payer: &solana_sdk::signature::Keypair,
+    code: &str,
+    groups: &[Pubkey],
+) -> Pubkey {
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, code, &exchange);
+    let recent_blockhash = wait_for_new_blockhash(banks_client).await;
+    execute_transaction_with_extra_accounts(
+        banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
+            code: code.to_string(),
+            name: code.to_string(),
+            exchange,
+            group_count: u8::try_from(groups.len()).unwrap(),
+            ..Default::default()
+        }),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        payer,
+        &group_metas(groups),
+    )
+    .await;
+    feed_pubkey
+}
+
+/// A feed must not list a private group, because a feed seat would then add a user to a group
+/// that is for members only. Both the create and an update that adds the group are refused.
+#[tokio::test]
+async fn test_a_feed_cannot_list_a_private_group() {
+    let (mut banks_client, program_id, payer, recent_blockhash) =
+        init_test_with_groups(&GROUPS).await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+    let result = update_group(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        GROUP_A,
+        MulticastGroupUpdateArgs {
+            private: Some(true),
+            ..Default::default()
+        },
+    )
+    .await;
+    assert_eq!(result, Ok(()));
+
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, _) = get_feed_pda(&program_id, "private", &exchange);
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::CreateFeed(FeedCreateArgs {
+            code: "private".to_string(),
+            name: "Private".to_string(),
+            exchange,
+            group_count: 1,
+            ..Default::default()
+        }),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &payer,
+        &group_metas(&[GROUP_A]),
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::PrivateGroupInFeed));
+
+    let feed_pubkey = create_catalog_feed(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        "public",
+        &[GROUP_B],
+    )
+    .await;
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
+            added_group_count: 1,
+            ..Default::default()
+        }),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &payer,
+        &group_metas(&[GROUP_A]),
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::PrivateGroupInFeed));
+    assert_eq!(
+        get_feed(&mut banks_client, feed_pubkey).await.groups,
+        vec![GROUP_B]
+    );
+    assert_eq!(feed_count(&mut banks_client, GROUP_A).await, 0);
+}
+
+/// A group that a feed lists cannot become private until the last feed removes it.
+#[tokio::test]
+async fn test_a_group_that_a_feed_lists_cannot_become_private() {
+    let (mut banks_client, program_id, payer, recent_blockhash) =
+        init_test_with_groups(&GROUPS).await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+    let feed_pubkey = create_catalog_feed(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        "listed",
+        &[GROUP_A],
+    )
+    .await;
+    let private = MulticastGroupUpdateArgs {
+        private: Some(true),
+        ..Default::default()
+    };
+
+    let result = update_group(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        GROUP_A,
+        private.clone(),
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::GroupListedByFeed));
+
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
+            added_group_count: 1,
+            removed_group_count: 1,
+            ..Default::default()
+        }),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &payer,
+        &group_metas(&[GROUP_B, GROUP_A]),
+    )
+    .await;
+    assert_eq!(feed_count(&mut banks_client, GROUP_A).await, 0);
+
+    let result = update_group(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        GROUP_A,
+        private,
+    )
+    .await;
+    assert_eq!(result, Ok(()));
+    let group = get_account_data(&mut banks_client, GROUP_A)
+        .await
+        .unwrap()
+        .get_multicastgroup()
+        .unwrap();
+    assert!(group.private);
+}
+
+/// A group created before the program counted feeds reads a count of 0, so an admin sets it.
+#[tokio::test]
+async fn test_an_admin_sets_the_feed_count_of_an_old_group() {
+    let (mut banks_client, program_id, payer, recent_blockhash) =
+        init_test_with_groups(&GROUPS).await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let result = update_group(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        GROUP_A,
+        MulticastGroupUpdateArgs {
+            feed_count: Some(4),
+            ..Default::default()
+        },
+    )
+    .await;
+    assert_eq!(result, Ok(()));
+    assert_eq!(feed_count(&mut banks_client, GROUP_A).await, 4);
+}
+
+/// An update removes only groups the feed lists, each once, and adds only groups it does not
+/// list yet, so no count moves twice.
+#[tokio::test]
+async fn test_feed_update_refuses_a_group_change_that_would_miscount() {
+    let (mut banks_client, program_id, payer, recent_blockhash) =
+        init_test_with_groups(&GROUPS).await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+    let feed_pubkey = create_catalog_feed(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        "counted",
+        &[GROUP_A, GROUP_B],
+    )
+    .await;
+
+    for (added, removed) in [
+        (vec![], vec![GROUP_C]),
+        (vec![], vec![GROUP_A, GROUP_A]),
+        (vec![GROUP_A], vec![]),
+    ] {
+        let result = try_execute_and_get_error(
+            &mut banks_client,
+            program_id,
+            DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
+                added_group_count: u8::try_from(added.len()).unwrap(),
+                removed_group_count: u8::try_from(removed.len()).unwrap(),
+                ..Default::default()
+            }),
+            feed_accounts(feed_pubkey, globalstate_pubkey),
+            &payer,
+            &group_metas(&[added, removed].concat()),
+        )
+        .await;
+        assert_custom_at_ix0(&result, custom_code(DoubleZeroError::InvalidArgument));
+    }
+    assert_eq!(feed_count(&mut banks_client, GROUP_A).await, 1);
+    assert_eq!(feed_count(&mut banks_client, GROUP_B).await, 1);
+}
+
+/// A feed can list a group that an admin deleted later. Its delete skips that group, because no
+/// account is left to change, and lowers the count of the others.
+#[tokio::test]
+async fn test_feed_delete_skips_a_deleted_group() {
+    let program_id = Pubkey::new_unique();
+    let deleted_group = Pubkey::new_unique();
+    let exchange = Pubkey::new_unique();
+    let (feed_pubkey, bump_seed) = get_feed_pda(&program_id, "orphaned", &exchange);
+    let feed = Feed {
+        account_type: AccountType::Feed,
+        bump_seed,
+        code: "orphaned".to_string(),
+        name: "Orphaned".to_string(),
+        exchange,
+        groups: vec![GROUP_A, deleted_group],
+        ..Default::default()
+    };
+    let group_a = MulticastGroup {
+        feed_count: 1,
+        ..MulticastGroup::try_from(&multicast_group(Pubkey::default(), Pubkey::default())[..])
+            .unwrap()
+    };
+    let (mut banks_client, payer, recent_blockhash) = init_test_with_accounts(
+        program_id,
+        &[
+            (GROUP_A, borsh::to_vec(&group_a).unwrap()),
+            (feed_pubkey, borsh::to_vec(&feed).unwrap()),
+        ],
+    )
+    .await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+
+    let result = try_execute_and_get_error(
+        &mut banks_client,
+        program_id,
+        DoubleZeroInstruction::DeleteFeed(FeedDeleteArgs {}),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &payer,
+        &group_metas(&[deleted_group, GROUP_A]),
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::InvalidArgument));
+
+    let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    execute_transaction_with_extra_accounts(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::DeleteFeed(FeedDeleteArgs {}),
+        feed_accounts(feed_pubkey, globalstate_pubkey),
+        &payer,
+        &group_metas(&[GROUP_A, deleted_group]),
+    )
+    .await;
+    assert!(account_is_closed(&mut banks_client, feed_pubkey).await);
+    assert_eq!(feed_count(&mut banks_client, GROUP_A).await, 0);
+    assert_eq!(
+        get_account_data(&mut banks_client, deleted_group).await,
+        None
+    );
 }

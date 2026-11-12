@@ -49,7 +49,6 @@ impl CreateFeedCommand {
             code,
             name: self.name.clone(),
             exchange: self.exchange,
-            groups: self.groups.clone(),
             feed_chain: self.feed_chain,
             ..Default::default()
         };
@@ -60,7 +59,7 @@ impl CreateFeedCommand {
             args.sla_hash = bond.sla_hash;
             args.committed_rate_bits_per_sec = bond.committed_rate_bits_per_sec;
         }
-        let ix = create_feed(&program_id, &client.get_payer(), args);
+        let ix = create_feed(&program_id, &client.get_payer(), &self.groups, args);
 
         client.send_transaction(ix).map(|sig| (sig, pda_pubkey))
     }
@@ -92,11 +91,11 @@ mod tests {
         let expected = create_feed(
             &program_id,
             &payer,
+            &[group],
             FeedCreateArgs {
                 code: "test_feed".to_string(),
                 name: "Test Feed".to_string(),
                 exchange,
-                groups: vec![group],
                 feed_chain: FeedChain::Solana,
                 ..Default::default()
             },
@@ -141,11 +140,12 @@ mod tests {
         let expected = create_feed(
             &program_id,
             &payer,
+            &[group],
             FeedCreateArgs {
                 code: "bonded".to_string(),
                 name: "Bonded".to_string(),
                 exchange,
-                groups: vec![group],
+                group_count: 1,
                 builder: payer,
                 bond_ref,
                 spec_id: "top-of-book@v1.0.0".to_string(),

@@ -129,11 +129,12 @@ async fn deploy_bonded_feed(sla_hash: [u8; 32]) {
     let ix = dzi::feed::create_feed(
         &program_id,
         &builder.pubkey(),
+        &[group],
         FeedCreateArgs {
             code: "tokyo1".to_string(),
             name: "Tokyo".to_string(),
             exchange,
-            groups: vec![group],
+            group_count: 1,
             builder: builder.pubkey(),
             bond_ref,
             spec_id: "top-of-book@v1.0.0".to_string(),

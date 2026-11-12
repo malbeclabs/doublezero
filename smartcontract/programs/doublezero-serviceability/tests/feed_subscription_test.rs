@@ -286,7 +286,7 @@ async fn create_feed(
 ) -> Pubkey {
     let (feed_pubkey, _) = get_feed_pda(&fixture.program_id, code, &exchange);
     let recent_blockhash = fixture.banks_client.get_latest_blockhash().await.unwrap();
-    execute_transaction(
+    execute_transaction_with_extra_accounts(
         &mut fixture.banks_client,
         recent_blockhash,
         fixture.program_id,
@@ -294,7 +294,7 @@ async fn create_feed(
             code: code.to_string(),
             name: code.to_string(),
             exchange,
-            groups,
+            group_count: u8::try_from(groups.len()).unwrap(),
             ..Default::default()
         }),
         vec![
@@ -302,6 +302,7 @@ async fn create_feed(
             AccountMeta::new(fixture.globalstate_pubkey, false),
         ],
         &fixture.payer,
+        &group_metas(&groups),
     )
     .await;
     feed_pubkey

@@ -21,6 +21,7 @@ use doublezero_serviceability::{
         finalize_retirement::FeedFinalizeRetirementArgs, halt::FeedHaltArgs,
         resume::FeedResumeArgs, retire::FeedRetireArgs, update::FeedUpdateArgs,
     },
+    state::feed::Feed,
 };
 use solana_program::{
     instruction::{AccountMeta, Instruction},
@@ -56,11 +57,14 @@ pub fn create_feed(
 
 /// `UpdateFeed` (variant 113). Accounts: `[feed, globalstate]`, then each of `added`, then each
 /// of `removed`. The program changes the feed count of each group, so `args` gets both counts
-/// here. A bonded feed's builder can add groups but not remove them.
+/// here. `read_groups` is the feed's group list as the caller read it. A group change fails when
+/// the feed's groups changed since then. A bonded feed's builder can add groups but not remove
+/// them.
 pub fn update_feed(
     program_id: &Pubkey,
     payer: &Pubkey,
     feed: &Pubkey,
+    read_groups: &[Pubkey],
     added: &[Pubkey],
     removed: &[Pubkey],
     mut args: FeedUpdateArgs,
@@ -68,6 +72,7 @@ pub fn update_feed(
     let (globalstate, _) = get_globalstate_pda(program_id);
     args.added_group_count = group_count(added);
     args.removed_group_count = group_count(removed);
+    args.expected_groups_hash = Feed::groups_hash(read_groups);
     let group_accounts = [group_accounts(added), group_accounts(removed)].concat();
     common::build_with_permission_after_system(
         program_id,
@@ -265,6 +270,7 @@ mod tests {
             &pid,
             &payer,
             &feed,
+            &[removed],
             &[added],
             &[removed],
             FeedUpdateArgs::default(),
@@ -287,6 +293,7 @@ mod tests {
             DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
                 added_group_count: 1,
                 removed_group_count: 1,
+                expected_groups_hash: Feed::groups_hash(&[removed]),
                 ..Default::default()
             })
         );
@@ -387,6 +394,7 @@ mod tests {
             &pid,
             &payer,
             &feed,
+            &[],
             &[],
             &[],
             FeedUpdateArgs {

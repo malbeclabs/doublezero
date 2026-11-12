@@ -3,7 +3,9 @@ use crate::{
     state::accounttype::AccountType,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
+use solana_program::{
+    account_info::AccountInfo, hash::hashv, msg, program_error::ProgramError, pubkey::Pubkey,
+};
 use std::{fmt, str::FromStr};
 
 /// Where a feed sits in the RFC-29 deployment lifecycle.
@@ -176,6 +178,12 @@ impl Feed {
         } else {
             &[]
         }
+    }
+
+    /// The SHA-256 hash of `groups` in their order. `UpdateFeed` compares the hash of the feed's
+    /// groups with the hash of the groups its caller read.
+    pub fn groups_hash(groups: &[Pubkey]) -> [u8; 32] {
+        hashv(&groups.iter().map(Pubkey::as_ref).collect::<Vec<_>>()).to_bytes()
     }
 }
 

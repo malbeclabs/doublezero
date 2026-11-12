@@ -31,6 +31,9 @@ pub struct FeedUpdateArgs {
     pub added_group_count: u8,
     /// The number of groups the feed removes. Their accounts follow the added groups.
     pub removed_group_count: u8,
+    /// The hash of the feed's groups as the caller read them. A group change fails when the feed's
+    /// groups changed since then.
+    pub expected_groups_hash: [u8; 32],
     #[incremental(default = None)]
     pub feed_chain: Option<FeedChain>,
 }
@@ -106,6 +109,15 @@ pub fn process_update_feed(
 
     if let Some(ref name) = value.name {
         validate_feed_name(name)?;
+    }
+    if (!added.is_empty() || !removed.is_empty())
+        && value.expected_groups_hash != Feed::groups_hash(&feed.groups)
+    {
+        msg!(
+            "Feed {} changed its groups after the caller read them. Read the feed again",
+            feed_account.key
+        );
+        return Err(DoubleZeroError::FeedGroupsChanged.into());
     }
     for (i, group) in removed.iter().enumerate() {
         if removed[..i].contains(group) {

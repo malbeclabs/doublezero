@@ -1576,6 +1576,7 @@ mod tests {
                 name: Some("Shreds".to_string()),
                 added_group_count: 1,
                 removed_group_count: 1,
+                expected_groups_hash: [7; 32],
                 feed_chain: None,
             }),
             "UpdateFeed",

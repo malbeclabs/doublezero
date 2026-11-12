@@ -2,7 +2,7 @@ use doublezero_serviceability::{
     entrypoint::process_instruction,
     error::DoubleZeroError,
     instructions::DoubleZeroInstruction,
-    pda::{get_accesspass_pda, get_feed_pda, get_globalstate_pda, get_program_config_pda},
+    pda::{get_accesspass_pda, get_feed_pda, get_globalstate_pda},
     processors::{
         accesspass::{
             set::SetAccessPassArgs,
@@ -39,9 +39,6 @@ const TEST_TERMINATES_AT: i64 = 4_100_000_000;
 
 mod test_helpers;
 use test_helpers::*;
-
-// The group every feed in this file lists. Each test seeds it, so a feed create can count it.
-const FEED_GROUP: Pubkey = Pubkey::new_from_array([7; 32]);
 
 /// The `Custom` code the program returns for `err`, derived from the enum rather than inlined so a
 /// renumbering of the error variants can never silently pass a hard-coded literal.
@@ -102,23 +99,8 @@ async fn init_globalstate(
     payer: &solana_sdk::signature::Keypair,
     recent_blockhash: solana_program::hash::Hash,
 ) -> Pubkey {
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
-    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-
-    execute_transaction(
-        banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        payer,
-    )
-    .await;
-
-    globalstate_pubkey
+    init_globalstate_and_config(banks_client, program_id, payer, recent_blockhash).await;
+    get_globalstate_pda(&program_id).0
 }
 
 async fn create_feed(
@@ -131,6 +113,7 @@ async fn create_feed(
 ) -> Pubkey {
     let exchange = Pubkey::new_unique();
     let (feed_pubkey, _) = get_feed_pda(&program_id, code, &exchange);
+    let groups = create_multicast_groups(banks_client, program_id, payer, 1).await;
     execute_transaction_with_extra_accounts(
         banks_client,
         recent_blockhash,
@@ -147,7 +130,7 @@ async fn create_feed(
             AccountMeta::new(globalstate_pubkey, false),
         ],
         payer,
-        &group_metas(&[FEED_GROUP]),
+        &group_metas(&groups),
     )
     .await;
     feed_pubkey
@@ -198,8 +181,7 @@ async fn read_accesspass(banks_client: &mut BanksClient, pubkey: Pubkey) -> Acce
 
 #[tokio::test]
 async fn test_set_access_pass_feeds() {
-    let (mut banks_client, program_id, payer, recent_blockhash) =
-        init_test_with_groups(&[FEED_GROUP]).await;
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
@@ -339,8 +321,7 @@ async fn test_set_access_pass_feeds() {
 
 #[tokio::test]
 async fn test_cannot_set_feeds_on_non_edge_seat() {
-    let (mut banks_client, program_id, payer, recent_blockhash) =
-        init_test_with_groups(&[FEED_GROUP]).await;
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
@@ -396,8 +377,7 @@ async fn test_cannot_set_feeds_on_non_edge_seat() {
 
 #[tokio::test]
 async fn test_cannot_set_feeds_unauthorized_caller() {
-    let (mut banks_client, program_id, payer, recent_blockhash) =
-        init_test_with_groups(&[FEED_GROUP]).await;
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
@@ -456,8 +436,7 @@ async fn test_cannot_set_feeds_unauthorized_caller() {
 
 #[tokio::test]
 async fn test_cannot_set_feeds_exceeds_max() {
-    let (mut banks_client, program_id, payer, recent_blockhash) =
-        init_test_with_groups(&[FEED_GROUP]).await;
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
@@ -508,8 +487,7 @@ async fn test_cannot_set_feeds_exceeds_max() {
 
 #[tokio::test]
 async fn test_cannot_set_duplicate_feed_key() {
-    let (mut banks_client, program_id, payer, recent_blockhash) =
-        init_test_with_groups(&[FEED_GROUP]).await;
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
@@ -699,8 +677,7 @@ async fn test_cannot_set_feeds_with_invalid_billing_window() {
     // The per-feed billing fields are validated inside the provisioning loop, each with its own
     // error variant: anniversary_day must be 1..=31, and the window must satisfy
     // now < window_end <= terminates_at (in the future and ordered).
-    let (mut banks_client, program_id, payer, recent_blockhash) =
-        init_test_with_groups(&[FEED_GROUP]).await;
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
@@ -866,8 +843,7 @@ async fn test_cannot_set_max_future_users_below_max_users() {
     // For now the future cap may not drop below the current cap (see set_feeds.rs): shrinking it
     // would force a decision about which live users to drop when the cap flips. Equal or larger is
     // allowed (covered by test_set_access_pass_feeds); below must reject.
-    let (mut banks_client, program_id, payer, recent_blockhash) =
-        init_test_with_groups(&[FEED_GROUP]).await;
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
@@ -927,8 +903,7 @@ async fn test_cannot_set_max_future_users_below_max_users() {
 #[tokio::test]
 async fn test_cannot_set_zero_max_users() {
     // A zero current cap admits no users, so a seat with max_users == 0 is rejected as nonsensical.
-    let (mut banks_client, program_id, payer, recent_blockhash) =
-        init_test_with_groups(&[FEED_GROUP]).await;
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 
@@ -1000,8 +975,7 @@ fn seat_config() -> FeedSeatConfig {
 /// in the same bank.
 #[tokio::test]
 async fn test_a_retiring_feed_keeps_its_seats_and_sells_no_new_one() {
-    let (mut banks_client, program_id, payer, recent_blockhash) =
-        init_test_with_groups(&[FEED_GROUP]).await;
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
     let globalstate_pubkey =
         init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
 

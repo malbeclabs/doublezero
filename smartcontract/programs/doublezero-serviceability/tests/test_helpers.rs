@@ -5,13 +5,13 @@ use doublezero_serviceability::{
     instructions::*,
     pda::{
         get_contributor_pda, get_exchange_pda, get_globalconfig_pda, get_globalstate_pda,
-        get_location_pda, get_program_config_pda, get_resource_extension_pda, get_topology_pda,
-        get_user_old_pda,
+        get_location_pda, get_multicastgroup_pda, get_program_config_pda,
+        get_resource_extension_pda, get_topology_pda, get_user_old_pda,
     },
     processors::{
         contributor::create::ContributorCreateArgs, exchange::create::ExchangeCreateArgs,
         globalconfig::set::SetGlobalConfigArgs, location::create::LocationCreateArgs,
-        topology::create::TopologyCreateArgs,
+        multicastgroup::create::MulticastGroupCreateArgs, topology::create::TopologyCreateArgs,
     },
     resource::ResourceType,
     state::{
@@ -96,28 +96,50 @@ pub async fn init_test() -> (BanksClient, Pubkey, Keypair, solana_program::hash:
 /// Some accounts are written by an offchain service rather than by an instruction — `BondMirror`
 /// is written by the cross-chain relayer. Seeding one directly is how a test exercises the read
 /// path before the writer exists.
-/// Same as `init_test`, with each of `groups` seeded as an activated group that an admin created.
+/// Create `count` activated multicast groups with `CreateMulticastGroup`, owned by `payer`. The
+/// global state and the config must exist, because each group takes its address from the
+/// config's multicast block.
 #[allow(dead_code)]
-pub async fn init_test_with_groups(
-    groups: &[Pubkey],
-) -> (BanksClient, Pubkey, Keypair, solana_program::hash::Hash) {
-    let program_id = Pubkey::new_unique();
-    let (banks_client, payer, recent_blockhash) =
-        init_test_with_accounts(program_id, &seeded_groups(groups)).await;
-    (banks_client, program_id, payer, recent_blockhash)
-}
-
-#[allow(dead_code)]
-pub fn seeded_groups(groups: &[Pubkey]) -> Vec<(Pubkey, Vec<u8>)> {
+pub async fn create_multicast_groups(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    payer: &Keypair,
+    count: usize,
+) -> Vec<Pubkey> {
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+    let (multicast_group_block, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+    let mut groups = Vec::with_capacity(count);
+    for i in 0..count {
+        let globalstate = get_account_data(banks_client, globalstate_pubkey)
+            .await
+            .unwrap()
+            .get_global_state()
+            .unwrap();
+        let (group, _) = get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
+        let recent_blockhash = wait_for_new_blockhash(banks_client).await;
+        execute_transaction(
+            banks_client,
+            recent_blockhash,
+            program_id,
+            DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+                code: format!("group-{i}"),
+                max_bandwidth: 1_000_000_000,
+                owner: payer.pubkey(),
+                use_onchain_allocation: true,
+                bond_ref: Pubkey::default(),
+            }),
+            vec![
+                AccountMeta::new(group, false),
+                AccountMeta::new(globalstate_pubkey, false),
+                AccountMeta::new(multicast_group_block, false),
+            ],
+            payer,
+        )
+        .await;
+        groups.push(group);
+    }
     groups
-        .iter()
-        .map(|group| {
-            (
-                *group,
-                multicast_group(Pubkey::default(), Pubkey::default()),
-            )
-        })
-        .collect()
 }
 
 #[allow(dead_code)]

@@ -60,14 +60,16 @@ pub(crate) fn add_feed_to_groups(
             );
             return Err(DoubleZeroError::PrivateGroupInFeed.into());
         }
-        group.feed_count = group.feed_count.saturating_add(1);
+        group.feed_count = group
+            .feed_count
+            .checked_add(1)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
         try_acc_write(&group, account, payer_account, accounts)?;
     }
     Ok(())
 }
 
-/// Subtract one from the feed count of each group. A group that an admin deleted while a feed
-/// listed it has no account left, so the program skips it.
+/// Subtract one from the feed count of each group.
 pub(crate) fn remove_feed_from_groups(
     program_id: &Pubkey,
     group_accounts: &[&AccountInfo],
@@ -80,7 +82,10 @@ pub(crate) fn remove_feed_from_groups(
         }
         validate_program_account!(*account, program_id, writable = true, "MulticastGroup");
         let mut group = MulticastGroup::try_from(*account)?;
-        group.feed_count = group.feed_count.saturating_sub(1);
+        group.feed_count = group
+            .feed_count
+            .checked_sub(1)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
         try_acc_write(&group, account, payer_account, accounts)?;
     }
     Ok(())

@@ -39,9 +39,6 @@ use solana_sdk::{
 mod test_helpers;
 use test_helpers::*;
 
-// The group every feed in this file lists. Each test seeds it, so a feed create can count it.
-const FEED_GROUP: Pubkey = Pubkey::new_from_array([7; 32]);
-
 const ONE_GBPS: u64 = 1_000_000_000;
 
 /// The accounts every lifecycle instruction takes. The harness appends payer and system program.
@@ -61,13 +58,23 @@ async fn feed_status(banks_client: &mut BanksClient, feed: Pubkey) -> FeedStatus
         .status
 }
 
+async fn feed_groups(banks_client: &mut BanksClient, feed: Pubkey) -> Vec<Pubkey> {
+    get_account_data(banks_client, feed)
+        .await
+        .expect("the feed should exist")
+        .get_feed()
+        .expect("it should be a feed")
+        .groups
+}
+
 /// A catalog feed: no builder, so it is `Active` the moment it is created.
 async fn catalog_feed(code: &str) -> (BanksClient, Pubkey, Keypair, Pubkey, Pubkey) {
     let program_id = Pubkey::new_unique();
     let (mut banks_client, payer, recent_blockhash) =
-        init_test_with_accounts(program_id, &seeded_groups(&[FEED_GROUP])).await;
-    init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+        init_test_with_accounts(program_id, &[]).await;
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
     let (globalstate, _) = get_globalstate_pda(&program_id);
+    let groups = create_multicast_groups(&mut banks_client, program_id, &payer, 1).await;
 
     let exchange = Pubkey::new_unique();
     let (feed, _) = get_feed_pda(&program_id, code, &exchange);
@@ -85,7 +92,7 @@ async fn catalog_feed(code: &str) -> (BanksClient, Pubkey, Keypair, Pubkey, Pubk
         }),
         feed_accounts(feed, globalstate),
         &payer,
-        &group_metas(&[FEED_GROUP]),
+        &group_metas(&groups),
     )
     .await;
 
@@ -123,13 +130,11 @@ async fn bonded_feed_owned_by(
     })
     .unwrap();
 
-    let (mut banks_client, payer, recent_blockhash) = init_test_with_accounts(
-        program_id,
-        &[vec![(mirror, mirror_data)], seeded_groups(&[FEED_GROUP])].concat(),
-    )
-    .await;
-    init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+    let (mut banks_client, payer, recent_blockhash) =
+        init_test_with_accounts(program_id, &[(mirror, mirror_data)]).await;
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
     let (globalstate, _) = get_globalstate_pda(&program_id);
+    let groups = create_multicast_groups(&mut banks_client, program_id, &payer, 1).await;
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     execute_transaction(
@@ -166,7 +171,7 @@ async fn bonded_feed_owned_by(
         feed_accounts(feed, globalstate),
         &payer,
         &[
-            AccountMeta::new(FEED_GROUP, false),
+            AccountMeta::new(groups[0], false),
             AccountMeta::new(mirror, false),
         ],
     )
@@ -632,7 +637,7 @@ fn retiring_feed(
         code: code.to_string(),
         name: "Retiring".to_string(),
         exchange,
-        groups: vec![FEED_GROUP],
+        groups: vec![Pubkey::new_unique()],
         builder,
         bond_ref: Pubkey::new_unique(),
         spec_id: "top-of-book@v1.0.0".to_string(),
@@ -1131,13 +1136,14 @@ async fn test_a_retiring_feed_cannot_be_deleted_before_its_notice_ends() {
     )
     .await;
 
+    let groups = feed_groups(&mut banks_client, feed).await;
     let result = try_execute_and_get_error(
         &mut banks_client,
         program_id,
         DoubleZeroInstruction::DeleteFeed(FeedDeleteArgs {}),
         feed_accounts(feed, globalstate),
         &payer,
-        &group_metas(&[FEED_GROUP]),
+        &group_metas(&groups),
     )
     .await;
     assert_custom_at_ix0(
@@ -1186,6 +1192,7 @@ async fn test_a_retired_feed_deletes() {
     );
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
+    let groups = feed_groups(&mut banks_client, feed).await;
     execute_transaction_with_extra_accounts(
         &mut banks_client,
         recent_blockhash,
@@ -1193,7 +1200,7 @@ async fn test_a_retired_feed_deletes() {
         DoubleZeroInstruction::DeleteFeed(FeedDeleteArgs {}),
         feed_accounts(feed, globalstate),
         &payer,
-        &group_metas(&[FEED_GROUP]),
+        &group_metas(&groups),
     )
     .await;
     assert_eq!(get_account_data(&mut banks_client, feed).await, None);
@@ -1497,13 +1504,11 @@ async fn test_a_seeded_feed_matches_what_create_feed_writes() {
     })
     .unwrap();
 
-    let (mut banks_client, payer, recent_blockhash) = init_test_with_accounts(
-        program_id,
-        &[vec![(mirror, mirror_data)], seeded_groups(&[FEED_GROUP])].concat(),
-    )
-    .await;
-    init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+    let (mut banks_client, payer, recent_blockhash) =
+        init_test_with_accounts(program_id, &[(mirror, mirror_data)]).await;
+    init_globalstate_and_config(&mut banks_client, program_id, &payer, recent_blockhash).await;
     let (globalstate, _) = get_globalstate_pda(&program_id);
+    let groups = create_multicast_groups(&mut banks_client, program_id, &payer, 1).await;
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;
     execute_transaction(
@@ -1521,7 +1526,7 @@ async fn test_a_seeded_feed_matches_what_create_feed_writes() {
     // Every input named here rather than generated, so the expected account below is written out
     // in full and a reader can see exactly what is being claimed.
     let exchange = Pubkey::new_unique();
-    let group = FEED_GROUP;
+    let group = groups[0];
     let (feed_key, feed_bump) = get_feed_pda(&program_id, "shapechk", &exchange);
 
     let recent_blockhash = wait_for_new_blockhash(&mut banks_client).await;

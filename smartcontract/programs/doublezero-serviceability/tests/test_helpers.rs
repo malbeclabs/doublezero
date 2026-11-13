@@ -70,13 +70,15 @@ pub fn test_payer() -> Keypair {
 pub async fn init_test() -> (BanksClient, Pubkey, Keypair, solana_program::hash::Hash) {
     let program_id = Pubkey::new_unique();
 
-    let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
+    let mut program_test = ProgramTest::new(
         "doublezero_serviceability",
         program_id,
         processor!(process_instruction),
-    )
-    .start()
-    .await;
+    );
+    // Tests that create groups run SetGlobalConfig, which creates several accounts and can pass
+    // the default limit.
+    program_test.set_compute_max_units(1_400_000);
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
 
     transfer(
         &mut banks_client,
@@ -174,6 +176,9 @@ pub async fn init_test_with_owned_accounts(
         program_id,
         processor!(process_instruction),
     );
+    // Tests that create groups run SetGlobalConfig, which creates several accounts and can pass
+    // the default limit.
+    program_test.set_compute_max_units(1_400_000);
     for (pubkey, data, owner) in accounts {
         program_test.add_account(
             *pubkey,

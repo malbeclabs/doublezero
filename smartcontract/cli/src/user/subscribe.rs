@@ -221,6 +221,7 @@ mod tests {
             private: false,
             max_publishers: 0,
             max_subscribers: 0,
+            feed_count: 0,
         };
 
         client
@@ -331,6 +332,7 @@ mod tests {
             private: false,
             max_publishers: 0,
             max_subscribers: 0,
+            feed_count: 0,
         };
 
         let mgroup_pubkey2 = Pubkey::from_str_const("11111116EPqoQskEM2Pddp8KTL9JoFhVBkC8GXfRH");
@@ -350,6 +352,7 @@ mod tests {
             private: false,
             max_publishers: 0,
             max_subscribers: 0,
+            feed_count: 0,
         };
 
         client
@@ -479,6 +482,7 @@ mod tests {
             private: false,
             max_publishers: 0,
             max_subscribers: 0,
+            feed_count: 0,
         };
         let mgroup2 = MulticastGroup {
             account_type: AccountType::MulticastGroup,
@@ -496,6 +500,7 @@ mod tests {
             private: false,
             max_publishers: 0,
             max_subscribers: 0,
+            feed_count: 0,
         };
         client
             .expect_get_multicastgroup()
@@ -619,6 +624,7 @@ mod tests {
             private: false,
             max_publishers: 0,
             max_subscribers: 0,
+            feed_count: 0,
         };
 
         client
@@ -725,6 +731,7 @@ mod tests {
             private: false,
             max_publishers: 0,
             max_subscribers: 0,
+            feed_count: 0,
         };
 
         client

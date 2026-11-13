@@ -87,6 +87,7 @@ pub struct MulticastGroup {
     pub private: bool,             // 1
     pub max_publishers: u32,       // 4, applies to a private group only
     pub max_subscribers: u32,      // 4, applies to a private group only
+    pub feed_count: u32,           // 4, the feeds that list this group
 }
 
 impl fmt::Display for MulticastGroup {
@@ -108,7 +109,8 @@ impl fmt::Display for MulticastGroup {
                 bond_ref: {}, \
                 private: {}, \
                 max_publishers: {}, \
-                max_subscribers: {} \
+                max_subscribers: {}, \
+                feed_count: {} \
             }}",
             self.account_type,
             self.owner,
@@ -124,7 +126,8 @@ impl fmt::Display for MulticastGroup {
             self.bond_ref,
             self.private,
             self.max_publishers,
-            self.max_subscribers
+            self.max_subscribers,
+            self.feed_count
         )
     }
 }
@@ -147,6 +150,7 @@ impl Default for MulticastGroup {
             private: false,
             max_publishers: 0,
             max_subscribers: 0,
+            feed_count: 0,
         }
     }
 }
@@ -171,6 +175,7 @@ impl TryFrom<&[u8]> for MulticastGroup {
             private: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             max_publishers: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
             max_subscribers: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
+            feed_count: BorshDeserialize::deserialize(&mut data).unwrap_or_default(),
         };
 
         if out.account_type != AccountType::MulticastGroup {
@@ -275,6 +280,7 @@ mod tests {
             private: false,
             max_publishers: 0,
             max_subscribers: 0,
+            feed_count: 0,
         };
         let err = val.validate();
         assert!(err.is_err());
@@ -291,7 +297,7 @@ mod tests {
             ..MulticastGroup::default()
         };
         let data = borsh::to_vec(&val).unwrap();
-        let old = &data[..data.len() - 32 - 9];
+        let old = &data[..data.len() - 32 - 9 - 4];
 
         let decoded = MulticastGroup::try_from(old).unwrap();
         assert_eq!(
@@ -303,7 +309,7 @@ mod tests {
         );
     }
 
-    /// Every group created before the private flag and the caps existed is 9 bytes short. It must
+    /// Every group created before the private flag and the caps existed is 13 bytes short. It must
     /// still decode as a group that is not private and has no caps.
     #[test]
     fn test_state_multicastgroup_decodes_the_layout_before_private_caps() {
@@ -313,10 +319,11 @@ mod tests {
             private: true,
             max_publishers: 2,
             max_subscribers: 10,
+            feed_count: 3,
             ..MulticastGroup::default()
         };
         let data = borsh::to_vec(&val).unwrap();
-        let old = &data[..data.len() - 9];
+        let old = &data[..data.len() - 9 - 4];
 
         let decoded = MulticastGroup::try_from(old).unwrap();
         assert_eq!(
@@ -325,6 +332,32 @@ mod tests {
                 private: false,
                 max_publishers: 0,
                 max_subscribers: 0,
+                feed_count: 0,
+                ..val
+            }
+        );
+    }
+
+    /// Every group created before the feed count existed is 4 bytes short. It must still decode,
+    /// with a count of 0 until an admin sets the real count.
+    #[test]
+    fn test_state_multicastgroup_decodes_the_layout_before_feed_count() {
+        let val = MulticastGroup {
+            code: "old".to_string(),
+            private: true,
+            max_publishers: 2,
+            max_subscribers: 10,
+            feed_count: 3,
+            ..MulticastGroup::default()
+        };
+        let data = borsh::to_vec(&val).unwrap();
+        let old = &data[..data.len() - 4];
+
+        let decoded = MulticastGroup::try_from(old).unwrap();
+        assert_eq!(
+            decoded,
+            MulticastGroup {
+                feed_count: 0,
                 ..val
             }
         );
@@ -348,6 +381,7 @@ mod tests {
             private: true,
             max_publishers: 2,
             max_subscribers: 10,
+            feed_count: 3,
         };
 
         let data = borsh::to_vec(&val).unwrap();

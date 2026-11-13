@@ -944,6 +944,7 @@ class MulticastGroup:
     private: bool = False
     max_publishers: int = 0
     max_subscribers: int = 0
+    feed_count: int = 0
 
     @classmethod
     def from_bytes(cls, data: bytes) -> MulticastGroup:
@@ -967,6 +968,8 @@ class MulticastGroup:
             mg.private = r.read_u8() != 0
             mg.max_publishers = r.read_u32()
             mg.max_subscribers = r.read_u32()
+        if r.remaining >= 4:
+            mg.feed_count = r.read_u32()
         return mg
 
 

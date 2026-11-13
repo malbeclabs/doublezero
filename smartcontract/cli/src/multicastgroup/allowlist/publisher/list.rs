@@ -119,6 +119,7 @@ mod tests {
             private: false,
             max_publishers: 0,
             max_subscribers: 0,
+            feed_count: 0,
         };
 
         let accesspass1_pk = Pubkey::from_str_const("1111111ogCyDbaRMvkdsHB3qfdyFYaG1WtRUAfdh");

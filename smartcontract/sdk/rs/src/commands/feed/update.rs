@@ -1,8 +1,11 @@
 use std::collections::HashSet;
 
 use crate::{AccountData, DoubleZeroClient};
-use doublezero_serviceability::{processors::feed::update::FeedUpdateArgs, state::feed::FeedChain};
-use doublezero_serviceability_instruction::feed::{update_feed, update_feed_as_builder};
+use doublezero_serviceability::{
+    processors::feed::{create::MAX_FEED_GROUPS, update::FeedUpdateArgs},
+    state::feed::FeedChain,
+};
+use doublezero_serviceability_instruction::feed::update_feed;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 
 pub const MAX_FEEDS_PER_TRANSACTION: usize = 8;
@@ -34,33 +37,68 @@ impl UpdateFeedCommand {
                 pubkeys.len()
             );
         }
+        // The program refuses a new list with a repeated group or more than 20 groups. It sees
+        // only the groups that change, so the command refuses a group repeated in the request.
+        if let Some(groups) = &self.groups {
+            if let Some(group) = groups
+                .iter()
+                .enumerate()
+                .find_map(|(i, group)| groups[..i].contains(group).then_some(group))
+            {
+                eyre::bail!("group {group} is named twice");
+            }
+            if groups.len() > MAX_FEED_GROUPS {
+                eyre::bail!(
+                    "{} groups exceed the {MAX_FEED_GROUPS}-group limit of a feed",
+                    groups.len()
+                );
+            }
+        }
 
         let program_id = client.get_program_id();
         let payer = client.get_payer();
         let args = FeedUpdateArgs {
             name: self.name.clone(),
-            groups: self.groups.clone(),
             feed_chain: self.feed_chain,
+            ..Default::default()
         };
 
         let mut instructions = Vec::with_capacity(pubkeys.len());
         for pubkey in &pubkeys {
-            // A bonded feed's builder sends the account of each group it adds, which the program
-            // checks against its bond. Read only when groups change, so a rename costs no read.
-            let builders_groups = match self.groups {
-                Some(_) => match client.get(*pubkey)? {
-                    AccountData::Feed(feed) if feed.builder == payer => Some(feed.groups),
-                    AccountData::Feed(_) => None,
-                    _ => eyre::bail!("{pubkey} is not a feed"),
-                },
-                None => None,
-            };
-            instructions.push(match builders_groups {
-                Some(current) => {
-                    update_feed_as_builder(&program_id, &payer, pubkey, &current, args.clone())
+            // The program takes the groups that change, not the whole list, so the command reads
+            // the feed's groups now. A rename or a chain change costs no read. A swap of 20 groups
+            // for 20 others needs 40 group accounts, which do not fit in one transaction. Make
+            // that swap in two updates.
+            let (read_groups, added, removed) = match &self.groups {
+                Some(groups) => {
+                    let AccountData::Feed(feed) = client.get(*pubkey)? else {
+                        eyre::bail!("{pubkey} is not a feed");
+                    };
+                    (
+                        feed.groups.clone(),
+                        groups
+                            .iter()
+                            .filter(|group| !feed.groups.contains(group))
+                            .copied()
+                            .collect(),
+                        feed.groups
+                            .iter()
+                            .filter(|group| !groups.contains(group))
+                            .copied()
+                            .collect(),
+                    )
                 }
-                None => update_feed(&program_id, &payer, pubkey, args.clone()),
-            });
+                None => (Vec::new(), Vec::new(), Vec::new()),
+            };
+            instructions.push(update_feed(
+                &program_id,
+                &payer,
+                pubkey,
+                &read_groups,
+                &added,
+                &removed,
+                args.clone(),
+            ));
         }
         client.send_instructions(instructions)
     }
@@ -78,10 +116,7 @@ mod tests {
             feed::{Feed, FeedChain},
         },
     };
-    use doublezero_serviceability_instruction::{
-        compute_budget_prelude,
-        feed::{update_feed, update_feed_as_builder},
-    };
+    use doublezero_serviceability_instruction::{compute_budget_prelude, feed::update_feed};
     use mockall::predicate;
     use solana_sdk::{
         instruction::AccountMeta, message::Message, pubkey::Pubkey, signature::Signature,
@@ -89,9 +124,8 @@ mod tests {
 
     fn chain_args() -> FeedUpdateArgs {
         FeedUpdateArgs {
-            name: None,
-            groups: None,
             feed_chain: Some(FeedChain::Solana),
+            ..Default::default()
         }
     }
 
@@ -107,10 +141,12 @@ mod tests {
             &program_id,
             &payer,
             &pda_pubkey,
+            &[],
+            &[],
+            &[],
             FeedUpdateArgs {
                 name: Some("Test Feed".to_string()),
-                groups: None,
-                feed_chain: None,
+                ..Default::default()
             },
         );
         client
@@ -128,39 +164,37 @@ mod tests {
         assert!(res.is_ok());
     }
 
-    // A builder changing its own feed's groups sends the builder's instruction, carrying the account
-    // of the group it adds; a group change by anyone else sends the admin's, with none.
+    // A group change sends only the groups that change, read against each feed's groups now.
     #[test]
-    fn test_commands_feed_update_sends_the_builders_instruction_for_its_own_feed() {
+    fn test_commands_feed_update_sends_the_added_and_removed_groups() {
         let mut client = create_test_client();
         let program_id = client.get_program_id();
         let payer = client.get_payer();
-        let (kept, added) = (Pubkey::new_unique(), Pubkey::new_unique());
-        let (own, other) = (Pubkey::new_unique(), Pubkey::new_unique());
-        let feed = |builder| Feed {
-            account_type: AccountType::Feed,
-            builder,
-            groups: vec![kept],
-            ..Default::default()
-        };
-        let own_feed = feed(payer);
-        let other_feed = feed(Pubkey::new_unique());
+        let (kept, added, removed) = (
+            Pubkey::new_unique(),
+            Pubkey::new_unique(),
+            Pubkey::new_unique(),
+        );
+        let feed_pk = Pubkey::new_unique();
         client
             .expect_get()
-            .with(predicate::eq(own))
-            .returning(move |_| Ok(AccountData::Feed(own_feed.clone())));
-        client
-            .expect_get()
-            .with(predicate::eq(other))
-            .returning(move |_| Ok(AccountData::Feed(other_feed.clone())));
-        let args = FeedUpdateArgs {
-            groups: Some(vec![kept, added]),
-            ..Default::default()
-        };
-        let expected = vec![
-            update_feed_as_builder(&program_id, &payer, &own, &[kept], args.clone()),
-            update_feed(&program_id, &payer, &other, args),
-        ];
+            .with(predicate::eq(feed_pk))
+            .returning(move |_| {
+                Ok(AccountData::Feed(Feed {
+                    account_type: AccountType::Feed,
+                    groups: vec![kept, removed],
+                    ..Default::default()
+                }))
+            });
+        let expected = vec![update_feed(
+            &program_id,
+            &payer,
+            &feed_pk,
+            &[kept, removed],
+            &[added],
+            &[removed],
+            FeedUpdateArgs::default(),
+        )];
         client
             .expect_send_instructions()
             .with(predicate::eq(expected))
@@ -168,7 +202,7 @@ mod tests {
             .returning(|_| Ok(Signature::new_unique()));
 
         let res = UpdateFeedCommand {
-            pubkeys: vec![own, other],
+            pubkeys: vec![feed_pk],
             name: None,
             groups: Some(vec![kept, added]),
             feed_chain: None,
@@ -188,8 +222,8 @@ mod tests {
         let args = chain_args();
 
         let expected = vec![
-            update_feed(&program_id, &payer, &feed_a, args.clone()),
-            update_feed(&program_id, &payer, &feed_b, args),
+            update_feed(&program_id, &payer, &feed_a, &[], &[], &[], args.clone()),
+            update_feed(&program_id, &payer, &feed_b, &[], &[], &[], args),
         ];
         client
             .expect_send_instructions()
@@ -221,6 +255,9 @@ mod tests {
                 &program_id,
                 &payer,
                 &feed_pk,
+                &[],
+                &[],
+                &[],
                 chain_args(),
             )]))
             .times(1)
@@ -234,6 +271,38 @@ mod tests {
         }
         .execute(&client);
         assert_eq!(res.unwrap(), signature);
+    }
+
+    #[test]
+    fn test_commands_feed_update_refuses_a_group_named_twice() {
+        let client = create_test_client();
+        let group = Pubkey::new_unique();
+        let err = UpdateFeedCommand {
+            pubkeys: vec![Pubkey::new_unique()],
+            name: None,
+            groups: Some(vec![group, group, Pubkey::new_unique()]),
+            feed_chain: None,
+        }
+        .execute(&client)
+        .unwrap_err();
+        assert_eq!(err.to_string(), format!("group {group} is named twice"));
+    }
+
+    #[test]
+    fn test_commands_feed_update_refuses_more_than_twenty_groups() {
+        let client = create_test_client();
+        let err = UpdateFeedCommand {
+            pubkeys: vec![Pubkey::new_unique()],
+            name: None,
+            groups: Some((0..21).map(|_| Pubkey::new_unique()).collect()),
+            feed_chain: None,
+        }
+        .execute(&client)
+        .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "21 groups exceed the 20-group limit of a feed"
+        );
     }
 
     #[test]
@@ -279,7 +348,15 @@ mod tests {
         let permission = Pubkey::new_unique();
         let mut instructions = compute_budget_prelude().to_vec();
         for _ in 0..MAX_FEEDS_PER_TRANSACTION {
-            let mut ix = update_feed(&program_id, &payer, &Pubkey::new_unique(), chain_args());
+            let mut ix = update_feed(
+                &program_id,
+                &payer,
+                &Pubkey::new_unique(),
+                &[],
+                &[],
+                &[],
+                chain_args(),
+            );
             ix.accounts
                 .push(AccountMeta::new_readonly(permission, false));
             instructions.push(ix);

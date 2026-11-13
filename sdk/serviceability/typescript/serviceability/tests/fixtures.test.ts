@@ -485,6 +485,7 @@ describe("MulticastGroup fixture", () => {
       Private: mg.private,
       MaxPublishers: mg.maxPublishers,
       MaxSubscribers: mg.maxSubscribers,
+      FeedCount: mg.feedCount,
     });
   });
 
@@ -494,11 +495,20 @@ describe("MulticastGroup fixture", () => {
       (f) => f.name === "BondRef",
     )?.value;
     expect(expectedBondRef).toBeDefined();
-    const mg = deserializeMulticastGroup(data.slice(0, data.length - 9));
+    const mg = deserializeMulticastGroup(data.slice(0, data.length - 13));
     expect(mg.bondRef.toBase58()).toBe(expectedBondRef!);
     expect(mg.private).toBe(false);
     expect(mg.maxPublishers).toBe(0);
     expect(mg.maxSubscribers).toBe(0);
+    expect(mg.feedCount).toBe(0);
+  });
+
+  test("a group before the feed count reads a count of zero", () => {
+    const [data] = loadFixture("multicast_group");
+    const mg = deserializeMulticastGroup(data.slice(0, data.length - 4));
+    expect(mg.private).toBe(true);
+    expect(mg.maxSubscribers).toBe(10);
+    expect(mg.feedCount).toBe(0);
   });
 });
 

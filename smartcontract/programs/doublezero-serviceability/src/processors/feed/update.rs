@@ -2,9 +2,9 @@ use crate::{
     authorize::{authorize, FEED_ADMIN_FLAGS},
     error::DoubleZeroError,
     processors::feed::{
-        check_groups_on_bond,
+        add_feed_to_groups, check_groups_on_bond,
         create::{validate_feed_groups, validate_feed_name},
-        split_group_accounts,
+        group_keys, next_group_accounts, remove_feed_from_groups,
     },
     serializer::try_acc_write,
     state::{
@@ -27,7 +27,13 @@ use solana_program::{
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Debug, Clone, Default)]
 pub struct FeedUpdateArgs {
     pub name: Option<String>,
-    pub groups: Option<Vec<Pubkey>>,
+    /// The number of groups the feed adds. Their accounts follow the system program.
+    pub added_group_count: u8,
+    /// The number of groups the feed removes. Their accounts follow the added groups.
+    pub removed_group_count: u8,
+    /// The hash of the feed's groups as the caller read them. A group change fails when the feed's
+    /// groups changed since then.
+    pub expected_groups_hash: [u8; 32],
     #[incremental(default = None)]
     pub feed_chain: Option<FeedChain>,
 }
@@ -48,6 +54,10 @@ pub fn process_update_feed(
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let _system_program = next_account_info(accounts_iter)?;
+    let added_accounts = next_group_accounts(accounts_iter, value.added_group_count)?;
+    let removed_accounts = next_group_accounts(accounts_iter, value.removed_group_count)?;
+    let added = group_keys(&added_accounts);
+    let removed = group_keys(&removed_accounts);
 
     assert!(payer_account.is_signer, "Payer must be a signer");
     assert_eq!(feed_account.owner, program_id, "Invalid PDA Account Owner");
@@ -59,10 +69,6 @@ pub fn process_update_feed(
 
     let globalstate = GlobalState::load(program_id, globalstate_account)?;
     let mut feed = Feed::try_from(feed_account)?;
-    let (group_accounts, authorize_candidates) = split_group_accounts(
-        value.groups.as_deref().unwrap_or_default(),
-        accounts_iter.collect(),
-    );
 
     // A bonded feed's own builder may rename it and add groups, held to the same rule as at
     // create: every group it adds must be the builder's own. It may not remove one: a subscriber's
@@ -80,29 +86,21 @@ pub fn process_update_feed(
             msg!("A retiring or retired feed's groups cannot change");
             return Err(DoubleZeroError::NotAllowed.into());
         }
-        if let Some(ref groups) = value.groups {
-            if !feed.groups.iter().all(|group| groups.contains(group)) {
-                msg!("A feed's builder can add groups but not remove them");
-                return Err(DoubleZeroError::NotAllowed.into());
-            }
-            // The groups already listed passed this check when they were added.
-            let added = groups
-                .iter()
-                .filter(|group| !feed.groups.contains(group))
-                .copied()
-                .collect::<Vec<_>>();
-            check_groups_on_bond(
-                program_id,
-                &feed.builder,
-                &feed.bond_ref,
-                &added,
-                &group_accounts,
-            )?;
+        if !removed.is_empty() {
+            msg!("A feed's builder can add groups but not remove them");
+            return Err(DoubleZeroError::NotAllowed.into());
         }
+        check_groups_on_bond(
+            program_id,
+            &feed.builder,
+            &feed.bond_ref,
+            &added,
+            &added_accounts,
+        )?;
     } else {
         authorize(
             program_id,
-            &mut authorize_candidates.into_iter(),
+            accounts_iter,
             payer_account.key,
             &globalstate,
             FEED_ADMIN_FLAGS,
@@ -112,15 +110,37 @@ pub fn process_update_feed(
     if let Some(ref name) = value.name {
         validate_feed_name(name)?;
     }
-    if let Some(ref groups) = value.groups {
-        validate_feed_groups(groups)?;
+    if (!added.is_empty() || !removed.is_empty())
+        && value.expected_groups_hash != Feed::groups_hash(&feed.groups)
+    {
+        msg!(
+            "Feed {} changed its groups after the caller read them. Read the feed again",
+            feed_account.key
+        );
+        return Err(DoubleZeroError::FeedGroupsChanged.into());
+    }
+    for (i, group) in removed.iter().enumerate() {
+        if removed[..i].contains(group) {
+            msg!("Group {} is removed twice", group);
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
+        if !feed.groups.contains(group) {
+            msg!("Feed does not list group {}", group);
+            return Err(DoubleZeroError::InvalidArgument.into());
+        }
+    }
+    if let Some(group) = added.iter().find(|group| feed.groups.contains(group)) {
+        msg!("Feed already lists group {}", group);
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+    if !added.is_empty() || !removed.is_empty() {
+        feed.groups.retain(|group| !removed.contains(group));
+        feed.groups.extend(&added);
+        validate_feed_groups(&feed.groups)?;
     }
 
     if let Some(ref name) = value.name {
         feed.name = name.clone();
-    }
-    if let Some(ref groups) = value.groups {
-        feed.groups = groups.clone();
     }
     if let Some(feed_chain) = value.feed_chain {
         // The rewards process uses the chain or the builder of a feed to find who gets the
@@ -133,6 +153,8 @@ pub fn process_update_feed(
     }
 
     try_acc_write(&feed, feed_account, payer_account, accounts)?;
+    remove_feed_from_groups(program_id, &removed_accounts, payer_account, accounts)?;
+    add_feed_to_groups(program_id, &added_accounts, payer_account, accounts)?;
 
     msg!("Updated feed: {}", feed_account.key);
 

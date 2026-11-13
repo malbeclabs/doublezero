@@ -207,6 +207,7 @@ async fn test_update_multicastgroup_with_onchain_reallocation() {
             private: None,
             max_publishers: None,
             max_subscribers: None,
+            feed_count: None,
         }),
         vec![
             AccountMeta::new(mgroup_pubkey, false),

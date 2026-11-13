@@ -233,6 +233,9 @@ fn apply_serviceability_json_compat_migrations(serviceability: &mut Value) {
             group
                 .entry("max_subscribers")
                 .or_insert_with(|| Value::Number(0.into()));
+            group
+                .entry("feed_count")
+                .or_insert_with(|| Value::Number(0.into()));
         }
     }
 
@@ -643,6 +646,7 @@ mod tests {
                 "private": false,
                 "max_publishers": 0,
                 "max_subscribers": 0,
+                "feed_count": 0,
             })
         );
         assert_eq!(
@@ -652,6 +656,7 @@ mod tests {
                 "private": false,
                 "max_publishers": 0,
                 "max_subscribers": 0,
+                "feed_count": 0,
             })
         );
     }

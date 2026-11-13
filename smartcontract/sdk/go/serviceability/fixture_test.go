@@ -454,13 +454,14 @@ func TestFixtureMulticastGroup(t *testing.T) {
 	assert.True(t, mg.Private)
 	assert.Equal(t, uint32(2), mg.MaxPublishers)
 	assert.Equal(t, uint32(10), mg.MaxSubscribers)
+	assert.Equal(t, uint32(3), mg.FeedCount)
 }
 
-// A group account from before this change has no private flag and no caps, so it is 9 bytes
-// shorter. The decoder reads that account as a group that is not private and has no caps.
+// A group account from before the private flag has no flag, no caps and no feed count, so it is
+// 13 bytes shorter. The decoder reads that account as a group that is not private and has no caps.
 func TestFixtureMulticastGroupBeforePrivateCaps(t *testing.T) {
 	data, meta := loadFixture(t, "multicast_group")
-	old := data[:len(data)-9]
+	old := data[:len(data)-13]
 
 	var mg serviceability.MulticastGroup
 	serviceability.DeserializeMulticastGroup(serviceability.NewByteReader(old), &mg)
@@ -469,4 +470,18 @@ func TestFixtureMulticastGroupBeforePrivateCaps(t *testing.T) {
 	assert.False(t, mg.Private)
 	assert.Equal(t, uint32(0), mg.MaxPublishers)
 	assert.Equal(t, uint32(0), mg.MaxSubscribers)
+	assert.Equal(t, uint32(0), mg.FeedCount)
+}
+
+// A group account from before the feed count is 4 bytes shorter. The decoder reads its count as 0.
+func TestFixtureMulticastGroupBeforeFeedCount(t *testing.T) {
+	data, _ := loadFixture(t, "multicast_group")
+	old := data[:len(data)-4]
+
+	var mg serviceability.MulticastGroup
+	serviceability.DeserializeMulticastGroup(serviceability.NewByteReader(old), &mg)
+
+	assert.True(t, mg.Private)
+	assert.Equal(t, uint32(10), mg.MaxSubscribers)
+	assert.Equal(t, uint32(0), mg.FeedCount)
 }

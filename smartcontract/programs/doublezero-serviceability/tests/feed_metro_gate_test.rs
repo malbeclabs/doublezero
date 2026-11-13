@@ -324,7 +324,7 @@ async fn create_feed(
 ) -> Pubkey {
     let (feed_pubkey, _) = get_feed_pda(&fixture.program_id, code, &exchange);
     let recent_blockhash = fixture.banks_client.get_latest_blockhash().await.unwrap();
-    execute_transaction(
+    execute_transaction_with_extra_accounts(
         &mut fixture.banks_client,
         recent_blockhash,
         fixture.program_id,
@@ -332,7 +332,7 @@ async fn create_feed(
             code: code.to_string(),
             name: code.to_string(),
             exchange,
-            groups,
+            group_count: u8::try_from(groups.len()).unwrap(),
             ..Default::default()
         }),
         vec![
@@ -340,6 +340,7 @@ async fn create_feed(
             AccountMeta::new(fixture.globalstate_pubkey, false),
         ],
         &fixture.payer,
+        &group_metas(&groups),
     )
     .await;
     feed_pubkey
@@ -376,7 +377,7 @@ async fn create_bonded_feed(
             code: code.to_string(),
             name: code.to_string(),
             exchange,
-            groups,
+            group_count: u8::try_from(groups.len()).unwrap(),
             builder: fixture.builder,
             bond_ref: fixture.bond_ref,
             spec_id: "top-of-book@v1.0.0".to_string(),
@@ -389,7 +390,11 @@ async fn create_bonded_feed(
             AccountMeta::new(fixture.globalstate_pubkey, false),
         ],
         &fixture.payer,
-        &[AccountMeta::new(mirror_pubkey, false)],
+        &[
+            group_metas(&groups),
+            vec![AccountMeta::new(mirror_pubkey, false)],
+        ]
+        .concat(),
     )
     .await;
     feed_pubkey
@@ -624,7 +629,7 @@ async fn test_group_not_in_feed_rejected() {
     let exchange = fixture.exchange_pubkey;
     // Feed serves the device's metro but with a different group set, so the target mgroup is not
     // joinable.
-    let other_group = Pubkey::new_unique();
+    let other_group = create_second_group(&mut fixture).await;
     let feed = create_feed(&mut fixture, "shreds", exchange, vec![other_group]).await;
     set_accesspass_feeds(
         &mut fixture,

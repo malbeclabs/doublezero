@@ -416,6 +416,7 @@ pub(crate) mod fixtures {
             private: false,
             max_publishers: 0,
             max_subscribers: 0,
+            feed_count: 0,
         }
     }
 

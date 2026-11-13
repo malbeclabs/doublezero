@@ -10,6 +10,8 @@ pub mod update;
 use crate::{
     authorize::{authorize, FEED_ADMIN_FLAGS},
     error::{DoubleZeroError, Validate},
+    processors::validation::validate_program_account,
+    serializer::try_acc_write,
     state::{
         accesspass::AccessPass,
         bond_mirror::BondMirror,
@@ -19,19 +21,74 @@ use crate::{
     },
 };
 use solana_program::{
-    account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
+    account_info::{next_account_info, AccountInfo},
+    entrypoint::ProgramResult,
+    msg,
+    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
-/// Split the accounts that name one of `groups` from the rest of an instruction's tail, by
-/// address. A builder passes its groups' accounts so the program can read who owns them, and the
-/// rest is the authorization tail, which [`authorize`] reads from its first account.
-pub(crate) fn split_group_accounts<'a, 'b>(
-    groups: &[Pubkey],
-    tail: Vec<&'a AccountInfo<'b>>,
-) -> (Vec<&'a AccountInfo<'b>>, Vec<&'a AccountInfo<'b>>) {
-    tail.into_iter()
-        .partition(|account| groups.contains(account.key))
+/// Take the next `count` accounts as the multicast groups that a feed instruction adds or removes.
+pub(crate) fn next_group_accounts<'a, 'b: 'a>(
+    accounts_iter: &mut impl Iterator<Item = &'a AccountInfo<'b>>,
+    count: u8,
+) -> Result<Vec<&'a AccountInfo<'b>>, ProgramError> {
+    (0..count)
+        .map(|_| next_account_info(accounts_iter))
+        .collect()
+}
+
+pub(crate) fn group_keys(group_accounts: &[&AccountInfo]) -> Vec<Pubkey> {
+    group_accounts.iter().map(|account| *account.key).collect()
+}
+
+/// Add one to the feed count of each group. A feed must not list a private group, because a feed
+/// seat would then add a user to a group that is for members only.
+pub(crate) fn add_feed_to_groups(
+    program_id: &Pubkey,
+    group_accounts: &[&AccountInfo],
+    payer_account: &AccountInfo,
+    accounts: &[AccountInfo],
+) -> ProgramResult {
+    for account in group_accounts {
+        validate_program_account!(*account, program_id, writable = true, "MulticastGroup");
+        let mut group = MulticastGroup::try_from(*account)?;
+        if group.private {
+            msg!(
+                "Multicast group {} is private, so a feed cannot list it",
+                account.key
+            );
+            return Err(DoubleZeroError::PrivateGroupInFeed.into());
+        }
+        group.feed_count = group
+            .feed_count
+            .checked_add(1)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        try_acc_write(&group, account, payer_account, accounts)?;
+    }
+    Ok(())
+}
+
+/// Subtract one from the feed count of each group.
+pub(crate) fn remove_feed_from_groups(
+    program_id: &Pubkey,
+    group_accounts: &[&AccountInfo],
+    payer_account: &AccountInfo,
+    accounts: &[AccountInfo],
+) -> ProgramResult {
+    for account in group_accounts {
+        if account.data_is_empty() {
+            continue;
+        }
+        validate_program_account!(*account, program_id, writable = true, "MulticastGroup");
+        let mut group = MulticastGroup::try_from(*account)?;
+        group.feed_count = group
+            .feed_count
+            .checked_sub(1)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        try_acc_write(&group, account, payer_account, accounts)?;
+    }
+    Ok(())
 }
 
 /// Check that every group a bonded feed lists is its builder's own: created on the feed's bond, or

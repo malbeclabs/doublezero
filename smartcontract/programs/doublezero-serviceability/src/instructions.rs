@@ -1142,6 +1142,7 @@ mod tests {
                 private: None,
                 max_publishers: None,
                 max_subscribers: None,
+                feed_count: None,
             }),
             "UpdateMulticastGroup",
         );
@@ -1565,7 +1566,7 @@ mod tests {
                 code: "shreds".to_string(),
                 name: "Shreds".to_string(),
                 exchange: Pubkey::new_unique(),
-                groups: vec![Pubkey::new_unique()],
+                group_count: 1,
                 ..Default::default()
             }),
             "CreateFeed",
@@ -1573,7 +1574,9 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
                 name: Some("Shreds".to_string()),
-                groups: Some(vec![Pubkey::new_unique()]),
+                added_group_count: 1,
+                removed_group_count: 1,
+                expected_groups_hash: [7; 32],
                 feed_chain: None,
             }),
             "UpdateFeed",

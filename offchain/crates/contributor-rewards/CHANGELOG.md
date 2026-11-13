@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- fix(contributor-rewards): a snapshot taken before the serviceability program added the multicast group's `feed_count` still loads, with the count read as 0 (malbeclabs/doublezero#4519)
 - fix(contributor-rewards): a snapshot stored before devices had `agent_ip` still loads, with each device's `agent_ip` read as unset (`0.0.0.0`)
 - fix(contributor-rewards): a snapshot taken before the serviceability program added the multicast group's `private` flag and caps and the user's `holds_pass_seat` still loads. The reader fills in a group that is not private with no caps, and a user with `holds_pass_seat` set (malbeclabs/infra#3706)
 

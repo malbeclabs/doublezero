@@ -5,13 +5,13 @@ use doublezero_serviceability::{
     instructions::*,
     pda::{
         get_contributor_pda, get_exchange_pda, get_globalconfig_pda, get_globalstate_pda,
-        get_location_pda, get_program_config_pda, get_resource_extension_pda, get_topology_pda,
-        get_user_old_pda,
+        get_location_pda, get_multicastgroup_pda, get_program_config_pda,
+        get_resource_extension_pda, get_topology_pda, get_user_old_pda,
     },
     processors::{
         contributor::create::ContributorCreateArgs, exchange::create::ExchangeCreateArgs,
         globalconfig::set::SetGlobalConfigArgs, location::create::LocationCreateArgs,
-        topology::create::TopologyCreateArgs,
+        multicastgroup::create::MulticastGroupCreateArgs, topology::create::TopologyCreateArgs,
     },
     resource::ResourceType,
     state::{
@@ -70,13 +70,15 @@ pub fn test_payer() -> Keypair {
 pub async fn init_test() -> (BanksClient, Pubkey, Keypair, solana_program::hash::Hash) {
     let program_id = Pubkey::new_unique();
 
-    let (mut banks_client, payer, recent_blockhash) = ProgramTest::new(
+    let mut program_test = ProgramTest::new(
         "doublezero_serviceability",
         program_id,
         processor!(process_instruction),
-    )
-    .start()
-    .await;
+    );
+    // Tests that create groups run SetGlobalConfig, which creates several accounts and can pass
+    // the default limit.
+    program_test.set_compute_max_units(1_400_000);
+    let (mut banks_client, payer, recent_blockhash) = program_test.start().await;
 
     transfer(
         &mut banks_client,
@@ -87,6 +89,60 @@ pub async fn init_test() -> (BanksClient, Pubkey, Keypair, solana_program::hash:
     .await;
 
     (banks_client, program_id, payer, recent_blockhash)
+}
+
+/// Create `count` activated multicast groups with `CreateMulticastGroup`, owned by `payer`. The
+/// global state and the config must exist, because each group takes its address from the
+/// config's multicast block.
+#[allow(dead_code)]
+pub async fn create_multicast_groups(
+    banks_client: &mut BanksClient,
+    program_id: Pubkey,
+    payer: &Keypair,
+    count: usize,
+) -> Vec<Pubkey> {
+    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
+    let (multicast_group_block, _, _) =
+        get_resource_extension_pda(&program_id, ResourceType::MulticastGroupBlock);
+    let mut groups = Vec::with_capacity(count);
+    for i in 0..count {
+        let globalstate = get_account_data(banks_client, globalstate_pubkey)
+            .await
+            .unwrap()
+            .get_global_state()
+            .unwrap();
+        let (group, _) = get_multicastgroup_pda(&program_id, globalstate.account_index + 1);
+        let recent_blockhash = wait_for_new_blockhash(banks_client).await;
+        execute_transaction(
+            banks_client,
+            recent_blockhash,
+            program_id,
+            DoubleZeroInstruction::CreateMulticastGroup(MulticastGroupCreateArgs {
+                code: format!("group-{i}"),
+                max_bandwidth: 1_000_000_000,
+                owner: payer.pubkey(),
+                use_onchain_allocation: true,
+                bond_ref: Pubkey::default(),
+            }),
+            vec![
+                AccountMeta::new(group, false),
+                AccountMeta::new(globalstate_pubkey, false),
+                AccountMeta::new(multicast_group_block, false),
+            ],
+            payer,
+        )
+        .await;
+        groups.push(group);
+    }
+    groups
+}
+
+#[allow(dead_code)]
+pub fn group_metas(groups: &[Pubkey]) -> Vec<AccountMeta> {
+    groups
+        .iter()
+        .map(|group| AccountMeta::new(*group, false))
+        .collect()
 }
 
 /// Same as `init_test`, but on a caller-chosen `program_id` and with `accounts` already present
@@ -120,6 +176,9 @@ pub async fn init_test_with_owned_accounts(
         program_id,
         processor!(process_instruction),
     );
+    // Tests that create groups run SetGlobalConfig, which creates several accounts and can pass
+    // the default limit.
+    program_test.set_compute_max_units(1_400_000);
     for (pubkey, data, owner) in accounts {
         program_test.add_account(
             *pubkey,
@@ -1178,6 +1237,7 @@ pub fn multicast_group(owner: Pubkey, bond_ref: Pubkey) -> Vec<u8> {
         private: false,
         max_publishers: 0,
         max_subscribers: 0,
+        feed_count: 0,
     })
     .unwrap()
 }

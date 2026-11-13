@@ -175,7 +175,7 @@ async fn test_a_builder_deploys_a_feed_that_sells_seats_at_once() {
             code: "tokyo1".to_string(),
             name: "Tokyo top of book".to_string(),
             exchange,
-            groups: vec![group],
+            group_count: 1,
             builder: builder.pubkey(),
             bond_ref,
             spec_id: "top-of-book@v1.0.0".to_string(),
@@ -188,10 +188,11 @@ async fn test_a_builder_deploys_a_feed_that_sells_seats_at_once() {
             AccountMeta::new(globalstate, false),
         ],
         &builder,
-        // The mirror, and the group's account: the program checks the builder owns each group.
+        // The group's account, then the mirror. The program checks that the builder owns each
+        // group, and it counts the feed on the group.
         &[
+            AccountMeta::new(group, false),
             AccountMeta::new(mirror, false),
-            AccountMeta::new_readonly(group, false),
         ],
     )
     .await;

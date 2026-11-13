@@ -2,7 +2,7 @@ use doublezero_serviceability::{
     entrypoint::process_instruction,
     error::DoubleZeroError,
     instructions::DoubleZeroInstruction,
-    pda::{get_accesspass_pda, get_feed_pda, get_globalstate_pda, get_program_config_pda},
+    pda::{get_accesspass_pda, get_feed_pda, get_globalstate_pda},
     processors::{
         accesspass::{
             set::SetAccessPassArgs,
@@ -99,23 +99,8 @@ async fn init_globalstate(
     payer: &solana_sdk::signature::Keypair,
     recent_blockhash: solana_program::hash::Hash,
 ) -> Pubkey {
-    let (program_config_pubkey, _) = get_program_config_pda(&program_id);
-    let (globalstate_pubkey, _) = get_globalstate_pda(&program_id);
-
-    execute_transaction(
-        banks_client,
-        recent_blockhash,
-        program_id,
-        DoubleZeroInstruction::InitGlobalState(),
-        vec![
-            AccountMeta::new(program_config_pubkey, false),
-            AccountMeta::new(globalstate_pubkey, false),
-        ],
-        payer,
-    )
-    .await;
-
-    globalstate_pubkey
+    init_globalstate_and_config(banks_client, program_id, payer, recent_blockhash).await;
+    get_globalstate_pda(&program_id).0
 }
 
 async fn create_feed(
@@ -128,7 +113,8 @@ async fn create_feed(
 ) -> Pubkey {
     let exchange = Pubkey::new_unique();
     let (feed_pubkey, _) = get_feed_pda(&program_id, code, &exchange);
-    execute_transaction(
+    let groups = create_multicast_groups(banks_client, program_id, payer, 1).await;
+    execute_transaction_with_extra_accounts(
         banks_client,
         recent_blockhash,
         program_id,
@@ -136,7 +122,7 @@ async fn create_feed(
             code: code.to_string(),
             name: code.to_string(),
             exchange,
-            groups: vec![Pubkey::new_unique()],
+            group_count: 1,
             ..Default::default()
         }),
         vec![
@@ -144,6 +130,7 @@ async fn create_feed(
             AccountMeta::new(globalstate_pubkey, false),
         ],
         payer,
+        &group_metas(&groups),
     )
     .await;
     feed_pubkey

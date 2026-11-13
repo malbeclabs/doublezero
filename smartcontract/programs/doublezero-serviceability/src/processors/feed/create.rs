@@ -4,7 +4,7 @@ use crate::{
     pda::get_feed_pda,
     processors::{
         bond_mirror::split_bond_mirror,
-        feed::{check_groups_on_bond, split_group_accounts},
+        feed::{add_feed_to_groups, check_groups_on_bond, group_keys, next_group_accounts},
     },
     seeds::{SEED_FEED, SEED_PREFIX},
     serializer::{try_acc_create, try_acc_write},
@@ -41,11 +41,10 @@ pub struct FeedCreateArgs {
     pub name: String,
     /// The metro (exchange) this feed serves; part of the PDA seed.
     pub exchange: Pubkey,
-    /// Multicast groups joinable in this metro.
-    pub groups: Vec<Pubkey>,
+    /// The number of multicast groups the feed lists. Their accounts follow the system program.
+    pub group_count: u8,
 
-    // RFC-29 tail. A client built before RFC-29 sends nothing past `groups` and still creates a
-    // catalog feed, which is what the defaults below describe.
+    // RFC-29 tail. The defaults below describe a catalog feed.
     /// The builder deploying this feed. Zero creates a catalog feed with no builder, the pre-RFC-29
     /// behavior. Any other value makes this a bonded feed.
     #[incremental(default = Pubkey::default())]
@@ -77,6 +76,8 @@ pub fn process_create_feed(
     let globalstate_account = next_account_info(accounts_iter)?;
     let payer_account = next_account_info(accounts_iter)?;
     let system_program = next_account_info(accounts_iter)?;
+    let group_accounts = next_group_accounts(accounts_iter, value.group_count)?;
+    let groups = group_keys(&group_accounts);
 
     // The tail holds the bond's BondMirror, the payer's Permission account, both, or neither.
     // `value` rather than a `Feed` here, because this is describing a feed that does not exist yet.
@@ -98,8 +99,6 @@ pub fn process_create_feed(
     // deploy. The catalog path below is untouched, so an admin creating a feed on a builder's
     // behalf works exactly as it did.
     let globalstate = GlobalState::load(program_id, globalstate_account)?;
-    let (group_accounts, authorize_candidates) =
-        split_group_accounts(&value.groups, authorize_candidates);
     if bond_authorizes(
         program_id,
         payer_account.key,
@@ -114,7 +113,7 @@ pub fn process_create_feed(
             program_id,
             payer_account.key,
             &value.bond_ref,
-            &value.groups,
+            &groups,
             &group_accounts,
         )?;
     } else {
@@ -131,7 +130,7 @@ pub fn process_create_feed(
     }
 
     validate_feed_name(&value.name)?;
-    validate_feed_groups(&value.groups)?;
+    validate_feed_groups(&groups)?;
     validate_feed_bond_terms(value, globalstate.feature_flags)?;
     let claimed_mirror = if value.builder == Pubkey::default() {
         None
@@ -163,7 +162,7 @@ pub fn process_create_feed(
         code: code.clone(),
         name: value.name.clone(),
         exchange: value.exchange,
-        groups: value.groups.clone(),
+        groups,
         builder: value.builder,
         bond_ref: value.bond_ref,
         spec_id: value.spec_id.clone(),
@@ -191,6 +190,8 @@ pub fn process_create_feed(
             &[bump_seed],
         ],
     )?;
+
+    add_feed_to_groups(program_id, &group_accounts, payer_account, accounts)?;
 
     // Spend the bond on this feed. Ordering matters: the feed account is created first, so a
     // failure anywhere above leaves the bond unclaimed and the builder can retry.

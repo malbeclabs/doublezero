@@ -77,6 +77,7 @@ async fn test_multicastgroup_deactivate_fails_when_counts_nonzero() {
             private: None,
             max_publishers: None,
             max_subscribers: None,
+            feed_count: None,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -415,6 +416,7 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
             private: None,
             max_publishers: None,
             max_subscribers: None,
+            feed_count: None,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -466,6 +468,7 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
             private: None,
             max_publishers: None,
             max_subscribers: None,
+            feed_count: None,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),
@@ -517,6 +520,7 @@ async fn test_delete_multicastgroup_fails_with_active_publishers_or_subscribers(
             private: None,
             max_publishers: None,
             max_subscribers: None,
+            feed_count: None,
         }),
         vec![
             AccountMeta::new(multicastgroup_pubkey, false),

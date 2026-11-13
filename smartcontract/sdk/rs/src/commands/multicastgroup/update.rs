@@ -20,6 +20,7 @@ pub struct UpdateMulticastGroupCommand {
     pub max_publishers: Option<u32>,
     pub max_subscribers: Option<u32>,
     pub feed_count: Option<FeedCountUpdate>,
+    pub expected_private_caps_hash: Option<[u8; 32]>,
 }
 
 impl UpdateMulticastGroupCommand {
@@ -49,6 +50,7 @@ impl UpdateMulticastGroupCommand {
                 max_publishers: self.max_publishers,
                 max_subscribers: self.max_subscribers,
                 feed_count: self.feed_count,
+                expected_private_caps_hash: self.expected_private_caps_hash,
             },
         ))
     }
@@ -91,6 +93,7 @@ mod tests {
                 max_publishers: None,
                 max_subscribers: None,
                 feed_count: None,
+                expected_private_caps_hash: None,
             },
         );
         client
@@ -110,6 +113,7 @@ mod tests {
             max_publishers: None,
             max_subscribers: None,
             feed_count: None,
+            expected_private_caps_hash: None,
         };
 
         let update_invalid_command = UpdateMulticastGroupCommand {
@@ -148,6 +152,7 @@ mod tests {
                 max_publishers: None,
                 max_subscribers: None,
                 feed_count: None,
+                expected_private_caps_hash: None,
             },
         );
         client
@@ -167,6 +172,7 @@ mod tests {
             max_publishers: None,
             max_subscribers: None,
             feed_count: None,
+            expected_private_caps_hash: None,
         }
         .execute(&client);
         assert!(res.is_ok());

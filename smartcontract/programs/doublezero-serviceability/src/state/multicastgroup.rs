@@ -3,7 +3,9 @@ use crate::{
     state::accounttype::AccountType,
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::{account_info::AccountInfo, msg, program_error::ProgramError, pubkey::Pubkey};
+use solana_program::{
+    account_info::AccountInfo, hash::hashv, msg, program_error::ProgramError, pubkey::Pubkey,
+};
 use std::{fmt, net::Ipv4Addr};
 
 #[repr(u8)]
@@ -129,6 +131,19 @@ impl fmt::Display for MulticastGroup {
             self.max_subscribers,
             self.feed_count
         )
+    }
+}
+
+impl MulticastGroup {
+    /// The SHA-256 hash of the private flag and the two caps. `UpdateMulticastGroup` compares the
+    /// hash of the stored values with the hash of the values its caller read.
+    pub fn private_caps_hash(private: bool, max_publishers: u32, max_subscribers: u32) -> [u8; 32] {
+        hashv(&[
+            &[private as u8],
+            &max_publishers.to_le_bytes(),
+            &max_subscribers.to_le_bytes(),
+        ])
+        .to_bytes()
     }
 }
 

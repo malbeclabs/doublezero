@@ -297,6 +297,8 @@ pub enum DoubleZeroError {
     FeedGroupsChanged, // variant 140
     #[error("The group's feed count changed after the caller read it")]
     FeedCountChanged, // variant 141
+    #[error("The group's private flag or caps changed after the caller read them")]
+    PrivateCapsChanged, // variant 142
 }
 
 impl From<DoubleZeroError> for ProgramError {
@@ -444,6 +446,7 @@ impl From<DoubleZeroError> for ProgramError {
             DoubleZeroError::GroupListedByFeed => ProgramError::Custom(139),
             DoubleZeroError::FeedGroupsChanged => ProgramError::Custom(140),
             DoubleZeroError::FeedCountChanged => ProgramError::Custom(141),
+            DoubleZeroError::PrivateCapsChanged => ProgramError::Custom(142),
         }
     }
 }
@@ -592,6 +595,7 @@ impl From<u32> for DoubleZeroError {
             139 => DoubleZeroError::GroupListedByFeed,
             140 => DoubleZeroError::FeedGroupsChanged,
             141 => DoubleZeroError::FeedCountChanged,
+            142 => DoubleZeroError::PrivateCapsChanged,
             _ => DoubleZeroError::Custom(e),
         }
     }

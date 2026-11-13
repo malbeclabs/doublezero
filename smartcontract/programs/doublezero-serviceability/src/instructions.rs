@@ -1143,6 +1143,7 @@ mod tests {
                 max_publishers: None,
                 max_subscribers: None,
                 feed_count: None,
+                expected_private_caps_hash: None,
             }),
             "UpdateMulticastGroup",
         );

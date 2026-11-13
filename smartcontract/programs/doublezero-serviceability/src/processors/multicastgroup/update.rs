@@ -47,14 +47,19 @@ pub struct MulticastGroupUpdateArgs {
     /// Sets the feed count of a group created before the count existed, or of a group whose
     /// count is wrong.
     pub feed_count: Option<FeedCountUpdate>,
+    /// The hash of the private flag and the two caps as the caller read them, from
+    /// `MulticastGroup::private_caps_hash`. The program refuses the update when the stored values
+    /// give a different hash.
+    #[incremental(default = None)]
+    pub expected_private_caps_hash: Option<[u8; 32]>,
 }
 
 impl fmt::Debug for MulticastGroupUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {:?}, multicast_ip: {:?}, max_bandwidth: {:?}, publisher_count: {:?}, subscriber_count: {:?}, use_onchain_allocation: {}, owner: {:?}, private: {:?}, max_publishers: {:?}, max_subscribers: {:?}, feed_count: {:?}",
-            self.code, self.multicast_ip, self.max_bandwidth, self.publisher_count, self.subscriber_count, self.use_onchain_allocation, self.owner, self.private, self.max_publishers, self.max_subscribers, self.feed_count
+            "code: {:?}, multicast_ip: {:?}, max_bandwidth: {:?}, publisher_count: {:?}, subscriber_count: {:?}, use_onchain_allocation: {}, owner: {:?}, private: {:?}, max_publishers: {:?}, max_subscribers: {:?}, feed_count: {:?}, expected_private_caps_hash: {:?}",
+            self.code, self.multicast_ip, self.max_bandwidth, self.publisher_count, self.subscriber_count, self.use_onchain_allocation, self.owner, self.private, self.max_publishers, self.max_subscribers, self.feed_count, self.expected_private_caps_hash
         )
     }
 }
@@ -125,6 +130,22 @@ pub fn process_update_multicastgroup(
 
     // Parse the multicastgroup account
     let mut multicastgroup: MulticastGroup = MulticastGroup::try_from(multicastgroup_account)?;
+
+    if let Some(expected) = value.expected_private_caps_hash {
+        if expected
+            != MulticastGroup::private_caps_hash(
+                multicastgroup.private,
+                multicastgroup.max_publishers,
+                multicastgroup.max_subscribers,
+            )
+        {
+            msg!(
+                "Multicast group {} changed its private flag or caps after the caller read them. Read the group again",
+                multicastgroup.code
+            );
+            return Err(DoubleZeroError::PrivateCapsChanged.into());
+        }
+    }
 
     if let Some(ref code) = value.code {
         multicastgroup.code =

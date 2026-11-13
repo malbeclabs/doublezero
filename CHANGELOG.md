@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+### Changes
+
+## [v0.48.0](https://github.com/malbeclabs/doublezero/compare/client/v0.47.0...client/v0.48.0) - 2026-11-13
+
+### Breaking
+
 - Serviceability
   - Deploy the program before the CLI and the SDK. The new `UnsubscribeFeed` call passes the groups the user keeps, and the old program refuses it with `InvalidArgument`. On the old program, `doublezero connect multicast --unsubscribe-feed` and `doublezero access-pass remove-feed` fail for a user that keeps a group.
   - The old program ignores the new private fields of `UpdateMulticastGroup`, so `doublezero multicast group update --private` changes nothing there. It also ignores the private count of `SetAccessPassCounts`, so `doublezero access-pass set-counts` writes a connection count that is too low.

@@ -138,12 +138,12 @@ jobs:
             exit 0
           fi
           echo "run-e2e=true" >> "$GITHUB_OUTPUT"
-      - name: Checkout doublezero-shreds
+      - name: Checkout doublezero-feeds
         if: steps.gate.outputs.run-e2e == 'true'
         id: checkout-shreds
         uses: actions/checkout@v4
         with:
-          repository: malbeclabs/doublezero-shreds
+          repository: malbeclabs/doublezero-feeds
           token: ${{ secrets.MALBEC_INFRA_RO }}
       - uses: actions/setup-go@v5
         if: steps.gate.outputs.run-e2e == 'true'
@@ -205,7 +205,7 @@ jobs:
           # otherwise its shard would silently run zero tests.
           for pin in "$pinned_1"; do
             if ! echo "$tests" | grep -qxF "$pin"; then
-              echo "::error::Pinned test '$pin' not found in doublezero-shreds. Update the pin list in this workflow."
+              echo "::error::Pinned test '$pin' not found in doublezero-feeds. Update the pin list in this workflow."
               exit 1
             fi
           done
@@ -273,10 +273,10 @@ jobs:
               details_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
             core.setOutput('id', String(data.id));
-      - name: Checkout doublezero-shreds
+      - name: Checkout doublezero-feeds
         uses: actions/checkout@v4
         with:
-          repository: malbeclabs/doublezero-shreds
+          repository: malbeclabs/doublezero-feeds
           ref: ${{ needs.setup.outputs.shreds-sha }}
           token: ${{ secrets.MALBEC_INFRA_RO }}
       - uses: actions/setup-go@v5

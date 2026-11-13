@@ -6,7 +6,15 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- SDK
+  - `MulticastGroupUpdateArgs` and `UpdateMulticastGroupCommand` take `expected_private_caps_hash`. Code that builds them field by field must set it, or set it to `None`.
+
 ### Changes
+
+- Serviceability
+  - `UpdateMulticastGroup` takes an optional hash of the private flag and the two caps that the caller read. When the stored values give a different hash, the program refuses the update with `PrivateCapsChanged`.
+- CLI
+  - `doublezero multicast group update` sends the hash of the private flag and the caps that it read when it sets one of them.
 
 ## [v0.48.0](https://github.com/malbeclabs/doublezero/compare/client/v0.47.0...client/v0.48.0) - 2026-11-13
 

@@ -124,6 +124,7 @@ impl FeedCountMigrateCliCommand {
                     expected: change.stored,
                     new: change.counted,
                 }),
+                expected_private_caps_hash: None,
             })?;
             writeln!(out, "{}: Signature: {signature}", change.code)?;
         }
@@ -197,6 +198,7 @@ mod tests {
             max_publishers: None,
             max_subscribers: None,
             feed_count: Some(FeedCountUpdate { expected, new }),
+            expected_private_caps_hash: None,
         }
     }
 

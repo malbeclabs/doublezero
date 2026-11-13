@@ -11,7 +11,9 @@ use doublezero_sdk::commands::{
     feed::list::ListFeedCommand,
     multicastgroup::{get::GetMulticastGroupCommand, update::UpdateMulticastGroupCommand},
 };
-use doublezero_serviceability::processors::multicastgroup::update::FeedCountUpdate;
+use doublezero_serviceability::{
+    processors::multicastgroup::update::FeedCountUpdate, state::multicastgroup::MulticastGroup,
+};
 use std::{
     io::{BufRead, Write},
     net::Ipv4Addr,
@@ -134,6 +136,16 @@ impl UpdateMulticastGroupCliCommand {
             feed_count: self.feed_count.map(|new| FeedCountUpdate {
                 expected: mgroup.feed_count,
                 new,
+            }),
+            expected_private_caps_hash: (self.private.is_some()
+                || self.max_publishers.is_some()
+                || self.max_subscribers.is_some())
+            .then(|| {
+                MulticastGroup::private_caps_hash(
+                    mgroup.private,
+                    mgroup.max_publishers,
+                    mgroup.max_subscribers,
+                )
             }),
         })?;
         writeln!(out, "Signature: {signature}",)?;
@@ -363,6 +375,7 @@ mod tests {
                 max_publishers: None,
                 max_subscribers: None,
                 feed_count: None,
+                expected_private_caps_hash: None,
             }))
             .returning(move |_| Ok(signature));
 
@@ -385,6 +398,69 @@ mod tests {
                 feed_count: None,
             }
             .execute(&ctx, &client, &mut output, &mut "".as_bytes()),
+        );
+        assert!(res.is_ok());
+        assert_eq!(String::from_utf8(output).unwrap(), EXPECTED_SIGNATURE_STR);
+    }
+
+    #[test]
+    fn test_cli_multicastgroup_update_caps_sends_the_caps_it_read() {
+        let mut client = create_test_client();
+
+        let (pda_pubkey, _bump_seed) = get_multicastgroup_pda(&client.get_program_id(), 1);
+        let signature = Signature::from(SIGNATURE_BYTES);
+        let multicastgroup = MulticastGroup {
+            private: true,
+            max_publishers: 2,
+            max_subscribers: 10,
+            ..make_multicastgroup(pda_pubkey)
+        };
+
+        client.expect_check_requirements().returning(|_| Ok(()));
+        client
+            .expect_get_multicastgroup()
+            .returning(move |_| Ok((pda_pubkey, multicastgroup.clone())));
+        client
+            .expect_update_multicastgroup()
+            .with(predicate::eq(UpdateMulticastGroupCommand {
+                pubkey: pda_pubkey,
+                code: None,
+                multicast_ip: None,
+                max_bandwidth: None,
+                publisher_count: None,
+                subscriber_count: None,
+                owner: None,
+                private: None,
+                max_publishers: Some(3),
+                max_subscribers: None,
+                feed_count: None,
+                expected_private_caps_hash: Some(MulticastGroup::private_caps_hash(true, 2, 10)),
+            }))
+            .returning(move |_| Ok(signature));
+
+        let mut output = Vec::new();
+        let res = block_on(
+            UpdateMulticastGroupCliCommand {
+                pubkey: pda_pubkey.to_string(),
+                code: None,
+                multicast_ip: None,
+                max_bandwidth: None,
+                publisher_count: None,
+                subscriber_count: None,
+                owner: None,
+                private: None,
+                max_publishers: Some(3),
+                max_subscribers: None,
+                wait: false,
+                yes: false,
+                feed_count: None,
+            }
+            .execute(
+                &cli_context_default_for_tests(),
+                &client,
+                &mut output,
+                &mut "".as_bytes(),
+            ),
         );
         assert!(res.is_ok());
         assert_eq!(String::from_utf8(output).unwrap(), EXPECTED_SIGNATURE_STR);
@@ -423,6 +499,7 @@ mod tests {
                 max_publishers: None,
                 max_subscribers: None,
                 feed_count: None,
+                expected_private_caps_hash: None,
             }))
             .returning(move |_| Ok(signature));
 
@@ -484,6 +561,7 @@ mod tests {
                 max_publishers: None,
                 max_subscribers: None,
                 feed_count: None,
+                expected_private_caps_hash: None,
             }))
             .returning(move |_| Ok(signature));
 

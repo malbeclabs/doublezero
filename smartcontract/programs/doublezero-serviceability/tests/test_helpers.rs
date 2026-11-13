@@ -89,13 +89,6 @@ pub async fn init_test() -> (BanksClient, Pubkey, Keypair, solana_program::hash:
     (banks_client, program_id, payer, recent_blockhash)
 }
 
-/// Same as `init_test`, but on a caller-chosen `program_id` and with `accounts` already present
-/// and owned by the program. The caller picks the id because seeded accounts are usually PDAs,
-/// which cannot be derived until it is known.
-///
-/// Some accounts are written by an offchain service rather than by an instruction — `BondMirror`
-/// is written by the cross-chain relayer. Seeding one directly is how a test exercises the read
-/// path before the writer exists.
 /// Create `count` activated multicast groups with `CreateMulticastGroup`, owned by `payer`. The
 /// global state and the config must exist, because each group takes its address from the
 /// config's multicast block.
@@ -150,6 +143,13 @@ pub fn group_metas(groups: &[Pubkey]) -> Vec<AccountMeta> {
         .collect()
 }
 
+/// Same as `init_test`, but on a caller-chosen `program_id` and with `accounts` already present
+/// and owned by the program. The caller picks the id because seeded accounts are usually PDAs,
+/// which cannot be derived until it is known.
+///
+/// Some accounts are written by an offchain service rather than by an instruction — `BondMirror`
+/// is written by the cross-chain relayer. Seeding one directly is how a test exercises the read
+/// path before the writer exists.
 #[allow(dead_code)]
 pub async fn init_test_with_accounts(
     program_id: Pubkey,

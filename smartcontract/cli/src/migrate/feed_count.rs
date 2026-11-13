@@ -8,8 +8,12 @@ use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_sdk::commands::{
     feed::list::ListFeedCommand,
-    multicastgroup::{list::ListMulticastGroupCommand, update::UpdateMulticastGroupCommand},
+    multicastgroup::{
+        get::GetMulticastGroupCommand, list::ListMulticastGroupCommand,
+        update::UpdateMulticastGroupCommand,
+    },
 };
+use doublezero_serviceability::processors::multicastgroup::update::FeedCountUpdate;
 use solana_sdk::pubkey::Pubkey;
 use std::io::{BufRead, Write};
 use tabled::{settings::Style, Table, Tabled};
@@ -116,9 +120,27 @@ impl FeedCountMigrateCliCommand {
                 private: None,
                 max_publishers: None,
                 max_subscribers: None,
-                feed_count: Some(change.counted),
+                feed_count: Some(FeedCountUpdate {
+                    expected: change.stored,
+                    new: change.counted,
+                }),
             })?;
             writeln!(out, "{}: Signature: {signature}", change.code)?;
+        }
+
+        // A program from before the feed count ignores the field, so read each count back.
+        for change in &changes {
+            let (_, group) = client.get_multicastgroup(GetMulticastGroupCommand {
+                pubkey_or_code: change.pubkey.to_string(),
+            })?;
+            if group.feed_count != change.counted {
+                eyre::bail!(
+                    "multicast group {} still has a feed count of {}, not {}. Upgrade the program, then run this command again",
+                    change.code,
+                    group.feed_count,
+                    change.counted
+                );
+            }
         }
 
         Ok(())
@@ -138,6 +160,7 @@ mod tests {
         },
         AccountType, Feed, MulticastGroup, MulticastGroupStatus,
     };
+    use doublezero_serviceability::processors::multicastgroup::update::FeedCountUpdate;
     use mockall::predicate;
     use solana_sdk::{pubkey::Pubkey, signature::Signature};
     use std::collections::HashMap;
@@ -161,7 +184,7 @@ mod tests {
         }
     }
 
-    fn refresh(feed_count: u32, pubkey: Pubkey) -> UpdateMulticastGroupCommand {
+    fn refresh(expected: u32, new: u32, pubkey: Pubkey) -> UpdateMulticastGroupCommand {
         UpdateMulticastGroupCommand {
             pubkey,
             code: None,
@@ -173,7 +196,7 @@ mod tests {
             private: None,
             max_publishers: None,
             max_subscribers: None,
-            feed_count: Some(feed_count),
+            feed_count: Some(FeedCountUpdate { expected, new }),
         }
     }
 
@@ -206,9 +229,15 @@ mod tests {
         let signature = Signature::new_unique();
         client
             .expect_update_multicastgroup()
-            .with(predicate::eq(refresh(2, ewr_a)))
+            .with(predicate::eq(refresh(0, 2, ewr_a)))
             .times(1)
             .returning(move |_| Ok(signature));
+        client
+            .expect_get_multicastgroup()
+            .with(predicate::eq(GetMulticastGroupCommand {
+                pubkey_or_code: ewr_a.to_string(),
+            }))
+            .returning(move |_| Ok((ewr_a, group("ewr-a", 2))));
 
         let mut output = Vec::new();
         block_on(
@@ -317,6 +346,37 @@ mod tests {
         assert_eq!(
             String::from_utf8(output).unwrap(),
             " code  | feed count now | feeds that list it \n ewr-a | 0              | 2                  \n"
+        );
+    }
+
+    #[test]
+    fn test_cli_migrate_feed_count_fails_when_the_program_ignores_the_count() {
+        let (ewr_a, ewr_b) = (Pubkey::new_unique(), Pubkey::new_unique());
+        let mut client = client_with_two_groups(ewr_a, ewr_b);
+        client
+            .expect_update_multicastgroup()
+            .returning(|_| Ok(Signature::new_unique()));
+        client
+            .expect_get_multicastgroup()
+            .returning(move |_| Ok((ewr_a, group("ewr-a", 0))));
+
+        let err = block_on(
+            FeedCountMigrateCliCommand {
+                groups: vec![],
+                yes: true,
+                dry_run: false,
+            }
+            .execute(
+                &cli_context_default_for_tests(),
+                &client,
+                &mut Vec::new(),
+                &mut "".as_bytes(),
+            ),
+        )
+        .unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "multicast group ewr-a still has a feed count of 0, not 2. Upgrade the program, then run this command again"
         );
     }
 }

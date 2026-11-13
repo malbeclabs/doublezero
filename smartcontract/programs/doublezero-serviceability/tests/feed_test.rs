@@ -14,8 +14,9 @@ use doublezero_serviceability::{
         globalstate::setfeatureflags::SetFeatureFlagsArgs,
         multicastgroup::{
             allowlist::publisher::add::AddMulticastGroupPubAllowlistArgs,
-            create::MulticastGroupCreateArgs, delete::MulticastGroupDeleteArgs,
-            update::MulticastGroupUpdateArgs,
+            create::MulticastGroupCreateArgs,
+            delete::MulticastGroupDeleteArgs,
+            update::{FeedCountUpdate, MulticastGroupUpdateArgs},
         },
         permission::create::PermissionCreateArgs,
     },
@@ -2033,7 +2034,10 @@ async fn test_an_admin_sets_the_feed_count_of_an_old_group() {
         &payer,
         groups[0],
         MulticastGroupUpdateArgs {
-            feed_count: Some(4),
+            feed_count: Some(FeedCountUpdate {
+                expected: 0,
+                new: 4,
+            }),
             ..Default::default()
         },
     )
@@ -2164,7 +2168,10 @@ async fn test_feed_create_refuses_a_group_at_its_maximum_feed_count() {
         &payer,
         groups[0],
         MulticastGroupUpdateArgs {
-            feed_count: Some(u32::MAX),
+            feed_count: Some(FeedCountUpdate {
+                expected: 0,
+                new: u32::MAX,
+            }),
             ..Default::default()
         },
     )
@@ -2223,7 +2230,10 @@ async fn test_feed_delete_refuses_a_group_whose_count_is_zero() {
             &payer,
             groups[0],
             MulticastGroupUpdateArgs {
-                feed_count: Some(feed_count),
+                feed_count: Some(FeedCountUpdate {
+                    expected: 1 - feed_count,
+                    new: feed_count,
+                }),
                 ..Default::default()
             },
         )
@@ -2309,4 +2319,85 @@ async fn test_feed_update_refuses_a_group_change_on_a_list_that_changed() {
     );
     assert_eq!(feed_count(&mut banks_client, groups[0]).await, 1);
     assert_eq!(feed_count(&mut banks_client, groups[1]).await, 0);
+}
+
+/// A feed lists a group. One call that sets the group's count to 0 and marks it private fails,
+/// because the program checks the count that was stored before the call.
+#[tokio::test]
+async fn test_a_listed_group_cannot_become_private_with_a_count_of_zero_in_the_same_call() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+    let groups = create_multicast_groups(&mut banks_client, program_id, &payer, 1).await;
+    create_catalog_feed(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        "listed",
+        &groups,
+    )
+    .await;
+
+    let result = update_group(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        groups[0],
+        MulticastGroupUpdateArgs {
+            private: Some(true),
+            feed_count: Some(FeedCountUpdate {
+                expected: 1,
+                new: 0,
+            }),
+            ..Default::default()
+        },
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::GroupListedByFeed));
+    let group = get_account_data(&mut banks_client, groups[0])
+        .await
+        .unwrap()
+        .get_multicastgroup()
+        .unwrap();
+    assert!(!group.private);
+    assert_eq!(group.feed_count, 1);
+}
+
+/// An admin reads a group with a count of 0, and a feed adds the group before the admin's write
+/// lands. The write carries the count the admin read, so it fails and the count stays 1.
+#[tokio::test]
+async fn test_a_feed_count_write_fails_when_the_count_changed_after_the_read() {
+    let (mut banks_client, program_id, payer, recent_blockhash) = init_test().await;
+    let globalstate_pubkey =
+        init_globalstate(&mut banks_client, program_id, &payer, recent_blockhash).await;
+    let groups = create_multicast_groups(&mut banks_client, program_id, &payer, 1).await;
+    create_catalog_feed(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        "raced",
+        &groups,
+    )
+    .await;
+
+    let result = update_group(
+        &mut banks_client,
+        program_id,
+        globalstate_pubkey,
+        &payer,
+        groups[0],
+        MulticastGroupUpdateArgs {
+            feed_count: Some(FeedCountUpdate {
+                expected: 0,
+                new: 0,
+            }),
+            ..Default::default()
+        },
+    )
+    .await;
+    assert_custom_at_ix0(&result, custom_code(DoubleZeroError::FeedCountChanged));
+    assert_eq!(feed_count(&mut banks_client, groups[0]).await, 1);
 }

@@ -44,8 +44,7 @@ pub struct FeedCreateArgs {
     /// The number of multicast groups the feed lists. Their accounts follow the system program.
     pub group_count: u8,
 
-    // RFC-29 tail. A client built before RFC-29 sends nothing past `groups` and still creates a
-    // catalog feed, which is what the defaults below describe.
+    // RFC-29 tail. The defaults below describe a catalog feed.
     /// The builder deploying this feed. Zero creates a catalog feed with no builder, the pre-RFC-29
     /// behavior. Any other value makes this a bonded feed.
     #[incremental(default = Pubkey::default())]

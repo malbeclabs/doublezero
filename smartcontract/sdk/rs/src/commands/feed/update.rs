@@ -37,8 +37,8 @@ impl UpdateFeedCommand {
                 pubkeys.len()
             );
         }
-        // The program sees only the groups that change, so it cannot refuse a repeated group or
-        // a list that is too long. The command checks the whole list here.
+        // The program refuses a new list with a repeated group or more than 20 groups. It sees
+        // only the groups that change, so the command refuses a group repeated in the request.
         if let Some(groups) = &self.groups {
             if let Some(group) = groups
                 .iter()

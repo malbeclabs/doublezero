@@ -1,6 +1,8 @@
 use crate::DoubleZeroClient;
 use doublezero_program_common::validate_account_code;
-use doublezero_serviceability::processors::multicastgroup::update::MulticastGroupUpdateArgs;
+use doublezero_serviceability::processors::multicastgroup::update::{
+    FeedCountUpdate, MulticastGroupUpdateArgs,
+};
 use doublezero_serviceability_instruction::multicastgroup::update_multicast_group;
 use solana_sdk::{pubkey::Pubkey, signature::Signature};
 use std::net::Ipv4Addr;
@@ -17,7 +19,7 @@ pub struct UpdateMulticastGroupCommand {
     pub private: Option<bool>,
     pub max_publishers: Option<u32>,
     pub max_subscribers: Option<u32>,
-    pub feed_count: Option<u32>,
+    pub feed_count: Option<FeedCountUpdate>,
 }
 
 impl UpdateMulticastGroupCommand {

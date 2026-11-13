@@ -11,6 +11,7 @@ use doublezero_sdk::commands::{
     feed::list::ListFeedCommand,
     multicastgroup::{get::GetMulticastGroupCommand, update::UpdateMulticastGroupCommand},
 };
+use doublezero_serviceability::processors::multicastgroup::update::FeedCountUpdate;
 use std::{
     io::{BufRead, Write},
     net::Ipv4Addr,
@@ -130,7 +131,10 @@ impl UpdateMulticastGroupCliCommand {
             private: self.private,
             max_publishers: self.max_publishers,
             max_subscribers: self.max_subscribers,
-            feed_count: self.feed_count,
+            feed_count: self.feed_count.map(|new| FeedCountUpdate {
+                expected: mgroup.feed_count,
+                new,
+            }),
         })?;
         writeln!(out, "Signature: {signature}",)?;
 

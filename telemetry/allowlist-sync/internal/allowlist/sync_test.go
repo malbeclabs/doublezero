@@ -1082,3 +1082,95 @@ func TestCloudflareTarget_RefusesToEmptyTheList(t *testing.T) {
 	assert.EqualError(t, target.Apply(context.Background(), p), "refusing to empty the cloudflare list")
 	assert.Empty(t, cf.ops)
 }
+
+type fakeAOP struct {
+	settings map[string]AOPSetting
+	errs     map[string]error
+}
+
+func (f *fakeAOP) AOPSetting(_ context.Context, h string) (AOPSetting, error) {
+	return f.settings[h], f.errs[h]
+}
+
+func TestCheckAOP_ExportsEachHostname(t *testing.T) {
+	h := newHarness(t, fleet(1))
+	exp := time.Date(2027, 11, 13, 23, 58, 22, 0, time.UTC)
+	aop := &fakeAOP{settings: map[string]AOPSetting{
+		"gnmic.example":    {Set: true, Enabled: true, Status: "active", CertStatus: "active", ExpiresOn: exp},
+		"state-in.example": {Set: true, Enabled: false, Status: "active", CertStatus: "active", ExpiresOn: exp},
+		// unset.example has no setting: the zero value.
+	}}
+	h.cfg.AOP, h.cfg.AOPHostnames = aop, []string{"gnmic.example", "state-in.example", "unset.example"}
+	h.cfg.Targets = []Target{h.cmTarget, h.cfTarget}
+	s, err := New(h.cfg)
+	require.NoError(t, err)
+	s.checkAOP(context.Background())
+
+	require.NoError(t, testutil.CollectAndCompare(h.metrics.AOPActive, strings.NewReader(`
+# HELP doublezero_telemetry_allowlist_sync_aop_active 1 when AOP is on for the hostname and its association and certificate are active, 0 when it is off, not set, or not active yet. No series when the setting could not be read.
+# TYPE doublezero_telemetry_allowlist_sync_aop_active gauge
+doublezero_telemetry_allowlist_sync_aop_active{hostname="gnmic.example"} 1
+doublezero_telemetry_allowlist_sync_aop_active{hostname="state-in.example"} 0
+doublezero_telemetry_allowlist_sync_aop_active{hostname="unset.example"} 0
+`)))
+	expiry := `
+# HELP doublezero_telemetry_allowlist_sync_aop_certificate_expiry_timestamp_seconds Unix time the AOP client certificate Cloudflare presents to the hostname's origin expires. No series when the hostname has no setting or the setting could not be read.
+# TYPE doublezero_telemetry_allowlist_sync_aop_certificate_expiry_timestamp_seconds gauge
+doublezero_telemetry_allowlist_sync_aop_certificate_expiry_timestamp_seconds{hostname="gnmic.example"} 1.826150302e+09
+doublezero_telemetry_allowlist_sync_aop_certificate_expiry_timestamp_seconds{hostname="state-in.example"} 1.826150302e+09
+`
+	require.NoError(t, testutil.CollectAndCompare(h.metrics.AOPExpiry, strings.NewReader(expiry)))
+
+	// A hostname that cannot be read loses both series, and the others keep
+	// theirs.
+	aop.errs = map[string]error{"gnmic.example": errors.New("HTTP 403")}
+	s.checkAOP(context.Background())
+	assert.Equal(t, 1.0, counter(h.metrics.Errors, "aop"))
+	assert.Equal(t, 2, testutil.CollectAndCount(h.metrics.AOPActive))
+	assert.Equal(t, 1, testutil.CollectAndCount(h.metrics.AOPExpiry))
+	assert.Equal(t, 0.0, testutil.ToFloat64(h.metrics.AOPActive.WithLabelValues("state-in.example")))
+
+	// It comes back on the next read that works.
+	aop.errs = nil
+	s.checkAOP(context.Background())
+	require.NoError(t, testutil.CollectAndCompare(h.metrics.AOPExpiry, strings.NewReader(expiry)))
+
+	// A setting removed in Cloudflare loses its expiry, so no stale expiry
+	// hides it.
+	delete(aop.settings, "gnmic.example")
+	s.checkAOP(context.Background())
+	assert.Equal(t, 1, testutil.CollectAndCount(h.metrics.AOPExpiry))
+	assert.Equal(t, 0.0, testutil.ToFloat64(h.metrics.AOPActive.WithLabelValues("gnmic.example")))
+}
+
+// A pass cut short by shutdown does not read AOP: the reads would fail on the
+// cancelled context and log errors.
+func TestRunPass_NoAOPReadAfterShutdown(t *testing.T) {
+	h := newHarness(t, fleet(1))
+	cfg := h.cfg
+	cfg.Targets = []Target{h.cmTarget, h.cfTarget}
+	cfg.AOP = &fakeAOP{errs: map[string]error{"gnmic.example": context.Canceled}}
+	cfg.AOPHostnames = []string{"gnmic.example"}
+	s, err := New(cfg)
+	require.NoError(t, err)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	s.runPass(ctx)
+	assert.Equal(t, 0.0, counter(h.metrics.Errors, "aop"))
+}
+
+// A failed AOP read never stops the list.
+func TestRun_AOPReadFailureDoesNotStopThePass(t *testing.T) {
+	h := newHarness(t, fleet(2))
+	cfg := h.cfg
+	cfg.Targets = []Target{h.cmTarget, h.cfTarget}
+	cfg.AOP = &fakeAOP{errs: map[string]error{"gnmic.example": errors.New("HTTP 403")}}
+	cfg.AOPHostnames = []string{"gnmic.example"}
+	s, err := New(cfg)
+	require.NoError(t, err)
+	s.runPass(context.Background())
+	assert.Equal(t, float64(t0.Unix()), testutil.ToFloat64(h.metrics.LastSuccess))
+	assert.Equal(t, []string{"45.0.0.1", "45.0.0.2"}, h.cfIPs())
+	assert.Equal(t, 1.0, counter(h.metrics.Errors, "aop"))
+	assert.Equal(t, 0, testutil.CollectAndCount(h.metrics.AOPExpiry))
+}

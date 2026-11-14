@@ -206,3 +206,73 @@ func TestParseListIP(t *testing.T) {
 		assert.Error(t, err, s)
 	}
 }
+
+func newTestAOP(t *testing.T, handler http.HandlerFunc) *CloudflareAOP {
+	t.Helper()
+	srv := httptest.NewServer(handler)
+	t.Cleanup(srv.Close)
+	return &CloudflareAOP{Client: srv.Client(), BaseURL: srv.URL, Token: "cf-token", ZoneID: "zone"}
+}
+
+// The response fields as Cloudflare returned them for gnmic-testnet on
+// 2026-11-14, without the certificate.
+func TestCloudflareAOP_ReadsTheSetting(t *testing.T) {
+	c := newTestAOP(t, func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "Bearer cf-token", r.Header.Get("Authorization"))
+		assert.Equal(t, http.MethodGet, r.Method)
+		assert.Equal(t, "/zones/zone/origin_tls_client_auth/hostnames/gnmic-testnet.doublezero.xyz", r.URL.Path)
+		cfOK(w, map[string]any{
+			"hostname": "gnmic-testnet.doublezero.xyz", "cert_id": "791eaa78-35c8-4b7b-992d-b6ca6fdf2baf",
+			"enabled": true, "status": "active", "cert_status": "active",
+			"issuer": "CN=DoubleZero testnet origin pull CA,O=DoubleZero", "expires_on": "2027-11-13T23:58:22Z",
+		}, "")
+	})
+	s, err := c.AOPSetting(context.Background(), "gnmic-testnet.doublezero.xyz")
+	require.NoError(t, err)
+	assert.Equal(t, AOPSetting{Set: true, Enabled: true, Status: "active", CertStatus: "active", ExpiresOn: time.Date(2027, 11, 13, 23, 58, 22, 0, time.UTC)}, s)
+	assert.True(t, s.Active())
+}
+
+func TestCloudflareAOP_HostnameWithNoSetting(t *testing.T) {
+	c := newTestAOP(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"success":false,"errors":[{"code":1553,"message":"Auth origin pull setting for this hostname not found."}],"messages":[]}`))
+	})
+	s, err := c.AOPSetting(context.Background(), "gnmic-mainnet-beta.doublezero.xyz")
+	require.NoError(t, err)
+	assert.Equal(t, AOPSetting{}, s)
+	assert.False(t, s.Active())
+}
+
+// Only Cloudflare's "no setting" answer reads as no setting: any other error,
+// a 404 for a wrong zone included, is a failed read.
+func TestCloudflareAOP_Errors(t *testing.T) {
+	status, body := 0, ""
+	c := newTestAOP(t, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(status)
+		_, _ = w.Write([]byte(body))
+	})
+	for _, tc := range []struct {
+		status    int
+		body, err string
+	}{
+		{http.StatusNotFound, `{"success":false,"errors":[{"code":7003,"message":"Could not route to /zones/zone"}]}`,
+			"reading the AOP setting of h.example: HTTP 404: [{7003 Could not route to /zones/zone}]"},
+		{http.StatusForbidden, `{"success":false,"errors":[{"code":10000,"message":"Authentication error"}]}`,
+			"reading the AOP setting of h.example: HTTP 403: [{10000 Authentication error}]"},
+		{http.StatusOK, `{"success":true,"errors":[],"result":{"enabled":true,"cert_status":"active","expires_on":"next year"}}`,
+			`decoding the AOP setting of h.example: expires_on "next year": parsing time "next year" as "2006-01-02T15:04:05Z07:00": cannot parse "next year" as "2006"`},
+	} {
+		status, body = tc.status, tc.body
+		_, err := c.AOPSetting(context.Background(), "h.example")
+		assert.EqualError(t, err, tc.err)
+	}
+}
+
+func TestAOPSetting_Active(t *testing.T) {
+	assert.True(t, AOPSetting{Set: true, Enabled: true, Status: "active", CertStatus: "active"}.Active())
+	assert.False(t, AOPSetting{Set: true, Enabled: false, Status: "active", CertStatus: "active"}.Active(), "AOP turned off")
+	assert.False(t, AOPSetting{Set: true, Enabled: true, Status: "active", CertStatus: "pending_deployment"}.Active())
+	assert.False(t, AOPSetting{Set: true, Enabled: true, Status: "pending_deployment", CertStatus: "active"}.Active(), "association deploying")
+	assert.False(t, AOPSetting{Enabled: true, Status: "active", CertStatus: "active"}.Active(), "no setting")
+}

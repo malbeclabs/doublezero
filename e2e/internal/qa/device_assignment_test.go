@@ -12,6 +12,21 @@ import (
 
 func TestAssignDevicesToClients(t *testing.T) {
 	noShuffle := func(devices []*Device) {}
+	readyDevice := func(code string) *Device {
+		return &Device{Code: code, Status: serviceability.DeviceStatusActivated, MaxUsers: 128}
+	}
+	drainedDevice := func(code string) *Device {
+		return &Device{Code: code, Status: serviceability.DeviceStatusActivated}
+	}
+	hostDeviceCodes := func(result BatchData, host string) []string {
+		codes := make([]string, len(result))
+		for batchNum := range codes {
+			if assignment := result[batchNum][host]; assignment != nil {
+				codes[batchNum] = assignment.Device.Code
+			}
+		}
+		return codes
+	}
 
 	t.Run("assigns to client with fewest devices when multiple have low latency", func(t *testing.T) {
 		devices := []*Device{
@@ -122,6 +137,54 @@ func TestAssignDevicesToClients(t *testing.T) {
 			if batch["client2"] == nil {
 				t.Errorf("batch %d missing client2", batchNum)
 			}
+		}
+	})
+
+	t.Run("pads with the last ready device when the list ends with a not-ready device", func(t *testing.T) {
+		devices := []*Device{
+			readyDevice("dev1"),
+			readyDevice("dev2"),
+			drainedDevice("drained"),
+			readyDevice("dev3"),
+			readyDevice("dev4"),
+			readyDevice("dev5"),
+			readyDevice("dev6"),
+			readyDevice("dev7"),
+		}
+		clients := []*Client{{Host: "client1"}, {Host: "client2"}}
+		latencies := ClientLatencies{
+			"client1": {"dev1": 10, "dev2": 10, "drained": 10},
+			"client2": {"dev3": 10, "dev4": 10, "dev5": 10, "dev6": 10, "dev7": 10},
+		}
+
+		result := AssignDevicesToClients(devices, clients, latencies, nil, noShuffle)
+
+		want := []string{"dev1", "dev2", "drained", "dev2", "dev2"}
+		if got := hostDeviceCodes(result, "client1"); !reflect.DeepEqual(got, want) {
+			t.Errorf("client1 devices by batch: got %v, want %v", got, want)
+		}
+	})
+
+	t.Run("pads with the last device when no device is ready", func(t *testing.T) {
+		devices := []*Device{
+			drainedDevice("drained1"),
+			drainedDevice("drained2"),
+			readyDevice("dev1"),
+			readyDevice("dev2"),
+			readyDevice("dev3"),
+			readyDevice("dev4"),
+		}
+		clients := []*Client{{Host: "client1"}, {Host: "client2"}}
+		latencies := ClientLatencies{
+			"client1": {"drained1": 10, "drained2": 10},
+			"client2": {"dev1": 10, "dev2": 10, "dev3": 10, "dev4": 10},
+		}
+
+		result := AssignDevicesToClients(devices, clients, latencies, nil, noShuffle)
+
+		want := []string{"drained1", "drained2", "drained2", "drained2"}
+		if got := hostDeviceCodes(result, "client1"); !reflect.DeepEqual(got, want) {
+			t.Errorf("client1 devices by batch: got %v, want %v", got, want)
 		}
 	})
 

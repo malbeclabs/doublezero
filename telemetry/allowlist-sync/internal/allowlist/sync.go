@@ -53,8 +53,8 @@ type Config struct {
 
 	Interval    time.Duration
 	PassTimeout time.Duration
-	// ReportTimeout bounds the caller address read; zero means
-	// DefaultReportTimeout.
+	// ReportTimeout bounds the caller address read, and separately each
+	// pass's AOP reads; zero means DefaultReportTimeout.
 	ReportTimeout time.Duration
 	// DryRun computes and logs each pass's changes and writes nothing.
 	DryRun bool
@@ -62,6 +62,11 @@ type Config struct {
 	// removal limit refuses it. The refusal logs the digest to set. It allows
 	// that exact list and no other, so leaving it set does no harm.
 	AllowShrinkTo string
+
+	// AOP reads the AOP setting of each of AOPHostnames after every pass, for
+	// the certificate expiry alert. Without AOP nothing is read.
+	AOP          AOPReader
+	AOPHostnames []string
 }
 
 type Syncer struct {
@@ -119,6 +124,9 @@ func (s *Syncer) runPass(ctx context.Context) {
 	defer cancel()
 	if err := s.Pass(pctx); err != nil && ctx.Err() == nil {
 		s.cfg.Log.Error("allowlist pass failed or was refused; the next pass tries again", "error", err)
+	}
+	if ctx.Err() == nil {
+		s.checkAOP(ctx)
 	}
 }
 

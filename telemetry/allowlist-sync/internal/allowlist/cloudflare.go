@@ -359,15 +359,27 @@ func (c *CloudflareIPList) bulk(ctx context.Context, method string, body []byte,
 }
 
 func (c *CloudflareIPList) call(ctx context.Context, method, path string, body []byte) (*cfEnvelope, error) {
-	req, err := http.NewRequestWithContext(ctx, method, c.BaseURL+path, bytes.NewReader(body))
+	return cfCall(ctx, c.Client, c.BaseURL, c.Token, method, path, body)
+}
+
+// cfAPIError is a response Cloudflare answered with an error.
+type cfAPIError struct {
+	StatusCode int
+	Errors     []cfError
+}
+
+func (e *cfAPIError) Error() string { return fmt.Sprintf("HTTP %d: %v", e.StatusCode, e.Errors) }
+
+func cfCall(ctx context.Context, client *http.Client, baseURL, token, method, path string, body []byte) (*cfEnvelope, error) {
+	req, err := http.NewRequestWithContext(ctx, method, baseURL+path, bytes.NewReader(body))
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.Token)
+	req.Header.Set("Authorization", "Bearer "+token)
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
-	resp, err := c.Client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -381,7 +393,7 @@ func (c *CloudflareIPList) call(ctx context.Context, method, path string, body [
 		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, truncate(raw))
 	}
 	if resp.StatusCode != http.StatusOK || !env.Success {
-		return nil, fmt.Errorf("HTTP %d: %v", resp.StatusCode, env.Errors)
+		return nil, &cfAPIError{StatusCode: resp.StatusCode, Errors: env.Errors}
 	}
 	return &env, nil
 }

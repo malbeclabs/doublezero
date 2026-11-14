@@ -1,6 +1,8 @@
 // Command allowlist-sync keeps the device address allowlists equal to the
 // ledger plus the reviewed exception file: gnmic's address map ConfigMap and
-// the Cloudflare IP list in front of gnmic and state-in.
+// the Cloudflare IP list in front of gnmic and state-in. With
+// --cloudflare-zone-id and --aop-hostnames it also exports when each
+// hostname's AOP client certificate expires.
 package main
 
 import (
@@ -105,6 +107,16 @@ func run() error {
 		}},
 	}
 
+	var aop allowlist.AOPReader
+	if cfg.CloudflareZoneID != "" {
+		aop = &allowlist.CloudflareAOP{
+			Client:  &http.Client{Timeout: 30 * time.Second},
+			BaseURL: cfg.CloudflareURL,
+			Token:   cfg.CloudflareToken,
+			ZoneID:  cfg.CloudflareZoneID,
+		}
+	}
+
 	syncer, err := allowlist.New(allowlist.Config{
 		Log:            log,
 		Clock:          clock,
@@ -118,13 +130,15 @@ func run() error {
 		PassTimeout:    cfg.PassTimeout,
 		DryRun:         cfg.DryRun,
 		AllowShrinkTo:  cfg.AllowShrinkTo,
+		AOP:            aop,
+		AOPHostnames:   cfg.AOPHostnames,
 	})
 	if err != nil {
 		return err
 	}
 	log.Info("allowlist sync starting", "env", cfg.Env, "dry_run", cfg.DryRun, "interval", cfg.Interval,
 		"configmap", cfg.GnmicMapConfigMap, "key", cfg.GnmicMapKey, "cloudflare_list", cfg.CloudflareListID,
-		"allow_shrink_to", cfg.AllowShrinkTo)
+		"allow_shrink_to", cfg.AllowShrinkTo, "aop_hostnames", cfg.AOPHostnames)
 
 	syncErrCh := make(chan error, 1)
 	go func() { syncErrCh <- syncer.Run(ctx) }()
@@ -215,6 +229,8 @@ type Config struct {
 	CloudflareAccountID string
 	CloudflareListID    string
 	CloudflareToken     string
+	CloudflareZoneID    string
+	AOPHostnames        []string
 }
 
 func getenv(key, def string) string {
@@ -280,6 +296,8 @@ func loadConfig() (Config, error) {
 	flag.StringVar(&cfg.CloudflareURL, "cloudflare-api-url", getenv("CLOUDFLARE_API_URL", defaultCloudflareURL), "Cloudflare API base URL (env: CLOUDFLARE_API_URL)")
 	flag.StringVar(&cfg.CloudflareAccountID, "cloudflare-account-id", getenv("CLOUDFLARE_ACCOUNT_ID", ""), "Cloudflare account that holds the IP list (env: CLOUDFLARE_ACCOUNT_ID)")
 	flag.StringVar(&cfg.CloudflareListID, "cloudflare-list-id", getenv("CLOUDFLARE_LIST_ID", ""), "Cloudflare IP list the sync owns (env: CLOUDFLARE_LIST_ID)")
+	flag.StringVar(&cfg.CloudflareZoneID, "cloudflare-zone-id", getenv("CLOUDFLARE_ZONE_ID", ""), "Cloudflare zone of the AOP hostnames; set with --aop-hostnames (env: CLOUDFLARE_ZONE_ID)")
+	aopHostnames := flag.String("aop-hostnames", getenv("AOP_HOSTNAMES", ""), "comma-separated hostnames whose AOP certificate expiry the sync exports; set with --cloudflare-zone-id (env: AOP_HOSTNAMES)")
 
 	flag.Parse()
 	if cfg.ShowVersion {
@@ -287,6 +305,15 @@ func loadConfig() (Config, error) {
 	}
 	if err := errors.Join(envErrs...); err != nil {
 		return Config{}, err
+	}
+
+	for _, h := range strings.Split(*aopHostnames, ",") {
+		if h = strings.TrimSpace(h); h != "" {
+			cfg.AOPHostnames = append(cfg.AOPHostnames, strings.ToLower(h))
+		}
+	}
+	if (cfg.CloudflareZoneID == "") != (len(cfg.AOPHostnames) == 0) {
+		return Config{}, errors.New("--cloudflare-zone-id (CLOUDFLARE_ZONE_ID) and --aop-hostnames (AOP_HOSTNAMES) are set together")
 	}
 
 	// Secrets come from the environment only, so they never show in a

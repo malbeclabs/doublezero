@@ -15,6 +15,8 @@ All notable changes to this project will be documented in this file.
   - `UpdateMulticastGroup` takes an optional hash of the private flag and the two caps that the caller read. When the stored values give a different hash, the program refuses the update with `PrivateCapsChanged`.
 - CLI
   - `doublezero multicast group update` sends the hash of the private flag and the caps that it read when it sets one of them.
+- Telemetry
+  - With `--cloudflare-zone-id` and `--aop-hostnames`, the allowlist sync reads each hostname's per-hostname Authenticated Origin Pulls setting after every pass and exports `doublezero_telemetry_allowlist_sync_aop_certificate_expiry_timestamp_seconds` and `doublezero_telemetry_allowlist_sync_aop_active` per hostname. A hostname whose setting cannot be read has neither series. A failed read never stops a pass, and a slow one delays the next by at most 20 seconds. Its token then also needs "Zone > SSL and Certificates > Read".
 
 ## [v0.48.0](https://github.com/malbeclabs/doublezero/compare/client/v0.47.0...client/v0.48.0) - 2026-11-13
 

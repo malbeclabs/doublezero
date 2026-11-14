@@ -22,7 +22,8 @@ type Metrics struct {
 	// RefusedPasses counts passes refused by a fail-safe, by reason. The sync
 	// health alert pages on any increase.
 	RefusedPasses *prometheus.CounterVec
-	// Errors counts failed passes and failed report reads, by stage.
+	// Errors counts failed passes, failed report reads and failed AOP reads,
+	// by stage.
 	Errors *prometheus.CounterVec
 	// Writes counts writes to each target.
 	Writes *prometheus.CounterVec
@@ -58,6 +59,15 @@ type Metrics struct {
 	// CallerReadCut is 1 when the last caller read reached MaxCallerRows and
 	// kept only the newest calls.
 	CallerReadCut prometheus.Gauge
+
+	// AOPExpiry is, per AOP hostname, the Unix time the client certificate
+	// Cloudflare presents to its origin expires; a hostname with no setting, or
+	// a certificate with no expiry yet, has no series. AOPActive is 1 when AOP
+	// is on for the hostname and both its association and its certificate are
+	// active, and 0 otherwise.
+	// A hostname whose setting could not be read has neither series.
+	AOPExpiry *prometheus.GaugeVec
+	AOPActive *prometheus.GaugeVec
 }
 
 func NewMetrics(reg prometheus.Registerer) *Metrics {
@@ -75,7 +85,7 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 			Name: metricPrefix + "refused_passes_total", Help: "Passes a fail-safe refused, by reason.",
 		}, []string{"reason"}),
 		Errors: prometheus.NewCounterVec(prometheus.CounterOpts{
-			Name: metricPrefix + "errors_total", Help: "Failed passes and report reads, by stage.",
+			Name: metricPrefix + "errors_total", Help: "Failed passes, report reads and AOP reads, by stage.",
 		}, []string{"stage"}),
 		Writes: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name: metricPrefix + "writes_total", Help: "Writes to each target.",
@@ -114,10 +124,19 @@ func NewMetrics(reg prometheus.Registerer) *Metrics {
 		CallerReadCut: prometheus.NewGauge(prometheus.GaugeOpts{
 			Name: metricPrefix + "caller_read_cut", Help: "1 when the last caller read reached its row limit and kept only the newest calls.",
 		}),
+		AOPExpiry: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: metricPrefix + "aop_certificate_expiry_timestamp_seconds",
+			Help: "Unix time the AOP client certificate Cloudflare presents to the hostname's origin expires. No series when the hostname has no setting or the setting could not be read.",
+		}, []string{"hostname"}),
+		AOPActive: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: metricPrefix + "aop_active",
+			Help: "1 when AOP is on for the hostname and its association and certificate are active, 0 when it is off, not set, or not active yet. No series when the setting could not be read.",
+		}, []string{"hostname"}),
 	}
 	reg.MustRegister(m.BuildInfo, m.LastSuccess, m.DryRun, m.RefusedPasses, m.Errors, m.Writes, m.ExternalChanges,
 		m.LiveDevice, m.ListedAddresses, m.ListedDevices, m.ExceptionReview,
-		m.OffchainCaller, m.OffchainCallersDropped, m.LastListedCall, m.ReportLastSuccess, m.CallerReadCut)
+		m.OffchainCaller, m.OffchainCallersDropped, m.LastListedCall, m.ReportLastSuccess, m.CallerReadCut,
+		m.AOPExpiry, m.AOPActive)
 	// Both targets and every refusal reason report 0 from the start, so an
 	// alert on an increase has a series to read before the first event.
 	for _, target := range []string{"gnmic_map", "cloudflare_list"} {

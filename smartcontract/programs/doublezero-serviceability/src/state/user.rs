@@ -303,8 +303,10 @@ pub struct User {
         )
     )]
     pub accesspass_pk: Pubkey, // 32
-    // True when this user raised the pass-wide multicast count. DeleteUser lowers the count only
-    // when this is true. A user that joins only a private group does not raise the count.
+    // True when this user raised the unicast count or the public multicast count on its pass.
+    // It is always true for a user that is not multicast, such as an IBRL user.
+    // For a multicast user, it is true only while the user is on a public group or a feed.
+    // DeleteUser lowers that count only when this is true.
     pub holds_pass_seat: bool, // 1
 }
 

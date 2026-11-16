@@ -1102,9 +1102,19 @@ func TestCheckAOP_ExportsEachHostname(t *testing.T) {
 	}}
 	h.cfg.AOP, h.cfg.AOPHostnames = aop, []string{"gnmic.example", "state-in.example", "unset.example"}
 	h.cfg.Targets = []Target{h.cmTarget, h.cfTarget}
+	var buf bytes.Buffer
+	h.cfg.Log = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{
+		ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
+			if a.Key == slog.TimeKey {
+				return slog.Attr{}
+			}
+			return a
+		},
+	}))
 	s, err := New(h.cfg)
 	require.NoError(t, err)
 	s.checkAOP(context.Background())
+	assert.Empty(t, buf.String())
 
 	require.NoError(t, testutil.CollectAndCompare(h.metrics.AOPActive, strings.NewReader(`
 # HELP doublezero_telemetry_allowlist_sync_aop_active 1 when AOP is on for the hostname and its association and certificate are active, 0 when it is off, not set, or not active yet. No series when the setting could not be read.
@@ -1126,6 +1136,7 @@ doublezero_telemetry_allowlist_sync_aop_certificate_expiry_timestamp_seconds{hos
 	aop.errs = map[string]error{"gnmic.example": errors.New("HTTP 403")}
 	s.checkAOP(context.Background())
 	assert.Equal(t, 1.0, counter(h.metrics.Errors, "aop"))
+	assert.Equal(t, "level=ERROR msg=\"reading the AOP setting failed; its expiry is not reported\" hostname=gnmic.example error=\"HTTP 403\"\n", buf.String())
 	assert.Equal(t, 2, testutil.CollectAndCount(h.metrics.AOPActive))
 	assert.Equal(t, 1, testutil.CollectAndCount(h.metrics.AOPExpiry))
 	assert.Equal(t, 0.0, testutil.ToFloat64(h.metrics.AOPActive.WithLabelValues("state-in.example")))

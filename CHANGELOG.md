@@ -17,6 +17,8 @@ All notable changes to this project will be documented in this file.
   - `doublezero multicast group update` sends the hash of the private flag and the caps that it read when it sets one of them.
 - E2E/QA
   - `TestQA_AllDevices_UnicastConnectivity` pads a host's shorter device list with its last device that accepts users, instead of its last device. A padded device that accepts no users is connected again in every padded batch and waits out the 90-second status timeout. In the mainnet-beta run at 20:00 UTC on 2026-11-14, this made batches 6 onward take 130 to 155 seconds instead of 50 to 65.
+- Telemetry
+  - With `--cloudflare-zone-id` and `--aop-hostnames`, the allowlist sync reads each hostname's per-hostname Authenticated Origin Pulls setting after every pass and exports `doublezero_telemetry_allowlist_sync_aop_certificate_expiry_timestamp_seconds` and `doublezero_telemetry_allowlist_sync_aop_active` per hostname. A hostname whose setting cannot be read has neither series. A failed read never stops a pass, and a slow one delays the next by at most 20 seconds. Its token then also needs "Zone > SSL and Certificates > Read".
 
 ## [v0.48.0](https://github.com/malbeclabs/doublezero/compare/client/v0.47.0...client/v0.48.0) - 2026-11-13
 

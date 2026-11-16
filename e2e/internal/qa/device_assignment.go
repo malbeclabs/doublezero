@@ -310,9 +310,16 @@ func AssignDevicesToClients(devices []*Device, clients []*Client, clientLatencie
 	for clientHost := range clientDevices {
 		assigned := clientDevices[clientHost]
 		if len(assigned) > 0 && len(assigned) < maxBatches {
-			lastDevice := assigned[len(assigned)-1]
+			// A not-ready device never comes up, so every padded batch would reconnect and wait out the status timeout.
+			padDevice := assigned[len(assigned)-1]
+			for _, device := range slices.Backward(assigned) {
+				if device.Ready() {
+					padDevice = device
+					break
+				}
+			}
 			for len(clientDevices[clientHost]) < maxBatches {
-				clientDevices[clientHost] = append(clientDevices[clientHost], lastDevice)
+				clientDevices[clientHost] = append(clientDevices[clientHost], padDevice)
 			}
 		}
 	}

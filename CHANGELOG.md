@@ -15,6 +15,8 @@ All notable changes to this project will be documented in this file.
   - `UpdateMulticastGroup` takes an optional hash of the private flag and the two caps that the caller read. When the stored values give a different hash, the program refuses the update with `PrivateCapsChanged`.
 - CLI
   - `doublezero multicast group update` sends the hash of the private flag and the caps that it read when it sets one of them.
+- E2E/QA
+  - `TestQA_AllDevices_UnicastConnectivity` pads a host's shorter device list with its last device that accepts users, instead of its last device. A padded device that accepts no users is connected again in every padded batch and waits out the 90-second status timeout. In the mainnet-beta run at 20:00 UTC on 2026-11-14, this made batches 6 onward take 130 to 155 seconds instead of 50 to 65.
 
 ## [v0.48.0](https://github.com/malbeclabs/doublezero/compare/client/v0.47.0...client/v0.48.0) - 2026-11-13
 

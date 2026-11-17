@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+### Changes
+
+## [v0.49.0](https://github.com/malbeclabs/doublezero/compare/client/v0.48.0...client/v0.49.0) - 2026-11-17
+
+### Breaking
+
 - SDK
   - `MulticastGroupUpdateArgs` and `UpdateMulticastGroupCommand` take `expected_private_caps_hash`. Code that builds them field by field must set it, or set it to `None`.
 

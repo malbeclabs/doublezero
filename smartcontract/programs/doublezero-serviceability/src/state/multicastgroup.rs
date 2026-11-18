@@ -324,7 +324,7 @@ mod tests {
         );
     }
 
-    /// Every group created before the private flag and the caps existed is 13 bytes short. It must
+    /// Every group created before the private flag and the caps existed is 9 bytes short. It must
     /// still decode as a group that is not private and has no caps.
     #[test]
     fn test_state_multicastgroup_decodes_the_layout_before_private_caps() {
@@ -338,7 +338,7 @@ mod tests {
             ..MulticastGroup::default()
         };
         let data = borsh::to_vec(&val).unwrap();
-        let old = &data[..data.len() - 9 - 4];
+        let old = &data[..data.len() - 5 - 4];
 
         let decoded = MulticastGroup::try_from(old).unwrap();
         assert_eq!(

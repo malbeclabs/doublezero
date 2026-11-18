@@ -81,6 +81,7 @@ async fn test_accesspass_dzf_locked() {
             allow_multiple_ip: true,
             max_unicast_users: 1,
             max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -142,6 +143,7 @@ async fn test_accesspass_dzf_locked() {
             allow_multiple_ip: false,
             max_unicast_users: 1,
             max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -290,6 +292,7 @@ async fn test_accesspass_dzf_locked_feed_authority_limited_to_own_passes() {
             allow_multiple_ip: false,
             max_unicast_users: 1,
             max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(foundation_pass, false),
@@ -350,6 +353,7 @@ async fn test_accesspass_dzf_locked_feed_authority_limited_to_own_passes() {
             allow_multiple_ip: false,
             max_unicast_users: 1,
             max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(feed_pass, false),
@@ -423,6 +427,7 @@ async fn test_accesspass_dzf_locked_requires_permission_account_in_strict_mode()
             allow_multiple_ip: false,
             max_unicast_users: 1,
             max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),

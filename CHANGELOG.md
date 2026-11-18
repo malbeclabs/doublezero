@@ -6,7 +6,13 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- SDK
+  - `SetAccessPassArgs` takes `private_group_users`. Code that builds it field by field must set it, or set it to 0.
+
 ### Changes
+
+- Serviceability
+  - `SetAccessPass` takes `private_group_users`, the number of private multicast group users on the pass. On a pass with `allow_multiple_ip`, the airdrop funds that many users on top of the unicast and public multicast caps. The pass does not store it. A client that does not send it gets 0, and an older program ignores it. (malbeclabs/infra#3863)
 
 ## [v0.49.0](https://github.com/malbeclabs/doublezero/compare/client/v0.48.0...client/v0.49.0) - 2026-11-17
 

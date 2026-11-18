@@ -68,6 +68,7 @@ pub fn build_create_multicast_publisher_instructions(
             allow_multiple_ip: false,
             max_unicast_users: 1,
             max_public_multicast_users: 1,
+            private_group_users: 0,
         },
     );
 
@@ -180,6 +181,7 @@ mod tests {
             allow_multiple_ip: false,
             max_unicast_users: 1,
             max_public_multicast_users: 1,
+            private_group_users: 0,
         };
         assert_eq!(
             ixs.set_access_pass,

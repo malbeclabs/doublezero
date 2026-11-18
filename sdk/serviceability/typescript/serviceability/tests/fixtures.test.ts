@@ -495,7 +495,7 @@ describe("MulticastGroup fixture", () => {
       (f) => f.name === "BondRef",
     )?.value;
     expect(expectedBondRef).toBeDefined();
-    const mg = deserializeMulticastGroup(data.slice(0, data.length - 13));
+    const mg = deserializeMulticastGroup(data.slice(0, data.length - 9));
     expect(mg.bondRef.toBase58()).toBe(expectedBondRef!);
     expect(mg.private).toBe(false);
     expect(mg.maxPublishers).toBe(0);

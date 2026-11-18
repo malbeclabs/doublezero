@@ -696,6 +696,7 @@ async fn test_a_bonded_groups_owner_cannot_reach_another_users_pass() {
             allow_multiple_ip: false,
             max_unicast_users: 1,
             max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass, false),

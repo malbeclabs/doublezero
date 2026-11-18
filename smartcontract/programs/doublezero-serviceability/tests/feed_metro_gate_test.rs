@@ -286,6 +286,7 @@ async fn setup_feed_fixture(client_ip: [u8; 4]) -> FeedFixture {
             allow_multiple_ip: false,
             max_unicast_users: 1,
             max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),

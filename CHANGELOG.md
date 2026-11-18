@@ -6,7 +6,14 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+- SDK
+  - `SetAccessPassArgs` takes `private_group_users`. Code that builds it field by field must set it, or set it to 0.
+  - A multicast group stores `max_publishers` and `max_subscribers` as u16, not u32, and `UpdateMulticastGroup`, `MulticastGroup::private_caps_hash` and `doublezero multicast group update` take them as u16. A client, the feed oracle and subscription-api must move to this version together with the program. On testnet, run `doublezero migrate feed-count` again after the upgrade, because 21 groups hold the old 4-byte caps and read a feed count of 0 until then.
+
 ### Changes
+
+- Serviceability
+  - `SetAccessPass` takes `private_group_users`, the number of private multicast group users on the pass. The airdrop funds that many users on top of the unicast and public multicast caps on a pass with `allow_multiple_ip`, and on top of the one user on a pass without it. The pass does not store it. A client that does not send it gets 0, and an older program ignores it. (malbeclabs/infra#3863)
 
 ## [v0.49.0](https://github.com/malbeclabs/doublezero/compare/client/v0.48.0...client/v0.49.0) - 2026-11-17
 

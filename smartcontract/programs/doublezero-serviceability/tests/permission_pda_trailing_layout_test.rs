@@ -108,6 +108,7 @@ async fn test_set_access_pass_tenant_pair_with_trailing_permission_pda() {
         allow_multiple_ip: false,
         max_unicast_users: 1,
         max_public_multicast_users: 1,
+        private_group_users: 0,
     };
     let tenant_of = |banks_client: &mut BanksClient, accesspass: Pubkey| {
         let mut banks_client = banks_client.clone();

@@ -17,8 +17,8 @@ pub struct UpdateMulticastGroupCommand {
     pub subscriber_count: Option<u32>,
     pub owner: Option<Pubkey>,
     pub private: Option<bool>,
-    pub max_publishers: Option<u32>,
-    pub max_subscribers: Option<u32>,
+    pub max_publishers: Option<u16>,
+    pub max_subscribers: Option<u16>,
     pub feed_count: Option<FeedCountUpdate>,
     pub expected_private_caps_hash: Option<[u8; 32]>,
 }

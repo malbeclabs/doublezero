@@ -1281,6 +1281,7 @@ mod tests {
                 allow_multiple_ip: false,
                 max_unicast_users: 1,
                 max_public_multicast_users: 1,
+                private_group_users: 0,
             }),
             "SetAccessPass",
         );

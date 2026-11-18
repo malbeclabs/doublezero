@@ -42,8 +42,8 @@ pub struct MulticastGroupUpdateArgs {
     pub use_onchain_allocation: bool,
     pub owner: Option<Pubkey>,
     pub private: Option<bool>,
-    pub max_publishers: Option<u32>,
-    pub max_subscribers: Option<u32>,
+    pub max_publishers: Option<u16>,
+    pub max_subscribers: Option<u16>,
     /// Sets the feed count of a group created before the count existed, or of a group whose
     /// count is wrong.
     pub feed_count: Option<FeedCountUpdate>,

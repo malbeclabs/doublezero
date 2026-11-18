@@ -247,6 +247,7 @@ async fn setup_user_onchain_allocation_test(
             allow_multiple_ip: false,
             max_unicast_users: 1,
             max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -494,6 +495,7 @@ async fn setup_user_infra_without_user(
             allow_multiple_ip: false,
             max_unicast_users: 1,
             max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1720,6 +1722,7 @@ async fn test_multicast_publisher_block_deallocation_and_reuse() {
             allow_multiple_ip: false,
             max_unicast_users: 1,
             max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass2_pubkey, false),

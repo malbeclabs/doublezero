@@ -110,6 +110,7 @@ impl Env {
                 allow_multiple_ip,
                 max_unicast_users: 1,
                 max_public_multicast_users: 1,
+                private_group_users: 0,
             }),
             vec![
                 AccountMeta::new(pass, false),

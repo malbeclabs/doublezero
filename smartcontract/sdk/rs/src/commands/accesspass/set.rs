@@ -57,6 +57,7 @@ impl SetAccessPassCommand {
                 allow_multiple_ip: self.allow_multiple_ip,
                 max_unicast_users: self.max_unicast_users,
                 max_public_multicast_users: self.max_public_multicast_users,
+                private_group_users: 0,
             },
         ))
     }
@@ -141,6 +142,7 @@ mod tests {
                 allow_multiple_ip: false,
                 max_unicast_users: 1,
                 max_public_multicast_users: 1,
+                private_group_users: 0,
             },
         );
         client
@@ -209,6 +211,7 @@ mod tests {
             allow_multiple_ip: false,
             max_unicast_users: 0,
             max_public_multicast_users: 4,
+            private_group_users: 0,
         };
         client
             .expect_send_transaction()

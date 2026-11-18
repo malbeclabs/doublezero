@@ -3,9 +3,11 @@ use clap::Args;
 use doublezero_cli_core::{label_addresses, CliContext};
 use doublezero_program_common::serializer;
 use doublezero_sdk::commands::{
-    accesspass::get::ResolveAccessPassCommand, multicastgroup::list::ListMulticastGroupCommand,
+    accesspass::{get::GetAccessPassCommand, list::ListAccessPassCommand},
+    multicastgroup::list::ListMulticastGroupCommand,
     tenant::list::ListTenantCommand,
 };
+use doublezero_serviceability::state::accesspass::AccessPass;
 use serde::Serialize;
 use solana_sdk::pubkey::Pubkey;
 use std::{io::Write, net::Ipv4Addr};
@@ -13,9 +15,9 @@ use tabled::Tabled;
 
 #[derive(Args, Debug)]
 pub struct GetAccessPassCliCommand {
-    /// Client IP address
+    /// Client IP of the access pass. Needed only when the user payer holds more than one pass
     #[arg(long)]
-    pub client_ip: Ipv4Addr,
+    pub client_ip: Option<Ipv4Addr>,
     /// User payer public key
     #[arg(long)]
     pub user_payer: Pubkey,
@@ -75,12 +77,10 @@ impl GetAccessPassCliCommand {
     ) -> eyre::Result<()> {
         let epoch = client.get_epoch()?;
 
-        let (pubkey, accesspass) = client
-            .resolve_accesspass(ResolveAccessPassCommand {
-                client_ip: self.client_ip,
-                user_payer: self.user_payer,
-            })?
-            .ok_or_else(|| eyre::eyre!("Access Pass not found"))?;
+        let (pubkey, accesspass) = match self.client_ip {
+            Some(client_ip) => find_at_client_ip(client, client_ip, self.user_payer)?,
+            None => find_only_pass(client, self.user_payer)?,
+        };
 
         let mgroups = client.list_multicastgroup(ListMulticastGroupCommand {})?;
         let tenants = client.list_tenant(ListTenantCommand {})?;
@@ -211,14 +211,71 @@ impl GetAccessPassCliCommand {
     }
 }
 
+/// The pass at `client_ip`, else the payer's 0.0.0.0 pass, which serves every client IP.
+fn find_at_client_ip<C: CliCommand>(
+    client: &C,
+    client_ip: Ipv4Addr,
+    user_payer: Pubkey,
+) -> eyre::Result<(Pubkey, AccessPass)> {
+    let get = |client_ip| {
+        client.get_accesspass(GetAccessPassCommand {
+            client_ip,
+            user_payer,
+        })
+    };
+    if let Some(found) = get(client_ip)? {
+        return Ok(found);
+    }
+    if client_ip != Ipv4Addr::UNSPECIFIED {
+        if let Some(found) = get(Ipv4Addr::UNSPECIFIED)? {
+            return Ok(found);
+        }
+    }
+    eyre::bail!(
+        "no access pass for client IP {client_ip} and user payer {user_payer}. Omit --client-ip to search all passes of this user payer."
+    )
+}
+
+// No memcmp filter can match the payer, because it follows the variable-length pass type.
+fn find_only_pass<C: CliCommand>(
+    client: &C,
+    user_payer: Pubkey,
+) -> eyre::Result<(Pubkey, AccessPass)> {
+    let mut passes: Vec<(Pubkey, AccessPass)> = client
+        .list_accesspass(ListAccessPassCommand)?
+        .into_iter()
+        .filter(|(_, accesspass)| accesspass.user_payer == user_payer)
+        .collect();
+    if passes.len() > 1 {
+        passes.sort_by_key(|(pubkey, accesspass)| (accesspass.client_ip, *pubkey));
+        let choices: Vec<String> = passes
+            .iter()
+            .map(|(pubkey, accesspass)| {
+                format!(
+                    "  {:<15}  {pubkey}  {}",
+                    accesspass.client_ip, accesspass.accesspass_type
+                )
+            })
+            .collect();
+        eyre::bail!(
+            "user payer {user_payer} has {} access passes. A pass is keyed by client IP and user payer, so --user-payer alone does not identify one. Run again with --client-ip set to one of:\n{}",
+            passes.len(),
+            choices.join("\n")
+        );
+    }
+    passes
+        .pop()
+        .ok_or_else(|| eyre::eyre!("no access pass for user payer {user_payer}"))
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{accesspass::get::GetAccessPassCliCommand, tests::utils::create_test_client};
     use doublezero_cli_core::testing::{block_on, cli_context_default_for_tests};
     use doublezero_sdk::{
         commands::{
-            accesspass::get::ResolveAccessPassCommand,
-            multicastgroup::list::ListMulticastGroupCommand, tenant::list::ListTenantCommand,
+            accesspass::get::GetAccessPassCommand, multicastgroup::list::ListMulticastGroupCommand,
+            tenant::list::ListTenantCommand,
         },
         AccountType, Exchange, ExchangeStatus, Feed, MulticastGroup,
     };
@@ -298,8 +355,8 @@ mod tests {
         let accesspass_clone = accesspass.clone();
 
         client
-            .expect_resolve_accesspass()
-            .with(predicate::eq(ResolveAccessPassCommand {
+            .expect_get_accesspass()
+            .with(predicate::eq(GetAccessPassCommand {
                 client_ip,
                 user_payer,
             }))
@@ -325,7 +382,7 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             GetAccessPassCliCommand {
-                client_ip,
+                client_ip: Some(client_ip),
                 user_payer,
                 json: false,
             }
@@ -486,8 +543,8 @@ mod tests {
         };
 
         client
-            .expect_resolve_accesspass()
-            .with(predicate::eq(ResolveAccessPassCommand {
+            .expect_get_accesspass()
+            .with(predicate::eq(GetAccessPassCommand {
                 client_ip,
                 user_payer,
             }))
@@ -539,7 +596,7 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             GetAccessPassCliCommand {
-                client_ip,
+                client_ip: Some(client_ip),
                 user_payer,
                 json: true,
             }
@@ -587,7 +644,7 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             GetAccessPassCliCommand {
-                client_ip,
+                client_ip: Some(client_ip),
                 user_payer,
                 json: false,
             }
@@ -653,8 +710,8 @@ mod tests {
         };
 
         client
-            .expect_resolve_accesspass()
-            .with(predicate::eq(ResolveAccessPassCommand {
+            .expect_get_accesspass()
+            .with(predicate::eq(GetAccessPassCommand {
                 client_ip,
                 user_payer,
             }))
@@ -676,7 +733,7 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             GetAccessPassCliCommand {
-                client_ip,
+                client_ip: Some(client_ip),
                 user_payer,
                 json: true,
             }
@@ -761,8 +818,8 @@ mod tests {
             .collect();
 
         client
-            .expect_resolve_accesspass()
-            .with(predicate::eq(ResolveAccessPassCommand {
+            .expect_get_accesspass()
+            .with(predicate::eq(GetAccessPassCommand {
                 client_ip,
                 user_payer,
             }))
@@ -794,7 +851,7 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             GetAccessPassCliCommand {
-                client_ip,
+                client_ip: Some(client_ip),
                 user_payer,
                 json: true,
             }
@@ -865,8 +922,8 @@ mod tests {
         };
 
         client
-            .expect_resolve_accesspass()
-            .with(predicate::eq(ResolveAccessPassCommand {
+            .expect_get_accesspass()
+            .with(predicate::eq(GetAccessPassCommand {
                 client_ip,
                 user_payer,
             }))
@@ -892,7 +949,7 @@ mod tests {
         let mut output = Vec::new();
         let res = block_on(
             GetAccessPassCliCommand {
-                client_ip,
+                client_ip: Some(client_ip),
                 user_payer,
                 json: true,
             }
@@ -905,6 +962,183 @@ mod tests {
         assert_eq!(
             json["feed_seats"][0]["exchange_code"],
             exchange_key.to_string()
+        );
+    }
+
+    fn prepaid_pass(client_ip: Ipv4Addr, user_payer: Pubkey) -> AccessPass {
+        AccessPass {
+            account_type: AccountType::AccessPass,
+            bump_seed: 255,
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip,
+            user_payer,
+            last_access_epoch: u64::MAX,
+            connection_count: 0,
+            status: AccessPassStatus::Requested,
+            mgroup_pub_allowlist: vec![],
+            mgroup_sub_allowlist: vec![],
+            tenant_allowlist: vec![],
+            owner: Pubkey::new_unique(),
+            flags: 0,
+            unicast_user_count: 0,
+            max_unicast_users: 1,
+            public_multicast_user_count: 0,
+            max_public_multicast_users: 1,
+        }
+    }
+
+    fn client_with_passes(
+        passes: Vec<(Pubkey, AccessPass)>,
+    ) -> crate::doublezerocommand::MockCliCommand {
+        let mut client = create_test_client();
+        let listed: HashMap<Pubkey, AccessPass> = passes.into_iter().collect();
+        let stored = listed.clone();
+        client
+            .expect_list_accesspass()
+            .returning(move |_| Ok(listed.clone()));
+        client.expect_get_accesspass().returning(move |cmd| {
+            Ok(stored
+                .iter()
+                .find(|(_, pass)| {
+                    pass.client_ip == cmd.client_ip && pass.user_payer == cmd.user_payer
+                })
+                .map(|(pubkey, pass)| (*pubkey, pass.clone())))
+        });
+        client
+            .expect_list_multicastgroup()
+            .returning(|_| Ok(HashMap::new()));
+        client
+            .expect_list_tenant()
+            .returning(|_| Ok(HashMap::new()));
+        client
+    }
+
+    fn get_json(
+        client: &crate::doublezerocommand::MockCliCommand,
+        client_ip: Option<Ipv4Addr>,
+        user_payer: Pubkey,
+    ) -> eyre::Result<serde_json::Value> {
+        let mut output = Vec::new();
+        block_on(
+            GetAccessPassCliCommand {
+                client_ip,
+                user_payer,
+                json: true,
+            }
+            .execute(&cli_context_default_for_tests(), client, &mut output),
+        )?;
+        Ok(serde_json::from_slice(&output)?)
+    }
+
+    #[test]
+    fn test_cli_accesspass_get_finds_the_only_pass_of_the_user_payer() {
+        let user_payer = Pubkey::new_unique();
+        let pass_pk = Pubkey::new_unique();
+        let client = client_with_passes(vec![
+            (
+                pass_pk,
+                prepaid_pass(Ipv4Addr::new(10, 0, 0, 1), user_payer),
+            ),
+            (
+                Pubkey::new_unique(),
+                prepaid_pass(Ipv4Addr::UNSPECIFIED, Pubkey::new_unique()),
+            ),
+            (
+                Pubkey::new_unique(),
+                prepaid_pass(Ipv4Addr::new(10, 0, 0, 1), Pubkey::new_unique()),
+            ),
+        ]);
+
+        let json = get_json(&client, None, user_payer).unwrap();
+        assert_eq!(json["account"], pass_pk.to_string());
+    }
+
+    #[test]
+    fn test_cli_accesspass_get_lists_the_passes_of_a_user_payer_with_more_than_one() {
+        let user_payer = Pubkey::new_unique();
+        let dynamic_pk = Pubkey::new_unique();
+        let exact_pk = Pubkey::new_unique();
+        let client = client_with_passes(vec![
+            (
+                exact_pk,
+                prepaid_pass(Ipv4Addr::new(10, 0, 0, 1), user_payer),
+            ),
+            (dynamic_pk, prepaid_pass(Ipv4Addr::UNSPECIFIED, user_payer)),
+            (
+                Pubkey::new_unique(),
+                prepaid_pass(Ipv4Addr::new(10, 0, 0, 2), Pubkey::new_unique()),
+            ),
+        ]);
+
+        let err = get_json(&client, None, user_payer).unwrap_err();
+        let expected = [
+            format!("user payer {user_payer} has 2 access passes. A pass is keyed by client IP and user payer, so --user-payer alone does not identify one. Run again with --client-ip set to one of:"),
+            format!("  {:<15}  {dynamic_pk}  prepaid", "0.0.0.0"),
+            format!("  {:<15}  {exact_pk}  prepaid", "10.0.0.1"),
+        ]
+        .join("\n");
+        assert_eq!(err.to_string(), expected);
+    }
+
+    #[test]
+    fn test_cli_accesspass_get_names_a_user_payer_without_a_pass() {
+        let user_payer = Pubkey::new_unique();
+        let client = client_with_passes(vec![(
+            Pubkey::new_unique(),
+            prepaid_pass(Ipv4Addr::UNSPECIFIED, Pubkey::new_unique()),
+        )]);
+
+        let err = get_json(&client, None, user_payer).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            format!("no access pass for user payer {user_payer}")
+        );
+    }
+
+    #[test]
+    fn test_cli_accesspass_get_prefers_the_pass_at_the_client_ip() {
+        let user_payer = Pubkey::new_unique();
+        let exact_pk = Pubkey::new_unique();
+        let client = client_with_passes(vec![
+            (
+                Pubkey::new_unique(),
+                prepaid_pass(Ipv4Addr::UNSPECIFIED, user_payer),
+            ),
+            (
+                exact_pk,
+                prepaid_pass(Ipv4Addr::new(10, 0, 0, 1), user_payer),
+            ),
+        ]);
+
+        let json = get_json(&client, Some(Ipv4Addr::new(10, 0, 0, 1)), user_payer).unwrap();
+        assert_eq!(json["account"], exact_pk.to_string());
+    }
+
+    #[test]
+    fn test_cli_accesspass_get_falls_back_to_the_dynamic_pass() {
+        let user_payer = Pubkey::new_unique();
+        let dynamic_pk = Pubkey::new_unique();
+        let client = client_with_passes(vec![(
+            dynamic_pk,
+            prepaid_pass(Ipv4Addr::UNSPECIFIED, user_payer),
+        )]);
+
+        let json = get_json(&client, Some(Ipv4Addr::new(10, 0, 0, 1)), user_payer).unwrap();
+        assert_eq!(json["account"], dynamic_pk.to_string());
+    }
+
+    #[test]
+    fn test_cli_accesspass_get_names_a_client_ip_and_user_payer_without_a_pass() {
+        let user_payer = Pubkey::new_unique();
+        let client = client_with_passes(vec![(
+            Pubkey::new_unique(),
+            prepaid_pass(Ipv4Addr::new(10, 0, 0, 2), user_payer),
+        )]);
+
+        let err = get_json(&client, Some(Ipv4Addr::new(10, 0, 0, 1)), user_payer).unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            format!("no access pass for client IP 10.0.0.1 and user payer {user_payer}. Omit --client-ip to search all passes of this user payer.")
         );
     }
 }

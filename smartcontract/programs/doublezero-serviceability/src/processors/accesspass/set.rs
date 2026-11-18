@@ -387,7 +387,8 @@ pub fn process_set_access_pass(
             .saturating_add(value.max_public_multicast_users as u64)
             .saturating_add(value.private_group_users as u64)
     } else {
-        1
+        // A pass at 0.0.0.0 admits any client IP even without the flag.
+        1 + value.private_group_users as u64
     };
     airdrop_user_credits(
         payer_account,

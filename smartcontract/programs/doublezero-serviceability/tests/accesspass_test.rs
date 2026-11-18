@@ -1991,6 +1991,39 @@ async fn test_set_accesspass_airdrop_scales_with_allow_multiple_ip() {
         .expect("group user_payer should be funded")
         .lamports;
     assert_eq!(group_balance, base_balance * 9);
+
+    // Without the flag the caps do not count, and the multiplier is 1 + 4 = 5.
+    let no_flag_user_payer = Pubkey::new_unique();
+    let (no_flag_pass, _) =
+        get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &no_flag_user_payer);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::SetAccessPass(SetAccessPassArgs {
+            accesspass_type: AccessPassType::Prepaid,
+            client_ip: Ipv4Addr::UNSPECIFIED,
+            last_access_epoch: u64::MAX,
+            allow_multiple_ip: false,
+            max_unicast_users: 3,
+            max_public_multicast_users: 2,
+            private_group_users: 4,
+        }),
+        vec![
+            AccountMeta::new(no_flag_pass, false),
+            AccountMeta::new(globalstate_pubkey, false),
+            AccountMeta::new(no_flag_user_payer, false),
+        ],
+        &payer,
+    )
+    .await;
+    let no_flag_balance = banks_client
+        .get_account(no_flag_user_payer)
+        .await
+        .unwrap()
+        .expect("no-flag user_payer should be funded")
+        .lamports;
+    assert_eq!(no_flag_balance, base_balance * 5);
 }
 
 /// SetAccessPass tops off the pass's `user_payer` so it holds enough SOL to pay rent and

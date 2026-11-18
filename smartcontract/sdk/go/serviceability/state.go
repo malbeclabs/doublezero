@@ -1104,8 +1104,8 @@ type MulticastGroup struct {
 	// BondRef is the BuilderBond that created the group, or zero for a group an admin created.
 	BondRef        [32]uint8
 	Private        bool
-	MaxPublishers  uint32
-	MaxSubscribers uint32
+	MaxPublishers  uint16
+	MaxSubscribers uint16
 	FeedCount      uint32
 	PubKey         [32]byte
 }

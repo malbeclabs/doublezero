@@ -352,8 +352,8 @@ func DeserializeMulticastGroup(reader *ByteReader, mg *MulticastGroup) {
 	// ReadPubkey returns zero bytes at EOF.
 	mg.BondRef = reader.ReadPubkey()
 	mg.Private = reader.ReadU8() != 0
-	mg.MaxPublishers = reader.ReadU32()
-	mg.MaxSubscribers = reader.ReadU32()
+	mg.MaxPublishers = reader.ReadU16()
+	mg.MaxSubscribers = reader.ReadU16()
 	mg.FeedCount = reader.ReadU32()
 }
 

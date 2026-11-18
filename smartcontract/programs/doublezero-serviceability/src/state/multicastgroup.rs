@@ -87,8 +87,8 @@ pub struct MulticastGroup {
     /// group. It also lets cleanup find a bond's groups once the bond is gone.
     pub bond_ref: Pubkey, // 32
     pub private: bool,             // 1
-    pub max_publishers: u32,       // 4, applies to a private group only
-    pub max_subscribers: u32,      // 4, applies to a private group only
+    pub max_publishers: u16,       // 2, applies to a private group only
+    pub max_subscribers: u16,      // 2, applies to a private group only
     pub feed_count: u32,           // 4, the feeds that list this group
 }
 
@@ -137,7 +137,7 @@ impl fmt::Display for MulticastGroup {
 impl MulticastGroup {
     /// The SHA-256 hash of the private flag and the two caps. `UpdateMulticastGroup` compares the
     /// hash of the stored values with the hash of the values its caller read.
-    pub fn private_caps_hash(private: bool, max_publishers: u32, max_subscribers: u32) -> [u8; 32] {
+    pub fn private_caps_hash(private: bool, max_publishers: u16, max_subscribers: u16) -> [u8; 32] {
         hashv(&[
             &[private as u8],
             &max_publishers.to_le_bytes(),

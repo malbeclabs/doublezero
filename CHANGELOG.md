@@ -9,6 +9,8 @@ All notable changes to this project will be documented in this file.
 - SDK
   - `SetAccessPassArgs` takes `private_group_users`. Code that builds it field by field must set it, or set it to 0.
   - A multicast group stores `max_publishers` and `max_subscribers` as u16, not u32, and `UpdateMulticastGroup`, `MulticastGroup::private_caps_hash` and `doublezero multicast group update` take them as u16. A client, the feed oracle and subscription-api must move to this version together with the program. On testnet, run `doublezero migrate feed-count` again after the upgrade, because 21 groups hold the old 4-byte caps and read a feed count of 0 until then.
+- Serviceability
+  - `MIN_COMPATIBLE_VERSION` moves from `0.30.0` to `0.45.0`, the newest client release that has been on mainnet-beta for more than two weeks. A client older than v0.45.0 fails at startup with "A new version of the client is available". The floor takes effect on each cluster at its next program deploy, when `doublezero init` writes it to `ProgramConfig`.
 
 ### Changes
 
@@ -17,7 +19,7 @@ All notable changes to this project will be documented in this file.
 - CLI
   - `doublezero access-pass get` needs `--client-ip` only when the user payer holds more than one access pass. Without the flag, such a payer gets an error that lists each pass with its client IP and address. With `--client-ip`, the command shows the pass at that IP, not the 0.0.0.0 pass of the payer. It shows the 0.0.0.0 pass only when there is no pass at that IP. The new `--pubkey` flag selects a pass by its address.
 - E2E/QA
-  - `TestE2E_BackwardCompatibility` tests client releases from v0.45.0, not v0.31.0. v0.45.0 is the newest client release that has been on mainnet-beta for more than two weeks. Each release in the window starts one ledger in each environment, and the 41 ledgers of the old window ran a 64 GB runner out of memory. The program's `MIN_COMPATIBLE_VERSION` does not change.
+  - `TestE2E_BackwardCompatibility` tests client releases from v0.45.0, the new `MIN_COMPATIBLE_VERSION`, not from v0.31.0. Each release in the window starts one ledger in each environment, and the 41 ledgers of the old window ran a 64 GB runner out of memory.
 
 ## [v0.49.0](https://github.com/malbeclabs/doublezero/compare/client/v0.48.0...client/v0.49.0) - 2026-11-17
 

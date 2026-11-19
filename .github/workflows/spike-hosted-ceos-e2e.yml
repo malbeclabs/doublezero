@@ -1,0 +1,198 @@
+# Temporary spike for malbeclabs/infra#3878: can cEOS e2e run on a GitHub-hosted
+# larger runner? This file never merges. It runs only on the PR that adds it.
+name: spike-hosted-ceos-e2e
+on:
+  pull_request:
+    paths:
+      - .github/workflows/spike-hosted-ceos-e2e.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  # Local-only names (the defaults in e2e/.env.local). Nothing is pushed.
+  DZ_BASE_IMAGE: dz-local/base:dev
+  DZ_LEDGER_IMAGE: dz-local/ledger:dev
+  DZ_CONTROLLER_IMAGE: dz-local/controller:dev
+  DZ_MANAGER_IMAGE: dz-local/manager:dev
+  DZ_FUNDER_IMAGE: dz-local/funder:dev
+  DZ_DEVICE_IMAGE: dz-local/device:dev
+  DZ_CLIENT_IMAGE: dz-local/client:dev
+  DZ_DEVICE_HEALTH_ORACLE_IMAGE: dz-local/device-health-oracle:dev
+  DZ_GEOPROBE_IMAGE: dz-local/geoprobe:dev
+  DZ_SENTINEL_IMAGE: dz-local/sentinel:dev
+  DZ_IP_VERIFIER_IMAGE: dz-local/ip-verifier:dev
+  DZ_VALIDATOR_METADATA_SERVICE_MOCK_IMAGE: dz-local/validator-metadata-service-mock:dev
+  CEOS_SOURCE: ghcr.io/malbeclabs/ceos:4.33.1F
+  # A local-only tag, so the device build can never fetch cEOS from a registry itself.
+  ARISTA_CEOS_IMAGE: dz-local/ceos:4.33.1F
+
+jobs:
+  setup:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04-16c-64gb
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read # cEOS pull only: dzctl build also builds the device image.
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Start memory sampler
+        run: &sampler |
+          cat > "$RUNNER_TEMP/sampler.sh" <<'EOF'
+          out="$RUNNER_TEMP/mem.csv"
+          echo "epoch,used_mib,swap_used_mib" > "$out"
+          i=0
+          while true; do
+            awk -v t="$(date +%s)" '/^MemTotal:/{tot=$2} /^MemAvailable:/{av=$2}
+              /^SwapTotal:/{st=$2} /^SwapFree:/{sf=$2}
+              END{printf "%s,%d,%d\n", t, (tot-av)/1024, (st-sf)/1024}' /proc/meminfo >> "$out"
+            if (( i % 6 == 0 )); then
+              { echo "# $(date -u +%FT%TZ)"; docker stats --no-stream --format '{{.Name}},{{.MemUsage}},{{.CPUPerc}}'; } \
+                >> "$RUNNER_TEMP/docker-stats.log" 2>&1
+            fi
+            i=$((i + 1))
+            sleep 5
+          done
+          EOF
+          nohup bash "$RUNNER_TEMP/sampler.sh" >/dev/null 2>&1 &
+      - name: Pull cEOS
+        run: &pull-ceos |
+          # Log out in the same step, so no later step (which runs PR code) finds the token on disk.
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
+          rc=0
+          docker pull "$CEOS_SOURCE" || rc=$?
+          docker logout ghcr.io
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::cEOS pull refused with the job token (packages: read)."
+            exit "$rc"
+          fi
+          docker tag "$CEOS_SOURCE" "$ARISTA_CEOS_IMAGE"
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+          GHCR_USER: ${{ github.actor }}
+      - name: Build images
+        working-directory: e2e/
+        run: time go run ./cmd/dzctl/main.go build
+      - name: Save images except device
+        # The repo is public, so artifacts are world-readable: cEOS and the device image stay out.
+        run: |
+          images=(
+            "$DZ_BASE_IMAGE" "$DZ_LEDGER_IMAGE" "$DZ_CONTROLLER_IMAGE" "$DZ_MANAGER_IMAGE"
+            "$DZ_FUNDER_IMAGE" "$DZ_CLIENT_IMAGE" "$DZ_DEVICE_HEALTH_ORACLE_IMAGE"
+            "$DZ_GEOPROBE_IMAGE" "$DZ_SENTINEL_IMAGE" "$DZ_IP_VERIFIER_IMAGE"
+            "$DZ_VALIDATOR_METADATA_SERVICE_MOCK_IMAGE"
+          )
+          start=$(date +%s)
+          docker save "${images[@]}" | zstd -T0 -3 -q -o "$RUNNER_TEMP/dz-e2e-images.tar.zst"
+          size=$(du -m "$RUNNER_TEMP/dz-e2e-images.tar.zst" | cut -f1)
+          echo "### Image artifact: ${size} MiB, saved in $(( $(date +%s) - start )) s" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dz-e2e-images
+          path: ${{ runner.temp }}/dz-e2e-images.tar.zst
+          compression-level: 0
+          retention-days: 1
+      - name: Memory summary
+        if: always()
+        run: &mem-summary |
+          awk -F, -v job="$GITHUB_JOB" -v total="$(free -m | awk '/^Mem:/{print $2}')" \
+            'NR > 1 { if ($2 > m) m = $2; if ($3 > s) s = $3 }
+             END { printf "### Memory (%s)\n- Peak used: %d of %d MiB\n- Peak swap: %d MiB\n", job, m, total, s }' \
+            "$RUNNER_TEMP/mem.csv" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: measurements-setup
+          path: |
+            ${{ runner.temp }}/mem.csv
+            ${{ runner.temp }}/docker-stats.log
+          retention-days: 7
+
+  backward-compat:
+    needs: setup
+    runs-on: ubuntu-24.04-16c-64gb
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read # cEOS pull for the device build.
+    defaults:
+      run:
+        working-directory: e2e/
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Start memory sampler
+        run: *sampler
+      - name: Probe host and kernel
+        run: |
+          set +e
+          uname -a; cat /etc/os-release; nproc; free -m; df -h / /var/lib/docker
+          stat -fc 'cgroup fs: %T' /sys/fs/cgroup
+          docker info
+          for m in ip_gre ip6_gre gre ipip veth bridge br_netfilter 8021q; do
+            echo "== $m"; modinfo -F filename "$m"; sudo modprobe "$m" && echo "modprobe $m: ok"
+          done
+          lsmod | grep -E 'gre|ipip|veth|bridge|8021q'
+          grep -E 'CONFIG_NET_IPGRE(_DEMUX|_BROADCAST)?=|CONFIG_IP_MROUTE=|CONFIG_IP_PIMSM_V2=|CONFIG_IP_MROUTE_MULTIPLE_TABLES=' \
+            "/boot/config-$(uname -r)"
+          sysctl net.ipv4.ip_forward net.ipv4.conf.all.mc_forwarding net.ipv4.conf.all.rp_filter
+          exit 0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dz-e2e-images
+          path: ${{ runner.temp }}
+      - name: Load images
+        run: time (zstd -dc "$RUNNER_TEMP/dz-e2e-images.tar.zst" | docker load)
+      - name: Pull cEOS
+        run: *pull-ceos
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+          GHCR_USER: ${{ github.actor }}
+      - name: Build device image
+        id: device
+        working-directory: .
+        # Same arguments as e2e/internal/devnet/builder.go uses for the device image.
+        run: |
+          time docker build -t "$DZ_DEVICE_IMAGE" -f e2e/docker/device/Dockerfile \
+            --build-arg "ARISTA_CEOS_IMAGE=$ARISTA_CEOS_IMAGE" \
+            --build-arg DOCKERFILE_DIR=e2e/docker/device \
+            --platform linux/amd64 .
+      - name: TestE2E_BackwardCompatibility
+        env:
+          DZ_E2E_NO_BUILD: "1"
+          # The test lists client releases through the GitHub API, which rate-limits anonymous callers.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: go test -tags=e2e -timeout=20m -parallel=12 -count=1 -run '^TestE2E_BackwardCompatibility$' -v .
+      - name: TestE2E_Multicast
+        # BackwardCompatibility starts no cEOS device, so this step checks GRE, PIM and multicast.
+        if: ${{ !cancelled() && steps.device.outcome == 'success' }}
+        env:
+          DZ_E2E_NO_BUILD: "1"
+        run: go test -tags=e2e -timeout=12m -count=1 -run '^TestE2E_Multicast$' -v .
+      - name: Memory summary
+        if: always()
+        run: *mem-summary
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: measurements-backward-compat
+          path: |
+            ${{ runner.temp }}/mem.csv
+            ${{ runner.temp }}/docker-stats.log
+          retention-days: 7

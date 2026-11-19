@@ -419,15 +419,20 @@ async fn main() -> eyre::Result<()> {
 
     // Run keygen before the payer load below, which would consume the piped stdin that keygen reads.
     let command = match app.command {
-        Some(Command::Serviceability(ServiceabilityCommand::Keygen(args))) => {
-            return args
+        Some(Command::Serviceability(ServiceabilityCommand::Keygen(args))) if !app.version => {
+            if let Err(e) = args
                 .execute(
                     &ctx,
                     app.keypair.clone(),
                     &mut std::io::stdout().lock(),
                     read_token_from_stdin,
                 )
-                .await;
+                .await
+            {
+                doublezero_cli_core::error::render_eyre(&e);
+                std::process::exit(1);
+            }
+            return Ok(());
         }
         command => command,
     };

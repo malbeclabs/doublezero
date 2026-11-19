@@ -451,6 +451,10 @@ impl DZDeviceLatencySamples {
             sample_count: samples.header.next_sample_index,
         }
     }
+
+    pub fn end_timestamp_us(&self) -> u64 {
+        self.start_timestamp_us + (self.sample_count as u64 * self.sampling_interval_us)
+    }
 }
 
 /// Telemetry data container
@@ -462,14 +466,15 @@ pub struct DZDTelemetryData {
 }
 
 impl DZDTelemetryData {
-    pub fn start_end_us(&self) -> Result<(u64, u64)> {
+    pub fn start_end_us(&self, max_window_end_us: u64) -> Result<(u64, u64)> {
         let mut min_timestamp = u64::MAX;
         let mut max_timestamp = 0u64;
-        for sample in &self.device_latency_samples {
-            min_timestamp = min_timestamp.min(sample.start_timestamp_us);
-            let end_timestamp = sample.start_timestamp_us
-                + (sample.sample_count as u64 * sample.sampling_interval_us);
-            max_timestamp = max_timestamp.max(end_timestamp);
+        for device_latency_account in &self.device_latency_samples {
+            min_timestamp = min_timestamp.min(device_latency_account.start_timestamp_us);
+            let end_timestamp = device_latency_account.end_timestamp_us();
+            if end_timestamp <= max_window_end_us {
+                max_timestamp = max_timestamp.max(end_timestamp);
+            }
         }
 
         if min_timestamp == u64::MAX {
@@ -601,10 +606,11 @@ where
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::processor::stats::extract_device_samples_in_range;
 
     #[test]
     fn test_user_holds_pass_seat_migration() {
@@ -659,5 +665,62 @@ mod tests {
                 "feed_count": 0,
             })
         );
+    }
+
+    pub(crate) fn device_latency_samples(
+        account_key: &str,
+        start_timestamp_us: u64,
+        sample_count: u32,
+    ) -> DZDeviceLatencySamples {
+        DZDeviceLatencySamples {
+            pubkey: account_key.parse().unwrap(),
+            epoch: 254,
+            origin_device_pk: Pubkey::new_unique(),
+            target_device_pk: Pubkey::new_unique(),
+            link_pk: Pubkey::new_unique(),
+            origin_device_location_pk: Pubkey::new_unique(),
+            target_device_location_pk: Pubkey::new_unique(),
+            origin_device_agent_pk: Pubkey::new_unique(),
+            sampling_interval_us: 10_000_000,
+            start_timestamp_us,
+            samples: vec![1; sample_count as usize],
+            sample_count,
+        }
+    }
+
+    #[test]
+    fn test_start_end_us_leaves_out_the_end_of_late_accounts() {
+        let late_samples = device_latency_samples(
+            "Efgv3GR4Cy8MHiqTM1a6vCbqFDEBEP8vuFTToSf66zXe",
+            1_794_917_221_707_348,
+            17_357,
+        );
+        let good_samples = device_latency_samples(
+            "EnbH5eeQPzZfEV3bV7fua61NN8ijNT4WRwiZzXASyQf9",
+            1_794_917_218_649_066,
+            15_846,
+        );
+        let telemetry_data = DZDTelemetryData {
+            device_latency_samples: vec![late_samples.clone(), good_samples],
+            accounts: Vec::new(),
+        };
+
+        assert_eq!(
+            telemetry_data.start_end_us(u64::MAX).unwrap(),
+            (1_794_917_218_649_066, 1_795_090_791_707_348)
+        );
+
+        // DZ epoch 254 ended at 08:03:41 UTC on Nov 19 2026, and the limit is 15 minutes later.
+        let max_window_end_us = 1_795_075_421_000_000 + 15 * 60 * 1_000_000;
+        let (start_us, end_us) = telemetry_data.start_end_us(max_window_end_us).unwrap();
+        assert_eq!(
+            (start_us, end_us),
+            (1_794_917_218_649_066, 1_795_075_678_649_066)
+        );
+
+        let (values, start_index, end_index) =
+            extract_device_samples_in_range(&late_samples, start_us, end_us);
+        assert_eq!((start_index, end_index), (0, 15_845));
+        assert_eq!(values.len(), 15_845);
     }
 }

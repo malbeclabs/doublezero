@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- fix(contributor-rewards): the worker leaves the end of a device latency account out of the epoch window when the samples end more than 15 minutes after the last block of the DZ epoch. The samples of the account inside the window still count. The run of that epoch logs an error that names the device, the links and the time of the latest write. Before, one such account moved the end of the epoch, so the run failed or added the leader schedule of an extra Solana epoch (malbeclabs/infra#3905)
 - fix(contributor-rewards): a snapshot taken before the serviceability program added the multicast group's `feed_count` still loads, with the count read as 0 (malbeclabs/doublezero#4519)
 - fix(contributor-rewards): a snapshot stored before devices had `agent_ip` still loads, with each device's `agent_ip` read as unset (`0.0.0.0`)
 - fix(contributor-rewards): a snapshot taken before the serviceability program added the multicast group's `private` flag and caps and the user's `holds_pass_seat` still loads. The reader fills in a group that is not private with no caps, and a user with `holds_pass_seat` set (malbeclabs/infra#3706)

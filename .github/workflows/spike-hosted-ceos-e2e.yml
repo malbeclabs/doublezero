@@ -39,6 +39,9 @@ jobs:
     permissions:
       contents: read
       packages: read # cEOS pull only: dzctl build also builds the device image.
+    defaults:
+      run:
+        shell: bash # Adds pipefail, so a failed docker save fails the step.
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -128,6 +131,7 @@ jobs:
       packages: read # cEOS pull for the device build.
     defaults:
       run:
+        shell: bash
         working-directory: e2e/
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -158,6 +162,7 @@ jobs:
           name: dz-e2e-images
           path: ${{ runner.temp }}
       - name: Load images
+        id: load
         run: time (zstd -dc "$RUNNER_TEMP/dz-e2e-images.tar.zst" | docker load)
       - name: Pull cEOS
         run: *pull-ceos
@@ -174,6 +179,8 @@ jobs:
             --build-arg DOCKERFILE_DIR=e2e/docker/device \
             --platform linux/amd64 .
       - name: TestE2E_BackwardCompatibility
+        # This test starts no cEOS device, so a failed cEOS pull or device build must not skip it.
+        if: ${{ !cancelled() && steps.load.outcome == 'success' }}
         env:
           DZ_E2E_NO_BUILD: "1"
           # The test lists client releases through the GitHub API, which rate-limits anonymous callers.

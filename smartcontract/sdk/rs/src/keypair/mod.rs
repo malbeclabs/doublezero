@@ -41,6 +41,7 @@ mod source;
 
 pub use error::KeypairLoadError;
 pub use loader::{
-    is_keypair_json_content, load_keypair, parse_keypair_json, KeypairLoadResult, ENV_KEYPAIR,
+    is_keypair_json_content, load_keypair, parse_keypair_json, parse_keypair_token,
+    KeypairLoadResult, ENV_KEYPAIR,
 };
 pub use source::KeypairSource;

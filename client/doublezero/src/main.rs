@@ -16,6 +16,7 @@ use doublezero_serviceability_cli::{
     checkversion::check_version,
     cli::ServiceabilityCommand,
     doublezerocommand::{CliCommand, CliCommandImpl},
+    keygen::read_token_from_stdin,
     requirements::{check_requirements, CHECK_BALANCE, CHECK_ID_JSON},
 };
 
@@ -416,6 +417,16 @@ async fn main() -> eyre::Result<()> {
         std::process::exit(1);
     });
 
+    // Run keygen before the payer load below, which reads piped stdin and would consume the token.
+    let command = match app.command {
+        Some(Command::Serviceability(ServiceabilityCommand::Keygen(args))) => {
+            return args
+                .execute(&ctx, &mut std::io::stdout().lock(), read_token_from_stdin)
+                .await;
+        }
+        command => command,
+    };
+
     // Build the SDK client directly from the resolved `CliContext`. The context
     // already carries the fully resolved URL/WS/program-ID, so `from_context`
     // consumes them verbatim (no config-file re-read, no moniker conversion).
@@ -439,7 +450,7 @@ async fn main() -> eyre::Result<()> {
             .await;
     }
 
-    let command = match app.command {
+    let command = match command {
         Some(cmd) => cmd,
         None => {
             App::command().print_help()?;

@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 - Serviceability
   - `SetAccessPass` takes `private_group_users`, the number of private multicast group users on the pass. The airdrop funds that many users on top of the unicast and public multicast caps on a pass with `allow_multiple_ip`, and on top of the one user on a pass without it. The pass does not store it. A client that does not send it gets 0, and an older program ignores it. (malbeclabs/infra#3863)
 - CLI
+  - `doublezero keygen --import` saves the keypair in a `DZ_` token, the format that the Edge Connect installer takes. It reads the token from a hidden prompt, or from stdin when piped. `doublezero keygen` now writes the keypair file with mode 0600.
   - `doublezero access-pass get` needs `--client-ip` only when the user payer holds more than one access pass. Without the flag, such a payer gets an error that lists each pass with its client IP and address. With `--client-ip`, the command shows the pass at that IP, not the 0.0.0.0 pass of the payer. It shows the 0.0.0.0 pass only when there is no pass at that IP. The new `--pubkey` flag selects a pass by its address.
 
 ## [v0.49.0](https://github.com/malbeclabs/doublezero/compare/client/v0.48.0...client/v0.49.0) - 2026-11-17

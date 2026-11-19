@@ -1,3 +1,8 @@
+use base64::{
+    alphabet,
+    engine::{DecodePaddingMode, GeneralPurpose, GeneralPurposeConfig},
+    Engine,
+};
 use solana_sdk::signature::Keypair;
 use std::{
     env, fs,
@@ -37,6 +42,26 @@ pub fn parse_keypair_json(json_str: &str, source_desc: &str) -> Result<Keypair, 
             origin: source_desc.to_string(),
         }
     })
+}
+
+/// Base64url alphabet; padding is optional, matching the Edge Connect installer.
+const TOKEN_ENGINE: GeneralPurpose = GeneralPurpose::new(
+    &alphabet::URL_SAFE,
+    GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
+);
+
+/// Parse a keypair token: `DZ_` followed by the base64url of the 64 keypair bytes.
+pub fn parse_keypair_token(token: &str) -> Result<Keypair, KeypairLoadError> {
+    let invalid = |message: String| KeypairLoadError::InvalidToken { message };
+    let encoded = token
+        .trim()
+        .strip_prefix("DZ_")
+        .ok_or_else(|| invalid("missing DZ_ prefix".to_string()))?;
+    let bytes = TOKEN_ENGINE
+        .decode(encoded)
+        .map_err(|e| invalid(e.to_string()))?;
+    Keypair::try_from(bytes.as_slice())
+        .map_err(|_| invalid("not a valid 64-byte keypair".to_string()))
 }
 
 /// Read keypair from a file path
@@ -231,6 +256,73 @@ mod tests {
             result,
             Err(KeypairLoadError::InvalidJsonFormat { .. })
         ));
+    }
+
+    fn token_for(keypair: &Keypair) -> String {
+        use base64::Engine;
+        format!(
+            "DZ_{}",
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(keypair.to_bytes())
+        )
+    }
+
+    #[test]
+    fn test_parse_keypair_token_round_trip() {
+        let keypair = Keypair::new();
+        let parsed = parse_keypair_token(&format!("{}\n", token_for(&keypair))).unwrap();
+        assert_eq!(parsed.pubkey(), keypair.pubkey());
+    }
+
+    #[test]
+    fn test_parse_keypair_token_accepts_padding() {
+        use base64::Engine;
+        let keypair = Keypair::new();
+        let padded = format!(
+            "DZ_{}",
+            base64::engine::general_purpose::URL_SAFE.encode(keypair.to_bytes())
+        );
+        assert!(padded.ends_with('='));
+        assert_eq!(
+            parse_keypair_token(&padded).unwrap().pubkey(),
+            keypair.pubkey()
+        );
+    }
+
+    #[test]
+    fn test_parse_keypair_token_rejects_bad_tokens() {
+        use base64::Engine;
+        let keypair = Keypair::new();
+        let token = token_for(&keypair);
+        let mut mismatched = keypair.to_bytes();
+        mismatched[63] ^= 1;
+        let cases = [
+            ("no prefix", token.trim_start_matches("DZ_").to_string()),
+            ("not base64", "DZ_not*base64".to_string()),
+            (
+                "seed only",
+                format!(
+                    "DZ_{}",
+                    base64::engine::general_purpose::URL_SAFE_NO_PAD
+                        .encode(&keypair.to_bytes()[..32])
+                ),
+            ),
+            (
+                "pubkey does not match secret",
+                format!(
+                    "DZ_{}",
+                    base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(mismatched)
+                ),
+            ),
+        ];
+        for (name, bad) in cases {
+            assert!(
+                matches!(
+                    parse_keypair_token(&bad),
+                    Err(KeypairLoadError::InvalidToken { .. })
+                ),
+                "{name}"
+            );
+        }
     }
 
     #[test]

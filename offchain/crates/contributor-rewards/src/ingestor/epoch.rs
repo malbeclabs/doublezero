@@ -211,7 +211,7 @@ fn is_settled_block_error(err: &SolanaClientError) -> bool {
 // request URL from both `Debug` and `Display`. On mainnet-beta that URL carries the
 // read endpoint's API key, and journald ships to Loki, so logging the error verbatim
 // publishes the key on every timeout and every 429.
-fn redacted(err: &SolanaClientError) -> String {
+pub(crate) fn redacted(err: &SolanaClientError) -> String {
     let text = format!("{err:?}");
 
     match err.kind() {
@@ -227,7 +227,7 @@ fn redacted(err: &SolanaClientError) -> String {
 // error itself travels up the chain, and whoever prints that chain prints the URL.
 // Every RPC call in this module converts its error through here so the key cannot
 // leave, which means dropping the original as a source rather than wrapping it.
-fn redacted_error(err: SolanaClientError) -> anyhow::Error {
+pub(crate) fn redacted_error(err: SolanaClientError) -> anyhow::Error {
     anyhow::Error::msg(redacted(&err))
 }
 

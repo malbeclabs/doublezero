@@ -1,16 +1,28 @@
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use anyhow::Result;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use doublezero_solana_client_tools::rpc::DoubleZeroLedgerConnection;
-use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_client::{
+    nonblocking::rpc_client::RpcClient, rpc_client::GetConfirmedSignaturesForAddress2Config,
+};
 use solana_commitment_config::CommitmentConfig;
-use tracing::info;
+use solana_sdk::pubkey::Pubkey;
+use tracing::{error, info, warn};
 
 use crate::{
-    ingestor::{internet, metro_prices, serviceability, telemetry, types::FetchData},
+    calculator::monthly::try_find_epoch_end,
+    ingestor::{
+        epoch::{EpochFinder, redacted, redacted_error},
+        internet, metro_prices, serviceability, telemetry,
+        types::{DZDeviceLatencySamples, FetchData},
+    },
     settings::Settings,
 };
+
+// An agent moves to the next epoch a few minutes late, so a good account ends a little after its
+// epoch.
+const MAX_SAMPLES_PAST_EPOCH_END_US: u64 = 15 * 60 * 1_000_000;
 
 /// Combined network and telemetry data
 #[derive(Clone)]
@@ -64,11 +76,11 @@ impl Fetcher {
             Some(e) => e,
         };
 
-        self.with_epoch(search_epoch).await
+        self.fetch_epoch(search_epoch).await
     }
 
     /// Fetch all data for a specific epoch
-    async fn with_epoch(&self, epoch: u64) -> Result<(u64, FetchData)> {
+    async fn fetch_epoch(&self, epoch: u64) -> Result<(u64, FetchData)> {
         info!(
             "Using serviceability program: {}",
             self.settings.programs.serviceability_program_id
@@ -80,11 +92,85 @@ impl Fetcher {
 
         // Fetch all data in parallel
         let fetch_start = std::time::Instant::now();
-        let (serviceability_data, telemetry_data, internet_data) = tokio::try_join!(
+        let (serviceability_data, mut telemetry_data, internet_data) = tokio::try_join!(
             serviceability::fetch(&self.dz_rpc_client, &self.settings),
             telemetry::fetch(&self.dz_rpc_client, &self.settings, epoch),
             internet::fetch(&self.dz_rpc_client, &self.settings, epoch),
         )?;
+
+        // An epoch that has not ended has no last block to compare with.
+        let current_epoch = self
+            .dz_rpc_client
+            .get_epoch_info()
+            .await
+            .map_err(redacted_error)?
+            .epoch;
+        if epoch < current_epoch {
+            let mut epoch_finder =
+                EpochFinder::new(self.dz_rpc_client.clone(), self.solana_read_client.clone());
+            let schedule = epoch_finder.get_dz_schedule().await?;
+            let epoch_end = try_find_epoch_end(schedule, epoch, &async |slot| {
+                EpochFinder::try_get_block_time(&self.dz_rpc_client, slot).await
+            })
+            .await?;
+            let epoch_end_us = u64::try_from(epoch_end.end_time)? * 1_000_000;
+
+            let mut skipped_by_device_key = BTreeMap::<_, Vec<_>>::new();
+            for skipped in telemetry_data
+                .take_accounts_ending_after(epoch_end_us + MAX_SAMPLES_PAST_EPOCH_END_US)
+            {
+                skipped_by_device_key
+                    .entry(skipped.origin_device_pk)
+                    .or_default()
+                    .push(skipped);
+            }
+
+            for (device_key, skipped_accounts) in skipped_by_device_key {
+                let mut latest_write_time = None;
+                for skipped in &skipped_accounts {
+                    match self
+                        .dz_rpc_client
+                        .get_signatures_for_address_with_config(
+                            &skipped.pubkey,
+                            GetConfirmedSignaturesForAddress2Config {
+                                limit: Some(1),
+                                ..Default::default()
+                            },
+                        )
+                        .await
+                    {
+                        Ok(signatures) => {
+                            latest_write_time = latest_write_time
+                                .max(signatures.first().and_then(|status| status.block_time));
+                        }
+                        Err(err) => warn!(
+                            "Failed to read the latest write to device latency account {}: {}",
+                            skipped.pubkey,
+                            redacted(&err)
+                        ),
+                    }
+                }
+                error!(
+                    "{}",
+                    late_device_samples_message(
+                        serviceability_data
+                            .devices
+                            .get(&device_key)
+                            .map_or("unknown", |device| device.code.as_str()),
+                        epoch,
+                        epoch_end_us,
+                        latest_write_time,
+                        &skipped_accounts,
+                        |link_key| {
+                            serviceability_data
+                                .links
+                                .get(link_key)
+                                .map_or("unknown", |link| link.code.as_str())
+                        },
+                    )
+                );
+            }
+        }
 
         let metro_prices =
             metro_prices::from_settings(&self.settings, &serviceability_data.exchanges);
@@ -112,5 +198,113 @@ impl Fetcher {
         };
 
         Ok((epoch, data))
+    }
+}
+
+fn late_device_samples_message<'a>(
+    device: &str,
+    epoch: u64,
+    epoch_end_us: u64,
+    latest_write_time: Option<i64>,
+    skipped_accounts: &[DZDeviceLatencySamples],
+    link_code: impl Fn(&Pubkey) -> &'a str,
+) -> String {
+    let latest_write = latest_write_time
+        .and_then(|block_time| DateTime::from_timestamp(block_time, 0))
+        .map_or("unknown".to_string(), |block_time| block_time.to_rfc3339());
+    let latest_end_us = skipped_accounts
+        .iter()
+        .map(|skipped| skipped.end_timestamp_us())
+        .max()
+        .unwrap_or(epoch_end_us);
+    let accounts = skipped_accounts
+        .iter()
+        .map(|skipped| format!("{} ({})", skipped.pubkey, link_code(&skipped.link_pk)))
+        .collect::<Vec<_>>()
+        .join(", ");
+
+    format!(
+        "Skipping the late device latency accounts of device {device} in DZ epoch {epoch}: the \
+         latest write landed at {latest_write}, and the samples end up to {} minutes after the \
+         epoch ended. Latency sample accounts: {accounts}",
+        latest_end_us.saturating_sub(epoch_end_us) / 60_000_000
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ingestor::types::tests::device_latency_samples;
+
+    #[test]
+    fn test_late_device_samples_message_names_the_device_the_links_and_the_latest_write() {
+        let link_codes = [
+            (
+                "BghsvED9eCtpXC1smkfm8iEzfNGrro24c5eacE154goa",
+                "dgt-dzd-fra-fr5:dgt-dzd-mrs-mrs1",
+            ),
+            (
+                "GfiWgCnSSEsmui4M2f3EsVusUuCdEoC1TZf4TzQJcfFo",
+                "dgt-dzd-sin-sg3:dgt-dzd-mrs-mrs1",
+            ),
+            (
+                "4XLhVP6Yo9TWU2BEXugfT37TjXVj6c3sznNqatrko82k",
+                "mrs001-dz001:dgt-dzd-mrs-mrs1",
+            ),
+        ]
+        .map(|(link_key, code)| (link_key.parse::<Pubkey>().unwrap(), code));
+
+        let skipped_accounts = [
+            (
+                "Efgv3GR4Cy8MHiqTM1a6vCbqFDEBEP8vuFTToSf66zXe",
+                1_794_917_221_707_348,
+                17_357,
+                link_codes[0].0,
+            ),
+            (
+                "7GD3dCTfBwd73R6tu74ehTsRjrQdHFAXBpwriQna6b2t",
+                1_794_917_221_707_342,
+                17_220,
+                link_codes[1].0,
+            ),
+            (
+                "Dawu98bmTuMFNdEqFXkVPKGSufGqiLYx4YmVPt2wmNmQ",
+                1_794_917_221_707_337,
+                16_895,
+                link_codes[2].0,
+            ),
+        ]
+        .map(
+            |(account_key, start_timestamp_us, sample_count, link_key)| {
+                let mut skipped =
+                    device_latency_samples(account_key, start_timestamp_us, sample_count);
+                skipped.link_pk = link_key;
+                skipped
+            },
+        );
+
+        let message = late_device_samples_message(
+            "dgt-dzd-mrs-mrs1",
+            254,
+            1_795_075_421_000_000,
+            Some(1_795_075_491),
+            &skipped_accounts,
+            |link_key| {
+                link_codes
+                    .iter()
+                    .find(|(candidate_key, _)| candidate_key == link_key)
+                    .map_or("unknown", |(_, code)| *code)
+            },
+        );
+
+        assert_eq!(
+            message,
+            "Skipping the late device latency accounts of device dgt-dzd-mrs-mrs1 in DZ epoch 254: \
+             the latest write landed at 2026-11-19T08:04:51+00:00, and the samples end up to 256 \
+             minutes after the epoch ended. Latency sample accounts: \
+             Efgv3GR4Cy8MHiqTM1a6vCbqFDEBEP8vuFTToSf66zXe (dgt-dzd-fra-fr5:dgt-dzd-mrs-mrs1), \
+             7GD3dCTfBwd73R6tu74ehTsRjrQdHFAXBpwriQna6b2t (dgt-dzd-sin-sg3:dgt-dzd-mrs-mrs1), \
+             Dawu98bmTuMFNdEqFXkVPKGSufGqiLYx4YmVPt2wmNmQ (mrs001-dz001:dgt-dzd-mrs-mrs1)"
+        );
     }
 }

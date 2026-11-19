@@ -80,7 +80,13 @@ jobs:
             echo "::error::cEOS pull refused with the job token (packages: read)."
             exit "$rc"
           fi
-          docker tag "$CEOS_SOURCE" "$ARISTA_CEOS_IMAGE"
+          # The cEOS image comes from docker import, so its platform can differ from linux/amd64.
+          # BuildKit then skips a local tag and tries Docker Hub. A re-import as linux/amd64 prevents this.
+          docker image inspect --format 'cEOS source platform: {{.Os}}/{{.Architecture}}' "$CEOS_SOURCE"
+          cid=$(docker create "$CEOS_SOURCE" /bin/true)
+          docker export "$cid" | docker import --platform linux/amd64 - "$ARISTA_CEOS_IMAGE"
+          docker rm "$cid" >/dev/null
+          docker image inspect --format 'cEOS local platform: {{.Os}}/{{.Architecture}}' "$ARISTA_CEOS_IMAGE"
         env:
           GHCR_TOKEN: ${{ github.token }}
           GHCR_USER: ${{ github.actor }}

@@ -20,6 +20,7 @@ All notable changes to this project will be documented in this file.
   - `doublezero access-pass get` needs `--client-ip` only when the user payer holds more than one access pass. Without the flag, such a payer gets an error that lists each pass with its client IP and address. With `--client-ip`, the command shows the pass at that IP, not the 0.0.0.0 pass of the payer. It shows the 0.0.0.0 pass only when there is no pass at that IP. The new `--pubkey` flag selects a pass by its address.
 - E2E/QA
   - `TestE2E_BackwardCompatibility` tests client releases from v0.45.0, the new `MIN_COMPATIBLE_VERSION`, not from v0.31.0. Each release in the window starts one ledger in each environment, and the 41 ledgers of the old window ran a 64 GB runner out of memory.
+  - The IBRL `user list` fixtures expect `prepaid`, the pass type that `user list` prints since #4499, not `Prepaid: (MAX)`. `TestE2E_IBRL`, `TestE2E_IBRL_EnableDisable` and `TestE2E_IBRL_WithAllocatedIP` failed on main without this.
 
 ## [v0.49.0](https://github.com/malbeclabs/doublezero/compare/client/v0.48.0...client/v0.49.0) - 2026-11-17
 

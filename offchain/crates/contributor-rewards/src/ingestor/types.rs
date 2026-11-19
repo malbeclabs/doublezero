@@ -469,9 +469,9 @@ impl DZDTelemetryData {
     pub fn start_end_us(&self, end_limit_us: u64) -> Result<(u64, u64)> {
         let mut min_timestamp = u64::MAX;
         let mut max_timestamp = 0u64;
-        for account in &self.device_latency_samples {
-            min_timestamp = min_timestamp.min(account.start_timestamp_us);
-            let end_timestamp = account.end_timestamp_us();
+        for device_latency_account in &self.device_latency_samples {
+            min_timestamp = min_timestamp.min(device_latency_account.start_timestamp_us);
+            let end_timestamp = device_latency_account.end_timestamp_us();
             if end_timestamp <= end_limit_us {
                 max_timestamp = max_timestamp.max(end_timestamp);
             }

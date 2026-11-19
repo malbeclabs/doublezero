@@ -16,6 +16,8 @@ All notable changes to this project will be documented in this file.
   - `SetAccessPass` takes `private_group_users`, the number of private multicast group users on the pass. The airdrop funds that many users on top of the unicast and public multicast caps on a pass with `allow_multiple_ip`, and on top of the one user on a pass without it. The pass does not store it. A client that does not send it gets 0, and an older program ignores it. (malbeclabs/infra#3863)
 - CLI
   - `doublezero access-pass get` needs `--client-ip` only when the user payer holds more than one access pass. Without the flag, such a payer gets an error that lists each pass with its client IP and address. With `--client-ip`, the command shows the pass at that IP, not the 0.0.0.0 pass of the payer. It shows the 0.0.0.0 pass only when there is no pass at that IP. The new `--pubkey` flag selects a pass by its address.
+- E2E/QA
+  - `TestQA_AllDevices_UnicastConnectivity` takes `-pin-devices`, a list of `device:host` pairs. A pinned device goes to its host only, also when no other host can reach it, and the pin does not change the host of any other device. Before, the test dropped a device without a log line when the exchange isolation of allocate-addr hosts blocked the only host that can reach it. The test now skips the ping between two hosts on one exchange when one of them uses an allocated address, because the devices do not route between users of one exchange.
 
 ## [v0.49.0](https://github.com/malbeclabs/doublezero/compare/client/v0.48.0...client/v0.49.0) - 2026-11-17
 

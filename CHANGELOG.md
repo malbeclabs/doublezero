@@ -17,7 +17,7 @@ All notable changes to this project will be documented in this file.
 - CLI
   - `doublezero access-pass get` needs `--client-ip` only when the user payer holds more than one access pass. Without the flag, such a payer gets an error that lists each pass with its client IP and address. With `--client-ip`, the command shows the pass at that IP, not the 0.0.0.0 pass of the payer. It shows the 0.0.0.0 pass only when there is no pass at that IP. The new `--pubkey` flag selects a pass by its address.
 - Client
-  - `doublezerod` sets loose reverse-path filtering (`rp_filter=2`) on the multicast tunnel each time it creates it. A publisher sends from its DoubleZero IP, which a subscriber host routes out its main interface, so on a host with strict filtering, such as a Google Cloud image, the kernel dropped every datagram that arrived on `doublezero1`. The change affects only the tunnel: the kernel uses the larger of the `all` and per-interface values. ([#4457](https://github.com/malbeclabs/doublezero/issues/4457))
+  - `doublezerod` sets loose reverse-path filtering (`rp_filter=2`) on `doublezero1` each time it creates the multicast tunnel. A publisher sends from its DoubleZero IP, which a subscriber host routes out its main interface. On a host with strict filtering, such as a Google Cloud image, the kernel dropped every datagram that arrived on `doublezero1`. The daemon sets the value over rtnetlink, as it does for `doublezero0`, so it also works in the client container. Other interfaces keep their values. ([#4457](https://github.com/malbeclabs/doublezero/issues/4457))
 
 ## [v0.49.0](https://github.com/malbeclabs/doublezero/compare/client/v0.48.0...client/v0.49.0) - 2026-11-17
 

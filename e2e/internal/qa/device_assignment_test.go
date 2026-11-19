@@ -883,8 +883,28 @@ func TestComputeFailureStats(t *testing.T) {
 		if !reflect.DeepEqual(stats.DeviceResults, want) {
 			t.Errorf("DeviceResults = %+v, want %+v", stats.DeviceResults, want)
 		}
-		if _, ok := stats.PerHost["hostA"]; ok {
-			t.Errorf("hostA has per-host stats %+v, want none", stats.PerHost["hostA"])
+		if !reflect.DeepEqual(stats.NoPeer, []string{"dev1"}) {
+			t.Errorf("NoPeer = %v, want [dev1]", stats.NoPeer)
+		}
+		hostA, ok := stats.PerHost["hostA"]
+		if !ok || hostA.Total != 0 || hostA.NoPeer != 1 {
+			t.Errorf("hostA = %+v (present %v), want total=0 noPeer=1", hostA, ok)
+		}
+	})
+
+	t.Run("does not report a no-peer device that a later batch tested", func(t *testing.T) {
+		batchData := BatchData{
+			0: {"hostA": {Device: dev1, NoPeer: true}},
+			1: {"hostA": pass(dev1)},
+		}
+		stats := ComputeFailureStats(batchData)
+
+		if len(stats.NoPeer) != 0 {
+			t.Errorf("NoPeer = %v, want none", stats.NoPeer)
+		}
+		hostA := stats.PerHost["hostA"]
+		if hostA.Total != 1 || hostA.NoPeer != 0 {
+			t.Errorf("hostA = %+v, want total=1 noPeer=0", hostA)
 		}
 	})
 

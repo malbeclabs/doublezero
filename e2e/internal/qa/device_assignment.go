@@ -420,6 +420,7 @@ type HostFailureStats struct {
 	Total         int      // unique testable devices assigned to this host
 	Failed        int      // unique devices that never succeeded on this host
 	Skipped       int      // unique devices excluded for not accepting users; disjoint from Total
+	NoPeer        int      // unique devices not tested, because the host had no peer to ping; disjoint from Total
 	FailedDevices []string // sorted, deduped device codes
 }
 
@@ -451,6 +452,7 @@ type FailureStats struct {
 	PerHost       map[string]HostFailureStats // keyed by host
 	Retests       []DeviceRetest              // entries where Attempts > 1
 	Skipped       []string                    // sorted codes of devices that could not accept users
+	NoPeer        []string                    // sorted codes of devices that no host tested, because each host had no peer to ping
 }
 
 // SkippedRate is the fraction of assigned devices left out of the tallies for
@@ -474,6 +476,8 @@ func skippedRate(tested, skipped int) float64 {
 // (host, device) collapse into a single result for both the overall device
 // list and per-host stats. Devices that are not Ready are left out of the
 // failure tallies and counted as skipped instead, fleet-wide and per host.
+// A device that was only in batches where its host had no peer to ping is
+// left out of the tallies too, and reported as NoPeer.
 func ComputeFailureStats(batchData BatchData) FailureStats {
 	// hostDeviceAttempts[host][code] = number of attempts
 	hostDeviceAttempts := make(map[string]map[string]int)
@@ -484,6 +488,8 @@ func ComputeFailureStats(batchData BatchData) FailureStats {
 	skipped := make(map[string]struct{})
 	// hostSkipped[host] = set of codes skipped on that host
 	hostSkipped := make(map[string]map[string]struct{})
+	// hostNoPeer[host] = set of codes in a batch where that host had no peer
+	hostNoPeer := make(map[string]map[string]struct{})
 
 	batchNums := slices.Sorted(maps.Keys(batchData))
 	for _, batchNum := range batchNums {
@@ -504,6 +510,10 @@ func ComputeFailureStats(batchData BatchData) FailureStats {
 			// A host with no peer to ping did not test its device, so the
 			// batch is not counted. A connect or route failure still counts.
 			if assignment.NoPeer && assignment.FailedTests == 0 {
+				if hostNoPeer[host] == nil {
+					hostNoPeer[host] = make(map[string]struct{})
+				}
+				hostNoPeer[host][assignment.Device.Code] = struct{}{}
 				continue
 			}
 			code := assignment.Device.Code
@@ -552,6 +562,20 @@ func ComputeFailureStats(batchData BatchData) FailureStats {
 		hs.Skipped = len(codes)
 		perHost[host] = hs
 	}
+	// A device counts as no peer only when no other batch tested it.
+	noPeer := make(map[string]struct{})
+	for host, codes := range hostNoPeer {
+		hs := perHost[host]
+		for code := range codes {
+			if _, tested := hostDeviceAttempts[host][code]; !tested {
+				hs.NoPeer++
+			}
+			if _, tested := deviceSucceeded[code]; !tested {
+				noPeer[code] = struct{}{}
+			}
+		}
+		perHost[host] = hs
+	}
 
 	var retests []DeviceRetest
 	hosts := slices.Sorted(maps.Keys(hostDeviceAttempts))
@@ -578,5 +602,6 @@ func ComputeFailureStats(batchData BatchData) FailureStats {
 		PerHost:       perHost,
 		Retests:       retests,
 		Skipped:       slices.Sorted(maps.Keys(skipped)),
+		NoPeer:        slices.Sorted(maps.Keys(noPeer)),
 	}
 }

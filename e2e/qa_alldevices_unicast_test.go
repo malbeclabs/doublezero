@@ -261,6 +261,10 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		t.Logf("SKIPPED %d of %d devices not accepting users (excluded from failure rates): %s",
 			len(stats.Skipped), assignedDevices, strings.Join(stats.Skipped, ", "))
 	}
+	if len(stats.NoPeer) > 0 {
+		t.Logf("NO PEER %d devices not tested, because each host had no peer to ping (excluded from failure rates): %s",
+			len(stats.NoPeer), strings.Join(stats.NoPeer, ", "))
+	}
 
 	// A run whose fleet was mostly unusable proves nothing about the network and
 	// must not report green over the remnant. Errorf, not Fatalf: the metrics
@@ -304,6 +308,12 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	// fleet but all of one host's pool.
 	for _, host := range slices.Sorted(maps.Keys(stats.PerHost)) {
 		hs := stats.PerHost[host]
+		// A host with only no-peer batches has no tested or skipped device.
+		// The NO PEER line reports it, and the skipped gate must not read 0/0
+		// as 100%.
+		if hs.Total == 0 && hs.Skipped == 0 {
+			continue
+		}
 		if skippedRate := hs.SkippedRate(); skippedRate > *skippedThreshold {
 			t.Errorf("Host %s skipped device rate %.1f%% (%d/%d not accepting users) exceeds threshold %.1f%%; only %d devices were tested",
 				host, skippedRate*100, hs.Skipped, hs.Skipped+hs.Total, *skippedThreshold*100, hs.Total)

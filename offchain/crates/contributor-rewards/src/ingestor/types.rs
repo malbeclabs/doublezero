@@ -466,18 +466,15 @@ pub struct DZDTelemetryData {
 }
 
 impl DZDTelemetryData {
-    pub fn take_accounts_ending_after(&mut self, limit_us: u64) -> Vec<DZDeviceLatencySamples> {
-        self.device_latency_samples
-            .extract_if(.., |samples| samples.end_timestamp_us() > limit_us)
-            .collect()
-    }
-
-    pub fn start_end_us(&self) -> Result<(u64, u64)> {
+    pub fn start_end_us(&self, end_limit_us: u64) -> Result<(u64, u64)> {
         let mut min_timestamp = u64::MAX;
         let mut max_timestamp = 0u64;
         for sample in &self.device_latency_samples {
             min_timestamp = min_timestamp.min(sample.start_timestamp_us);
-            max_timestamp = max_timestamp.max(sample.end_timestamp_us());
+            let end_timestamp = sample.end_timestamp_us();
+            if end_timestamp <= end_limit_us {
+                max_timestamp = max_timestamp.max(end_timestamp);
+            }
         }
 
         if min_timestamp == u64::MAX {
@@ -613,6 +610,7 @@ pub(crate) mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::processor::stats::extract_device_samples_in_range;
 
     #[test]
     fn test_user_holds_pass_seat_migration() {
@@ -691,32 +689,38 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn test_take_accounts_ending_after_removes_only_late_accounts() {
-        let late_account_key = "Efgv3GR4Cy8MHiqTM1a6vCbqFDEBEP8vuFTToSf66zXe";
-        let good_account_key = "EnbH5eeQPzZfEV3bV7fua61NN8ijNT4WRwiZzXASyQf9";
-        let mut telemetry_data = DZDTelemetryData {
-            device_latency_samples: vec![
-                device_latency_samples(late_account_key, 1_794_917_221_707_348, 17_357),
-                device_latency_samples(good_account_key, 1_794_917_218_649_066, 15_846),
-            ],
+    fn test_start_end_us_leaves_out_the_end_of_late_accounts() {
+        let late_samples = device_latency_samples(
+            "Efgv3GR4Cy8MHiqTM1a6vCbqFDEBEP8vuFTToSf66zXe",
+            1_794_917_221_707_348,
+            17_357,
+        );
+        let good_samples = device_latency_samples(
+            "EnbH5eeQPzZfEV3bV7fua61NN8ijNT4WRwiZzXASyQf9",
+            1_794_917_218_649_066,
+            15_846,
+        );
+        let telemetry_data = DZDTelemetryData {
+            device_latency_samples: vec![late_samples.clone(), good_samples],
             accounts: Vec::new(),
         };
 
-        // DZ epoch 254 ended at 08:03:41 UTC on Nov 19 2026, and the limit is 15 minutes later.
-        let limit_us = 1_795_075_421_000_000 + 15 * 60 * 1_000_000;
-        let taken = telemetry_data.take_accounts_ending_after(limit_us);
-
-        assert_eq!(taken.len(), 1);
-        assert_eq!(taken[0].pubkey.to_string(), late_account_key);
-        assert_eq!(taken[0].end_timestamp_us(), 1_795_090_791_707_348);
-        assert_eq!(telemetry_data.device_latency_samples.len(), 1);
         assert_eq!(
-            telemetry_data.device_latency_samples[0].pubkey.to_string(),
-            good_account_key
+            telemetry_data.start_end_us(u64::MAX).unwrap(),
+            (1_794_917_218_649_066, 1_795_090_791_707_348)
         );
+
+        // DZ epoch 254 ended at 08:03:41 UTC on Nov 19 2026, and the limit is 15 minutes later.
+        let end_limit_us = 1_795_075_421_000_000 + 15 * 60 * 1_000_000;
+        let (start_us, end_us) = telemetry_data.start_end_us(end_limit_us).unwrap();
         assert_eq!(
-            telemetry_data.start_end_us().unwrap(),
+            (start_us, end_us),
             (1_794_917_218_649_066, 1_795_075_678_649_066)
         );
+
+        let (values, start_index, end_index) =
+            extract_device_samples_in_range(&late_samples, start_us, end_us);
+        assert_eq!((start_index, end_index), (0, 15_845));
+        assert_eq!(values.len(), 15_845);
     }
 }

@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -252,7 +251,7 @@ func formatIncompatRanges(stepName, env string) string {
 //	Discovery phase: One lightweight devnet clones from the remote cluster, deploys
 //	the upgraded program, and enumerates compatible CLI versions.
 //
-//	Per-version phase: N parallel devnets, each cloning from the discovery devnet's
+//	Per-version phase: up to -parallel devnets at a time, each cloning from the discovery devnet's
 //	local RPC (fast ~10-30s instead of slow remote clone), running full read + write
 //	workflows independently with isolated onchain state.
 //
@@ -260,7 +259,6 @@ func formatIncompatRanges(stepName, env string) string {
 //   - DZ_COMPAT_CLONE_ENV: comma-separated environments to test (default: "testnet,mainnet-beta")
 //   - DZ_COMPAT_MIN_VERSION: override ProgramConfig.MinCompatVersion (e.g., "0.8.1")
 //   - DZ_COMPAT_MAX_NUM_VERSIONS: limit number of versions to test (0 = all, e.g., "2")
-//   - DZ_COMPAT_MAX_CONCURRENCY: max parallel version stacks (default: 12)
 //
 // compatStepResult tracks the result of a single step for a single version.
 type compatStepResult struct {
@@ -522,15 +520,9 @@ func containerAccessibleHost() string {
 	return "host.docker.internal"
 }
 
-// getMaxConcurrency returns the maximum number of parallel version stacks to run.
-// Controlled by DZ_COMPAT_MAX_CONCURRENCY env var (default: 12, matching CI -parallel).
-func getMaxConcurrency() int {
-	if s := os.Getenv("DZ_COMPAT_MAX_CONCURRENCY"); s != "" {
-		if n, err := strconv.Atoi(s); err == nil && n > 0 {
-			return n
-		}
-	}
-	return 12
+// goRun runs f as subtest name in a goroutine that wg tracks. Wait on wg before t returns.
+func goRun(wg *sync.WaitGroup, t *testing.T, name string, f func(t *testing.T)) {
+	wg.Go(func() { t.Run(name, f) })
 }
 
 // createAndStartDiscoveryDevnet creates a minimal devnet that clones state from a
@@ -830,8 +822,6 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 	})
 
 	// --- Phase 2: Per-version parallel execution ---
-	sem := make(chan struct{}, getMaxConcurrency())
-
 	recordResult := envResults.record
 
 	for vi, version := range compatVersions {
@@ -842,10 +832,8 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 		}
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
-
-			// Acquire concurrency slot.
-			sem <- struct{}{}
-			defer func() { <-sem }()
+			// Use goRun, not t.Parallel, for all subtests below. A parallel subtest makes this test release
+			// its -parallel slot before Cleanup destroys the devnet, so -parallel does not limit live devnets.
 
 			vLog := log.With("version", version)
 
@@ -885,16 +873,16 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 				return fmt.Sprintf("$(doublezero %s 2>/dev/null | grep '%s ' | awk '{print $1}')", listCmd, code)
 			}
 
-			// Read and write workflows run in parallel since reads only
+			// Read and write workflows run concurrently since reads only
 			// touch cloned state and don't conflict with writes.
-			t.Run("manager_read", func(t *testing.T) {
-				t.Parallel()
+			var wg sync.WaitGroup
+			goRun(&wg, t, "manager_read", func(t *testing.T) {
 				runReadWorkflows(t, dn, cli, version, cloneEnv, recordResult, vLog)
 			})
-			t.Run("manager_write", func(t *testing.T) {
-				t.Parallel()
+			goRun(&wg, t, "manager_write", func(t *testing.T) {
 				runWriteWorkflows(t, dn, cli, version, vi, cloneEnv, managerPubkey, lookupFirstPubkey, lookupPubkeyByCode, recordResult, vLog)
 			})
+			wg.Wait()
 		})
 	}
 }
@@ -923,10 +911,10 @@ func runReadWorkflows(
 		{name: "accesspass_list", cmd: cli + " access-pass list"},
 	}
 
+	var wg sync.WaitGroup
 	for _, rc := range readCommands {
 		rc := rc
-		t.Run(rc.name, func(t *testing.T) {
-			t.Parallel()
+		goRun(&wg, t, rc.name, func(t *testing.T) {
 			stepKey := "read/" + rc.name
 			log.Debug("==> Running manager read command", "command", rc.cmd)
 			output, err := dn.Manager.Exec(t.Context(), []string{"bash", "-c", rc.cmd})
@@ -946,6 +934,7 @@ func runReadWorkflows(
 			}
 		})
 	}
+	wg.Wait()
 }
 
 // runWriteWorkflows tests the full entity lifecycle: create, update, verify, delete.
@@ -1384,21 +1373,16 @@ func runWriteWorkflows(
 			}
 
 			if phase.parallel {
-				var cascadeInPhase atomic.Bool
+				var wg sync.WaitGroup
 				for _, ws := range phase.steps {
 					ws := ws
-					t.Run(ws.name, func(t *testing.T) {
-						t.Parallel()
+					goRun(&wg, t, ws.name, func(t *testing.T) {
 						if execStep(t, ws) {
-							cascadeInPhase.Store(true)
+							phaseFailed.Store(true)
 						}
 					})
 				}
-				t.Cleanup(func() {
-					if cascadeInPhase.Load() {
-						phaseFailed.Store(true)
-					}
-				})
+				wg.Wait()
 			} else {
 				for _, ws := range phase.steps {
 					ws := ws

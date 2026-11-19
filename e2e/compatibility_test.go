@@ -562,12 +562,7 @@ func createAndStartDiscoveryDevnet(t *testing.T, cloneEnv string, log *slog.Logg
 	require.NoError(t, err)
 
 	// Cleanup runs after the parallel version subtests of t, which clone from this devnet.
-	t.Cleanup(func() {
-		log.Debug("==> Destroying discovery devnet")
-		if err := dn.Destroy(context.Background(), false); err != nil {
-			log.Error("Failed to destroy discovery devnet", "error", err)
-		}
-	})
+	destroyOnCleanup(t, dn)
 
 	// Read the manager pubkey from the auto-generated keypair so we can set it
 	// as the upgrade authority for the cloned program.
@@ -726,12 +721,7 @@ func createAndStartVersionDevnet(
 		SkipProgramDeploy: true,
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
-	t.Cleanup(func() {
-		log.Debug("==> Destroying version devnet")
-		if err := dn.Destroy(context.Background(), false); err != nil {
-			log.Error("Failed to destroy version devnet", "error", err)
-		}
-	})
+	destroyOnCleanup(t, dn)
 
 	// Read the manager pubkey for the upgrade authority.
 	managerKeypairJSON, err := os.ReadFile(dn.Spec.Manager.ManagerKeypairPath)

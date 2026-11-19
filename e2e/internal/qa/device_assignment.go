@@ -221,18 +221,68 @@ func CheckAllocateAddrExchangeIsolation(exchangeByHost map[string]string, alloca
 	return nil
 }
 
+// ParseDevicePins reads a comma-separated list of device:host pairs. A pin
+// sends the device to that host only. Use it for a device that only one host
+// can reach. Each host must be in hosts, and each device can have one pin.
+func ParseDevicePins(value string, hosts []string) (map[string]string, error) {
+	pins := make(map[string]string)
+	for entry := range strings.SplitSeq(value, ",") {
+		entry = strings.TrimSpace(entry)
+		if entry == "" {
+			continue
+		}
+		device, host, ok := strings.Cut(entry, ":")
+		device, host = strings.TrimSpace(device), strings.TrimSpace(host)
+		if !ok || device == "" || host == "" {
+			return nil, fmt.Errorf("device pin %q is not in the form device:host", entry)
+		}
+		if !slices.Contains(hosts, host) {
+			return nil, fmt.Errorf("device pin %q names host %q, which is not in the host list", entry, host)
+		}
+		if _, dup := pins[device]; dup {
+			return nil, fmt.Errorf("device %q has more than one pin", device)
+		}
+		pins[device] = host
+	}
+	return pins, nil
+}
+
+// SameExchangeWithAllocatedAddr reports if two clients are on devices in the
+// same exchange and one of the clients uses an allocated address. A ping
+// between such clients cannot work. The devices do not route between users
+// of one exchange, so the ping goes over the internet. An allocated address
+// only routes through DoubleZero.
+func SameExchangeWithAllocatedAddr(srcHost, dstHost string, srcDevice, dstDevice *Device, allocateAddrHosts map[string]struct{}) bool {
+	if srcDevice.ExchangeCode != dstDevice.ExchangeCode {
+		return false
+	}
+	_, srcAllocated := allocateAddrHosts[srcHost]
+	_, dstAllocated := allocateAddrHosts[dstHost]
+	return srcAllocated || dstAllocated
+}
+
 // AssignDevicesToClients considers latency between each client and device to assign devices to clients:
 // If multiple clients have < LatencyThresholdMs latency, the device goes to the client with fewest devices.
 // Otherwise, the device goes to the client with the lowest latency.
 // Allocate-addr clients have no intra-exchange routing, so they must not share exchanges with any other client.
+// devicePins maps a device code to the one host that tests it (see ParseDevicePins). Each host in it must be a client.
 // After assignment, shuffles each client's list, then pads all lists to match the longest so every client has an entry for every batch.
-func AssignDevicesToClients(devices []*Device, clients []*Client, clientLatencies ClientLatencies, allocateAddrHosts map[string]struct{}, shuffle func([]*Device)) BatchData {
+func AssignDevicesToClients(devices []*Device, clients []*Client, clientLatencies ClientLatencies, allocateAddrHosts map[string]struct{}, devicePins map[string]string, shuffle func([]*Device)) BatchData {
 	clientDevices := make(map[string][]*Device)
 	// Track exchange usage to enforce allocate-addr isolation
 	allocateAddrExchanges := make(map[string]string)    // exchange -> allocate-addr client hostname
 	nonAllocateAddrExchanges := make(map[string]string) // exchange -> non-allocate-addr client hostname
 
 	for _, device := range devices {
+		// A pinned device goes to its host. The latency and the exchange
+		// isolation do not apply, so the host tests the device also when only
+		// that host can reach it. The device does not claim its exchange, so
+		// all other devices get the same host as without the pin.
+		if host, ok := devicePins[device.Code]; ok {
+			clientDevices[host] = append(clientDevices[host], device)
+			continue
+		}
+
 		var lowLatencyClients []string
 		var bestClientHostname string
 		bestLatency := math.MaxFloat64

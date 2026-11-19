@@ -44,7 +44,7 @@ func TestAssignDevicesToClients(t *testing.T) {
 			"client2": {"dev1": 10, "dev2": 10, "dev3": 10},
 		}
 
-		result := AssignDevicesToClients(devices, clients, latencies, nil, noShuffle)
+		result := AssignDevicesToClients(devices, clients, latencies, nil, nil, noShuffle)
 
 		// Should distribute devices between clients
 		client1Devices := 0
@@ -77,7 +77,7 @@ func TestAssignDevicesToClients(t *testing.T) {
 			"client2": {"dev1": 60},
 		}
 
-		result := AssignDevicesToClients(devices, clients, latencies, nil, noShuffle)
+		result := AssignDevicesToClients(devices, clients, latencies, nil, nil, noShuffle)
 
 		if len(result) != 1 {
 			t.Fatalf("expected 1 batch, got %d", len(result))
@@ -101,7 +101,7 @@ func TestAssignDevicesToClients(t *testing.T) {
 			"client2": {"dev1": 100},
 		}
 
-		result := AssignDevicesToClients(devices, clients, latencies, nil, noShuffle)
+		result := AssignDevicesToClients(devices, clients, latencies, nil, nil, noShuffle)
 
 		if len(result) != 1 {
 			t.Fatalf("expected 1 batch, got %d", len(result))
@@ -127,7 +127,7 @@ func TestAssignDevicesToClients(t *testing.T) {
 			"client2": {"dev1": 100, "dev2": 100, "dev3": 10},
 		}
 
-		result := AssignDevicesToClients(devices, clients, latencies, nil, noShuffle)
+		result := AssignDevicesToClients(devices, clients, latencies, nil, nil, noShuffle)
 
 		// Every batch should have both clients
 		for batchNum, batch := range result {
@@ -157,7 +157,7 @@ func TestAssignDevicesToClients(t *testing.T) {
 			"client2": {"dev3": 10, "dev4": 10, "dev5": 10, "dev6": 10, "dev7": 10},
 		}
 
-		result := AssignDevicesToClients(devices, clients, latencies, nil, noShuffle)
+		result := AssignDevicesToClients(devices, clients, latencies, nil, nil, noShuffle)
 
 		want := []string{"dev1", "dev2", "drained", "dev2", "dev2"}
 		if got := hostDeviceCodes(result, "client1"); !reflect.DeepEqual(got, want) {
@@ -180,7 +180,7 @@ func TestAssignDevicesToClients(t *testing.T) {
 			"client2": {"dev1": 10, "dev2": 10, "dev3": 10, "dev4": 10},
 		}
 
-		result := AssignDevicesToClients(devices, clients, latencies, nil, noShuffle)
+		result := AssignDevicesToClients(devices, clients, latencies, nil, nil, noShuffle)
 
 		want := []string{"drained1", "drained2", "drained2", "drained2"}
 		if got := hostDeviceCodes(result, "client1"); !reflect.DeepEqual(got, want) {
@@ -204,7 +204,7 @@ func TestAssignDevicesToClients(t *testing.T) {
 		}
 		allocateAddrHosts := map[string]struct{}{"client1": {}}
 
-		result := AssignDevicesToClients(devices, clients, latencies, allocateAddrHosts, noShuffle)
+		result := AssignDevicesToClients(devices, clients, latencies, allocateAddrHosts, nil, noShuffle)
 
 		// Verify no exchange overlap between client1 and client2
 		client1Exchanges := make(map[string]bool)
@@ -239,7 +239,7 @@ func TestAssignDevicesToClients(t *testing.T) {
 		}
 		allocateAddrHosts := map[string]struct{}{"client1": {}, "client2": {}}
 
-		result := AssignDevicesToClients(devices, clients, latencies, allocateAddrHosts, noShuffle)
+		result := AssignDevicesToClients(devices, clients, latencies, allocateAddrHosts, nil, noShuffle)
 
 		// Each client should have a different exchange
 		client1Exchanges := make(map[string]bool)
@@ -258,6 +258,134 @@ func TestAssignDevicesToClients(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("pinned device goes to its host even when another client is closer", func(t *testing.T) {
+		devices := []*Device{readyDevice("dev1"), readyDevice("dev2")}
+		clients := []*Client{{Host: "client1"}, {Host: "client2"}}
+		latencies := ClientLatencies{
+			"client1": {"dev1": 5, "dev2": 5},
+			"client2": {"dev1": 80, "dev2": 80},
+		}
+		pins := map[string]string{"dev2": "client2"}
+
+		result := AssignDevicesToClients(devices, clients, latencies, nil, pins, noShuffle)
+
+		if got := hostDeviceCodes(result, "client1"); !reflect.DeepEqual(got, []string{"dev1"}) {
+			t.Errorf("client1 devices = %v, want [dev1]", got)
+		}
+		if got := hostDeviceCodes(result, "client2"); !reflect.DeepEqual(got, []string{"dev2"}) {
+			t.Errorf("client2 devices = %v, want [dev2]", got)
+		}
+	})
+
+	t.Run("pinned device goes to its host even when no client reports it reachable", func(t *testing.T) {
+		devices := []*Device{readyDevice("dev1"), readyDevice("dev2")}
+		clients := []*Client{{Host: "client1"}, {Host: "client2"}}
+		latencies := ClientLatencies{
+			"client1": {"dev1": 5},
+			"client2": {"dev1": 80},
+		}
+		pins := map[string]string{"dev2": "client2"}
+
+		result := AssignDevicesToClients(devices, clients, latencies, nil, pins, noShuffle)
+
+		if got := hostDeviceCodes(result, "client2"); !reflect.DeepEqual(got, []string{"dev2"}) {
+			t.Errorf("client2 devices = %v, want [dev2]", got)
+		}
+	})
+
+	t.Run("pinned device ignores exchange isolation and does not claim its exchange", func(t *testing.T) {
+		// The pinned device comes first. If it claimed ex1 for the allocate-addr
+		// client, the regular client could not take dev1.
+		devices := []*Device{
+			{Code: "pinned", ExchangeCode: "ex1", Status: serviceability.DeviceStatusActivated, MaxUsers: 1},
+			{Code: "dev1", ExchangeCode: "ex1", Status: serviceability.DeviceStatusActivated, MaxUsers: 128},
+		}
+		clients := []*Client{{Host: "regular"}, {Host: "allocate"}}
+		latencies := ClientLatencies{
+			"regular":  {"dev1": 2},
+			"allocate": {"dev1": 60, "pinned": 60},
+		}
+		allocateAddrHosts := map[string]struct{}{"allocate": {}}
+		pins := map[string]string{"pinned": "allocate"}
+
+		result := AssignDevicesToClients(devices, clients, latencies, allocateAddrHosts, pins, noShuffle)
+
+		if got := hostDeviceCodes(result, "regular"); !reflect.DeepEqual(got, []string{"dev1"}) {
+			t.Errorf("regular devices = %v, want [dev1]", got)
+		}
+		if got := hostDeviceCodes(result, "allocate"); !reflect.DeepEqual(got, []string{"pinned"}) {
+			t.Errorf("allocate devices = %v, want [pinned]", got)
+		}
+	})
+}
+
+func TestParseDevicePins(t *testing.T) {
+	hosts := []string{"hostA", "hostB"}
+
+	t.Run("empty value gives no pins", func(t *testing.T) {
+		pins, err := ParseDevicePins("", hosts)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(pins) != 0 {
+			t.Errorf("pins = %v, want none", pins)
+		}
+	})
+
+	t.Run("parses pairs and trims spaces", func(t *testing.T) {
+		pins, err := ParseDevicePins(" dev1:hostA , dev2:hostB ", hosts)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		want := map[string]string{"dev1": "hostA", "dev2": "hostB"}
+		if !reflect.DeepEqual(pins, want) {
+			t.Errorf("pins = %v, want %v", pins, want)
+		}
+	})
+
+	for _, tc := range []struct {
+		name  string
+		value string
+	}{
+		{"rejects an entry without a host", "dev1"},
+		{"rejects an empty host", "dev1:"},
+		{"rejects an empty device", ":hostA"},
+		{"rejects a host that is not in the host list", "dev1:hostC"},
+		{"rejects a device pinned twice", "dev1:hostA,dev1:hostB"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := ParseDevicePins(tc.value, hosts); err == nil {
+				t.Errorf("ParseDevicePins(%q) returned no error", tc.value)
+			}
+		})
+	}
+}
+
+func TestSameExchangeWithAllocatedAddr(t *testing.T) {
+	ex1a := &Device{Code: "a", ExchangeCode: "ex1"}
+	ex1b := &Device{Code: "b", ExchangeCode: "ex1"}
+	ex2 := &Device{Code: "c", ExchangeCode: "ex2"}
+	allocateAddrHosts := map[string]struct{}{"allocate": {}}
+
+	for _, tc := range []struct {
+		name                 string
+		srcHost, dstHost     string
+		srcDevice, dstDevice *Device
+		want                 bool
+	}{
+		{"same exchange with allocate-addr source", "allocate", "regular", ex1a, ex1b, true},
+		{"same exchange with allocate-addr target", "regular", "allocate", ex1a, ex1b, true},
+		{"same exchange with two regular hosts", "regular", "regular2", ex1a, ex1b, false},
+		{"different exchanges with allocate-addr host", "allocate", "regular", ex1a, ex2, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := SameExchangeWithAllocatedAddr(tc.srcHost, tc.dstHost, tc.srcDevice, tc.dstDevice, allocateAddrHosts)
+			if got != tc.want {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
 }
 
 func TestDetermineClientsToConnect(t *testing.T) {

@@ -23,6 +23,7 @@ import (
 
 var (
 	devicesFlag             = flag.String("devices", "", "comma separated list of devices to run tests against")
+	pinDevicesFlag          = flag.String("pin-devices", "", "comma separated device:host pairs; only that host tests the device, for a device that only one host can reach")
 	failureThreshold        = flag.Float64("failure-threshold", 0.1, "maximum allowed overall device failure rate (0.0-1.0) before the test is marked as failed")
 	perHostFailureThreshold = flag.Float64("per-host-failure-threshold", 0.2, "maximum allowed per-host device failure rate (0.0-1.0) before the test is marked as failed")
 	skippedThreshold        = flag.Float64("skipped-threshold", 0.5, "maximum allowed rate of assigned devices skipped for not accepting users (0.0-1.0) before the test is marked as failed")
@@ -45,6 +46,13 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 
 	clients := test.Clients()
 	require.GreaterOrEqual(t, len(clients), 2, "At least 2 clients are required for connectivity testing")
+
+	clientHosts := make([]string, 0, len(clients))
+	for _, client := range clients {
+		clientHosts = append(clientHosts, client.Host)
+	}
+	devicePins, err := qa.ParseDevicePins(*pinDevicesFlag, clientHosts)
+	require.NoError(t, err, "invalid -pin-devices")
 
 	devices := test.ValidDevices()
 	if len(devices) == 0 {
@@ -109,8 +117,16 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	log.Debug(fmt.Sprintf("    (If there are multiple clients with <%dms latency for that device, assign the device to the client with the fewest devices", qa.LatencyThresholdMs))
 	log.Debug("    Otherwise, associate each device with the client with the lowest latency)")
 
+	for _, code := range slices.Sorted(maps.Keys(devicePins)) {
+		if slices.ContainsFunc(devices, func(d *qa.Device) bool { return d.Code == code }) {
+			log.Debug("Pinning device to host", "device", code, "host", devicePins[code])
+		} else {
+			log.Info("Pinned device is not in the device list, so the pin has no effect", "device", code, "host", devicePins[code])
+		}
+	}
+
 	log.Debug("Assign devices to clients based on latency")
-	batchData := qa.AssignDevicesToClients(devices, clients, clientLatencies, allocateAddrHostsArg, test.ShuffleDevices)
+	batchData := qa.AssignDevicesToClients(devices, clients, clientLatencies, allocateAddrHostsArg, devicePins, test.ShuffleDevices)
 
 	batchCount := len(batchData)
 	if batchCount == 0 {
@@ -189,7 +205,7 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 			if len(connectedClients) < 2 {
 				t.Fatalf("fewer than 2 clients connected (%d), cannot run connectivity tests", len(connectedClients))
 			}
-			runConnectivitySubtests(t, log, connectedClients, batch, &resultsMu)
+			runConnectivitySubtests(t, log, connectedClients, batch, allocateAddrHostsArg, &resultsMu)
 		})
 
 		printTestReportTable(log, qa.BatchData{batchNum: batch}, clientLatencies, true)
@@ -491,6 +507,7 @@ func runConnectivitySubtests(
 	outerLog *slog.Logger,
 	clients []*qa.Client,
 	batch map[string]*qa.BatchResult,
+	allocateAddrHosts map[string]struct{},
 	resultsMu *sync.Mutex,
 ) {
 	for _, client := range clients {
@@ -512,6 +529,15 @@ func runConnectivitySubtests(
 			var mu sync.Mutex
 			for _, target := range clients {
 				if target.Host == srcClient.Host {
+					continue
+				}
+				// Only a pinned device can put an allocate-addr host on the
+				// exchange of another host. Such a pair has no path, so do
+				// not count it as a failure of either device.
+				srcDevice, dstDevice := batch[srcClient.Host].Device, batch[target.Host].Device
+				if qa.SameExchangeWithAllocatedAddr(srcClient.Host, target.Host, srcDevice, dstDevice, allocateAddrHosts) {
+					log.Debug("Skipping ping between hosts in one exchange with an allocated address",
+						"source", srcClient.Host, "target", target.Host, "sourceDevice", srcDevice.Code, "targetDevice", dstDevice.Code)
 					continue
 				}
 

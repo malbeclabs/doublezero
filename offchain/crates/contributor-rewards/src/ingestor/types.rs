@@ -466,13 +466,13 @@ pub struct DZDTelemetryData {
 }
 
 impl DZDTelemetryData {
-    pub fn start_end_us(&self, end_limit_us: u64) -> Result<(u64, u64)> {
+    pub fn start_end_us(&self, max_window_end_us: u64) -> Result<(u64, u64)> {
         let mut min_timestamp = u64::MAX;
         let mut max_timestamp = 0u64;
         for device_latency_account in &self.device_latency_samples {
             min_timestamp = min_timestamp.min(device_latency_account.start_timestamp_us);
             let end_timestamp = device_latency_account.end_timestamp_us();
-            if end_timestamp <= end_limit_us {
+            if end_timestamp <= max_window_end_us {
                 max_timestamp = max_timestamp.max(end_timestamp);
             }
         }
@@ -711,8 +711,8 @@ pub(crate) mod tests {
         );
 
         // DZ epoch 254 ended at 08:03:41 UTC on Nov 19 2026, and the limit is 15 minutes later.
-        let end_limit_us = 1_795_075_421_000_000 + 15 * 60 * 1_000_000;
-        let (start_us, end_us) = telemetry_data.start_end_us(end_limit_us).unwrap();
+        let max_window_end_us = 1_795_075_421_000_000 + 15 * 60 * 1_000_000;
+        let (start_us, end_us) = telemetry_data.start_end_us(max_window_end_us).unwrap();
         assert_eq!(
             (start_us, end_us),
             (1_794_917_218_649_066, 1_795_075_678_649_066)

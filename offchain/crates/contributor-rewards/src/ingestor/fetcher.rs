@@ -105,7 +105,7 @@ impl Fetcher {
         )?;
 
         // An epoch that has not ended has no last block to compare with.
-        let mut end_limit_us = u64::MAX;
+        let mut max_window_end_us = u64::MAX;
         let current_epoch = self
             .dz_rpc_client
             .get_epoch_info()
@@ -121,14 +121,14 @@ impl Fetcher {
             })
             .await?;
             let epoch_end_us = u64::try_from(epoch_end.end_time)? * 1_000_000;
-            end_limit_us = epoch_end_us + MAX_SAMPLES_PAST_EPOCH_END_US;
+            max_window_end_us = epoch_end_us + MAX_SAMPLES_PAST_EPOCH_END_US;
 
             if log_late_accounts {
                 let mut late_accounts_by_device_key = BTreeMap::<_, Vec<_>>::new();
                 for late in telemetry_data
                     .device_latency_samples
                     .iter()
-                    .filter(|samples| samples.end_timestamp_us() > end_limit_us)
+                    .filter(|samples| samples.end_timestamp_us() > max_window_end_us)
                 {
                     late_accounts_by_device_key
                         .entry(late.origin_device_pk)
@@ -192,7 +192,7 @@ impl Fetcher {
         metrics::counter!("doublezero_contributor_rewards_data_fetches", "epoch" => epoch.to_string())
             .increment(1);
 
-        let (start_us, end_us) = telemetry_data.start_end_us(end_limit_us)?;
+        let (start_us, end_us) = telemetry_data.start_end_us(max_window_end_us)?;
 
         info!(
             "Epoch {} time range: {} to {} microseconds",

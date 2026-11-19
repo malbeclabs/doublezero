@@ -53,6 +53,12 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 	}
 	devicePins, err := qa.ParseDevicePins(*pinDevicesFlag, clientHosts)
 	require.NoError(t, err, "invalid -pin-devices")
+	// A pin to a device that does not exist onchain is a typo or a stale
+	// pin. Stop the run, because the pin would otherwise have no effect.
+	for code := range devicePins {
+		_, ok := test.Devices()[code]
+		require.True(t, ok, "-pin-devices names device %q, which does not exist onchain", code)
+	}
 
 	devices := test.ValidDevices()
 	if len(devices) == 0 {
@@ -121,12 +127,15 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 		if slices.ContainsFunc(devices, func(d *qa.Device) bool { return d.Code == code }) {
 			log.Debug("Pinning device to host", "device", code, "host", devicePins[code])
 		} else {
-			log.Info("Pinned device is not in the device list, so the pin has no effect", "device", code, "host", devicePins[code])
+			log.Warn("Pinned device is not in the device list, so the pin has no effect", "device", code, "host", devicePins[code])
 		}
 	}
 
 	log.Debug("Assign devices to clients based on latency")
 	batchData := qa.AssignDevicesToClients(devices, clients, clientLatencies, allocateAddrHostsArg, devicePins, test.ShuffleDevices)
+	for _, code := range qa.UnassignedDevices(devices, batchData) {
+		log.Warn("No client can take device, so it is not tested", "device", code)
+	}
 
 	batchCount := len(batchData)
 	if batchCount == 0 {
@@ -325,6 +334,18 @@ func TestQA_AllDevices_UnicastConnectivity(t *testing.T) {
 }
 
 // Print a table of each client's device assignments and latencies, plus test results if showResults is true.
+// resultCell shows the result of one host in one batch for the report table.
+func resultCell(assignment *qa.BatchResult) string {
+	switch {
+	case assignment.NoPeer && assignment.FailedTests == 0:
+		return fmt.Sprintf("%s no peer ➖", assignment.Device.Code)
+	case assignment.Success():
+		return fmt.Sprintf("%s %d/%d ✅", assignment.Device.Code, assignment.PacketsReceived, assignment.PacketsSent)
+	default:
+		return fmt.Sprintf("%s %d/%d ❌", assignment.Device.Code, assignment.PacketsReceived, assignment.PacketsSent)
+	}
+}
+
 func printTestReportTable(log *slog.Logger, batchData qa.BatchData, clientLatencies qa.ClientLatencies, showResults bool) {
 	batchNums := slices.Sorted(maps.Keys(batchData))
 	if len(batchNums) == 0 {
@@ -340,11 +361,7 @@ func printTestReportTable(log *slog.Logger, batchData qa.BatchData, clientLatenc
 				latencyMs := clientLatencies[clientName][assignment.Device.Code]
 				var cell string
 				if showResults {
-					if assignment.Success() {
-						cell = fmt.Sprintf("%s %d/%d ✅", assignment.Device.Code, assignment.PacketsReceived, assignment.PacketsSent)
-					} else {
-						cell = fmt.Sprintf("%s %d/%d ❌", assignment.Device.Code, assignment.PacketsReceived, assignment.PacketsSent)
-					}
+					cell = resultCell(assignment)
 				} else {
 					cell = fmt.Sprintf("%s (%.1fms) ⏳", assignment.Device.Code, latencyMs)
 				}
@@ -384,11 +401,7 @@ func printTestReportTable(log *slog.Logger, batchData qa.BatchData, clientLatenc
 			if assignment, ok := batchData[batchNum][clientName]; ok {
 				latencyMs := clientLatencies[clientName][assignment.Device.Code]
 				if showResults {
-					if assignment.Success() {
-						cell = fmt.Sprintf("%s %d/%d ✅", assignment.Device.Code, assignment.PacketsReceived, assignment.PacketsSent)
-					} else {
-						cell = fmt.Sprintf("%s %d/%d ❌", assignment.Device.Code, assignment.PacketsReceived, assignment.PacketsSent)
-					}
+					cell = resultCell(assignment)
 				} else {
 					cell = fmt.Sprintf("%s (%.1fms) 🕒", assignment.Device.Code, latencyMs)
 				}
@@ -527,6 +540,7 @@ func runConnectivitySubtests(
 			var totalSent, totalReceived, failedTests uint32
 			var wg sync.WaitGroup
 			var mu sync.Mutex
+			pinged := 0
 			for _, target := range clients {
 				if target.Host == srcClient.Host {
 					continue
@@ -541,6 +555,7 @@ func runConnectivitySubtests(
 					continue
 				}
 
+				pinged++
 				wg.Add(1)
 				go func(src, target *qa.Client, srcDevice, dstDevice *qa.Device) {
 					defer wg.Done()
@@ -570,10 +585,18 @@ func runConnectivitySubtests(
 			}
 			wg.Wait()
 
+			// When the only peers share the exchange of an allocate-addr
+			// host, this host sends no ping. The batch then did not test
+			// its device, and ComputeFailureStats does not count it.
+			if pinged == 0 {
+				log.Warn("No peer to ping, so this batch does not test the device", "host", srcClient.Host, "device", device.Code)
+			}
+
 			resultsMu.Lock()
 			batch[srcClient.Host].PacketsSent += totalSent
 			batch[srcClient.Host].PacketsReceived += totalReceived
 			batch[srcClient.Host].FailedTests += failedTests
+			batch[srcClient.Host].NoPeer = pinged == 0
 			resultsMu.Unlock()
 		})
 	}

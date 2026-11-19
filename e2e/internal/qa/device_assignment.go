@@ -106,6 +106,9 @@ type BatchResult struct {
 	PacketsSent     uint32
 	PacketsReceived uint32
 	FailedTests     uint32
+	// NoPeer is true when the host had no peer that it could ping in this
+	// batch, so the batch did not test its device.
+	NoPeer bool
 }
 
 func (b *BatchResult) Success() bool {
@@ -247,6 +250,26 @@ func ParseDevicePins(value string, hosts []string) (map[string]string, error) {
 	return pins, nil
 }
 
+// UnassignedDevices returns the sorted codes of the devices that are in no
+// batch. Assignment drops a device when no client can take it, and the test
+// does not test that device.
+func UnassignedDevices(devices []*Device, batchData BatchData) []string {
+	assigned := make(map[string]struct{})
+	for _, batch := range batchData {
+		for _, result := range batch {
+			assigned[result.Device.Code] = struct{}{}
+		}
+	}
+	var unassigned []string
+	for _, device := range devices {
+		if _, ok := assigned[device.Code]; !ok {
+			unassigned = append(unassigned, device.Code)
+		}
+	}
+	slices.Sort(unassigned)
+	return unassigned
+}
+
 // SameExchangeWithAllocatedAddr reports if two clients are on devices in the
 // same exchange and one of the clients uses an allocated address. A ping
 // between such clients cannot work. The devices do not route between users
@@ -272,14 +295,16 @@ func AssignDevicesToClients(devices []*Device, clients []*Client, clientLatencie
 	// Track exchange usage to enforce allocate-addr isolation
 	allocateAddrExchanges := make(map[string]string)    // exchange -> allocate-addr client hostname
 	nonAllocateAddrExchanges := make(map[string]string) // exchange -> non-allocate-addr client hostname
+	// A pinned device goes to its host. The latency and the exchange isolation
+	// do not apply, so the host tests the device also when only that host can
+	// reach it. The pinned devices are added after the loop, so they do not
+	// claim an exchange or count in the fewest-devices tie-break. Thus all
+	// other devices get the same host as without the pins.
+	pinnedDevices := make(map[string][]*Device) // host -> devices pinned to it
 
 	for _, device := range devices {
-		// A pinned device goes to its host. The latency and the exchange
-		// isolation do not apply, so the host tests the device also when only
-		// that host can reach it. The device does not claim its exchange, so
-		// all other devices get the same host as without the pin.
 		if host, ok := devicePins[device.Code]; ok {
-			clientDevices[host] = append(clientDevices[host], device)
+			pinnedDevices[host] = append(pinnedDevices[host], device)
 			continue
 		}
 
@@ -345,6 +370,10 @@ func AssignDevicesToClients(devices []*Device, clients []*Client, clientLatencie
 				nonAllocateAddrExchanges[device.ExchangeCode] = assignedClientHostname
 			}
 		}
+	}
+
+	for host, pinned := range pinnedDevices {
+		clientDevices[host] = append(clientDevices[host], pinned...)
 	}
 
 	// Shuffle each client's device list for randomized test order.
@@ -470,6 +499,11 @@ func ComputeFailureStats(batchData BatchData) FailureStats {
 					hostSkipped[host] = make(map[string]struct{})
 				}
 				hostSkipped[host][assignment.Device.Code] = struct{}{}
+				continue
+			}
+			// A host with no peer to ping did not test its device, so the
+			// batch is not counted. A connect or route failure still counts.
+			if assignment.NoPeer && assignment.FailedTests == 0 {
 				continue
 			}
 			code := assignment.Device.Code

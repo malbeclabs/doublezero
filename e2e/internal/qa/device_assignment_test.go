@@ -318,6 +318,66 @@ func TestAssignDevicesToClients(t *testing.T) {
 			t.Errorf("allocate devices = %v, want [pinned]", got)
 		}
 	})
+
+	t.Run("pinned device goes to its host after another host claims its exchange", func(t *testing.T) {
+		// dev1 comes first, so the regular client claims ex1 before the pinned
+		// device. A pin that obeys the exchange isolation drops the device here.
+		devices := []*Device{
+			{Code: "dev1", ExchangeCode: "ex1", Status: serviceability.DeviceStatusActivated, MaxUsers: 128},
+			{Code: "pinned", ExchangeCode: "ex1", Status: serviceability.DeviceStatusActivated, MaxUsers: 1},
+		}
+		clients := []*Client{{Host: "regular"}, {Host: "allocate"}}
+		latencies := ClientLatencies{
+			"regular":  {"dev1": 2},
+			"allocate": {"dev1": 60, "pinned": 60},
+		}
+		allocateAddrHosts := map[string]struct{}{"allocate": {}}
+		pins := map[string]string{"pinned": "allocate"}
+
+		result := AssignDevicesToClients(devices, clients, latencies, allocateAddrHosts, pins, noShuffle)
+
+		if got := hostDeviceCodes(result, "regular"); !reflect.DeepEqual(got, []string{"dev1"}) {
+			t.Errorf("regular devices = %v, want [dev1]", got)
+		}
+		if got := hostDeviceCodes(result, "allocate"); !reflect.DeepEqual(got, []string{"pinned"}) {
+			t.Errorf("allocate devices = %v, want [pinned]", got)
+		}
+	})
+
+	t.Run("pinned device does not count in the fewest-devices tie-break", func(t *testing.T) {
+		// Both clients are below the threshold for dev1 and have no other
+		// device, so dev1 goes to the first client. If the pinned device
+		// counted, client1 would have one device and dev1 would go to client2.
+		devices := []*Device{readyDevice("pinned"), readyDevice("dev1")}
+		clients := []*Client{{Host: "client1"}, {Host: "client2"}}
+		latencies := ClientLatencies{
+			"client1": {"dev1": 5},
+			"client2": {"dev1": 5},
+		}
+		pins := map[string]string{"pinned": "client1"}
+
+		result := AssignDevicesToClients(devices, clients, latencies, nil, pins, noShuffle)
+
+		if got := hostDeviceCodes(result, "client1"); !reflect.DeepEqual(got, []string{"dev1", "pinned"}) {
+			t.Errorf("client1 devices = %v, want [dev1 pinned]", got)
+		}
+	})
+}
+
+func TestUnassignedDevices(t *testing.T) {
+	dev1 := &Device{Code: "dev1"}
+	dev2 := &Device{Code: "dev2"}
+	dev3 := &Device{Code: "dev3"}
+	batchData := BatchData{
+		0: {"hostA": {Device: dev1}},
+		1: {"hostA": {Device: dev1}, "hostB": {Device: dev3}},
+	}
+
+	got := UnassignedDevices([]*Device{dev3, dev2, dev1}, batchData)
+
+	if !reflect.DeepEqual(got, []string{"dev2"}) {
+		t.Errorf("UnassignedDevices = %v, want [dev2]", got)
+	}
 }
 
 func TestParseDevicePins(t *testing.T) {
@@ -810,6 +870,33 @@ func TestComputeFailureStats(t *testing.T) {
 		}
 		if len(stats.Retests) != 0 {
 			t.Errorf("expected no retests, got %d", len(stats.Retests))
+		}
+	})
+
+	t.Run("does not count a host with no peer to ping", func(t *testing.T) {
+		batchData := BatchData{
+			0: {"hostA": {Device: dev1, NoPeer: true}, "hostB": pass(dev2)},
+		}
+		stats := ComputeFailureStats(batchData)
+
+		want := []DeviceTestResult{{DeviceCode: "dev2", DevicePubkey: "pk2", Success: true}}
+		if !reflect.DeepEqual(stats.DeviceResults, want) {
+			t.Errorf("DeviceResults = %+v, want %+v", stats.DeviceResults, want)
+		}
+		if _, ok := stats.PerHost["hostA"]; ok {
+			t.Errorf("hostA has per-host stats %+v, want none", stats.PerHost["hostA"])
+		}
+	})
+
+	t.Run("counts a host with no peer to ping when its connect failed", func(t *testing.T) {
+		batchData := BatchData{
+			0: {"hostA": {Device: dev1, NoPeer: true, FailedTests: 1}},
+		}
+		stats := ComputeFailureStats(batchData)
+
+		want := []DeviceTestResult{{DeviceCode: "dev1", DevicePubkey: "pk1", Success: false}}
+		if !reflect.DeepEqual(stats.DeviceResults, want) {
+			t.Errorf("DeviceResults = %+v, want %+v", stats.DeviceResults, want)
 		}
 	})
 

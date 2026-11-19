@@ -44,11 +44,18 @@ pub fn parse_keypair_json(json_str: &str, source_desc: &str) -> Result<Keypair, 
     })
 }
 
-/// Base64url alphabet; padding is optional, matching the Edge Connect installer.
+/// Base64url; encodes without padding and decodes either form, matching the Edge Connect installer.
 const TOKEN_ENGINE: GeneralPurpose = GeneralPurpose::new(
     &alphabet::URL_SAFE,
-    GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
+    GeneralPurposeConfig::new()
+        .with_encode_padding(false)
+        .with_decode_padding_mode(DecodePaddingMode::Indifferent),
 );
+
+/// Encode a keypair as the token that [`parse_keypair_token`] reads.
+pub fn encode_keypair_token(keypair: &Keypair) -> String {
+    format!("DZ_{}", TOKEN_ENGINE.encode(keypair.to_bytes()))
+}
 
 /// Parse a keypair token: `DZ_` followed by the base64url of the 64 keypair bytes.
 pub fn parse_keypair_token(token: &str) -> Result<Keypair, KeypairLoadError> {
@@ -271,6 +278,17 @@ mod tests {
         let keypair = Keypair::new();
         let parsed = parse_keypair_token(&format!("{}\n", token_for(&keypair))).unwrap();
         assert_eq!(parsed.pubkey(), keypair.pubkey());
+    }
+
+    #[test]
+    fn test_encode_keypair_token_round_trips_without_padding() {
+        let keypair = Keypair::new();
+        let token = encode_keypair_token(&keypair);
+        assert_eq!(token, token_for(&keypair));
+        assert_eq!(
+            parse_keypair_token(&token).unwrap().pubkey(),
+            keypair.pubkey()
+        );
     }
 
     #[test]

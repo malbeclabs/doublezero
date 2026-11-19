@@ -417,11 +417,16 @@ async fn main() -> eyre::Result<()> {
         std::process::exit(1);
     });
 
-    // Run keygen before the payer load below, which reads piped stdin and would consume the token.
+    // Run keygen before the payer load below, which would consume the piped stdin that keygen reads.
     let command = match app.command {
         Some(Command::Serviceability(ServiceabilityCommand::Keygen(args))) => {
             return args
-                .execute(&ctx, &mut std::io::stdout().lock(), read_token_from_stdin)
+                .execute(
+                    &ctx,
+                    app.keypair.clone(),
+                    &mut std::io::stdout().lock(),
+                    read_token_from_stdin,
+                )
                 .await;
         }
         command => command,

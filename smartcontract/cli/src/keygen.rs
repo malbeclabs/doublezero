@@ -1,6 +1,10 @@
 use clap::Args;
 use doublezero_cli_core::CliContext;
-use doublezero_sdk::{create_new_pubkey_user, keypair::parse_keypair_token, write_keypair_file};
+use doublezero_sdk::{
+    create_new_pubkey_user, default_keypair_path,
+    keypair::{encode_keypair_token, load_keypair, parse_keypair_token},
+    write_keypair_file,
+};
 use solana_sdk::signer::Signer;
 use std::{
     io::{self, IsTerminal, Write},
@@ -18,6 +22,9 @@ pub struct KeyGenCliCommand {
     /// Import a DZ_ token instead of generating a keypair. Reads it from a hidden prompt, or from stdin when piped
     #[arg(long)]
     import: bool,
+    /// Print the keypair that the CLI signs with as a DZ_ token
+    #[arg(long, conflicts_with_all = ["import", "outfile", "force"])]
+    export: bool,
 }
 
 /// Read a `DZ_` token from a hidden prompt, or from stdin when it is not a terminal.
@@ -32,12 +39,24 @@ pub fn read_token_from_stdin() -> io::Result<String> {
 }
 
 impl KeyGenCliCommand {
+    /// `keypair_flag` is the raw `--keypair` flag, which `ctx` does not keep apart from the config path.
     pub async fn execute<W: Write>(
         self,
-        _ctx: &CliContext,
+        ctx: &CliContext,
+        keypair_flag: Option<PathBuf>,
         out: &mut W,
         read_token: impl FnOnce() -> io::Result<String>,
     ) -> eyre::Result<()> {
+        if self.export {
+            let default_path = ctx
+                .keypair_path
+                .clone()
+                .unwrap_or_else(default_keypair_path);
+            let keypair = load_keypair(keypair_flag, None, default_path)?.keypair;
+            writeln!(out, "{}", encode_keypair_token(&keypair))?;
+            return Ok(());
+        }
+
         if self.import {
             let token = read_token()?;
             if token.trim().is_empty() {
@@ -77,14 +96,41 @@ mod tests {
             force: false,
             outfile: Some(outfile.to_path_buf()),
             import: true,
+            export: false,
         };
         let mut out = Vec::new();
         let token = token.to_string();
-        let res =
-            futures::executor::block_on(
-                cmd.execute(&create_test_context(), &mut out, || Ok(token)),
-            );
+        let res = futures::executor::block_on(cmd.execute(
+            &create_test_context(),
+            None,
+            &mut out,
+            || Ok(token),
+        ));
         (res, String::from_utf8(out).unwrap())
+    }
+
+    #[test]
+    fn test_keygen_export_prints_token_of_keypair_flag() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let path = tmp.path().join("id.json");
+        import(TOKEN, &path).0.unwrap();
+        let cmd = KeyGenCliCommand {
+            force: false,
+            outfile: None,
+            import: false,
+            export: true,
+        };
+
+        let mut out = Vec::new();
+        futures::executor::block_on(cmd.execute(
+            &create_test_context(),
+            Some(path),
+            &mut out,
+            || unreachable!(),
+        ))
+        .unwrap();
+
+        assert_eq!(String::from_utf8(out).unwrap(), format!("{TOKEN}\n"));
     }
 
     #[test]

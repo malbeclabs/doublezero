@@ -71,7 +71,7 @@ pub struct ClientConfig {
     pub geo_program_id: Option<String>,
 }
 
-pub(crate) fn default_keypair_path() -> PathBuf {
+pub fn default_keypair_path() -> PathBuf {
     let mut keypair_path = dirs_next::home_dir().unwrap_or_default();
     keypair_path.extend([".config", "doublezero", "id.json"]);
     keypair_path

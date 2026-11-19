@@ -476,6 +476,11 @@
       "name": "NewInterface1FlexAlgoNodeSegmentsLen",
       "value": "0",
       "typ": "u32"
+    },
+    {
+      "name": "AgentIp",
+      "value": "203.0.113.9",
+      "typ": "ipv4"
     }
   ]
 }

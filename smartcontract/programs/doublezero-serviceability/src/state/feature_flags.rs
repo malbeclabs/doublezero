@@ -14,7 +14,7 @@ pub enum FeatureFlag {
     /// passes alike. When clear, a proof that is supplied is still validated in full; only its
     /// absence is tolerated.
     RequireIpOwnershipProof = 2,
-    /// RFC-28. When set, `CreateFeed` accepts a builder and its bond terms. When clear, the RFC-28
+    /// RFC-29. When set, `CreateFeed` accepts a builder and its bond terms. When clear, the RFC-29
     /// fields exist on the account but no instruction can set them, so the feature stays dormant on
     /// a deployed program until the bond mirror and the attestor are in place.
     AllowBondedFeeds = 3,

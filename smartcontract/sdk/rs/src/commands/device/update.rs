@@ -30,6 +30,7 @@ pub struct UpdateDeviceCommand {
     pub max_multicast_publishers: Option<u16>,
     pub multicast_subscribers_count: Option<u16>,
     pub multicast_publishers_count: Option<u16>,
+    pub agent_ip: Option<Ipv4Addr>,
 }
 
 impl UpdateDeviceCommand {
@@ -83,6 +84,7 @@ impl UpdateDeviceCommand {
                 max_multicast_publishers: self.max_multicast_publishers,
                 multicast_subscribers_count: self.multicast_subscribers_count,
                 multicast_publishers_count: self.multicast_publishers_count,
+                agent_ip: self.agent_ip,
             },
         ))
     }
@@ -205,6 +207,7 @@ mod tests {
                 max_multicast_publishers: None,
                 multicast_subscribers_count: None,
                 multicast_publishers_count: None,
+                agent_ip: None,
             },
         );
         client
@@ -235,6 +238,7 @@ mod tests {
             max_multicast_publishers: None,
             multicast_subscribers_count: None,
             multicast_publishers_count: None,
+            agent_ip: None,
         };
 
         let update_invalid = UpdateDeviceCommand {

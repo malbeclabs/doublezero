@@ -2,7 +2,6 @@ pub mod builder_bond;
 pub mod feed_subscription;
 pub mod passport;
 pub mod revenue_distribution;
-pub mod shred_subscription;
 
 //
 
@@ -32,8 +31,13 @@ pub fn environment_2z_token_mint_key(network_env: NetworkEnvironment) -> Pubkey 
 
 pub fn environment_usdc_token_mint_key(network_env: NetworkEnvironment) -> Pubkey {
     match network_env {
-        NetworkEnvironment::Testnet => shred_subscription::env::development::USDC_MINT_KEY,
-        NetworkEnvironment::Devnet => shred_subscription::env::solana_devnet::USDC_MINT_KEY,
-        _ => shred_subscription::env::mainnet::USDC_MINT_KEY,
+        NetworkEnvironment::Testnet => {
+            solana_sdk::pubkey!("uSDZq2RMuxrEf7gqgDjR8wJCtCyaDAQk2e5jLAaoeeM")
+        }
+        // Circle's USDC mint on Solana devnet, Crossmint uses this one.
+        NetworkEnvironment::Devnet => {
+            solana_sdk::pubkey!("4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU")
+        }
+        _ => solana_sdk::pubkey!("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"),
     }
 }

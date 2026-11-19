@@ -40,6 +40,12 @@ pub trait DoubleZeroClient {
     /// accounts (RFC-26); the send path no longer touches account layout.
     fn send_transaction(&self, instruction: Instruction) -> eyre::Result<Signature>;
 
+    /// [`send_transaction`](Self::send_transaction) without the compute-budget prelude, for an
+    /// instruction that runs within the default compute limit and heap but needs the prelude's
+    /// 48 bytes to fit the packet.
+    fn send_transaction_without_prelude(&self, instruction: Instruction)
+        -> eyre::Result<Signature>;
+
     /// The same path for a transaction that needs more than one instruction: the
     /// compute-budget prelude, then `instructions` in the order given, signed and
     /// sent as one atomic transaction.

@@ -21,12 +21,12 @@ use solana_sdk::{pubkey::Pubkey, signature::Signature};
 ///
 /// `kind` is the kind of access pass the caller means to remove. `Some` is a declared kind,
 /// which is what makes the program's refusal meaningful: it comes from an operator, and the
-/// command refuses locally if it disagrees with the pass it resolved. `None` is for the paths
-/// with no operator to declare one — a self delete, or a cascade sweeping mixed kinds — where
-/// the kind is taken from that same resolved pass. Those callers cannot be caught by the
-/// program's check, because both sides then come from one account; encoding that here keeps
-/// them from reading the pass a second time through a different lookup and disagreeing with
-/// the one this command actually sends.
+/// command refuses locally if it disagrees with the pass it resolved. `None` takes the kind
+/// from that same resolved pass. It is for callers that declare no kind: an operator who gives
+/// `doublezero user delete` no `--accesspass-type`, a self delete, or a cascade sweeping mixed
+/// kinds. The program's check cannot catch these callers, because both sides then come from
+/// one account; encoding that here keeps them from reading the pass a second time through a
+/// different lookup and disagreeing with the one this command actually sends.
 #[derive(Debug, PartialEq, Clone)]
 pub struct DeleteUserCommand {
     pub pubkey: Pubkey,
@@ -225,6 +225,10 @@ mod tests {
             publisher_count: 0,
             subscriber_count: 1,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
+            feed_count: 0,
         };
 
         let (accesspass_pubkey, _) = get_accesspass_pda(
@@ -249,8 +253,8 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
-            max_multicast_users: 1,
+            public_multicast_user_count: 0,
+            max_public_multicast_users: 1,
         };
 
         let mut seq = Sequence::new();
@@ -437,6 +441,10 @@ mod tests {
             publisher_count: 1,
             subscriber_count: 1,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
+            feed_count: 0,
         };
 
         let (accesspass_pubkey, _) = get_accesspass_pda(
@@ -461,8 +469,8 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
-            max_multicast_users: 1,
+            public_multicast_user_count: 0,
+            max_public_multicast_users: 1,
         };
 
         let mut seq = Sequence::new();
@@ -649,8 +657,8 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
-            max_multicast_users: 1,
+            public_multicast_user_count: 0,
+            max_public_multicast_users: 1,
         };
 
         let device_pk = Pubkey::new_unique();
@@ -694,6 +702,10 @@ mod tests {
             publisher_count: 0,
             subscriber_count: 1,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
+            feed_count: 0,
         };
 
         let mut seq = Sequence::new();
@@ -898,8 +910,8 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
-            max_multicast_users: 1,
+            public_multicast_user_count: 0,
+            max_public_multicast_users: 1,
         };
         client
             .expect_get()
@@ -1021,8 +1033,8 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
-            max_multicast_users: 1,
+            public_multicast_user_count: 0,
+            max_public_multicast_users: 1,
         };
         client
             .expect_get()
@@ -1142,8 +1154,8 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
-            max_multicast_users: 1,
+            public_multicast_user_count: 0,
+            max_public_multicast_users: 1,
         };
         client
             .expect_get()
@@ -1243,8 +1255,8 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
-            max_multicast_users: 1,
+            public_multicast_user_count: 0,
+            max_public_multicast_users: 1,
         };
         client
             .expect_get()

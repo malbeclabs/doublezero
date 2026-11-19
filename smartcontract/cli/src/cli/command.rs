@@ -121,6 +121,10 @@ impl ServiceabilityCommand {
             Self::Migrate(args) => match args.command {
                 MigrateCommands::UserPda(cmd) => cmd.execute(ctx, client, out).await,
                 MigrateCommands::FlexAlgo(cmd) => cmd.execute(ctx, client, out).await,
+                MigrateCommands::FeedCount(cmd) => {
+                    cmd.execute(ctx, client, out, &mut std::io::stdin().lock())
+                        .await
+                }
             },
             Self::Address(args) => args.execute(ctx, client, out).await,
             Self::Balance(args) => args.execute(ctx, client, out).await,
@@ -273,10 +277,15 @@ impl ServiceabilityCommand {
                 }
                 AccessPassCommands::DzfLock(args) => args.execute(ctx, client, out).await,
                 AccessPassCommands::DzfUnlock(args) => args.execute(ctx, client, out).await,
+                AccessPassCommands::AddFeed(args) => {
+                    args.execute(ctx, client, out, &mut std::io::stdin().lock())
+                        .await
+                }
                 AccessPassCommands::RemoveFeed(args) => {
                     args.execute(ctx, client, out, &mut std::io::stdin().lock())
                         .await
                 }
+                AccessPassCommands::SetCounts(args) => args.execute(ctx, client, out).await,
             },
             Self::User(cmd) => match cmd.command {
                 UserCommands::Create(args) => args.execute(ctx, client, out).await,
@@ -464,6 +473,25 @@ mod tests {
             parsed.command,
             ServiceabilityCommand::Migrate(MigrateCliCommand {
                 command: MigrateCommands::FlexAlgo(_),
+            })
+        ));
+    }
+
+    #[test]
+    fn parses_hidden_migrate_feed_count() {
+        let parsed = TestCli::try_parse_from([
+            "test",
+            "migrate",
+            "feed-count",
+            "--group",
+            "ewr-a",
+            "--dry-run",
+        ])
+        .unwrap();
+        assert!(matches!(
+            parsed.command,
+            ServiceabilityCommand::Migrate(MigrateCliCommand {
+                command: MigrateCommands::FeedCount(_),
             })
         ));
     }

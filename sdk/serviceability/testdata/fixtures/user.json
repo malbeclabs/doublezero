@@ -141,6 +141,11 @@
       "name": "AccessPassPk",
       "value": "84sot1BrqnyxtddJQyxt1JG1B2Kw8khCK5PErUaVgURD",
       "typ": "pubkey"
+    },
+    {
+      "name": "HoldsPassSeat",
+      "value": "false",
+      "typ": "bool"
     }
   ]
 }

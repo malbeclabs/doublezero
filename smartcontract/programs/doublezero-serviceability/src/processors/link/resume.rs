@@ -55,7 +55,7 @@ pub fn process_resume_link(
         "Invalid System Program Account Owner"
     );
 
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     let contributor = Contributor::try_from(contributor_account)?;
 
     // Authorization: the contributor owner, or NETWORK_ADMIN (Permission account) /

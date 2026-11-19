@@ -18,7 +18,7 @@ use solana_program::{
 use std::net::Ipv4Addr;
 
 use super::{
-    create_core::{create_user_core, CreateUserCoreAccounts, PDAVersion},
+    create_core::{create_user_core, CreateUserCoreAccounts},
     resource_onchain_helpers,
 };
 
@@ -132,6 +132,9 @@ pub fn process_create_user(
         value.tunnel_endpoint,
         false,
         None,
+        // A multicast user with no group is counted only in the connection count. It is counted
+        // in the public multicast count when it joins a public group or a feed.
+        value.user_type != UserType::Multicast,
         value.ip_proof.as_ref(),
     )?
     else {
@@ -151,42 +154,20 @@ pub fn process_create_user(
 
     result.user.try_activate(&mut result.accesspass)?;
 
-    if result.pda_ver == PDAVersion::V1 {
-        try_acc_create(
-            result.user.as_ref(),
-            user_account,
-            payer_account,
-            system_program,
-            program_id,
-            &[
-                SEED_PREFIX,
-                SEED_USER,
-                &result.user.index.to_le_bytes(),
-                &[result.bump_old_seed],
-            ],
-        )?;
-        try_acc_write(
-            &result.globalstate,
-            globalstate_account,
-            payer_account,
-            accounts,
-        )?;
-    } else {
-        try_acc_create(
-            result.user.as_ref(),
-            user_account,
-            payer_account,
-            system_program,
-            program_id,
-            &[
-                SEED_PREFIX,
-                SEED_USER,
-                &result.user.client_ip.octets(),
-                &[result.user.user_type as u8],
-                &[result.bump_seed],
-            ],
-        )?
-    }
+    try_acc_create(
+        result.user.as_ref(),
+        user_account,
+        payer_account,
+        system_program,
+        program_id,
+        &[
+            SEED_PREFIX,
+            SEED_USER,
+            &result.user.client_ip.octets(),
+            &[result.user.user_type as u8],
+            &[result.bump_seed],
+        ],
+    )?;
 
     try_acc_write(&result.device, device_account, payer_account, accounts)?;
     try_acc_write(

@@ -1,3 +1,4 @@
+pub mod add_feed;
 pub mod apply;
 pub mod close;
 pub mod desired;
@@ -8,5 +9,6 @@ pub mod list;
 pub mod plan;
 pub mod remove_feed;
 pub mod set;
+pub mod set_counts;
 pub mod types;
 pub mod user_balances;

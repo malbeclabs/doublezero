@@ -397,6 +397,7 @@ func TestSDK_Serviceability_GetProgramData(t *testing.T) {
 						Publishers:     [][32]byte{},
 						Subscribers:    [][32]byte{},
 						TunnelEndpoint: [4]byte{0xfc, 0xef, 0x68, 0xd5},
+						HoldsPassSeat:  true,
 						PubKey:         pubkeys[4],
 					},
 				},

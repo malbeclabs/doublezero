@@ -63,6 +63,7 @@ async fn test_device_mgmt_vrf_validation() {
             mgmt_vrf: mgmt_vrf.to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         })
     };
     let create_accounts = vec![

@@ -382,7 +382,7 @@ func TestClient_API_ServeRoutesHandler_WithLiveness_AbsentInKernel(t *testing.T)
 	require.NotEmpty(t, rt.LivenessLastUpdated)
 	require.Equal(t, liveness.KernelStateAbsent.String(), rt.LivenessExpectedKernelState)
 	require.Equal(t, LivenessPeerModePassive.String(), rt.LivenessPeerMode)
-	require.Equal(t, liveness.DownReasonNone.String(), rt.LivenessStateReason)
+	require.Equal(t, "no reply", rt.LivenessStateReason)
 	require.Equal(t, sess.PeerClientVersion.String(), rt.PeerClientVersion)
 }
 
@@ -620,4 +620,67 @@ func (m *mockRouteReaderWriter) RouteByProtocol(protocol int) ([]*routing.Route,
 		return nil, nil
 	}
 	return m.RouteByProtocolFunc(protocol)
+}
+
+func TestLivenessStateReason(t *testing.T) {
+	t.Parallel()
+
+	now := time.Now()
+	for _, tc := range []struct {
+		name string
+		sess liveness.SessionSnapshot
+		want string
+	}{
+		{"peer never answered", liveness.SessionSnapshot{State: liveness.StateDown}, "no reply"},
+		{"timed out", liveness.SessionSnapshot{State: liveness.StateDown, LastDownReason: liveness.DownReasonTimeout}, "timeout"},
+		{"hold-down pending", liveness.SessionSnapshot{State: liveness.StateUp, ExpectedKernelState: liveness.KernelStateAbsent, HoldDownUntil: now.Add(time.Second)}, "held down"},
+		{"up before the install", liveness.SessionSnapshot{State: liveness.StateUp, ExpectedKernelState: liveness.KernelStateAbsent}, ""},
+		{"hold-down elapsed", liveness.SessionSnapshot{State: liveness.StateUp, ExpectedKernelState: liveness.KernelStateAbsent, HoldDownUntil: now}, ""},
+		{"installed", liveness.SessionSnapshot{State: liveness.StateUp, ExpectedKernelState: liveness.KernelStatePresent, HoldDownUntil: now.Add(time.Second)}, ""},
+		{"init", liveness.SessionSnapshot{State: liveness.StateInit}, ""},
+	} {
+		require.Equal(t, tc.want, livenessStateReason(tc.sess, now), tc.name)
+	}
+}
+
+func TestSummarizeRoutes(t *testing.T) {
+	t.Parallel()
+
+	src := net.ParseIP("10.0.0.1")
+	nextHop := net.ParseIP("203.0.113.1")
+	route := func(src, dst string) *routing.Route {
+		return &routing.Route{Src: net.ParseIP(src), Dst: &net.IPNet{IP: net.ParseIP(dst), Mask: net.CIDRMask(32, 32)}, NextHop: nextHop}
+	}
+	session := func(dst string, state liveness.State, kernel liveness.KernelState) liveness.SessionSnapshot {
+		return liveness.SessionSnapshot{Route: liveness.Route{Route: *route(src.String(), dst)}, State: state, ExpectedKernelState: kernel}
+	}
+	sessions := []liveness.SessionSnapshot{
+		session("192.0.2.1", liveness.StateUp, liveness.KernelStatePresent),
+		session("192.0.2.2", liveness.StateDown, liveness.KernelStatePresent), // kept by NoUninstall
+		session("192.0.2.3", liveness.StateDown, liveness.KernelStateAbsent),
+		session("192.0.2.4", liveness.StateDown, liveness.KernelStateAbsent),
+		session("192.0.2.5", liveness.StateInit, liveness.KernelStateAbsent),
+		session("192.0.2.6", liveness.StateDown, liveness.KernelStateUnknown), // not desired
+	}
+	other := session("192.0.2.7", liveness.StateDown, liveness.KernelStateAbsent)
+	other.Route.Src = net.ParseIP("10.0.0.2")
+	sessions = append(sessions, other)
+	kernel := []*routing.Route{route(src.String(), "192.0.2.1"), route(src.String(), "192.0.2.2")}
+
+	got := SummarizeRoutes(kernel, sessions, src, liveness.RouteActionNone, time.Now())
+	require.Equal(t, &RouteSummary{
+		Peers:      5,
+		Installed:  2,
+		SessionsUp: 1,
+		NotInstalled: []RouteGroup{
+			{State: "down", Reason: "no reply", Count: 2},
+			{State: "init", Count: 1},
+		},
+		Action: liveness.RouteActionNone,
+	}, got)
+
+	got = SummarizeRoutes(nil, nil, src, liveness.RouteActionInbound, time.Now())
+	require.Equal(t, liveness.DocsMissingPeerRoutes, got.Docs)
+	require.NotNil(t, got.NotInstalled, "an empty list, not null")
+	require.Empty(t, SummarizeRoutes(nil, nil, src, liveness.RouteActionStarting, time.Now()).Docs, "no docs while starting")
 }

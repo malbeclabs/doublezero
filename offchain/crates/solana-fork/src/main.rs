@@ -15,10 +15,6 @@ use doublezero_solana_sdk::{
         state::{Distribution, Journal, ProgramConfig as RevenueDistributionProgramConfig},
         types::DoubleZeroEpoch,
     },
-    shred_subscription::{
-        ID as SHRED_SUBSCRIPTION_PROGRAM_ID,
-        state::{ValidatorClientRewards, find_validator_client_rewards_address},
-    },
     sol_conversion::{
         ID as SOL_CONVERSION_PROGRAM_ID, state::ProgramState as SolConversionProgramState,
     },
@@ -27,9 +23,7 @@ use doublezero_solana_sdk::{
 use serde::{Deserialize, Serialize};
 use solana_account_decoder_client_types::UiAccountEncoding;
 use solana_client::rpc_config::{RpcAccountInfoConfig, RpcProgramAccountsConfig};
-use solana_sdk::{
-    account::Account, program_pack::Pack, pubkey::Pubkey, rent::Rent, signer::Signer,
-};
+use solana_sdk::{account::Account, program_pack::Pack, pubkey::Pubkey, signer::Signer};
 use spl_token_interface::state::Mint;
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -79,13 +73,6 @@ struct Args {
     #[arg(long, value_name = "EPOCH")]
     next_completed_dz_epoch_override: Option<u64>,
 
-    /// Pubkey to use as the manager of a synthetic ValidatorClientRewards PDA
-    /// (`client_id=65535`). When set, the fork loader bakes the account at
-    /// genesis so the fork test can exercise `validator-client-rewards claim`.
-    /// Defaults to disabled.
-    #[arg(long, env, value_name = "PUBKEY")]
-    synthetic_validator_client_rewards_manager: Option<Pubkey>,
-
     #[command(flatten)]
     solana_connection_options: SolanaConnectionOptions,
 }
@@ -107,7 +94,6 @@ async fn main() -> Result<()> {
         reset: should_reset,
         god_mode: should_god_mode,
         next_completed_dz_epoch_override,
-        synthetic_validator_client_rewards_manager,
         solana_connection_options,
     } = Args::parse();
 
@@ -158,19 +144,6 @@ async fn main() -> Result<()> {
         .await
         {
             Ok(_) => {
-                // Optionally bake a synthetic ValidatorClientRewards PDA into
-                // the fork. Used by fork tests to exercise
-                // `validator-client-rewards claim` without needing the
-                // shred-subscription admin keypair.
-                if let Some(ref manager) = synthetic_validator_client_rewards_manager
-                    && let Err(e) = try_write_synthetic_validator_client_rewards_account(
-                        manager,
-                        TMP_ACCOUNTS_PATH,
-                    )
-                {
-                    fs::remove_dir_all(TMP_ACCOUNTS_PATH)?;
-                    return Err(e);
-                }
                 // Rename temporary directory to final location.
                 fs::rename(TMP_ACCOUNTS_PATH, ACCOUNTS_PATH)?;
             }
@@ -214,10 +187,6 @@ async fn main() -> Result<()> {
         .arg("--upgradeable-program")
         .arg(SOL_CONVERSION_PROGRAM_ID.to_string())
         .arg(format!("{ACCOUNTS_PATH}/sol_conversion.so"))
-        .arg(upgrade_authority_key.to_string())
-        .arg("--upgradeable-program")
-        .arg(SHRED_SUBSCRIPTION_PROGRAM_ID.to_string())
-        .arg(format!("{ACCOUNTS_PATH}/shred_subscription.so"))
         .arg(upgrade_authority_key.to_string());
 
     if should_reset {
@@ -291,15 +260,6 @@ async fn try_fetch_and_write_accounts(
     )
     .await?;
 
-    try_fetch_and_write_program_accounts(
-        connection,
-        &SHRED_SUBSCRIPTION_PROGRAM_ID,
-        "Shred Subscription",
-        TMP_ACCOUNTS_PATH,
-        &config,
-    )
-    .await?;
-
     // Dump programs.
 
     try_dump_program(
@@ -321,13 +281,6 @@ async fn try_fetch_and_write_accounts(
         &SOL_CONVERSION_PROGRAM_ID,
         "SOL Conversion",
         &format!("{TMP_ACCOUNTS_PATH}/sol_conversion.so"),
-    )?;
-
-    try_dump_program(
-        connection,
-        &SHRED_SUBSCRIPTION_PROGRAM_ID,
-        "Shred Subscription",
-        &format!("{TMP_ACCOUNTS_PATH}/shred_subscription.so"),
     )?;
 
     if should_god_mode {
@@ -667,45 +620,4 @@ fn try_dump_program(
 
     tracing::info!("{} program dumped successfully", program_name);
     Ok(())
-}
-
-const SYNTHETIC_VALIDATOR_CLIENT_REWARDS_CLIENT_ID: u16 = 65535;
-
-/// Bake a synthetic `ValidatorClientRewards` PDA into the fork's accounts
-/// directory. `manager_key` is the test-wallet pubkey (the same key that
-/// the fork test uses as `-k` for the `claim` command).
-fn try_write_synthetic_validator_client_rewards_account(
-    manager_key: &Pubkey,
-    accounts_dir: &str,
-) -> Result<()> {
-    let (validator_client_rewards_key, bump) =
-        find_validator_client_rewards_address(SYNTHETIC_VALIDATOR_CLIENT_REWARDS_CLIENT_ID);
-    let mut validator_client_rewards = ValidatorClientRewards::default();
-    validator_client_rewards.client_id = SYNTHETIC_VALIDATOR_CLIENT_REWARDS_CLIENT_ID;
-    validator_client_rewards.bump_seed = bump;
-    validator_client_rewards.manager_key = *manager_key;
-
-    let mut data = Vec::with_capacity(zero_copy::data_end::<ValidatorClientRewards>());
-    data.extend_from_slice(ValidatorClientRewards::discriminator_slice());
-    data.extend_from_slice(bytemuck::bytes_of(&validator_client_rewards));
-
-    let rent = Rent::default();
-    let lamports = rent.minimum_balance(data.len());
-
-    let account = Account {
-        lamports,
-        data,
-        owner: *SHRED_SUBSCRIPTION_PROGRAM_ID,
-        executable: false,
-        rent_epoch: 0,
-    };
-
-    tracing::info!(
-        "Baking synthetic ValidatorClientRewards (client_id={}, manager={}) at {} into {}",
-        SYNTHETIC_VALIDATOR_CLIENT_REWARDS_CLIENT_ID,
-        manager_key,
-        validator_client_rewards_key,
-        accounts_dir,
-    );
-    try_write_account_to_file(&validator_client_rewards_key, &account, accounts_dir)
 }

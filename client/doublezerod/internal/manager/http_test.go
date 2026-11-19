@@ -556,6 +556,8 @@ func (m *MockNetlink) RouteByProtocol(protocol int) ([]*routing.Route, error) {
 	return m.routes, nil
 }
 
+func (m *MockNetlink) LinkSetRPFilter(string, int) error { return nil }
+
 type MockRegisterSender struct{}
 
 func (m *MockRegisterSender) Start(iface string, srcOverlay, innerSrc net.IP, groups []net.IP, rp net.IP, dport int, payload []byte, interval time.Duration) error {

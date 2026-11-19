@@ -508,6 +508,7 @@ mod tests {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
             resource_count: 0,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         };
 
         let ix = create_device(&pid, &payer, &contributor, &location, &exchange, 1, args);
@@ -556,6 +557,7 @@ mod tests {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
             resource_count: 0,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         };
         let ix = create_device(
             &pid,

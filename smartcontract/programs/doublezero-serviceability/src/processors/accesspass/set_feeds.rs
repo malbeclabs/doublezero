@@ -106,7 +106,7 @@ pub fn process_set_access_pass_feeds(
     );
 
     // Provisioning actor authorized via ACCESS_PASS_ADMIN (Permission PDA or legacy fallback).
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     authorize(
         program_id,
         accounts_iter,

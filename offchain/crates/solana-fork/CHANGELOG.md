@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+- stop loading the shred-subscription program and its accounts into the fork, and remove `--synthetic-validator-client-rewards-manager`, because the program was closed on mainnet on 2026-11-05 and `solana program dump` fails on it
 - add `--synthetic-validator-client-rewards-manager <PUBKEY>` flag that bakes a `ValidatorClientRewards` PDA for `client_id=65535` with the given manager into the fork at genesis, for exercising `shreds validator-client-rewards claim` in fork tests
 - build the synthetic `ValidatorClientRewards` account from the SDK's `Pod` mirror instead of copying bytes to hand-written offsets, so its size and field offsets follow the mirror rather than a separate constant table
 - the environment variable clap derives from that flag moved with its rename, from `SYNTHETIC_VCR_MANAGER` to `SYNTHETIC_VALIDATOR_CLIENT_REWARDS_MANAGER`. A value left under the old name is ignored rather than rejected, so the fork boots with no synthetic account and `sh/test_doublezero_solana_fork.sh` fails later at the first `validator-client-rewards show`

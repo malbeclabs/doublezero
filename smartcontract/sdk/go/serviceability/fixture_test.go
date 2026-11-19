@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"testing"
 
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
@@ -73,6 +74,7 @@ func TestFixtureDevice(t *testing.T) {
 	assert.Equal(t, "dz1", dev.Code)
 	assert.Equal(t, "mgmt", dev.MgmtVrf)
 	assert.Equal(t, [4]byte{203, 0, 113, 1}, dev.PublicIp)
+	assert.Equal(t, [4]byte{203, 0, 113, 9}, dev.AgentIp)
 
 	// Legacy slot is the V2 projection of new_interfaces (always V2 per #3653);
 	// both entries carry version 1 and no FlexAlgoNodeSegments.
@@ -134,6 +136,8 @@ func TestFixtureDeviceLegacy(t *testing.T) {
 	assert.Equal(t, serviceability.LoopbackTypeVpnv4, dev.Interfaces[0].LoopbackType)
 	assert.Equal(t, "Ethernet1", dev.Interfaces[1].Name)
 	assert.True(t, dev.Interfaces[1].UserTunnelEndpoint)
+	// Written before AgentIp existed: reads as unset.
+	assert.Equal(t, [4]byte{}, dev.AgentIp)
 }
 
 // Same on-disk shape as device.bin, but the last trailing-vec element is
@@ -161,6 +165,8 @@ func TestFixtureDeviceFutureVersion(t *testing.T) {
 	assert.Equal(t, expectedInterfaceSize(ni1)+8, ni1.Size)
 	assert.Equal(t, "Ethernet1", ni1.Name)
 	assert.True(t, ni1.UserTunnelEndpoint)
+	// AgentIp follows the skipped junk.
+	assert.Equal(t, [4]byte{203, 0, 113, 9}, dev.AgentIp)
 }
 
 func TestFixtureAccessPass(t *testing.T) {
@@ -318,6 +324,7 @@ func TestFixtureUser(t *testing.T) {
 	assert.Equal(t, fixtureFieldValue(t, meta, "FeedPks0"), base58.Encode(u.FeedPks[0][:]))
 	assert.Equal(t, fixtureFieldValue(t, meta, "FeedPks1"), base58.Encode(u.FeedPks[1][:]))
 	assert.Equal(t, fixtureFieldValue(t, meta, "AccessPassPk"), base58.Encode(u.AccessPassPubKey[:]))
+	assert.Equal(t, fixtureFieldValue(t, meta, "HoldsPassSeat"), strconv.FormatBool(u.HoldsPassSeat))
 }
 
 // Old on-disk layout: account ends after tunnel_flags — no bgp fields, no feed_pks. New fields
@@ -325,8 +332,8 @@ func TestFixtureUser(t *testing.T) {
 func TestFixtureUserLegacyDefaults(t *testing.T) {
 	data, _ := loadFixture(t, "user")
 	// Strip feed_pks (4 + 2*32 = 68) + bgp_rtt_ns (8) + last_bgp_reported_at (8)
-	// + last_bgp_up_at (8) + bgp_status (1) + accesspass_pk (32) = 125 bytes.
-	legacy := data[:len(data)-125]
+	// + last_bgp_up_at (8) + bgp_status (1) + accesspass_pk (32) + holds_pass_seat (1) = 126 bytes.
+	legacy := data[:len(data)-126]
 
 	var u serviceability.User
 	serviceability.DeserializeUser(serviceability.NewByteReader(legacy), &u)
@@ -337,6 +344,20 @@ func TestFixtureUserLegacyDefaults(t *testing.T) {
 	assert.Equal(t, uint64(0), u.BgpRttNs)
 	assert.Empty(t, u.FeedPks)
 	assert.Equal(t, [32]byte{}, u.AccessPassPubKey)
+	assert.True(t, u.HoldsPassSeat)
+}
+
+// Every user on mainnet has the access pass key and no holds_pass_seat byte. The decoder reads
+// the real access pass key, and it reads a missing holds_pass_seat byte as true.
+func TestFixtureUserWithoutHoldsPassSeat(t *testing.T) {
+	data, meta := loadFixture(t, "user")
+	old := data[:len(data)-1]
+
+	var u serviceability.User
+	serviceability.DeserializeUser(serviceability.NewByteReader(old), &u)
+
+	assert.Equal(t, fixtureFieldValue(t, meta, "AccessPassPk"), base58.Encode(u.AccessPassPubKey[:]))
+	assert.True(t, u.HoldsPassSeat)
 }
 
 // An account written by the previous layout carries a 32-zero-byte scalar feed_pk slot where
@@ -344,8 +365,9 @@ func TestFixtureUserLegacyDefaults(t *testing.T) {
 // an empty slice, with the 28 leftover zero bytes ignored as trailing data.
 func TestFixtureUserOldLayoutZeroFeedSlot(t *testing.T) {
 	data, _ := loadFixture(t, "user")
-	// Remove accesspass_pk and replace feed_pks with the old 32-zero-byte scalar slot.
-	old := append([]byte{}, data[:len(data)-100]...)
+	// Remove holds_pass_seat and accesspass_pk, and replace feed_pks with the old 32-zero-byte
+	// scalar slot.
+	old := append([]byte{}, data[:len(data)-101]...)
 	old = append(old, make([]byte, 32)...)
 
 	var u serviceability.User
@@ -353,6 +375,7 @@ func TestFixtureUserOldLayoutZeroFeedSlot(t *testing.T) {
 
 	assert.Empty(t, u.FeedPks)
 	assert.Equal(t, [32]byte{}, u.AccessPassPubKey)
+	assert.True(t, u.HoldsPassSeat)
 }
 
 // A pre-migration account (lacking the 8 trailing cap bytes) decodes with counts 0 and caps 1,
@@ -410,4 +433,55 @@ func TestFixtureGlobalStateLegacyNoIpVerifier(t *testing.T) {
 	assert.Equal(t, serviceability.GlobalStateType, gs.AccountType)
 	assert.Equal(t, fixtureFieldValue(t, meta, "FeedAuthorityPk"), base58.Encode(gs.FeedAuthorityPK[:]))
 	assert.Equal(t, [32]byte{}, gs.IpVerifierAuthorityPK)
+}
+
+func TestFixtureMulticastGroup(t *testing.T) {
+	data, meta := loadFixture(t, "multicast_group")
+	require.Equal(t, "MulticastGroup", meta.Name)
+
+	var mg serviceability.MulticastGroup
+	serviceability.DeserializeMulticastGroup(serviceability.NewByteReader(data), &mg)
+
+	assert.Equal(t, fixtureFieldValue(t, meta, "Owner"), base58.Encode(mg.Owner[:]))
+	assert.Equal(t, uint8(247), mg.BumpSeed)
+	assert.Equal(t, fixtureFieldValue(t, meta, "TenantPk"), base58.Encode(mg.TenantPubKey[:]))
+	assert.Equal(t, [4]uint8{239, 1, 1, 1}, mg.MulticastIp)
+	assert.Equal(t, uint64(1000000000), mg.MaxBandwidth)
+	assert.Equal(t, "demo", mg.Code)
+	assert.Equal(t, uint32(2), mg.PublisherCount)
+	assert.Equal(t, uint32(10), mg.SubscriberCount)
+	assert.Equal(t, fixtureFieldValue(t, meta, "BondRef"), base58.Encode(mg.BondRef[:]))
+	assert.True(t, mg.Private)
+	assert.Equal(t, uint16(2), mg.MaxPublishers)
+	assert.Equal(t, uint16(10), mg.MaxSubscribers)
+	assert.Equal(t, uint32(3), mg.FeedCount)
+}
+
+// A group account from before the private flag has no flag, no caps and no feed count, so it is
+// 9 bytes shorter. The decoder reads that account as a group that is not private and has no caps.
+func TestFixtureMulticastGroupBeforePrivateCaps(t *testing.T) {
+	data, meta := loadFixture(t, "multicast_group")
+	old := data[:len(data)-9]
+
+	var mg serviceability.MulticastGroup
+	serviceability.DeserializeMulticastGroup(serviceability.NewByteReader(old), &mg)
+
+	assert.Equal(t, fixtureFieldValue(t, meta, "BondRef"), base58.Encode(mg.BondRef[:]))
+	assert.False(t, mg.Private)
+	assert.Equal(t, uint16(0), mg.MaxPublishers)
+	assert.Equal(t, uint16(0), mg.MaxSubscribers)
+	assert.Equal(t, uint32(0), mg.FeedCount)
+}
+
+// A group account from before the feed count is 4 bytes shorter. The decoder reads its count as 0.
+func TestFixtureMulticastGroupBeforeFeedCount(t *testing.T) {
+	data, _ := loadFixture(t, "multicast_group")
+	old := data[:len(data)-4]
+
+	var mg serviceability.MulticastGroup
+	serviceability.DeserializeMulticastGroup(serviceability.NewByteReader(old), &mg)
+
+	assert.True(t, mg.Private)
+	assert.Equal(t, uint16(10), mg.MaxSubscribers)
+	assert.Equal(t, uint32(0), mg.FeedCount)
 }

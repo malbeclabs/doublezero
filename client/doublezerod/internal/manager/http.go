@@ -10,11 +10,13 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/api"
 	"github.com/malbeclabs/doublezero/client/doublezerod/internal/latency"
 	"github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 	"github.com/mr-tron/base58"
+	"golang.org/x/sys/unix"
 )
 
 // MulticastGroups contains the group codes a user publishes to and subscribes to.
@@ -46,6 +48,8 @@ type V2ServiceStatus struct {
 	Tenant                      string          `json:"tenant"`
 	MulticastGroups             MulticastGroups `json:"multicast_groups"`
 	Subscriptions               []Subscription  `json:"subscriptions"`
+	// Routes is set for an IBRL service while route liveness is on.
+	Routes *api.RouteSummary `json:"routes,omitempty"`
 }
 
 // V2StatusResponse is the response for the /v2/status endpoint.
@@ -265,6 +269,9 @@ func (n *NetlinkManager) ServeV2Status(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	enriched := n.enrichStatuses(statuses)
+	for i := range enriched {
+		enriched[i].Routes = n.routeSummary(enriched[i].StatusResponse)
+	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(V2StatusResponse{ //nolint:errcheck
@@ -273,6 +280,19 @@ func (n *NetlinkManager) ServeV2Status(w http.ResponseWriter, _ *http.Request) {
 		Network:           n.network,
 		Services:          enriched,
 	})
+}
+
+// routeSummary returns nil for services other than IBRL and while route liveness is off.
+func (n *NetlinkManager) routeSummary(svc *api.StatusResponse) *api.RouteSummary {
+	if n.liveness == nil || (svc.UserType != api.UserTypeIBRL && svc.UserType != api.UserTypeIBRLWithAllocatedIP) {
+		return nil
+	}
+	kernel, err := n.netlink.RouteByProtocol(unix.RTPROT_BGP)
+	if err != nil {
+		slog.Warn("v2/status: failed to list kernel routes for the route summary", "error", err)
+		return nil
+	}
+	return api.SummarizeRoutes(kernel, n.liveness.GetSessions(), svc.DoubleZeroIP, n.liveness.RouteAction(), time.Now())
 }
 
 // updateConnectionInfoMetric resets and repopulates the doublezero_connection_info,

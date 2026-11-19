@@ -61,7 +61,7 @@ pub fn process_set_health_device(
     );
     assert!(device_account.is_writable, "PDA Account is not writable");
 
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     assert_eq!(globalstate.account_type, AccountType::GlobalState);
 
     // Authorization: HEALTH_ORACLE or foundation, via a Permission account or the

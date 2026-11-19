@@ -57,7 +57,7 @@ pub fn process_set_health_link(
         "Invalid System Program Account Owner"
     );
 
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
 
     // Authorization: HEALTH_ORACLE or foundation, via a Permission account or the
     // legacy health_oracle_pk / foundation_allowlist (HEALTH_ORACLE covers the

@@ -2,7 +2,7 @@ use crate::{
     doublezerocommand::CliCommand,
     poll_for_activation::poll_for_device_activated,
     requirements::{CHECK_BALANCE, CHECK_ID_JSON},
-    validators::{validate_code, validate_pubkey, validate_pubkey_or_code},
+    validators::{validate_code, validate_pubkey, validate_pubkey_or_code, validate_public_ipv4},
 };
 use clap::Args;
 use doublezero_cli_core::CliContext;
@@ -79,6 +79,13 @@ pub struct UpdateDeviceCliCommand {
     /// Number of active multicast publishers on the device (optional, foundation only)
     #[arg(long)]
     pub multicast_publishers_count: Option<u16>,
+    /// Public IPv4 address the device's agents connect from, when it is neither the
+    /// public IP nor an interface address (optional)
+    #[arg(long, value_parser = validate_public_ipv4, conflicts_with = "clear_agent_ip")]
+    pub agent_ip: Option<Ipv4Addr>,
+    /// Remove the device's agent IP
+    #[arg(long, default_value_t = false)]
+    pub clear_agent_ip: bool,
     /// Wait for the device to be activated
     #[arg(short, long, default_value_t = false)]
     pub wait: bool,
@@ -203,6 +210,11 @@ impl UpdateDeviceCliCommand {
             max_multicast_publishers: self.max_multicast_publishers,
             multicast_subscribers_count: self.multicast_subscribers_count,
             multicast_publishers_count: self.multicast_publishers_count,
+            agent_ip: if self.clear_agent_ip {
+                Some(Ipv4Addr::UNSPECIFIED)
+            } else {
+                self.agent_ip
+            },
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -395,6 +407,7 @@ mod tests {
                 max_multicast_publishers: None,
                 multicast_subscribers_count: None,
                 multicast_publishers_count: None,
+                agent_ip: None,
             }))
             .times(1)
             .returning(move |_| Ok(signature));
@@ -425,6 +438,8 @@ mod tests {
                 max_multicast_publishers: None,
                 multicast_subscribers_count: None,
                 multicast_publishers_count: None,
+                agent_ip: None,
+                clear_agent_ip: false,
                 wait: false,
             }
             .execute(&ctx, &client, &mut output),
@@ -552,6 +567,8 @@ mod tests {
                 max_multicast_publishers: None,
                 multicast_subscribers_count: None,
                 multicast_publishers_count: None,
+                agent_ip: None,
+                clear_agent_ip: false,
                 wait: false,
             }
             .execute(&ctx, &client, &mut output),
@@ -678,6 +695,8 @@ mod tests {
                 max_multicast_publishers: None,
                 multicast_subscribers_count: None,
                 multicast_publishers_count: None,
+                agent_ip: None,
+                clear_agent_ip: false,
                 wait: false,
             }
             .execute(&ctx, &client, &mut output),
@@ -687,5 +706,118 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("Device with public ip '10.20.30.40' already exists"));
+    }
+
+    #[derive(clap::Parser)]
+    struct TestCli {
+        #[command(flatten)]
+        cmd: UpdateDeviceCliCommand,
+    }
+
+    fn parse_update(extra: &[&str]) -> Result<UpdateDeviceCliCommand, clap::Error> {
+        let base = ["update", "--pubkey", "dz1"];
+        <TestCli as clap::Parser>::try_parse_from(base.iter().chain(extra.iter()).copied())
+            .map(|cli| cli.cmd)
+    }
+
+    #[test]
+    fn test_cli_device_update_agent_ip_flags() {
+        let cmd = parse_update(&[]).unwrap();
+        assert_eq!((cmd.agent_ip, cmd.clear_agent_ip), (None, false));
+
+        let cmd = parse_update(&["--agent-ip", "5.6.7.8"]).unwrap();
+        assert_eq!(cmd.agent_ip, Some([5, 6, 7, 8].into()));
+
+        let cmd = parse_update(&["--clear-agent-ip"]).unwrap();
+        assert_eq!((cmd.agent_ip, cmd.clear_agent_ip), (None, true));
+
+        // Only a public IPv4 address is accepted; clearing has its own flag.
+        for (bad, why) in [
+            ("10.0.0.1", "not a public IPv4 address: 10.0.0.1"),
+            ("172.16.0.1", "not a public IPv4 address: 172.16.0.1"),
+            ("192.168.1.1", "not a public IPv4 address: 192.168.1.1"),
+            ("127.0.0.1", "not a public IPv4 address: 127.0.0.1"),
+            ("169.254.0.1", "not a public IPv4 address: 169.254.0.1"),
+            ("100.64.0.1", "not a public IPv4 address: 100.64.0.1"),
+            ("0.0.0.0", "not a public IPv4 address: 0.0.0.0"),
+            ("224.0.0.1", "not a public IPv4 address: 224.0.0.1"),
+            (
+                "255.255.255.255",
+                "not a public IPv4 address: 255.255.255.255",
+            ),
+            ("203.0.113.9", "not a public IPv4 address: 203.0.113.9"),
+            ("2001:db8::1", "invalid IPv4 address: 2001:db8::1"),
+            ("nope", "invalid IPv4 address: nope"),
+        ] {
+            let err = parse_update(&["--agent-ip", bad]).unwrap_err();
+            assert_eq!(
+                err.kind(),
+                clap::error::ErrorKind::ValueValidation,
+                "--agent-ip {bad}"
+            );
+            assert!(err.to_string().contains(why), "--agent-ip {bad}: {err}");
+        }
+        assert_eq!(
+            parse_update(&["--agent-ip", "5.6.7.8", "--clear-agent-ip"])
+                .unwrap_err()
+                .kind(),
+            clap::error::ErrorKind::ArgumentConflict,
+            "--agent-ip and --clear-agent-ip must conflict"
+        );
+    }
+
+    /// Runs `device update` with only the given agent IP flags and returns the
+    /// agent IP the command sent to the program.
+    fn run_update_agent_ip(args: &[&str], expected: Option<std::net::Ipv4Addr>) {
+        let mut client = create_test_client();
+        let (pda_pubkey, _) = get_device_pda(&client.get_program_id(), 1);
+        let device = Device {
+            account_type: AccountType::Device,
+            code: "dz1".to_string(),
+            public_ip: [1, 2, 3, 4].into(),
+            dz_prefixes: "110.1.0.0/23".parse().unwrap(),
+            status: DeviceStatus::Activated,
+            ..Default::default()
+        };
+        let device_list = HashMap::from([(pda_pubkey, device.clone())]);
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_get_device()
+            .returning(move |_| Ok((pda_pubkey, device.clone())));
+        client
+            .expect_list_device()
+            .with(predicate::eq(ListDeviceCommand))
+            .returning(move |_| Ok(device_list.clone()));
+        client
+            .expect_update_device()
+            .withf(move |cmd| cmd.pubkey == pda_pubkey && cmd.agent_ip == expected)
+            .times(1)
+            .returning(|_| Ok(Signature::default()));
+
+        let mut cmd = parse_update(args).unwrap();
+        cmd.pubkey = pda_pubkey.to_string();
+        let ctx = cli_context_default_for_tests();
+        let mut output = Vec::new();
+        let res = block_on(cmd.execute(&ctx, &client, &mut output));
+        assert!(res.is_ok(), "{}", res.err().unwrap());
+    }
+
+    #[test]
+    fn test_cli_device_update_sets_agent_ip() {
+        run_update_agent_ip(&["--agent-ip", "5.6.7.8"], Some([5, 6, 7, 8].into()));
+    }
+
+    #[test]
+    fn test_cli_device_update_clears_agent_ip() {
+        run_update_agent_ip(&["--clear-agent-ip"], Some(std::net::Ipv4Addr::UNSPECIFIED));
+    }
+
+    #[test]
+    fn test_cli_device_update_leaves_agent_ip_alone() {
+        run_update_agent_ip(&["--max-users", "64"], None);
     }
 }

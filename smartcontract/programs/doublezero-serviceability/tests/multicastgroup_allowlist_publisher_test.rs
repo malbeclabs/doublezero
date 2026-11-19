@@ -75,7 +75,8 @@ async fn test_multicast_publisher_allowlist() {
             last_access_epoch: 100,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -399,7 +400,8 @@ async fn test_multicast_publisher_allowlist_sentinel_authority() {
             last_access_epoch: 100,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -567,7 +569,8 @@ async fn test_multicast_publisher_allowlist_allow_multiple_ip() {
             last_access_epoch: 100,
             allow_multiple_ip: true,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -704,7 +707,8 @@ async fn test_multicast_publisher_allowlist_allow_multiple_ip_real_ip_in_args() 
             last_access_epoch: 100,
             allow_multiple_ip: true,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -839,7 +843,8 @@ async fn test_multicast_publisher_allowlist_wrong_pda_rejected() {
             last_access_epoch: 100,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass_a, false),
@@ -862,7 +867,8 @@ async fn test_multicast_publisher_allowlist_wrong_pda_rejected() {
             last_access_epoch: 100,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass_b, false),

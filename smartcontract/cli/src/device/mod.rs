@@ -6,5 +6,4 @@ pub mod list;
 pub mod migrate_multicast_counts;
 pub mod migrate_unicast_counts;
 pub mod sethealth;
-pub mod shred_guard;
 pub mod update;

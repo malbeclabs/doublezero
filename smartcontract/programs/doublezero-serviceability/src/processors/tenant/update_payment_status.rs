@@ -51,7 +51,7 @@ pub fn process_update_payment_status(
     assert!(tenant_account.is_writable, "Tenant Account is not writable");
 
     // Parse the global state account & check if the payer is sentinel or foundation
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
 
     // Authorization: TENANT_ADMIN (Permission account) or foundation/sentinel (legacy).
     authorize(

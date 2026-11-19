@@ -68,7 +68,7 @@ pub fn process_check_status_access_pass(
     // Authorization: ACTIVATOR or foundation, via a Permission account or the legacy
     // activator_authority_pk / foundation_allowlist (ACTIVATOR covers the activator
     // authority, USER_ADMIN covers foundation).
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     authorize(
         program_id,
         accounts_iter,

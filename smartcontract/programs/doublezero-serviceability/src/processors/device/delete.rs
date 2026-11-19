@@ -1,7 +1,9 @@
 use crate::{
     authorize::authorize,
     error::DoubleZeroError,
+    pda::get_resource_extension_pda,
     processors::validation::validate_program_account,
+    resource::ResourceType,
     serializer::{try_acc_close, try_acc_write},
     state::{
         accounttype::AccountType, contributor::Contributor, device::*, exchange::Exchange,
@@ -11,11 +13,11 @@ use crate::{
 use borsh::BorshSerialize;
 use borsh_incremental::BorshDeserializeIncremental;
 use core::fmt;
-#[cfg(test)]
-use solana_program::msg;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
+    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
@@ -100,7 +102,7 @@ pub fn process_delete_device(
         "Invalid System Program Account Owner"
     );
 
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     assert_eq!(globalstate.account_type, AccountType::GlobalState);
 
     let mut contributor = Contributor::try_from(contributor_account)?;
@@ -169,10 +171,24 @@ pub fn process_delete_device(
             return Err(DoubleZeroError::InvalidOwnerPubkey.into());
         }
 
-        // Validate resource/owner accounts
-        for account in resource_accounts.iter() {
+        // Validate resource/owner accounts: TunnelIds first, then the DzPrefixBlocks.
+        for (idx, account) in resource_accounts.iter().enumerate() {
             assert_eq!(account.owner, program_id, "Invalid Resource Account Owner");
             assert!(account.is_writable, "Resource Account is not writable");
+            let (pda, _, _) = get_resource_extension_pda(
+                program_id,
+                match idx {
+                    0 => ResourceType::TunnelIds(*device_account.key, 0),
+                    _ => ResourceType::DzPrefixBlock(*device_account.key, idx - 1),
+                },
+            );
+            if pda != *account.key {
+                msg!(
+                    "Resource account {idx} must be the PDA {pda}, found {}",
+                    account.key
+                );
+                return Err(ProgramError::InvalidSeeds);
+            }
         }
 
         // Decrement reference counts

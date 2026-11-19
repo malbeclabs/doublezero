@@ -13,13 +13,16 @@ use doublezero_geolocation::{
 use doublezero_serviceability::state::exchange::ExchangeStatus;
 use solana_program_test::*;
 use solana_sdk::{
+    account::AccountSharedData,
     instruction::{AccountMeta, Instruction, InstructionError},
     pubkey::Pubkey,
-    signature::Signer,
+    signature::{Keypair, Signer},
     transaction::{Transaction, TransactionError},
 };
 use std::net::Ipv4Addr;
-use test_helpers::setup_test_with_exchange;
+use test_helpers::{
+    create_mock_globalstate_account_shared, setup_context_with_exchange, setup_test_with_exchange,
+};
 
 #[tokio::test]
 async fn test_create_geo_probe_success() {
@@ -336,4 +339,124 @@ async fn test_delete_geo_probe_success() {
     // Verify the account was deleted
     let probe_account = banks_client.get_account(probe_pda).await.unwrap();
     assert!(probe_account.is_none());
+}
+
+/// Sends `CreateGeoProbe` signed by `signer` with the given config and global state accounts.
+async fn create_probe_with(
+    context: &mut ProgramTestContext,
+    program_id: Pubkey,
+    exchange_pubkey: Pubkey,
+    program_config: Pubkey,
+    globalstate: Pubkey,
+    signer: &Keypair,
+) -> (Pubkey, Result<(), BanksClientError>) {
+    let code = "probe-off-pda";
+    let (probe_pda, _) = get_geo_probe_pda(&program_id, code);
+    let ix = Instruction::new_with_borsh(
+        program_id,
+        &GeolocationInstruction::CreateGeoProbe(CreateGeoProbeArgs {
+            code: code.to_string(),
+            public_ip: Ipv4Addr::new(8, 8, 8, 8),
+            location_offset_port: 4242,
+            metrics_publisher_pk: Pubkey::new_unique(),
+        }),
+        vec![
+            AccountMeta::new(probe_pda, false),
+            AccountMeta::new_readonly(exchange_pubkey, false),
+            AccountMeta::new_readonly(program_config, false),
+            AccountMeta::new_readonly(globalstate, false),
+            AccountMeta::new(signer.pubkey(), true),
+            AccountMeta::new_readonly(solana_sdk_ids::system_program::id(), false),
+        ],
+    );
+    let tx = Transaction::new_signed_with_payer(
+        &[ix],
+        Some(&signer.pubkey()),
+        &[signer],
+        context.last_blockhash,
+    );
+    (
+        probe_pda,
+        context.banks_client.process_transaction(tx).await,
+    )
+}
+
+#[tokio::test]
+async fn test_create_geo_probe_rejects_globalstate_off_pda() {
+    let (mut context, program_id, exchange_pubkey) =
+        setup_context_with_exchange(ExchangeStatus::Activated).await;
+
+    // A serviceability-owned GlobalState that lists the outsider, at another address.
+    let outsider = Keypair::new();
+    context.set_account(
+        &outsider.pubkey(),
+        &AccountSharedData::new(1_000_000_000, 0, &solana_sdk_ids::system_program::id()),
+    );
+    let copy = Pubkey::new_unique();
+    context.set_account(
+        &copy,
+        &create_mock_globalstate_account_shared(vec![outsider.pubkey()]),
+    );
+
+    let program_config_pda = doublezero_geolocation::pda::get_program_config_pda(&program_id).0;
+    let (probe_pda, result) = create_probe_with(
+        &mut context,
+        program_id,
+        exchange_pubkey,
+        program_config_pda,
+        copy,
+        &outsider,
+    )
+    .await;
+
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        TransactionError::InstructionError(0, InstructionError::InvalidSeeds)
+    );
+    assert!(context
+        .banks_client
+        .get_account(probe_pda)
+        .await
+        .unwrap()
+        .is_none());
+}
+
+#[tokio::test]
+async fn test_create_geo_probe_rejects_program_config_off_pda() {
+    let (mut context, program_id, exchange_pubkey) =
+        setup_context_with_exchange(ExchangeStatus::Activated).await;
+
+    let program_config_pda = doublezero_geolocation::pda::get_program_config_pda(&program_id).0;
+    let config = context
+        .banks_client
+        .get_account(program_config_pda)
+        .await
+        .unwrap()
+        .unwrap();
+    let copy = Pubkey::new_unique();
+    context.set_account(&copy, &config.into());
+
+    let globalstate_pda =
+        doublezero_serviceability::pda::get_globalstate_pda(&serviceability_program_id()).0;
+    let payer = context.payer.insecure_clone();
+    let (probe_pda, result) = create_probe_with(
+        &mut context,
+        program_id,
+        exchange_pubkey,
+        copy,
+        globalstate_pda,
+        &payer,
+    )
+    .await;
+
+    assert_eq!(
+        result.unwrap_err().unwrap(),
+        TransactionError::InstructionError(0, InstructionError::InvalidSeeds)
+    );
+    assert!(context
+        .banks_client
+        .get_account(probe_pda)
+        .await
+        .unwrap()
+        .is_none());
 }

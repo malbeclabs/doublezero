@@ -1,7 +1,7 @@
 //! A bonded `CreateFeed` built by `doublezero-serviceability-instruction`'s `create_feed`, the
 //! builder the SDK's `CreateFeedCommand` and `doublezero feed create --bond-ref` use.
 //!
-//! `rfc28_walkthrough_test` builds the same create by hand. This proves the account list the
+//! `rfc29_walkthrough_test` builds the same create by hand. This proves the account list the
 //! public builder emits is one the program accepts: the bond mirror after the system program, and
 //! the payer's Permission PDA last, never created.
 
@@ -129,11 +129,12 @@ async fn deploy_bonded_feed(sla_hash: [u8; 32]) {
     let ix = dzi::feed::create_feed(
         &program_id,
         &builder.pubkey(),
+        &[group],
         FeedCreateArgs {
             code: "tokyo1".to_string(),
             name: "Tokyo".to_string(),
             exchange,
-            groups: vec![group],
+            group_count: 1,
             builder: builder.pubkey(),
             bond_ref,
             spec_id: "top-of-book@v1.0.0".to_string(),

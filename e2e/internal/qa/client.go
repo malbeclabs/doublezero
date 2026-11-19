@@ -29,19 +29,11 @@ import (
 const (
 	disconnectTimeout      = 150 * time.Second
 	waitForStatusUpTimeout = 90 * time.Second
-	// Multicast (shred-subscription) tunnel UP is the oracle *subscribe* path. For
-	// a pre-existing validator-owned user the oracle adds the shred groups via its
-	// ~60s reconcile loop (not inline on the allocation ack), so subscribe latency
-	// is cadence-bound and has been observed up to ~3.5 min on devnet. This is NOT
-	// affected by the withdraw fix (malbeclabs/doublezero-offchain#395),
-	// so keep a generous budget until the oracle subscribes on grant.
-	waitForMulticastStatusUpTimeout = 300 * time.Second
-	// Tunnel DOWN is prompt with #395: `shreds withdraw` issues a real withdrawal,
-	// and the oracle tears the subscription down in its per-poll instant-withdrawal
-	// handler (observed ~20s), so the standard 90s budget is ample.
-	waitForMulticastStatusDisconnectedTimeout = 90 * time.Second
-	waitForStatusDisconnectedTimeout          = 90 * time.Second
-	waitForUserDeletionTimeout                = 90 * time.Second
+	// Multicast tunnel UP once waited on an oracle's ~60s subscribe loop (up to
+	// ~3.5 min on devnet), so it keeps a longer budget than unicast.
+	waitForMulticastStatusUpTimeout  = 300 * time.Second
+	waitForStatusDisconnectedTimeout = 90 * time.Second
+	waitForUserDeletionTimeout       = 90 * time.Second
 
 	// NOTE: This needs to be longer than 1m since BGP can sometimes throttle activity for that
 	// amount of time if too much is happening consecutively for the same peers.
@@ -110,10 +102,11 @@ type Device struct {
 }
 
 // Ready reports whether a connect against this device can get far enough to
-// tell us anything. MaxUsers == 0 means drained or never enabled; either way the
-// CLI's own precheck refuses the connect ("Device is not accepting more users")
-// before the onchain qa_allowlist can exempt us, so failures against it say
-// nothing about the network and must not count toward QA failure rates.
+// tell us anything. MaxUsers == 0 means drained or never enabled, and a CLI
+// without the qa_allowlist exemption refuses such a device in its own precheck
+// ("Device is not accepting more users"), so failures against it say nothing
+// about the network and must not count toward QA failure rates. The MaxUsers
+// check stays until the QA hosts run a CLI with the exemption.
 //
 // This is a subset of the program's is_device_eligible_for_provisioning, which
 // also requires UsersCount+ReservedSeats < MaxUsers; a device at capacity still
@@ -133,11 +126,6 @@ type Client struct {
 	serviceability *serviceability.Client
 	devices        map[string]*Device
 
-	// solanaRPC is the multi-endpoint failover pool used for all Solana RPC
-	// reads (USDC balance, shred-subscription program state). It transparently
-	// fails over a dead/timing-out endpoint and can fail over a lagging node.
-	solanaRPC *solanaRPCPool
-
 	Host         string
 	AllocateAddr bool
 
@@ -150,16 +138,6 @@ type Client struct {
 	// Exported as a simple configuration field (unlike publicIP which uses a setter
 	// because it has a non-nil invariant enforced by SetPublicIP).
 	ClientIP string
-
-	// Settlement config passed to doublezero-solana shreds commands.
-	// SolanaRPCURL is the Solana RPC endpoint for settlement transactions (--url).
-	// On testnet this is Solana devnet (via SOLANA_RPC_URL); on mainnet the public
-	// Solana RPC; on devnet the DZ ledger URL.
-	SolanaRPCURL               string
-	ShredSubscriptionProgramID string
-	DZLedgerURL                string
-	USDCMint                   string
-	Keypair                    string
 }
 
 func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int, networkConfig *config.NetworkConfig, devices map[string]*Device, allocateAddr bool) (*Client, error) {
@@ -184,32 +162,6 @@ func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int,
 
 	serviceabilityClient := serviceability.New(rpc.New(networkConfig.LedgerPublicRPCURL), networkConfig.ServiceabilityProgramID)
 
-	// Settlement transactions on devnet use the DZ ledger RPC endpoint (which
-	// hosts the settlement programs there). Testnet reads/writes the
-	// shred-subscription program on Solana devnet via networkConfig.SolanaRPCURL
-	// (the SOLANA_RPC_URL override, a Solana devnet RPC endpoint in CI;
-	// defaults to the public Solana endpoint). Mainnet and localnet use the
-	// standard Solana RPC.
-	solanaRPCURL := networkConfig.SolanaRPCURL
-	if networkConfig.Moniker == config.EnvDevnet {
-		solanaRPCURL = networkConfig.LedgerPublicRPCURL
-	}
-
-	// Build the failover RPC pool. On mainnet the public Solana RPC is appended
-	// as a default fallback when SOLANA_RPC_FALLBACK_URLS is unset, so a private
-	// primary automatically gets a safety net. On testnet/devnet (DZ ledger RPC)
-	// there is no public default — the pool collapses to a single endpoint and
-	// behaves exactly as before unless fallbacks are explicitly configured.
-	publicDefault := ""
-	if networkConfig.Moniker == config.EnvMainnetBeta || networkConfig.Moniker == config.EnvMainnet {
-		publicDefault = config.MainnetSolanaRPC
-	}
-	solanaRPC := newSolanaRPCPool(log, solanaRPCURL, publicDefault, rpcBudgetFromEnv())
-	if solanaRPC.EndpointCount() > 1 {
-		// Pick the freshest endpoint to start on, skipping any that are lagging.
-		solanaRPC.SelectHealthiestEndpoint(ctx)
-	}
-
 	return &Client{
 		log:            log,
 		grpcClient:     grpcClient,
@@ -217,14 +169,9 @@ func NewClient(ctx context.Context, log *slog.Logger, hostname string, port int,
 		publicIP:       publicIP,
 		serviceability: serviceabilityClient,
 		devices:        devices,
-		solanaRPC:      solanaRPC,
 
-		Host:                       hostname,
-		AllocateAddr:               allocateAddr,
-		SolanaRPCURL:               solanaRPCURL,
-		ShredSubscriptionProgramID: networkConfig.ShredSubscriptionProgramID,
-		DZLedgerURL:                networkConfig.LedgerPublicRPCURL,
-		USDCMint:                   networkConfig.USDCMint,
+		Host:         hostname,
+		AllocateAddr: allocateAddr,
 	}, nil
 }
 
@@ -598,22 +545,14 @@ func (c *Client) WaitForStatusDisconnected(ctx context.Context) error {
 	return nil
 }
 
-// WaitForMulticastStatusDisconnected polls until the Multicast status entry is
-// either absent from the status list or has session status disconnected.
-// Prefer this over WaitForStatusDisconnected in multi-tunnel contexts where
-// other tunnel types (e.g. IBRL) remain up after a multicast seat is withdrawn.
-func (c *Client) WaitForMulticastStatusDisconnected(ctx context.Context) error {
-	return c.waitForUserTypeStatusDisconnected(ctx, "Multicast", FindMulticastStatus, waitForMulticastStatusDisconnectedTimeout)
-}
-
 // WaitForIBRLStatusDisconnected polls until no IBRL (or IBRLWithAllocatedIP)
 // status entry remains with a non-disconnected session. Non-IBRL tunnel types
 // (e.g. Multicast) are ignored. Prefer this over WaitForStatusDisconnected in
 // multi-tunnel contexts where a Multicast tunnel can persist independently of
-// the unicast lifecycle — e.g. when a stale shred-subscription seat cannot be
-// withdrawn and its multicast tunnel stays up. Walks the status list directly
-// rather than reusing FindIBRLStatus, which has a single-status fallback that
-// would misclassify a lone Multicast entry as IBRL.
+// the unicast lifecycle — e.g. when another key owns the multicast user, so
+// `doublezero disconnect` skips it and its tunnel stays up. Walks the status
+// list directly rather than reusing FindIBRLStatus, which has a single-status
+// fallback that would misclassify a lone Multicast entry as IBRL.
 func (c *Client) WaitForIBRLStatusDisconnected(ctx context.Context) error {
 	c.log.Debug("Waiting for IBRL status to be disconnected", "host", c.Host)
 	err := poll.Until(ctx, func() (bool, error) {
@@ -632,25 +571,6 @@ func (c *Client) WaitForIBRLStatusDisconnected(ctx context.Context) error {
 		return fmt.Errorf("failed to wait for IBRL status to be disconnected on host %s: %w", c.Host, err)
 	}
 	c.log.Debug("Confirmed IBRL status is disconnected", "host", c.Host)
-	return nil
-}
-
-// waitForUserTypeStatusDisconnected polls until find returns nil or a status
-// whose session is disconnected. userType is used only for log context.
-func (c *Client) waitForUserTypeStatusDisconnected(ctx context.Context, userType string, find func([]*pb.Status) *pb.Status, timeout time.Duration) error {
-	c.log.Debug("Waiting for status to be disconnected", "host", c.Host, "userType", userType)
-	err := poll.Until(ctx, func() (bool, error) {
-		resp, err := c.grpcClient.GetStatus(ctx, &emptypb.Empty{})
-		if err != nil {
-			return false, err
-		}
-		s := find(resp.Status)
-		return s == nil || s.SessionStatus == UserStatusDisconnected, nil
-	}, timeout, waitInterval)
-	if err != nil {
-		return fmt.Errorf("failed to wait for %s status to be disconnected on host %s: %w", userType, c.Host, err)
-	}
-	c.log.Debug("Confirmed status is disconnected", "host", c.Host, "userType", userType)
 	return nil
 }
 

@@ -100,7 +100,7 @@ pub fn process_request_ban_user(
         "Invalid System Program Account Owner"
     );
 
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     authorize(
         program_id,
         accounts_iter,

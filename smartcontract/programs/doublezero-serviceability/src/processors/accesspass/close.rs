@@ -78,7 +78,7 @@ pub fn process_close_access_pass(
     );
 
     // Parse the global state account & check authorization
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     // Read before authorize() consumes it from the iterator.
     let feed_role = feed_authority_role(
         program_id,

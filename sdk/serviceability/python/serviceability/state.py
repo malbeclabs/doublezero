@@ -716,6 +716,10 @@ class Device:
     # by from_bytes. When populated from the wire, len(interfaces) ==
     # len(deprecated_interfaces) is enforced.
     interfaces: list[Interface] = field(default_factory=list)
+    # agent_ip is the public address the device's agents connect from, when it
+    # is neither public_ip nor an interface address. All zeros means unset, and
+    # accounts written before the field existed read as zeros.
+    agent_ip: bytes = b"\x00" * 4
 
     @classmethod
     def from_bytes(cls, data: bytes) -> Device:
@@ -787,6 +791,7 @@ class Device:
             dev.interfaces = [
                 Interface.from_reader_sized(r) for _ in range(new_len)
             ]
+        dev.agent_ip = r.read_ipv4()
 
         return dev
 
@@ -877,6 +882,7 @@ class User:
     # the former scalar feed_pk slot, which was never written with a real feed on any cluster.
     feed_pks: list[Pubkey] = field(default_factory=list)
     access_pass_pub_key: Pubkey = Pubkey.default()
+    holds_pass_seat: bool = True
 
     @classmethod
     def from_bytes(cls, data: bytes) -> User:
@@ -910,7 +916,13 @@ class User:
         # which read as an empty vec with the leftover zero bytes ignored as trailing data.
         # _read_pubkey_vec returns [] on EOF, so accounts predating the slot default to empty too.
         u.feed_pks = _read_pubkey_vec(r)
-        u.access_pass_pub_key = _read_pubkey(r)
+        # When fewer than 32 bytes remain, the program skips the rest of the account. It then
+        # reads holds_pass_seat as true. An account in the old feed_pk layout ends with 28 zero
+        # bytes here.
+        if r.remaining >= 32:
+            u.access_pass_pub_key = _read_pubkey(r)
+            if r.remaining >= 1:
+                u.holds_pass_seat = r.read_u8() != 0
         return u
 
 
@@ -929,6 +941,10 @@ class MulticastGroup:
     subscriber_count: int = 0
     # The BuilderBond that created the group, or the default key for a group an admin created.
     bond_ref: Pubkey = Pubkey.default()
+    private: bool = False
+    max_publishers: int = 0
+    max_subscribers: int = 0
+    feed_count: int = 0
 
     @classmethod
     def from_bytes(cls, data: bytes) -> MulticastGroup:
@@ -948,6 +964,12 @@ class MulticastGroup:
         # A group created before the field existed ends here, and the reader raises past the end.
         if r.remaining >= 32:
             mg.bond_ref = _read_pubkey(r)
+        if r.remaining >= 5:
+            mg.private = r.read_u8() != 0
+            mg.max_publishers = r.read_u16()
+            mg.max_subscribers = r.read_u16()
+        if r.remaining >= 4:
+            mg.feed_count = r.read_u32()
         return mg
 
 
@@ -1091,7 +1113,10 @@ class AccessPass:
     tenant_allowlist: list[Pubkey] = field(default_factory=list)
     unicast_user_count: int = 0
     max_unicast_users: int = 1
+    # The program names this field public_multicast_user_count. It leaves out the users that
+    # hold no pass seat.
     multicast_user_count: int = 0
+    # The program names this field max_public_multicast_users. It caps the users that hold a pass seat.
     max_multicast_users: int = 1
 
     @classmethod
@@ -1279,7 +1304,7 @@ class Feed:
     name: str = ""
     exchange: Pubkey = Pubkey.default()
     groups: list[Pubkey] = field(default_factory=list)
-    # RFC-28. Absent from feeds written before RFC-28, which decode with these defaulted and
+    # RFC-29. Absent from feeds written before RFC-29, which decode with these defaulted and
     # status FEED_STATUS_ACTIVE.
     builder: Pubkey = Pubkey.default()
     bond_ref: Pubkey = Pubkey.default()
@@ -1308,18 +1333,18 @@ class Feed:
         # A feed serves one metro: an exchange pubkey followed by a Vec<Pubkey> of joinable groups.
         f.exchange = _read_pubkey(r)
         f.groups = _read_pubkey_vec(r)
-        # RFC-28 tail. DefensiveReader returns zeros past EOF, so a feed written before RFC-28
+        # RFC-29 tail. DefensiveReader returns zeros past EOF, so a feed written before RFC-29
         # lands here with every field defaulted. Read the flag before the tail, not after: the
         # tail reads themselves leave `remaining` at zero either way.
-        has_rfc28_tail = r.remaining > 0
+        has_rfc29_tail = r.remaining > 0
         f.builder = _read_pubkey(r)
         f.bond_ref = _read_pubkey(r)
         f.spec_id = r.read_string()
         f.sla_hash = r.read_bytes(32)
         f.committed_rate_bits_per_sec = r.read_u64()
-        # Not pending: a feed written before RFC-28 has no status byte, and reading one as pending
+        # Not pending: a feed written before RFC-29 has no status byte, and reading one as pending
         # would show every live catalog feed as out of service.
-        f.status = r.read_u8() if has_rfc28_tail else FEED_STATUS_ACTIVE
+        f.status = r.read_u8() if has_rfc29_tail else FEED_STATUS_ACTIVE
         f.halted_by = _read_pubkey(r)
         f.retires_at = _read_i64(r)
         f.feed_chain = r.read_u8()

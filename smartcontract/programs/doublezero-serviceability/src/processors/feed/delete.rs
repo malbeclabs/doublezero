@@ -1,6 +1,7 @@
 use crate::{
     authorize::{authorize, FEED_ADMIN_FLAGS},
     error::DoubleZeroError,
+    processors::feed::{group_keys, next_group_accounts, remove_feed_from_groups},
     serializer::try_acc_close,
     state::{
         feed::{Feed, FeedStatus},
@@ -39,7 +40,20 @@ pub fn process_delete_feed(
     );
     assert!(feed_account.is_writable, "PDA Account is not writable");
 
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    // Validate the account really is a Feed before closing it (guards against closing an unrelated
+    // program-owned account). Feeds are not reference-counted: a still-referenced feed_key that is
+    // deleted fails closed at connect (the metro gate can't load the deleted Feed), so deleting a
+    // catalog feed is safe and the oracle owns keeping feeds and passes in sync.
+    let feed = Feed::try_from(feed_account)?;
+    let group_count =
+        u8::try_from(feed.groups.len()).map_err(|_| DoubleZeroError::InvalidArgument)?;
+    let group_accounts = next_group_accounts(accounts_iter, group_count)?;
+    if group_keys(&group_accounts) != feed.groups {
+        msg!("Pass the account of each group the feed lists, in the feed's order");
+        return Err(DoubleZeroError::InvalidArgument.into());
+    }
+
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     authorize(
         program_id,
         accounts_iter,
@@ -48,14 +62,8 @@ pub fn process_delete_feed(
         FEED_ADMIN_FLAGS,
     )?;
 
-    // Validate the account really is a Feed before closing it (guards against closing an unrelated
-    // program-owned account). Feeds are not reference-counted: a still-referenced feed_key that is
-    // deleted fails closed at connect (the metro gate can't load the deleted Feed), so deleting a
-    // catalog feed is safe and the oracle owns keeping feeds and passes in sync.
-    let feed = Feed::try_from(feed_account)?;
-
     // A bonded feed is not a catalog entry an admin can drop. Its bond mirror records this feed
-    // in `feed_key` to enforce RFC-28's one feed per bond, and closing the feed here would leave
+    // in `feed_key` to enforce RFC-29's one feed per bond, and closing the feed here would leave
     // that pointing at an account that no longer exists: the builder's bond would back nothing
     // and still refuse to back anything else. Retirement is the path out, and it releases the
     // bond with it. Both land in the feed lifecycle work (D2).
@@ -78,6 +86,8 @@ pub fn process_delete_feed(
         );
         return Err(DoubleZeroError::RetiringFeedCannotBeDeleted.into());
     }
+
+    remove_feed_from_groups(program_id, &group_accounts, payer_account, accounts)?;
 
     msg!("Deleted feed: {}", feed_account.key);
 

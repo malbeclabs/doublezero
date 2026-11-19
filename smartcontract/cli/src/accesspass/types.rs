@@ -23,3 +23,25 @@ impl From<CliAccessPassType> for AccessPassKind {
         }
     }
 }
+
+impl From<AccessPassKind> for CliAccessPassType {
+    fn from(value: AccessPassKind) -> Self {
+        match value {
+            AccessPassKind::Prepaid => CliAccessPassType::Prepaid,
+            AccessPassKind::SolanaValidator => CliAccessPassType::SolanaValidator,
+            AccessPassKind::SolanaRPC => CliAccessPassType::SolanaRPC,
+            AccessPassKind::Others => CliAccessPassType::Others,
+            AccessPassKind::EdgeSeat => CliAccessPassType::EdgeSeat,
+        }
+    }
+}
+
+/// Prints the value as `--accesspass-type` spells it, so an operator can paste it into the flag.
+impl std::fmt::Display for CliAccessPassType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let value = self
+            .to_possible_value()
+            .expect("every CliAccessPassType variant has a value");
+        f.write_str(value.get_name())
+    }
+}

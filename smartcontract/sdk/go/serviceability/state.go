@@ -484,9 +484,14 @@ type Device struct {
 	// accounts (no trailing bytes), this is rebuilt from DeprecatedInterfaces by DeserializeDevice.
 	// When populated from the wire, len(Interfaces) == len(DeprecatedInterfaces) is enforced.
 	Interfaces []Interface `influx:"-" json:",omitempty"`
+	// AgentIp is the public address the device's agents connect from, when it is
+	// neither PublicIp nor an interface address. Zero means unset, and accounts
+	// written before the field existed read as zero.
+	AgentIp [4]uint8 `influx:"-"`
 	// DeserializeError is set when DeserializeDevice encounters a recoverable but
 	// account-malformed condition (e.g. trailing interfaces length mismatch with
-	// the deprecated_interfaces vec). Consumers should check this before trusting the
+	// the deprecated_interfaces vec, or more interfaces declared than the account
+	// holds). Consumers should check this before trusting the
 	// deserialized fields.
 	DeserializeError error    `influx:"-" json:"-"`
 	PubKey           [32]byte `influx:"tag,pubkey,pubkey"`
@@ -501,6 +506,7 @@ func (d Device) MarshalJSON() ([]byte, error) {
 		LocationPubKey         string   `json:"LocationPubKey"`
 		ExchangePubKey         string   `json:"ExchangePubKey"`
 		PublicIp               string   `json:"PublicIp"`
+		AgentIp                string   `json:"AgentIp"`
 		DzPrefixes             []string `json:"DzPrefixes"`
 		MetricsPublisherPubKey string   `json:"MetricsPublisherPubKey"`
 		ContributorPubKey      string   `json:"ContributorPubKey"`
@@ -520,6 +526,9 @@ func (d Device) MarshalJSON() ([]byte, error) {
 	jsonDevice.PubKey = base58.Encode(d.PubKey[:])
 
 	jsonDevice.PublicIp = net.IP(d.PublicIp[:]).String()
+	if d.AgentIp != [4]uint8{} {
+		jsonDevice.AgentIp = net.IP(d.AgentIp[:]).String()
+	}
 
 	prefixes := make([]string, len(d.DzPrefixes))
 	for i, p := range d.DzPrefixes {
@@ -990,6 +999,7 @@ type User struct {
 	// only); empty for non-EdgeSeat/unicast users. A user may hold seats on multiple feeds.
 	FeedPks          [][32]byte
 	AccessPassPubKey [32]byte
+	HoldsPassSeat    bool
 	PubKey           [32]byte
 }
 
@@ -1092,8 +1102,12 @@ type MulticastGroup struct {
 	PublisherCount  uint32
 	SubscriberCount uint32
 	// BondRef is the BuilderBond that created the group, or zero for a group an admin created.
-	BondRef [32]uint8
-	PubKey  [32]byte
+	BondRef        [32]uint8
+	Private        bool
+	MaxPublishers  uint16
+	MaxSubscribers uint16
+	FeedCount      uint32
+	PubKey         [32]byte
 }
 
 type ProgramVersion struct {
@@ -1179,9 +1193,12 @@ type AccessPass struct {
 	TenantAllowlist    [][32]byte
 	UnicastUserCount   uint16
 	MaxUnicastUsers    uint16
+	// The program names this field public_multicast_user_count. It leaves out the users that
+	// hold no pass seat.
 	MulticastUserCount uint16
-	MaxMulticastUsers  uint16
-	PubKey             [32]byte
+	// The program names this field max_public_multicast_users. It caps the users that hold a pass seat.
+	MaxMulticastUsers uint16
+	PubKey            [32]byte
 }
 
 func onChainNetToString(n [5]uint8) string {

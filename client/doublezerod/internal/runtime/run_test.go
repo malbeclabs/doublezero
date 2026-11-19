@@ -225,6 +225,16 @@ func runIBRLTest(t *testing.T, userType api.UserType, provisioningRequest map[st
 			}
 		})
 
+		t.Run("verify_rp_filter_is_loose", func(t *testing.T) {
+			got, err := os.ReadFile("/proc/sys/net/ipv4/conf/doublezero0/rp_filter")
+			if err != nil {
+				t.Fatalf("error reading rp_filter: %v", err)
+			}
+			if v := strings.TrimSpace(string(got)); v != "2" {
+				t.Fatalf("rp_filter should be 2 (loose); got %s", v)
+			}
+		})
+
 		t.Run("verify_routes_are_installed", func(t *testing.T) {
 			time.Sleep(5 * time.Second)
 			got, err := nl.RouteListFiltered(nl.FAMILY_V4, &nl.Route{Protocol: unix.RTPROT_BGP}, nl.RT_FILTER_PROTOCOL)

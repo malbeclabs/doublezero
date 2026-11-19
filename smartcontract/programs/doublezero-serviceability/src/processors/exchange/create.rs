@@ -91,7 +91,7 @@ pub fn process_create_exchange(
     );
 
     // Parse the global state account & check if the payer is in the allowlist
-    let mut globalstate = GlobalState::try_from(globalstate_account)?;
+    let mut globalstate = GlobalState::load(program_id, globalstate_account)?;
     globalstate.account_index += 1;
 
     // Authorization: INFRA_ADMIN (Permission account) or foundation (legacy).

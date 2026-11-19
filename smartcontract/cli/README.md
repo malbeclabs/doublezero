@@ -342,7 +342,7 @@ Below is a list of available CLI commands for each main on-chain structure:
     | Argument              | Type   | Description                        |
     |----------------------|--------|-------------------------------------|
     | --pubkey             | Pubkey | User public key                    |
-    | --accesspass-type   | Enum   | Access pass type to delete         |
+    | --accesspass-type   | Enum   | Optional. Refuse unless the user's pass is this type |
 - `user get` — Get user details
     | Argument   | Type   | Description         |
     |------------|--------|---------------------|

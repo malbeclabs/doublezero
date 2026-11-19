@@ -129,6 +129,7 @@ async fn create_activated_device(
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -278,6 +279,7 @@ async fn test_builder_create_device() {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
             resource_count: 0,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         },
     );
     submit(&mut banks_client, &payer, ix)
@@ -618,7 +620,8 @@ async fn test_builder_create_subscribe_user() {
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -792,7 +795,8 @@ async fn test_builder_user_creation_with_ip_proof() {
                 last_access_epoch: 9999,
                 allow_multiple_ip: false,
                 max_unicast_users: 1,
-                max_multicast_users: 1,
+                max_public_multicast_users: 1,
+                private_group_users: 0,
             }),
             vec![
                 AccountMeta::new(accesspass_pubkey, false),

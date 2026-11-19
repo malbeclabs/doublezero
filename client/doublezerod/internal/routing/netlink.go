@@ -7,7 +7,14 @@ import (
 	"syscall"
 
 	nl "github.com/vishvananda/netlink"
+	nlmsg "github.com/vishvananda/netlink/nl"
+	"golang.org/x/sys/unix"
 )
+
+const RPFilterLoose = 2
+
+// ipv4DevconfRPFilter is IPV4_DEVCONF_RP_FILTER from linux/ip.h; x/sys/unix does not export it.
+const ipv4DevconfRPFilter = 8
 
 type Netlink struct{}
 
@@ -24,6 +31,7 @@ type Netlinker interface {
 	RuleAdd(*IPRule) error
 	RuleDel(*IPRule) error
 	RouteByProtocol(int) ([]*Route, error)
+	LinkSetRPFilter(ifname string, mode int) error
 }
 
 func (n Netlink) TunnelAdd(t *Tunnel) error {
@@ -100,6 +108,27 @@ func (n Netlink) TunnelUp(t *Tunnel) error {
 		Remote: t.RemoteUnderlay,
 	}
 	return nl.LinkSetUp(gre)
+}
+
+// LinkSetRPFilter sets net.ipv4.conf.<ifname>.rp_filter over rtnetlink, which
+// needs only CAP_NET_ADMIN; containers mount /proc/sys read-only.
+func (n Netlink) LinkSetRPFilter(ifname string, mode int) error {
+	link, err := nl.LinkByName(ifname)
+	if err != nil {
+		return err
+	}
+	req := nlmsg.NewNetlinkRequest(unix.RTM_SETLINK, unix.NLM_F_ACK)
+	msg := nlmsg.NewIfInfomsg(unix.AF_UNSPEC)
+	msg.Index = int32(link.Attrs().Index)
+	req.AddData(msg)
+
+	spec := nlmsg.NewRtAttr(unix.IFLA_AF_SPEC, nil)
+	conf := spec.AddRtAttr(unix.AF_INET, nil).AddRtAttr(unix.IFLA_INET_CONF, nil)
+	conf.AddRtAttr(ipv4DevconfRPFilter, nlmsg.Uint32Attr(uint32(mode)))
+	req.AddData(spec)
+
+	_, err = req.Execute(unix.NETLINK_ROUTE, 0)
+	return err
 }
 
 // RouteAdd adds a route to the kernel routing table via netlink.

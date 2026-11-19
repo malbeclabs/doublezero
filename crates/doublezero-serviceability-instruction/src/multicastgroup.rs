@@ -204,6 +204,31 @@ pub fn update_multicast_group_roles(
     accesspass: &Pubkey,
     user: &Pubkey,
     extra_groups: &[Pubkey],
+    args: UpdateMulticastGroupRolesArgs,
+) -> Instruction {
+    update_multicast_group_roles_with_kept_groups(
+        program_id,
+        payer,
+        group,
+        accesspass,
+        user,
+        extra_groups,
+        &[],
+        args,
+    )
+}
+
+/// The same instruction, with the groups the user stays in that the call does not change. The
+/// program reads them to decide whether the user still needs its pass-wide seat.
+#[allow(clippy::too_many_arguments)]
+pub fn update_multicast_group_roles_with_kept_groups(
+    program_id: &Pubkey,
+    payer: &Pubkey,
+    group: &Pubkey,
+    accesspass: &Pubkey,
+    user: &Pubkey,
+    extra_groups: &[Pubkey],
+    kept_groups: &[Pubkey],
     mut args: UpdateMulticastGroupRolesArgs,
 ) -> Instruction {
     let (globalstate, _) = get_globalstate_pda(program_id);
@@ -224,6 +249,11 @@ pub fn update_multicast_group_roles(
         AccountMeta::new(multicast_publisher_block, false),
     ];
     accounts.extend(extra_groups.iter().map(|g| AccountMeta::new(*g, false)));
+    accounts.extend(
+        kept_groups
+            .iter()
+            .map(|g| AccountMeta::new_readonly(*g, false)),
+    );
     common::build_with_permission(
         program_id,
         DoubleZeroInstruction::UpdateMulticastGroupRoles(args),
@@ -428,8 +458,8 @@ mod tests {
     ///
     /// It fits only without the payer's Permission PDA (1211 bytes; 1244 with it). The processor
     /// authorizes the pass's own `user_payer` before consulting `authorize()`, so the SDK drops
-    /// the Permission account for that payer; a third party leaving on a user's behalf at this
-    /// worst case has no single transaction that fits.
+    /// the Permission account for that payer. A third party that must keep it (e.g. a
+    /// `USER_ADMIN` delegate) sends this leave without the prelude instead (1196 bytes).
     #[test]
     fn test_worst_case_leave_fits_one_transaction() {
         use doublezero_serviceability::processors::{

@@ -19,13 +19,6 @@ echo
 
 DUMMY_KEY=$(solana address -k dummy.json)
 
-### Establish another payer.
-
-echo "solana-keygen new --silent --no-bip39-passphrase -o another_payer.json"
-solana-keygen new --silent --no-bip39-passphrase -o another_payer.json
-solana airdrop -ul 69 -k another_payer.json
-echo
-
 ### Establish rewards manager.
 echo "solana-keygen new --silent --no-bip39-passphrase -o rewards_manager.json"
 solana-keygen new --silent --no-bip39-passphrase -o rewards_manager.json
@@ -97,8 +90,7 @@ echo
 ### Backwards compatibility: the legacy per-verb (trailing) flag form must keep
 ### working. These mirror the global-flag invocations above but pass --url/-u and
 ### the hidden --dz-env AFTER the subcommand, the way pre-RFC-20 scripts did. The
-### output must match the equivalent global-flag invocation. (-k coverage: see the
-### publisher-rewards init below, which uses the trailing form.)
+### output must match the equivalent global-flag invocation.
 
 echo "[back-compat] doublezero-solana revenue-distribution fetch config -ul"
 $CLI_BIN revenue-distribution fetch config -ul
@@ -168,155 +160,10 @@ $CLI_BIN -ul revenue-distribution validator-deposit \
     --node-id $DUMMY_KEY
 echo
 
-### Validator-client claim commands.
-# Skipped when manager_keypair.json is not present. To exercise this block,
-# generate the keypair BEFORE starting the fork loader and pass its pubkey:
-#
-#   solana-keygen new --silent --no-bip39-passphrase -o manager_keypair.json
-#   cargo run -p doublezero-solana-fork-cli --bin doublezero-solana-fork -- -um --reset \
-#       --synthetic-validator-client-rewards-manager $(solana address -k manager_keypair.json)
-#   bash sh/test_doublezero_solana_fork.sh
-#
-# The fork loader bakes a synthetic ValidatorClientRewards PDA at
-# `client_id=65535` with the keypair's pubkey as the manager_key.
-#
-# Note: in v1, the on-chain `InitializeClaimHoldingAccount` handler
-# constrains the mint to the 2Z mint. We can't `mint-to` 2Z (no
-# authority on mainnet), so the holding stays at balance=0; claim still
-# exercises the full ix path and closes the holding, recovering rent.
-
-# Mainnet 2Z mint, hard-coded because the fork is `-um` mainnet.
-DOUBLEZERO_MINT=J6pQQ3FAcJQeWPPGppWRb4nM8jU3wLyYbRrLh7feMfvd
-MANAGER_KEY_PATH=manager_keypair.json
-if [ -f "$MANAGER_KEY_PATH" ]; then
-    CLIENT_ID=65535
-    MANAGER_PUBKEY=$(solana address -k $MANAGER_KEY_PATH)
-    TEST_EPOCH=100
-
-    echo "solana airdrop -ul 1 -k $MANAGER_KEY_PATH"
-    solana airdrop -ul 1 -k $MANAGER_KEY_PATH
-    echo
-
-    echo "solana-keygen new --silent --no-bip39-passphrase -o claim_payer.json"
-    solana-keygen new --silent --no-bip39-passphrase -o claim_payer.json
-    solana airdrop -ul 10 -k claim_payer.json
-    echo
-
-    echo "spl-token create-account -ul $DOUBLEZERO_MINT --owner $MANAGER_PUBKEY --fee-payer claim_payer.json"
-    spl-token create-account \
-        -ul \
-        $DOUBLEZERO_MINT \
-        --owner $MANAGER_PUBKEY \
-        --fee-payer claim_payer.json
-    echo
-
-    echo "doublezero-solana -ul shreds validator-client-rewards show --client-id $CLIENT_ID"
-    $CLI_BIN -ul shreds validator-client-rewards show --client-id $CLIENT_ID
-    echo
-
-    echo "doublezero-solana -ul -k claim_payer.json shreds validator-client-rewards init-holding --client-id $CLIENT_ID --rewards-token-mint $DOUBLEZERO_MINT --subscription-epoch $TEST_EPOCH"
-    $CLI_BIN -ul -k claim_payer.json shreds validator-client-rewards init-holding \
-        --client-id $CLIENT_ID \
-        --rewards-token-mint $DOUBLEZERO_MINT \
-        --subscription-epoch $TEST_EPOCH
-    echo
-
-    echo "doublezero-solana -ul shreds validator-client-rewards show --client-id $CLIENT_ID --rewards-token-mint $DOUBLEZERO_MINT --subscription-epoch $TEST_EPOCH"
-    $CLI_BIN -ul shreds validator-client-rewards show \
-        --client-id $CLIENT_ID \
-        --rewards-token-mint $DOUBLEZERO_MINT \
-        --subscription-epoch $TEST_EPOCH
-    echo
-
-    echo "doublezero-solana -ul -k $MANAGER_KEY_PATH shreds validator-client-rewards claim --client-id $CLIENT_ID --rewards-token-mint $DOUBLEZERO_MINT --subscription-epoch $TEST_EPOCH"
-    $CLI_BIN -ul -k $MANAGER_KEY_PATH shreds validator-client-rewards claim \
-        --client-id $CLIENT_ID \
-        --rewards-token-mint $DOUBLEZERO_MINT \
-        --subscription-epoch $TEST_EPOCH
-    echo
-
-    echo "doublezero-solana -ul shreds validator-client-rewards show --client-id $CLIENT_ID --rewards-token-mint $DOUBLEZERO_MINT --subscription-epoch $TEST_EPOCH"
-    $CLI_BIN -ul shreds validator-client-rewards show \
-        --client-id $CLIENT_ID \
-        --rewards-token-mint $DOUBLEZERO_MINT \
-        --subscription-epoch $TEST_EPOCH
-    echo
-else
-    echo "Skipping validator-client claim commands: $MANAGER_KEY_PATH not found."
-    echo "To exercise this block, generate the keypair before starting the fork loader:"
-    echo "  solana-keygen new --silent --no-bip39-passphrase -o $MANAGER_KEY_PATH"
-    echo "  cargo run -p doublezero-solana-fork-cli --bin doublezero-solana-fork -- -um --reset --synthetic-validator-client-rewards-manager \$(solana address -k $MANAGER_KEY_PATH)"
-    echo
-fi
-
-### Shreds publisher-rewards commands.
-
-echo "doublezero-solana shreds publisher-rewards -h"
-$CLI_BIN shreds publisher-rewards -h
-echo
-
-NODE_ID=$(solana address -k test-ledger/validator-keypair.json)
-# Canonical 2Z mint on mainnet-beta. Pinned literal so the script doesn't
-# need to import Rust constants. Source: doublezero_revenue_distribution::env::mainnet::DOUBLEZERO_MINT_KEY.
-DZ_MINT="J6pQQ3FAcJQeWPPGppWRb4nM8jU3wLyYbRrLh7feMfvd"
-ANOTHER_PAYER_KEY=$(solana address -k another_payer.json)
-
-# Airdrop SOL to the validator identity so it can pay tx fees on the direct
-# configure path (where the fee-payer keypair doubles as the validator
-# identity).
-solana airdrop -ul 1 -k test-ledger/validator-keypair.json
-echo
-
-# `configure` idempotently creates the rewards-token ATA for the supplied
-# owner/mint pair, so no separate `spl-token create-account` step is needed.
-# The 2Z mint is forked from mainnet.
-
-# Init (paid by dummy). Uses the legacy trailing-flag form (-ul/-k AFTER the
-# subcommand) to exercise backwards compatibility of a write verb end-to-end.
-echo "[back-compat] doublezero-solana shreds publisher-rewards init --node-id $NODE_ID -ul -k dummy.json"
-$CLI_BIN shreds publisher-rewards init --node-id $NODE_ID -ul -k dummy.json
-echo
-
-# Direct path: fee-payer keypair (-k) doubles as the validator identity, so we
-# pass the validator-keypair as the fee-payer and --node-id matches its pubkey.
-echo "doublezero-solana -ul -k test-ledger/validator-keypair.json shreds publisher-rewards configure (direct path)"
-$CLI_BIN -ul -k test-ledger/validator-keypair.json shreds publisher-rewards configure \
-    --node-id $NODE_ID --rewards-token-mint $DZ_MINT --rewards-token-owner $DUMMY_KEY
-echo
-
-echo "doublezero-solana -ul shreds publisher-rewards show --node-id $NODE_ID"
-$CLI_BIN -ul shreds publisher-rewards show --node-id $NODE_ID
-echo
-
-# Offchain path: prepare -> solana sign-offchain-message -> configure
-echo "Preparing offchain authorization message..."
-PREPARED=$($CLI_BIN -ul shreds publisher-rewards prepare-offchain-message \
-    --node-id $NODE_ID --rewards-token-mint $DZ_MINT \
-    --rewards-token-owner $ANOTHER_PAYER_KEY --valid-for 1h --json)
-HEX=$(echo "$PREPARED" | jq -r .hex)
-DEADLINE=$(echo "$PREPARED" | jq -r .deadline_slot)
-
-echo "Signing message with validator identity..."
-SIG=$(solana sign-offchain-message -k test-ledger/validator-keypair.json "$HEX")
-
-echo "doublezero-solana -ul -k another_payer.json shreds publisher-rewards configure (offchain path)"
-$CLI_BIN -ul -k another_payer.json shreds publisher-rewards configure \
-    --node-id $NODE_ID --rewards-token-mint $DZ_MINT \
-    --rewards-token-owner $ANOTHER_PAYER_KEY \
-    --signature "$SIG" --deadline-slot "$DEADLINE"
-echo
-
-echo "doublezero-solana -ul shreds publisher-rewards show --node-id $NODE_ID"
-$CLI_BIN -ul shreds publisher-rewards show --node-id $NODE_ID
-echo
-
 ### Clean up.
 
-echo "rm dummy.json another_payer.json rewards_manager.json " \
-     "service_key_1.json validator_node_id.json claim_payer.json"
+echo "rm dummy.json rewards_manager.json service_key_1.json"
 rm \
     dummy.json \
-    another_payer.json \
     rewards_manager.json \
     service_key_1.json
-rm -f claim_payer.json

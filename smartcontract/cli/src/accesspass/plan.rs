@@ -639,6 +639,10 @@ mod tests {
             publisher_count: 0,
             subscriber_count: 0,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
+            feed_count: 0,
         }
     }
 
@@ -664,8 +668,8 @@ mod tests {
             flags: 0,
             unicast_user_count: 0,
             max_unicast_users: 1,
-            multicast_user_count: 0,
-            max_multicast_users: 1,
+            public_multicast_user_count: 0,
+            max_public_multicast_users: 1,
         }
     }
 
@@ -830,7 +834,7 @@ mod tests {
                     exchange: Pubkey::new_unique(),
                     groups: vec![group_pk],
                     // Only `groups` and `code` matter here — what a feed grants and what the
-                    // plan calls it. The RFC-28 lifecycle fields are defaulted rather than
+                    // plan calls it. The RFC-29 lifecycle fields are defaulted rather than
                     // spelled out, as the other feed fixtures in this crate do, so the next
                     // field added to the account does not break a test that never read one.
                     ..Default::default()

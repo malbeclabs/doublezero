@@ -5,7 +5,7 @@ Read-only SDKs for deserializing DoubleZero onchain program accounts in Go, Pyth
 - **serviceability** -- Serviceability program (Python, TypeScript only; Go SDK is in `smartcontract/sdk/go/serviceability`)
 - **telemetry** -- Telemetry program (Python, TypeScript only; Go SDK is in `smartcontract/sdk/go/telemetry`)
 - **revdist** -- Revenue distribution program (epochs, claim tickets, etc.)
-- **shreds** -- Shred subscription program (seats, pricing, settlement, rewards)
+- **shreds** -- Feed subscription program (feed distributions)
 - **borsh-incremental** -- Shared Borsh deserialization library used by the SDKs, implemented in each language
 
 ## Running Examples
@@ -33,7 +33,6 @@ Available targets:
 - `example-serviceability-python`, `example-serviceability-typescript`
 - `example-telemetry-python`, `example-telemetry-typescript`
 - `example-revdist-go`, `example-revdist-python`, `example-revdist-typescript`
-- `example-shreds-go`
 
 ### Direct Commands
 
@@ -69,13 +68,6 @@ cd sdk/revdist/python && python examples/fetch.py --env mainnet-beta
 
 # TypeScript
 cd sdk/revdist/typescript && bun run examples/fetch.ts --env mainnet-beta
-```
-
-### Shred Subscription (seats, pricing, settlement, rewards)
-
-```bash
-# Go
-go run ./sdk/shreds/go/examples/fetch --env mainnet-beta --epoch 42
 ```
 
 ## Running Tests
@@ -160,8 +152,8 @@ sdk/
 │   ├── python/examples/
 │   ├── typescript/examples/
 │   └── testdata/fixtures/
-└── shreds/                # Shred subscription program SDK
-    └── go/examples/
+└── shreds/                # Feed subscription program SDK
+    └── go/
 ```
 
 Each SDK follows the same layout with `go/`, `python/`, `typescript/` subdirectories containing example CLIs, and a shared `testdata/fixtures/` directory containing the Rust-generated test data.

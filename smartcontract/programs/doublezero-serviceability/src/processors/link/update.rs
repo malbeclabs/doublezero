@@ -201,7 +201,7 @@ pub fn process_update_link(
     // instructions with the system program as the program ID, so a wrong account
     // reverts automatically — see programs/CLAUDE.md.)
 
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     let contributor = Contributor::try_from(contributor_account)?;
 
     // Authorization: the contributor owner, or NETWORK_ADMIN (Permission account) /

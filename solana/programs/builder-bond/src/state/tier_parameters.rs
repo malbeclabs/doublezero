@@ -1,10 +1,9 @@
 use bytemuck::{Pod, Zeroable};
 
-/// What a bond costs at each RFC-28 rate tier, in the 2Z mint's smallest unit.
+/// What a bond costs at each RFC-29 rate tier, in the 2Z mint's smallest unit.
 ///
-/// RFC-28 quotes the tiers in dollars (about $100k, $200k and $500k) but fixes the bond "in 2Z,
-/// at the price prevailing when the tier is set". So these are 2Z amounts an admin sets, not a
-/// price feed this program reads.
+/// RFC-29 leaves the amounts to configuration, so these are 2Z amounts an admin sets, not a price
+/// feed this program reads.
 ///
 /// The rate ceilings are compiled in rather than configured, because they have to agree with
 /// `BondTier::max_rate_bits_per_sec` in the serviceability program on the DZ ledger. If those two

@@ -71,7 +71,7 @@ impl From<&Settings> for MonthlySettings {
     fn from(settings: &Settings) -> Self {
         Self {
             dz_url: settings.rpc.dz_url.clone(),
-            solana_url: settings.rpc.solana_write_url.clone(),
+            solana_url: settings.rpc.solana_url.clone(),
             contributor_rewards_prefix: settings.get_contributor_rewards_prefix(),
         }
     }

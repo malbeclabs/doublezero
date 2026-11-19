@@ -1,6 +1,9 @@
 use clap::{Args, Subcommand};
 
-use crate::migrate::{flex_algo::FlexAlgoMigrateCliCommand, user_pda::MigrateUserPdaCliCommand};
+use crate::migrate::{
+    feed_count::FeedCountMigrateCliCommand, flex_algo::FlexAlgoMigrateCliCommand,
+    user_pda::MigrateUserPdaCliCommand,
+};
 
 #[derive(Args, Debug)]
 pub struct MigrateCliCommand {
@@ -14,4 +17,6 @@ pub enum MigrateCommands {
     UserPda(MigrateUserPdaCliCommand),
     /// Backfill link topologies and Vpnv4 loopback FlexAlgoNodeSegments (RFC-18)
     FlexAlgo(FlexAlgoMigrateCliCommand),
+    /// Set each multicast group's feed count to the number of feeds that list it
+    FeedCount(FeedCountMigrateCliCommand),
 }

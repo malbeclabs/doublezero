@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"net"
 	"net/http"
 	"sort"
 	"time"
@@ -35,6 +36,83 @@ type Route struct {
 	LivenessExpectedKernelState string `json:"liveness_expected_kernel_state,omitempty"`
 	LivenessPeerMode            string `json:"liveness_peer_mode,omitempty"`
 	PeerClientVersion           string `json:"peer_client_version,omitempty"`
+}
+
+// RouteSummary counts an IBRL service's peer routes and the action the user must take.
+type RouteSummary struct {
+	Peers        int                  `json:"peers"`
+	Installed    int                  `json:"installed"`
+	SessionsUp   int                  `json:"sessions_up"`
+	NotInstalled []RouteGroup         `json:"not_installed"`
+	Action       liveness.RouteAction `json:"action"`
+	Docs         string               `json:"docs,omitempty"`
+}
+
+// RouteGroup counts missing routes whose sessions share a state and reason.
+type RouteGroup struct {
+	State  string `json:"state"`
+	Reason string `json:"reason"`
+	Count  int    `json:"count"`
+}
+
+// SummarizeRoutes checks the desired routes of the sessions sourced from src against the kernel.
+func SummarizeRoutes(kernel []*routing.Route, sessions []liveness.SessionSnapshot, src net.IP, action liveness.RouteAction, now time.Time) *RouteSummary {
+	inKernel := make(map[routeKey]bool, len(kernel))
+	for _, rt := range kernel {
+		if rt.Src != nil && rt.Dst != nil {
+			inKernel[routeKeyFor(rt)] = true
+		}
+	}
+
+	sum := &RouteSummary{NotInstalled: []RouteGroup{}, Action: action}
+	if action == liveness.RouteActionInbound || action == liveness.RouteActionOutbound {
+		sum.Docs = liveness.DocsMissingPeerRoutes
+	}
+	counts := make(map[RouteGroup]int)
+	for _, sess := range sessions {
+		rt := &sess.Route.Route
+		if sess.ExpectedKernelState == liveness.KernelStateUnknown || rt.Src == nil || rt.Dst == nil || !rt.Src.Equal(src) {
+			continue
+		}
+		sum.Peers++
+		if sess.State == liveness.StateUp {
+			sum.SessionsUp++
+		}
+		if inKernel[routeKeyFor(rt)] {
+			sum.Installed++
+			continue
+		}
+		counts[RouteGroup{State: sess.State.String(), Reason: livenessStateReason(sess, now)}]++
+	}
+	for g, n := range counts {
+		g.Count = n
+		sum.NotInstalled = append(sum.NotInstalled, g)
+	}
+	sort.Slice(sum.NotInstalled, func(i, j int) bool {
+		a, b := sum.NotInstalled[i], sum.NotInstalled[j]
+		if a.Count != b.Count {
+			return a.Count > b.Count
+		}
+		if a.State != b.State {
+			return a.State < b.State
+		}
+		return a.Reason < b.Reason
+	})
+	return sum
+}
+
+// livenessStateReason says why a session's route may be missing. It maps here, not in
+// DownReason.String(), because log queries filter on that.
+func livenessStateReason(sess liveness.SessionSnapshot, now time.Time) string {
+	switch {
+	case sess.State == liveness.StateDown && sess.LastDownReason == liveness.DownReasonNone:
+		return "no reply"
+	case sess.State == liveness.StateDown:
+		return sess.LastDownReason.String()
+	case sess.State == liveness.StateUp && sess.ExpectedKernelState == liveness.KernelStateAbsent && now.Before(sess.HoldDownUntil):
+		return "held down"
+	}
+	return ""
 }
 
 type routeKey struct {
@@ -96,6 +174,7 @@ func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, ssr Servi
 		// If the liveness manager is enabled, we need to get the routes from the liveness manager.
 		livenessRoutes := make(map[routeKey]*Route, 0)
 		if lm != nil {
+			now := time.Now()
 			sessions := lm.GetSessions()
 			livenessRoutes = make(map[routeKey]*Route, len(sessions))
 			for _, sess := range sessions {
@@ -117,11 +196,6 @@ func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, ssr Servi
 						kernelState = liveness.KernelStatePresent.String()
 					}
 
-					var stateReason string
-					if sess.State == liveness.StateDown {
-						stateReason = sess.LastDownReason.String()
-					}
-
 					livenessRoutes[rk] = &Route{
 						Network:                     networkConfig.Moniker,
 						LocalIP:                     rt.Src.To4().String(),
@@ -129,7 +203,7 @@ func ServeRoutesHandler(nlr bgp.RouteReaderWriter, lm LivenessManager, ssr Servi
 						KernelState:                 kernelState,
 						LivenessLastUpdated:         sess.LastUpdated.UTC().Format(time.RFC3339),
 						LivenessState:               sess.State.String(),
-						LivenessStateReason:         stateReason,
+						LivenessStateReason:         livenessStateReason(sess, now),
 						LivenessExpectedKernelState: sess.ExpectedKernelState.String(),
 						LivenessPeerMode:            sess.PeerAdvertisedMode.String(),
 						PeerClientVersion:           sess.PeerClientVersion.String(),

@@ -215,6 +215,10 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 	length := reader.ReadU32()
 	if length > 0 && (length*18) > reader.Remaining() {
 		log.Println("DeserializeDevice: Not enough data for interfaces (# of interfaces = ", length, ")")
+		dev.DeserializeError = fmt.Errorf(
+			"DeserializeDevice: %d interfaces need at least %d bytes, %d remain",
+			length, length*18, reader.Remaining(),
+		)
 		return
 	}
 	for i := uint32(0); i < length; i++ {
@@ -259,6 +263,8 @@ func DeserializeDevice(reader *ByteReader, dev *Device) {
 			DeserializeInterfaceSized(reader, &dev.Interfaces[i])
 		}
 	}
+	// Agent IP follows the trailing interfaces vec. Absent (zero) on older accounts.
+	dev.AgentIp = reader.ReadIPv4()
 	// Note: dev.PubKey is set separately in client.go after deserialization
 }
 
@@ -318,7 +324,15 @@ func DeserializeUser(reader *ByteReader, user *User) {
 	// slice (the 28 leftover zero bytes are ignored as trailing data). ReadPubkeySlice returns nil
 	// on EOF, so accounts predating the slot deserialize with the field absent — len 0 either way.
 	user.FeedPks = reader.ReadPubkeySlice()
-	user.AccessPassPubKey = reader.ReadPubkey()
+	// When fewer than 32 bytes remain, the program skips the rest of the account. It then reads
+	// holds_pass_seat as true. An account in the old feed_pk layout ends with 28 zero bytes here.
+	user.HoldsPassSeat = true
+	if reader.Remaining() >= 32 {
+		user.AccessPassPubKey = reader.ReadPubkey()
+		if reader.Remaining() >= 1 {
+			user.HoldsPassSeat = reader.ReadU8() != 0
+		}
+	}
 	// Note: user.PubKey is set separately in client.go after deserialization
 }
 
@@ -337,6 +351,10 @@ func DeserializeMulticastGroup(reader *ByteReader, mg *MulticastGroup) {
 	// Zero for a group an admin created, and for any group created before the field existed:
 	// ReadPubkey returns zero bytes at EOF.
 	mg.BondRef = reader.ReadPubkey()
+	mg.Private = reader.ReadU8() != 0
+	mg.MaxPublishers = reader.ReadU16()
+	mg.MaxSubscribers = reader.ReadU16()
+	mg.FeedCount = reader.ReadU32()
 }
 
 func DeserializeTenant(reader *ByteReader, tenant *Tenant) {
@@ -516,7 +534,7 @@ func DeserializeFeed(reader *ByteReader, feed *Feed) {
 	// groups.
 	feed.Exchange = reader.ReadPubkey()
 	feed.Groups = reader.ReadPubkeySlice()
-	hasRfc28Tail := reader.Remaining() > 0
+	hasRfc29Tail := reader.Remaining() > 0
 	feed.Builder = reader.ReadPubkey()
 	feed.BondRef = reader.ReadPubkey()
 	feed.SpecId = reader.ReadString()
@@ -524,7 +542,7 @@ func DeserializeFeed(reader *ByteReader, feed *Feed) {
 		copy(feed.SlaHash[:], slaHash)
 	}
 	feed.CommittedRateBitsPerSec = reader.ReadU64()
-	if hasRfc28Tail {
+	if hasRfc29Tail {
 		feed.Status = FeedStatus(reader.ReadU8())
 	} else {
 		feed.Status = FeedStatusActive

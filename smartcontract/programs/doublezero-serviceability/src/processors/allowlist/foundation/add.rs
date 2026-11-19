@@ -72,7 +72,7 @@ pub fn process_add_foundation_allowlist_globalconfig(
     );
 
     // Authorization: GLOBALSTATE_ADMIN (Permission account) or foundation (legacy).
-    let mut globalstate = GlobalState::try_from(globalstate_account)?;
+    let mut globalstate = GlobalState::load(program_id, globalstate_account)?;
     authorize(
         program_id,
         accounts_iter,

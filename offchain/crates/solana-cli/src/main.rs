@@ -25,9 +25,8 @@ struct DoubleZeroSolanaApp {
     #[arg(long = "solana-url", visible_alias = "url", short = 'u', env)]
     solana_url: Option<String>,
 
-    /// DZ Ledger RPC URL override. When omitted, derived from --env. Consumed
-    /// by the shreds subcommands (device-code resolution) and carried in the
-    /// context for passport; the revenue-distribution verbs resolve the DZ
+    /// DZ Ledger RPC URL override. When omitted, derived from --env. Carried in
+    /// the context for passport; the revenue-distribution verbs resolve the DZ
     /// Ledger from their own (hidden) --dz-env flag pending #1520.
     #[arg(long, env)]
     dz_ledger_url: Option<String>,
@@ -56,16 +55,7 @@ async fn main() -> Result<()> {
         )
         .init();
 
-    let mut app = DoubleZeroSolanaApp::parse();
-    // The shreds subcommands take `--dz-ledger-url` in the pre-RFC-20 position
-    // (`shreds --dz-ledger-url <URL> <verb>`); the global flag fills that slot
-    // when the subcommand-level one is absent, so both spellings work and the
-    // subcommand-level one wins.
-    if let DoubleZeroSolanaCommand::Shreds(ref mut shreds) = app.command
-        && shreds.dz_ledger_url.is_none()
-    {
-        shreds.dz_ledger_url = app.dz_ledger_url.clone();
-    }
+    let app = DoubleZeroSolanaApp::parse();
     let ctx = build_cli_context(&app)?;
     let mut out = std::io::stdout();
     app.command.execute(&ctx, &mut out).await
@@ -155,10 +145,9 @@ mod tests {
             "doublezero-solana",
             "--env",
             "devnet",
-            "shreds",
-            "price",
-            "--device",
-            PK,
+            "passport",
+            "fetch",
+            "--config",
         ])
         .expect("--env devnet should parse");
         let ctx = build_cli_context(&app).expect("CliContext should build");
@@ -390,13 +379,6 @@ mod tests {
             "/tmp/x.json",
         ])
         .expect("trailing -k on `configure-contributor-rewards` should parse");
-    }
-
-    /// Trailing `-u` on a shreds read verb still parses.
-    #[test]
-    fn test_trailing_url_flag_on_shreds_read_verb_still_parses() {
-        DoubleZeroSolanaApp::try_parse_from(["doublezero-solana", "shreds", "price", "-ul"])
-            .expect("trailing -u on `shreds price` should parse");
     }
 
     /// The feed program's proportion verb parses under `feeds`.

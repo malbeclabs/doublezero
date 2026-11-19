@@ -772,12 +772,8 @@ func (c *Controller) Run(ctx context.Context) error {
 	}()
 
 	if c.clickhouse != nil {
-		if err := c.clickhouse.CreateTables(ctx); err != nil {
-			c.log.Warn("error creating clickhouse tables, continuing without clickhouse", "error", err)
-			c.clickhouse = nil
-		} else {
-			go c.clickhouse.Run(ctx)
-		}
+		c.clickhouse.CreateTables(ctx)
+		go c.clickhouse.Run(ctx)
 	}
 
 	// start on-chain fetcher
@@ -1090,6 +1086,7 @@ func (c *Controller) GetConfig(ctx context.Context, req *pb.ConfigRequest) (*pb.
 		c.clickhouse.Record(getConfigEvent{
 			Timestamp:    reqStart,
 			DevicePubkey: req.GetPubkey(),
+			CallerIP:     callerIP(ctx),
 		})
 		c.clickhouse.RecordVersion(agentVersionReport{
 			DevicePubkey: req.GetPubkey(),
@@ -1109,6 +1106,17 @@ func peerAddr(ctx context.Context) string {
 		return p.Addr.String()
 	}
 	return "unknown"
+}
+
+// callerIP returns the gRPC caller's IP address without its port, or "" if it
+// cannot be determined from the request context. Both listeners are TCP, so
+// the peer is a host:port.
+func callerIP(ctx context.Context) string {
+	host, _, err := net.SplitHostPort(peerAddr(ctx))
+	if err != nil {
+		return ""
+	}
+	return host
 }
 
 // formatCIDR formats a 5-byte network block into CIDR notation

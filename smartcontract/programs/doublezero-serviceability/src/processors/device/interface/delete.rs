@@ -102,7 +102,7 @@ pub fn process_delete_device_interface(
         "Invalid System Program Account Owner"
     );
 
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     assert_eq!(globalstate.account_type, AccountType::GlobalState);
 
     let contributor = Contributor::try_from(contributor_account)?;

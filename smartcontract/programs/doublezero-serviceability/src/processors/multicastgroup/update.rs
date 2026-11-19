@@ -10,18 +10,24 @@ use crate::{
     serializer::try_acc_write,
     state::{globalstate::GlobalState, multicastgroup::*, permission::permission_flags},
 };
-use borsh::BorshSerialize;
+use borsh::{BorshDeserialize, BorshSerialize};
 use borsh_incremental::BorshDeserializeIncremental;
 use doublezero_program_common::{types::NetworkV4, validate_account_code};
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     entrypoint::ProgramResult,
+    msg,
     pubkey::Pubkey,
 };
 use std::fmt;
 
-#[cfg(test)]
-use solana_program::msg;
+/// A new feed count for a group, with the count the caller read. The program refuses the write
+/// when the stored count differs from `expected`.
+#[derive(BorshSerialize, BorshDeserialize, PartialEq, Eq, Clone, Copy, Debug)]
+pub struct FeedCountUpdate {
+    pub expected: u32,
+    pub new: u32,
+}
 
 #[derive(BorshSerialize, BorshDeserializeIncremental, PartialEq, Clone, Default)]
 pub struct MulticastGroupUpdateArgs {
@@ -35,14 +41,25 @@ pub struct MulticastGroupUpdateArgs {
     #[incremental(default = false)]
     pub use_onchain_allocation: bool,
     pub owner: Option<Pubkey>,
+    pub private: Option<bool>,
+    pub max_publishers: Option<u16>,
+    pub max_subscribers: Option<u16>,
+    /// Sets the feed count of a group created before the count existed, or of a group whose
+    /// count is wrong.
+    pub feed_count: Option<FeedCountUpdate>,
+    /// The hash of the private flag and the two caps as the caller read them, from
+    /// `MulticastGroup::private_caps_hash`. The program refuses the update when the stored values
+    /// give a different hash.
+    #[incremental(default = None)]
+    pub expected_private_caps_hash: Option<[u8; 32]>,
 }
 
 impl fmt::Debug for MulticastGroupUpdateArgs {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "code: {:?}, multicast_ip: {:?}, max_bandwidth: {:?}, publisher_count: {:?}, subscriber_count: {:?}, use_onchain_allocation: {}, owner: {:?}",
-            self.code, self.multicast_ip, self.max_bandwidth, self.publisher_count, self.subscriber_count, self.use_onchain_allocation, self.owner
+            "code: {:?}, multicast_ip: {:?}, max_bandwidth: {:?}, publisher_count: {:?}, subscriber_count: {:?}, use_onchain_allocation: {}, owner: {:?}, private: {:?}, max_publishers: {:?}, max_subscribers: {:?}, feed_count: {:?}, expected_private_caps_hash: {:?}",
+            self.code, self.multicast_ip, self.max_bandwidth, self.publisher_count, self.subscriber_count, self.use_onchain_allocation, self.owner, self.private, self.max_publishers, self.max_subscribers, self.feed_count, self.expected_private_caps_hash
         )
     }
 }
@@ -101,7 +118,7 @@ pub fn process_update_multicastgroup(
         "PDA Account is not writable"
     );
     // Parse the global state account & check if the payer is in the allowlist
-    let globalstate = GlobalState::try_from(globalstate_account)?;
+    let globalstate = GlobalState::load(program_id, globalstate_account)?;
     // Authorization: MULTICAST_ADMIN (Permission account) or foundation/sentinel (legacy).
     authorize(
         program_id,
@@ -113,6 +130,22 @@ pub fn process_update_multicastgroup(
 
     // Parse the multicastgroup account
     let mut multicastgroup: MulticastGroup = MulticastGroup::try_from(multicastgroup_account)?;
+
+    if let Some(expected) = value.expected_private_caps_hash {
+        if expected
+            != MulticastGroup::private_caps_hash(
+                multicastgroup.private,
+                multicastgroup.max_publishers,
+                multicastgroup.max_subscribers,
+            )
+        {
+            msg!(
+                "Multicast group {} changed its private flag or caps after the caller read them. Read the group again",
+                multicastgroup.code
+            );
+            return Err(DoubleZeroError::PrivateCapsChanged.into());
+        }
+    }
 
     if let Some(ref code) = value.code {
         multicastgroup.code =
@@ -158,6 +191,41 @@ pub fn process_update_multicastgroup(
     }
     if let Some(ref owner) = value.owner {
         multicastgroup.owner = *owner;
+    }
+    if let Some(update) = value.feed_count {
+        if update.expected != multicastgroup.feed_count {
+            msg!(
+                "Multicast group {} has a feed count of {}, not {}. Read the group again",
+                multicastgroup.code,
+                multicastgroup.feed_count,
+                update.expected
+            );
+            return Err(DoubleZeroError::FeedCountChanged.into());
+        }
+    }
+    if let Some(private) = value.private {
+        // The stored count and a count set in this same call must both be 0.
+        let feed_count = multicastgroup
+            .feed_count
+            .max(value.feed_count.map_or(0, |update| update.new));
+        if private && !multicastgroup.private && feed_count > 0 {
+            msg!(
+                "Multicast group {} is listed by {} feed(s). Remove it from those feeds before you mark it private",
+                multicastgroup.code,
+                feed_count
+            );
+            return Err(DoubleZeroError::GroupListedByFeed.into());
+        }
+        multicastgroup.private = private;
+    }
+    if let Some(update) = value.feed_count {
+        multicastgroup.feed_count = update.new;
+    }
+    if let Some(max_publishers) = value.max_publishers {
+        multicastgroup.max_publishers = max_publishers;
+    }
+    if let Some(max_subscribers) = value.max_subscribers {
+        multicastgroup.max_subscribers = max_subscribers;
     }
 
     try_acc_write(

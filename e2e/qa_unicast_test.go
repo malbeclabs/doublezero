@@ -33,8 +33,8 @@ func TestQA_UnicastConnectivity(t *testing.T) {
 			wg.Add(1)
 			go func(client *qa.Client) {
 				defer wg.Done()
-				// Mirror ConnectUserUnicast: don't block on a stale Multicast
-				// tunnel left by a shred-subscription seat that won't withdraw.
+				// Mirror ConnectUserUnicast: don't block on a Multicast tunnel
+				// whose user another key owns.
 				cleanupCtx := context.Background()
 				if err := client.DisconnectUser(cleanupCtx, false, false); err != nil {
 					assert.NoError(t, err, "failed to disconnect user")
@@ -47,7 +47,6 @@ func TestQA_UnicastConnectivity(t *testing.T) {
 	})
 
 	// Connect users to any device without waiting for status.
-	// NOTE: We need to do this sequentially to avoid a DZ ledger race condition.
 	for _, client := range clients {
 		err := client.ConnectUserUnicast_AnyDevice_NoWait(ctx)
 		require.NoError(t, err, "failed to connect user")

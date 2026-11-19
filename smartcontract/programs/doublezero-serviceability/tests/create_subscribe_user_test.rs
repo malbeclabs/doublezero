@@ -10,12 +10,13 @@
 
 use doublezero_serviceability::{
     entrypoint::process_instruction,
+    error::DoubleZeroError,
     instructions::DoubleZeroInstruction,
     pda::{
         get_accesspass_pda, get_contributor_pda, get_device_pda, get_exchange_pda,
         get_globalconfig_pda, get_globalstate_pda, get_location_pda, get_multicastgroup_pda,
         get_permission_pda, get_program_config_pda, get_resource_extension_pda, get_tenant_pda,
-        get_user_pda,
+        get_user_old_pda, get_user_pda,
     },
     processors::{
         accesspass::set::SetAccessPassArgs,
@@ -199,6 +200,7 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -273,7 +275,8 @@ async fn setup_create_subscribe_fixture(client_ip: [u8; 4]) -> CreateSubscribeFi
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -518,6 +521,86 @@ async fn test_create_subscribe_user_atomic_subscriber() {
 // Error Path Tests
 // ============================================================================
 
+/// CreateSubscribeUser accepts only the per-IP user address.
+#[tokio::test]
+async fn test_create_subscribe_user_rejects_counter_pda() {
+    let client_ip = [100, 0, 0, 47];
+    let f = setup_create_subscribe_fixture(client_ip).await;
+    let CreateSubscribeFixture {
+        mut banks_client,
+        payer,
+        program_id,
+        globalstate_pubkey,
+        device_pubkey,
+        accesspass_pubkey,
+        mgroup_pubkey,
+        user_ip,
+        user_tunnel_block,
+        multicast_publisher_block,
+        tunnel_ids,
+        dz_prefix_block,
+    } = f;
+
+    let args = UserCreateSubscribeArgs {
+        user_type: UserType::Multicast,
+        cyoa_type: UserCYOA::GREOverDIA,
+        client_ip: user_ip,
+        publisher: false,
+        subscriber: true,
+        tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+        dz_prefix_count: 1,
+        owner: Pubkey::default(),
+        ip_proof: None,
+        extra_group_count: 0,
+    };
+    let gs = get_globalstate(&mut banks_client, globalstate_pubkey).await;
+    let (old_user_pubkey, _) = get_user_old_pda(&program_id, gs.account_index + 1);
+    let mut accounts = vec![
+        AccountMeta::new(old_user_pubkey, false),
+        AccountMeta::new(device_pubkey, false),
+        AccountMeta::new(mgroup_pubkey, false),
+        AccountMeta::new(accesspass_pubkey, false),
+        AccountMeta::new(globalstate_pubkey, false),
+        AccountMeta::new(user_tunnel_block, false),
+        AccountMeta::new(multicast_publisher_block, false),
+        AccountMeta::new(tunnel_ids, false),
+        AccountMeta::new(dz_prefix_block, false),
+    ];
+    let recent_blockhash = banks_client.get_latest_blockhash().await.unwrap();
+    let err = try_execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateSubscribeUser(args.clone()),
+        accounts.clone(),
+        &payer,
+    )
+    .await
+    .unwrap_err();
+    assert_custom_error(&err, DoubleZeroError::InvalidUserPubkey);
+    assert!(account_is_closed(&mut banks_client, old_user_pubkey).await);
+
+    let (user_pubkey, _) = get_user_pda(&program_id, &user_ip, UserType::Multicast);
+    accounts[0] = AccountMeta::new(user_pubkey, false);
+    execute_transaction(
+        &mut banks_client,
+        recent_blockhash,
+        program_id,
+        DoubleZeroInstruction::CreateSubscribeUser(args),
+        accounts,
+        &payer,
+    )
+    .await;
+
+    let user = get_account_data(&mut banks_client, user_pubkey)
+        .await
+        .expect("User should exist")
+        .get_user()
+        .unwrap();
+    assert_eq!(user.status, UserStatus::Activated);
+    assert_eq!(user.subscribers, vec![mgroup_pubkey]);
+}
+
 /// Multicast user creation succeeds when the access-pass has a tenant_allowlist.
 ///
 /// Regression test: multicast connections are not tenant-scoped. A user with an access-pass
@@ -579,7 +662,8 @@ async fn test_create_subscribe_user_ignores_tenant_allowlist() {
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -709,7 +793,8 @@ async fn test_create_subscribe_user_ignores_expired_epoch() {
             last_access_epoch: 0,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -844,7 +929,8 @@ async fn test_check_access_pass_multicast_stays_activated() {
             last_access_epoch: 0,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1011,6 +1097,7 @@ async fn test_create_subscribe_user_foundation_owner_override() {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1087,7 +1174,8 @@ async fn test_create_subscribe_user_foundation_owner_override() {
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1321,6 +1409,7 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1395,7 +1484,8 @@ async fn test_create_subscribe_user_sentinel_owner_override() {
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1617,6 +1707,7 @@ async fn test_create_subscribe_user_user_admin_owner_override() {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1691,7 +1782,8 @@ async fn test_create_subscribe_user_user_admin_owner_override() {
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),
@@ -1906,6 +1998,7 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -1980,7 +2073,8 @@ async fn test_create_subscribe_user_non_foundation_owner_override_rejected() {
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 1,
-            max_multicast_users: 1,
+            max_public_multicast_users: 1,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass_pubkey, false),

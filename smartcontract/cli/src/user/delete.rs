@@ -18,10 +18,11 @@ pub struct DeleteUserCliCommand {
     /// Access pass for a legacy user
     #[arg(long, value_parser = validate_pubkey)]
     pub access_pass: Option<String>,
-    /// The kind of access pass the user holds. Required: the program refuses the call when the
-    /// pass is a different kind, so stating it here is what makes the delete targeted.
+    /// The kind of access pass the user holds. Optional: without it the command deletes the user
+    /// from the pass the user records, whatever its kind. With it the command refuses to delete a
+    /// user whose pass is a different kind.
     #[arg(long)]
-    pub accesspass_type: CliAccessPassType,
+    pub accesspass_type: Option<CliAccessPassType>,
 }
 
 impl DeleteUserCliCommand {
@@ -43,7 +44,7 @@ impl DeleteUserCliCommand {
         let signature = client.delete_user(DeleteUserCommand {
             pubkey,
             accesspass_pk,
-            kind: Some(self.accesspass_type.into()),
+            kind: self.accesspass_type.map(Into::into),
         })?;
         writeln!(out, "Signature: {signature}",)?;
 
@@ -134,7 +135,7 @@ mod tests {
             DeleteUserCliCommand {
                 pubkey: pda_pubkey.to_string(),
                 access_pass: Some(accesspass_pk.to_string()),
-                accesspass_type: CliAccessPassType::Prepaid,
+                accesspass_type: Some(CliAccessPassType::Prepaid),
             }
             .execute(&ctx, &client, &mut output),
         );
@@ -146,7 +147,45 @@ mod tests {
     }
 
     #[test]
-    fn test_cli_user_delete_requires_access_pass_type() {
+    fn test_cli_user_delete_without_access_pass_type() {
+        // Without the flag the command declares no kind, so the SDK deletes the user from the
+        // pass it records, whatever its kind.
+        let mut client = create_test_client();
+        let user_pk = Pubkey::new_unique();
+        let signature = Signature::new_unique();
+
+        client
+            .expect_check_requirements()
+            .with(predicate::eq(CHECK_ID_JSON | CHECK_BALANCE))
+            .returning(|_| Ok(()));
+        client
+            .expect_delete_user()
+            .with(predicate::eq(DeleteUserCommand {
+                pubkey: user_pk,
+                accesspass_pk: None,
+                kind: None,
+            }))
+            .times(1)
+            .returning(move |_| Ok(signature));
+
+        let mut output = Vec::new();
+        let res = block_on(
+            DeleteUserCliCommand {
+                pubkey: user_pk.to_string(),
+                access_pass: None,
+                accesspass_type: None,
+            }
+            .execute(&cli_context_default_for_tests(), &client, &mut output),
+        );
+        assert!(res.is_ok(), "{res:?}");
+        assert_eq!(
+            String::from_utf8(output).unwrap(),
+            format!("Signature: {signature}\n")
+        );
+    }
+
+    #[test]
+    fn test_cli_user_delete_access_pass_type_is_optional() {
         use clap::Parser;
 
         #[derive(Parser, Debug)]
@@ -160,32 +199,25 @@ mod tests {
             Delete(DeleteUserCliCommand),
         }
 
-        // Omitting --accesspass-type is a parse error: there is no default, so an
-        // operator who forgets the flag is stopped here rather than the program
-        // guessing a kind.
-        let missing_type = TestCli::try_parse_from([
-            "test",
-            "delete",
-            "--pubkey",
-            &Pubkey::new_unique().to_string(),
-        ]);
-        // The specific kind matters: is_err() alone would also pass if some other validation
-        // failed first, or if the flag became optional and something else rejected the call.
-        assert_eq!(
-            missing_type
-                .expect_err("omitting the flag must fail")
-                .kind(),
-            clap::error::ErrorKind::MissingRequiredArgument,
-        );
+        let parse = |extra: &[&str]| {
+            let pubkey = Pubkey::new_unique().to_string();
+            let mut args = vec!["test", "delete", "--pubkey", &pubkey];
+            args.extend_from_slice(extra);
+            TestCli::try_parse_from(args).map(|cli| match cli.command {
+                TestCommand::Delete(cmd) => cmd.accesspass_type,
+            })
+        };
 
-        let with_type = TestCli::try_parse_from([
-            "test",
-            "delete",
-            "--pubkey",
-            &Pubkey::new_unique().to_string(),
-            "--accesspass-type",
-            "prepaid",
-        ]);
-        assert!(with_type.is_ok(), "{with_type:?}");
+        assert_eq!(parse(&[]).unwrap(), None);
+        assert_eq!(
+            parse(&["--accesspass-type", "prepaid"]).unwrap(),
+            Some(CliAccessPassType::Prepaid)
+        );
+        assert_eq!(
+            parse(&["--accesspass-type", "nonsense"])
+                .expect_err("an unknown type must fail")
+                .kind(),
+            clap::error::ErrorKind::InvalidValue,
+        );
     }
 }

@@ -21,7 +21,7 @@ impl FeedsCommand {
 
 #[derive(Debug, Subcommand)]
 pub enum FeedsSubcommand {
-    /// Publisher rewards: set where a publisher is paid.
+    /// Publisher rewards: set where a publisher is paid and show what it was paid.
     PublisherRewards(publisher_rewards::PublisherRewardsCommand),
     /// Validator client rewards: manage a client's share and claim its 2Z.
     ValidatorClientRewards(validator_client_rewards::ValidatorClientRewardsCommand),

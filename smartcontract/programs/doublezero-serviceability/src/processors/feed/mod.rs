@@ -10,6 +10,8 @@ pub mod update;
 use crate::{
     authorize::{authorize, FEED_ADMIN_FLAGS},
     error::{DoubleZeroError, Validate},
+    processors::validation::validate_program_account,
+    serializer::try_acc_write,
     state::{
         accesspass::AccessPass,
         bond_mirror::BondMirror,
@@ -19,25 +21,80 @@ use crate::{
     },
 };
 use solana_program::{
-    account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
+    account_info::{next_account_info, AccountInfo},
+    entrypoint::ProgramResult,
+    msg,
+    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
-/// Split the accounts that name one of `groups` from the rest of an instruction's tail, by
-/// address. A builder passes its groups' accounts so the program can read who owns them, and the
-/// rest is the authorization tail, which [`authorize`] reads from its first account.
-pub(crate) fn split_group_accounts<'a, 'b>(
-    groups: &[Pubkey],
-    tail: Vec<&'a AccountInfo<'b>>,
-) -> (Vec<&'a AccountInfo<'b>>, Vec<&'a AccountInfo<'b>>) {
-    tail.into_iter()
-        .partition(|account| groups.contains(account.key))
+/// Take the next `count` accounts as the multicast groups that a feed instruction adds or removes.
+pub(crate) fn next_group_accounts<'a, 'b: 'a>(
+    accounts_iter: &mut impl Iterator<Item = &'a AccountInfo<'b>>,
+    count: u8,
+) -> Result<Vec<&'a AccountInfo<'b>>, ProgramError> {
+    (0..count)
+        .map(|_| next_account_info(accounts_iter))
+        .collect()
+}
+
+pub(crate) fn group_keys(group_accounts: &[&AccountInfo]) -> Vec<Pubkey> {
+    group_accounts.iter().map(|account| *account.key).collect()
+}
+
+/// Add one to the feed count of each group. A feed must not list a private group, because a feed
+/// seat would then add a user to a group that is for members only.
+pub(crate) fn add_feed_to_groups(
+    program_id: &Pubkey,
+    group_accounts: &[&AccountInfo],
+    payer_account: &AccountInfo,
+    accounts: &[AccountInfo],
+) -> ProgramResult {
+    for account in group_accounts {
+        validate_program_account!(*account, program_id, writable = true, "MulticastGroup");
+        let mut group = MulticastGroup::try_from(*account)?;
+        if group.private {
+            msg!(
+                "Multicast group {} is private, so a feed cannot list it",
+                account.key
+            );
+            return Err(DoubleZeroError::PrivateGroupInFeed.into());
+        }
+        group.feed_count = group
+            .feed_count
+            .checked_add(1)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        try_acc_write(&group, account, payer_account, accounts)?;
+    }
+    Ok(())
+}
+
+/// Subtract one from the feed count of each group.
+pub(crate) fn remove_feed_from_groups(
+    program_id: &Pubkey,
+    group_accounts: &[&AccountInfo],
+    payer_account: &AccountInfo,
+    accounts: &[AccountInfo],
+) -> ProgramResult {
+    for account in group_accounts {
+        if account.data_is_empty() {
+            continue;
+        }
+        validate_program_account!(*account, program_id, writable = true, "MulticastGroup");
+        let mut group = MulticastGroup::try_from(*account)?;
+        group.feed_count = group
+            .feed_count
+            .checked_sub(1)
+            .ok_or(ProgramError::ArithmeticOverflow)?;
+        try_acc_write(&group, account, payer_account, accounts)?;
+    }
+    Ok(())
 }
 
 /// Check that every group a bonded feed lists is its builder's own: created on the feed's bond, or
 /// assigned to the builder by an admin with no bond.
 ///
-/// A seat on a feed lets its holder join every group the feed lists ([`check_feed_metro_coverage`]),
+/// A seat on a feed lets its holder join every group the feed lists ([`check_feed_covers_group`]),
 /// so a feed the builder admits with its own bond may list only its own groups. A group with no bond
 /// can only have been given to the builder by an admin, since a builder creates groups on a bond. A
 /// group on another of the builder's bonds is refused, because each bond backs one feed. Each
@@ -90,7 +147,7 @@ pub(crate) fn check_groups_on_bond(
 ///
 /// `feed_account` must be the `Feed` referenced by one of the pass's seats. `target_mgroup` is the
 /// multicast group being joined (None requires only metro coverage).
-pub fn check_feed_metro_coverage(
+pub fn check_feed_covers_group(
     program_id: &Pubkey,
     accesspass: &AccessPass,
     device_exchange: &Pubkey,
@@ -143,17 +200,17 @@ pub fn check_feed_metro_coverage(
 }
 
 /// Enforce the EdgeSeat feed metro gate at connect and tick the matching feed seat against its cap.
-/// Call only for EdgeSeat passes. See [`check_feed_metro_coverage`].
+/// Call only for EdgeSeat passes. See [`check_feed_covers_group`].
 /// Returns the `feed_key` whose seat was ticked, so the caller can record it on the User and
 /// release exactly that seat at disconnect.
-pub fn enforce_feed_metro_gate(
+pub fn take_feed_seat(
     program_id: &Pubkey,
     accesspass: &mut AccessPass,
     device_exchange: &Pubkey,
     target_mgroup: Option<&Pubkey>,
     feed_account: Option<&AccountInfo>,
 ) -> Result<Pubkey, ProgramError> {
-    check_feed_metro_coverage(
+    check_feed_covers_group(
         program_id,
         accesspass,
         device_exchange,
@@ -163,7 +220,7 @@ pub fn enforce_feed_metro_gate(
     // feed_account is guaranteed Some here (check returns Err otherwise).
     let feed_account = feed_account.ok_or(DoubleZeroError::FeedAccountRequired)?;
     require_feed_admits(feed_account.key, &Feed::try_from(feed_account)?)?;
-    accesspass.try_add_feed_user(feed_account.key)?;
+    accesspass.try_take_feed_seat(feed_account.key)?;
     Ok(*feed_account.key)
 }
 
@@ -174,7 +231,7 @@ pub fn enforce_feed_metro_gate(
 /// status changes, so retirement and slashing need no sweep over the access passes that already
 /// carry a seat for it.
 ///
-/// `Retiring` admits, and that is the point of the state. RFC-28 gives seat holders thirty days
+/// `Retiring` admits, and that is the point of the state. RFC-29 gives seat holders thirty days
 /// notice *before publication stops*, so a feed serves its existing holders throughout. Refusing
 /// here would lock out anyone who reconnects on the first day of the notice, which would leave the
 /// notice protecting only the population that cannot come back. A new seat is refused instead
@@ -197,7 +254,7 @@ pub fn require_feed_admits(feed_key: &Pubkey, feed: &Feed) -> Result<(), DoubleZ
 
 /// Whether `payer` may change this feed's lifecycle.
 ///
-/// Two ways in, for different reasons. The feed's own builder, because RFC-28 makes halt the
+/// Two ways in, for different reasons. The feed's own builder, because RFC-29 makes halt the
 /// builder's lever and a builder that cannot halt its own feed cannot rotate its upstream source.
 /// A `FEED_AUTHORITY` or `FOUNDATION` key, because a feed whose builder has gone quiet must still
 /// be stoppable, and every other feed instruction already authorizes that way.

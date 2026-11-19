@@ -4,8 +4,8 @@ use crate::{
     processors::{
         accesspass::{
             check_status::process_check_status_access_pass, close::process_close_access_pass,
-            set::process_set_access_pass, set_feeds::process_set_access_pass_feeds,
-            set_flags::process_set_access_pass_flags,
+            set::process_set_access_pass, set_counts::process_set_access_pass_counts,
+            set_feeds::process_set_access_pass_feeds, set_flags::process_set_access_pass_flags,
         },
         allowlist::{
             foundation::{
@@ -491,6 +491,9 @@ pub fn process_instruction(
         }
         DoubleZeroInstruction::SetAccessPassFlags(value) => {
             process_set_access_pass_flags(program_id, accounts, &value)?
+        }
+        DoubleZeroInstruction::SetAccessPassCounts(value) => {
+            process_set_access_pass_counts(program_id, accounts, &value)?
         }
         DoubleZeroInstruction::SubscribeFeed(value) => {
             process_subscribe_feed(program_id, accounts, &value)?

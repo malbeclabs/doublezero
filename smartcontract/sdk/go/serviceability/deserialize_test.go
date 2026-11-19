@@ -230,6 +230,19 @@ func TestDeserializeDevice_TrailingLengthMismatchSetsError(t *testing.T) {
 	assert.Contains(t, dev.DeserializeError.Error(), "interfaces length 1 != deprecated_interfaces length 2")
 }
 
+func TestDeserializeDevice_InterfaceCountPastEndSetsError(t *testing.T) {
+	var b deviceBuilder
+	b.writeDevice(1000, nil, nil) // 1000 interfaces declared, none written
+
+	r := serviceability.NewByteReader(b.buf.Bytes())
+	var dev serviceability.Device
+	serviceability.DeserializeDevice(r, &dev)
+	require.Error(t, dev.DeserializeError)
+	assert.Contains(t, dev.DeserializeError.Error(), "1000 interfaces need at least 18000 bytes")
+	assert.Equal(t, [4]uint8{1, 2, 3, 4}, dev.PublicIp)
+	assert.Empty(t, dev.Interfaces)
+}
+
 func TestDeserializeInterfaceSized_FutureVersionSkipsTrailingBytes(t *testing.T) {
 	// Forge an element with version=5 and 8 trailing junk bytes appended past
 	// the known body. The reader should advance past start+size and leave the

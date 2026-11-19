@@ -1,8 +1,8 @@
 use crate::processors::{
     accesspass::{
         check_status::CheckStatusAccessPassArgs, close::CloseAccessPassArgs,
-        set::SetAccessPassArgs, set_feeds::SetAccessPassFeedsArgs,
-        set_flags::SetAccessPassFlagsArgs,
+        set::SetAccessPassArgs, set_counts::SetAccessPassCountsArgs,
+        set_feeds::SetAccessPassFeedsArgs, set_flags::SetAccessPassFlagsArgs,
     },
     allowlist::{
         foundation::{add::AddFoundationAllowlistArgs, remove::RemoveFoundationAllowlistArgs},
@@ -294,6 +294,8 @@ pub enum DoubleZeroInstruction {
     DeleteSolanaRPCUser(UserDeleteArgs),       // variant 132
     DeleteOthersUser(UserDeleteArgs),          // variant 133
     DeleteEdgeSeatUser(UserDeleteArgs),        // variant 134
+
+    SetAccessPassCounts(SetAccessPassCountsArgs), // variant 135
 }
 
 impl DoubleZeroInstruction {
@@ -469,6 +471,10 @@ impl DoubleZeroInstruction {
             133 => Ok(Self::DeleteOthersUser(UserDeleteArgs::try_from(rest).unwrap())),
             134 => Ok(Self::DeleteEdgeSeatUser(UserDeleteArgs::try_from(rest).unwrap())),
 
+            135 => Ok(Self::SetAccessPassCounts(
+                SetAccessPassCountsArgs::try_from(rest).map_err(ProgramError::from)?,
+            )),
+
             _ => Err(ProgramError::InvalidInstructionData),
         }
     }
@@ -638,6 +644,7 @@ impl DoubleZeroInstruction {
             Self::DeleteSolanaRPCUser(_) => "DeleteSolanaRPCUser".to_string(), // variant 132
             Self::DeleteOthersUser(_) => "DeleteOthersUser".to_string(),       // variant 133
             Self::DeleteEdgeSeatUser(_) => "DeleteEdgeSeatUser".to_string(),   // variant 134
+            Self::SetAccessPassCounts(_) => "SetAccessPassCounts".to_string(), // variant 135
         }
     }
 
@@ -800,6 +807,7 @@ impl DoubleZeroInstruction {
             Self::DeleteSolanaRPCUser(args) => format!("{args:?}"), // variant 132
             Self::DeleteOthersUser(args) => format!("{args:?}"),  // variant 133
             Self::DeleteEdgeSeatUser(args) => format!("{args:?}"), // variant 134
+            Self::SetAccessPassCounts(args) => format!("{args:?}"), // variant 135
         }
     }
 }
@@ -924,6 +932,7 @@ mod tests {
                 mgmt_vrf: "mgmt".to_string(),
                 desired_status: None,
                 resource_count: 0,
+                agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
             }),
             "CreateDevice",
         );
@@ -949,6 +958,7 @@ mod tests {
                 max_multicast_publishers: None,
                 multicast_subscribers_count: None,
                 multicast_publishers_count: None,
+                agent_ip: None,
             }),
             "UpdateDevice",
         );
@@ -1129,6 +1139,11 @@ mod tests {
                 subscriber_count: None,
                 use_onchain_allocation: false,
                 owner: None,
+                private: None,
+                max_publishers: None,
+                max_subscribers: None,
+                feed_count: None,
+                expected_private_caps_hash: None,
             }),
             "UpdateMulticastGroup",
         );
@@ -1265,7 +1280,8 @@ mod tests {
                 last_access_epoch: 123,
                 allow_multiple_ip: false,
                 max_unicast_users: 1,
-                max_multicast_users: 1,
+                max_public_multicast_users: 1,
+                private_group_users: 0,
             }),
             "SetAccessPass",
         );
@@ -1334,6 +1350,17 @@ mod tests {
                 multicast_publisher_count: 0,
             }),
             "DeleteEdgeSeatUser",
+        );
+        test_instruction(
+            DoubleZeroInstruction::SetAccessPassCounts(SetAccessPassCountsArgs {
+                expected_connection_count: 3,
+                expected_unicast_user_count: 1,
+                expected_public_multicast_user_count: 1,
+                unicast_user_count: 2,
+                public_multicast_user_count: 1,
+                private_multicast_user_count: 0,
+            }),
+            "SetAccessPassCounts",
         );
         test_instruction(
             DoubleZeroInstruction::CheckStatusAccessPass(CheckStatusAccessPassArgs {}),
@@ -1541,7 +1568,7 @@ mod tests {
                 code: "shreds".to_string(),
                 name: "Shreds".to_string(),
                 exchange: Pubkey::new_unique(),
-                groups: vec![Pubkey::new_unique()],
+                group_count: 1,
                 ..Default::default()
             }),
             "CreateFeed",
@@ -1549,7 +1576,9 @@ mod tests {
         test_instruction(
             DoubleZeroInstruction::UpdateFeed(FeedUpdateArgs {
                 name: Some("Shreds".to_string()),
-                groups: Some(vec![Pubkey::new_unique()]),
+                added_group_count: 1,
+                removed_group_count: 1,
+                expected_groups_hash: [7; 32],
                 feed_chain: None,
             }),
             "UpdateFeed",

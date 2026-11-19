@@ -1,4 +1,5 @@
 use crate::accesspass::{
+    add_feed::AddFeedAccessPassCliCommand,
     apply::ApplyAccessPassCliCommand,
     close::CloseAccessPassCliCommand,
     dzf_lock::{DzfLockAccessPassCliCommand, DzfUnlockAccessPassCliCommand},
@@ -8,6 +9,7 @@ use crate::accesspass::{
     plan::PlanAccessPassCliCommand,
     remove_feed::RemoveFeedAccessPassCliCommand,
     set::SetAccessPassCliCommand,
+    set_counts::SetCountsAccessPassCliCommand,
     user_balances::UserBalancesAccessPassCliCommand,
 };
 use clap::{Args, Subcommand};
@@ -50,7 +52,13 @@ pub enum AccessPassCommands {
     /// Clear the DZF-locked mark on an access pass
     #[clap()]
     DzfUnlock(DzfUnlockAccessPassCliCommand),
+    /// Add one feed to an EdgeSeat access pass, for testing only (mainnet-beta uses the frontend)
+    #[clap()]
+    AddFeed(AddFeedAccessPassCliCommand),
     /// Remove one feed from an EdgeSeat access pass and unsubscribe its users
     #[clap()]
     RemoveFeed(RemoveFeedAccessPassCliCommand),
+    /// Overwrite the user counts of an access pass with the users you counted on it
+    #[clap()]
+    SetCounts(SetCountsAccessPassCliCommand),
 }

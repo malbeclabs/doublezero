@@ -103,22 +103,27 @@ Create the user and grant necessary permissions:
 CREATE USER controller_devnet IDENTIFIED BY 'your_password';
 
 -- Grant permissions
-GRANT SELECT, INSERT, CREATE TABLE, SHOW COLUMNS ON devnet.controller_grpc_getconfig_success TO controller_devnet;
+GRANT SELECT, INSERT, CREATE TABLE, SHOW COLUMNS, ALTER ADD COLUMN ON devnet.controller_grpc_getconfig_success TO controller_devnet;
 GRANT SELECT, INSERT, CREATE TABLE, SHOW COLUMNS ON devnet.controller_agent_versions TO controller_devnet;
 ```
 
 The controller automatically creates both tables on startup and batch-inserts every 10 seconds.
 
-Apply the grants **before** deploying a controller version that adds a table: table creation degrades per-table, so a failing `CREATE TABLE` (e.g. a missing grant) disables writes to that table until restart while the other table keeps working. Failures are logged at `ERROR`.
+Apply the grants **before** deploying a controller version that adds a table: table creation degrades per-table, so a failing `CREATE TABLE` (e.g. a missing grant) disables writes to that table while the other table keeps working. A startup failure is logged at `ERROR`. The controller then retries each failed step in the background, 30 seconds after startup and then at doubling intervals up to 10 minutes, logging each failed retry at `WARN`, and enables the writes once it succeeds. That includes ClickHouse being unreachable at startup, which fails every step: the controller keeps the writer, drops events while no table is enabled, and starts writing once ClickHouse answers.
+
+`controller_clickhouse_write_enabled{write="getconfig_events"|"caller_ip"|"agent_versions"}` is 1 while that table or column is written and 0 otherwise, including when the controller runs without ClickHouse.
+
+A `controller_grpc_getconfig_success` table created before `caller_ip` existed lacks that column. On startup the controller looks the column up and, only when it is missing, adds it, which needs `ALTER ADD COLUMN` once. Without that grant it logs an `ERROR`, keeps writing events without the column, sets `controller_clickhouse_write_enabled{write="caller_ip"}` to 0, and retries as above. Adding the column by hand (`ALTER TABLE devnet.controller_grpc_getconfig_success ADD COLUMN caller_ip LowCardinality(String) DEFAULT ''`) works as well, and then the grant is not needed.
 
 #### Table Schemas
 
-**GetConfig events** — one row per successful GetConfig poll:
+**GetConfig events** — one row per successful GetConfig poll. `caller_ip` is the address the request came from, without its port. GetConfig does not authenticate the caller, so it is an address that sent the device's pubkey, not proof that it is the device:
 
 ```sql
 CREATE TABLE devnet.controller_grpc_getconfig_success (
     timestamp DateTime64(3),
-    device_pubkey LowCardinality(String)
+    device_pubkey LowCardinality(String),
+    caller_ip LowCardinality(String) DEFAULT ''
 ) ENGINE = MergeTree
 PARTITION BY toYYYYMM(timestamp)
 ORDER BY (timestamp, device_pubkey)

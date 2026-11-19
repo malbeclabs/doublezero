@@ -188,6 +188,10 @@ mod tests {
             publisher_count: 5,
             subscriber_count: 10,
             bond_ref: Pubkey::default(),
+            private: false,
+            max_publishers: 0,
+            max_subscribers: 0,
+            feed_count: 0,
         };
 
         client.expect_list_multicastgroup().returning(move |_| {

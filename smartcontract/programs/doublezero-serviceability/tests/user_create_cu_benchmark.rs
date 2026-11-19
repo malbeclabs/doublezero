@@ -197,6 +197,7 @@ async fn measure(with_proof: bool) -> u64 {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: None,
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device, false),
@@ -242,7 +243,8 @@ async fn measure(with_proof: bool) -> u64 {
             last_access_epoch: 9999,
             allow_multiple_ip: false,
             max_unicast_users: 4,
-            max_multicast_users: 4,
+            max_public_multicast_users: 4,
+            private_group_users: 0,
         }),
         vec![
             AccountMeta::new(accesspass, false),

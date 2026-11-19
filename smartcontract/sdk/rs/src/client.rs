@@ -201,7 +201,13 @@ impl DZClient {
     /// Almost every caller passes one instruction. RFC-27 user creation passes two:
     /// the native `Ed25519SigVerify` instruction and the creation it authorizes,
     /// which have to land together or not at all.
-    fn send_transaction_inner(&self, ixs: Vec<Instruction>) -> eyre::Result<Signature> {
+    ///
+    /// `prelude: false` sends `ixs` alone, under the runtime's default compute limit and heap.
+    fn send_transaction_inner(
+        &self,
+        ixs: Vec<Instruction>,
+        prelude: bool,
+    ) -> eyre::Result<Signature> {
         // Without this, an empty list would submit the compute-budget prelude on its own and
         // pay a fee for a transaction that does nothing.
         if ixs.is_empty() {
@@ -219,7 +225,11 @@ impl DZClient {
 
         // Prepend the shared RFC-26 compute-budget prelude (protocol-max compute
         // and heap) over the built instructions — same helper the builders document.
-        let mut instructions = compute_budget_prelude().to_vec();
+        let mut instructions = if prelude {
+            compute_budget_prelude().to_vec()
+        } else {
+            Vec::new()
+        };
         instructions.extend(ixs);
 
         let mut transaction = Transaction::new_with_payer(&instructions, Some(&payer.pubkey()));
@@ -664,11 +674,18 @@ impl DoubleZeroClient for DZClient {
     }
 
     fn send_transaction(&self, instruction: Instruction) -> eyre::Result<Signature> {
-        self.send_transaction_inner(vec![instruction])
+        self.send_transaction_inner(vec![instruction], true)
+    }
+
+    fn send_transaction_without_prelude(
+        &self,
+        instruction: Instruction,
+    ) -> eyre::Result<Signature> {
+        self.send_transaction_inner(vec![instruction], false)
     }
 
     fn send_instructions(&self, instructions: Vec<Instruction>) -> eyre::Result<Signature> {
-        self.send_transaction_inner(instructions)
+        self.send_transaction_inner(instructions, true)
     }
 
     fn gets(&self, account_type: AccountType) -> eyre::Result<HashMap<Pubkey, AccountData>> {

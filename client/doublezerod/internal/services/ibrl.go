@@ -50,6 +50,9 @@ func (s *IBRLService) Setup(p *api.ProvisionRequest) error {
 	if err != nil {
 		return fmt.Errorf("error creating tunnel interface: %v", err)
 	}
+	if err := s.nl.LinkSetRPFilter(tun.Name, routing.RPFilterLoose); err != nil {
+		slog.Warn("tunnel: could not set loose rp_filter; strict filtering may drop liveness probes", "tunnel", tun.Name, "error", err)
+	}
 
 	s.Tunnel = tun
 	s.DoubleZeroAddr = p.DoubleZeroIP

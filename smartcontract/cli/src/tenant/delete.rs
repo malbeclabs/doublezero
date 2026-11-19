@@ -127,7 +127,7 @@ impl DeleteTenantCliCommand {
                         allow_multiple_ip: ap.allow_multiple_ip(),
                         tenant: Pubkey::default(),
                         max_unicast_users: ap.max_unicast_users,
-                        max_multicast_users: ap.max_multicast_users,
+                        max_public_multicast_users: ap.max_public_multicast_users,
                     })?;
                     spinner.inc(1);
                 }
@@ -212,7 +212,7 @@ impl DeleteTenantCliCommand {
                         allow_multiple_ip: ap.allow_multiple_ip(),
                         tenant: Pubkey::default(),
                         max_unicast_users: ap.max_unicast_users,
-                        max_multicast_users: ap.max_multicast_users,
+                        max_public_multicast_users: ap.max_public_multicast_users,
                     })?;
                     spinner.inc(1);
                 }

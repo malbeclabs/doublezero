@@ -240,6 +240,7 @@ async fn device_update_location_test() {
             mgmt_vrf: "mgmt".to_string(),
             desired_status: Some(DeviceDesiredStatus::Activated),
             resource_count: 2,
+            agent_ip: std::net::Ipv4Addr::UNSPECIFIED,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -354,6 +355,7 @@ async fn device_update_location_test() {
             max_multicast_publishers: None,
             multicast_subscribers_count: None,
             multicast_publishers_count: None,
+            agent_ip: None,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),
@@ -404,6 +406,7 @@ async fn device_update_location_test() {
             max_multicast_publishers: None,
             multicast_subscribers_count: None,
             multicast_publishers_count: None,
+            agent_ip: None,
         }),
         vec![
             AccountMeta::new(device_pubkey, false),

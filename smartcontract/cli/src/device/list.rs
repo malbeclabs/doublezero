@@ -103,6 +103,8 @@ pub struct DeviceDisplay {
     #[tabled(skip)]
     pub desired_status: DeviceDesiredStatus,
     pub mgmt_vrf: String,
+    #[tabled(skip)]
+    pub agent_ip: String,
     #[serde(serialize_with = "serializer::serialize_pubkey_as_string")]
     #[tabled(skip)]
     pub metrics_publisher_pk: Pubkey,
@@ -282,6 +284,7 @@ impl ListDeviceCliCommand {
                         .map(|iface| iface.ip_net.to_string())
                         .collect(),
                     mgmt_vrf: device.mgmt_vrf.clone(),
+                    agent_ip: crate::util::display_agent_ip(device.agent_ip),
                     users: device.users_count,
                     max_users: device.max_users,
                     unicast_users_count: device.unicast_users_count,
@@ -491,7 +494,7 @@ mod tests {
         );
         assert!(res.is_ok());
         let output_str = String::from_utf8(output).unwrap();
-        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"code\":\"device1_code\",\"bump_seed\":2,\"location_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"contributor_code\":\"contributor1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"exchange_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA\",\"exchange_code\":\"exchange1_code\",\"exchange_name\":\"exchange1_name\",\"device_type\":\"Hybrid\",\"public_ip\":\"1.2.3.4\",\"dz_prefixes\":\"1.2.3.4/32\",\"cyoa_ips\":[],\"users\":0,\"max_users\":255,\"unicast_users_count\":0,\"max_unicast_users\":0,\"multicast_subscribers_count\":0,\"max_multicast_subscribers\":0,\"multicast_publishers_count\":0,\"max_multicast_publishers\":0,\"status\":\"Activated\",\"health\":\"ReadyForUsers\",\"desired_status\":\"Activated\",\"mgmt_vrf\":\"default\",\"metrics_publisher_pk\":\"11111111111111111111111111111111\",\"reference_count\":0,\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
+        assert_eq!(output_str, "[{\"account\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\",\"code\":\"device1_code\",\"bump_seed\":2,\"location_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPR\",\"contributor_code\":\"contributor1_code\",\"location_code\":\"location1_code\",\"location_name\":\"location1_name\",\"exchange_pk\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPA\",\"exchange_code\":\"exchange1_code\",\"exchange_name\":\"exchange1_name\",\"device_type\":\"Hybrid\",\"public_ip\":\"1.2.3.4\",\"dz_prefixes\":\"1.2.3.4/32\",\"cyoa_ips\":[],\"users\":0,\"max_users\":255,\"unicast_users_count\":0,\"max_unicast_users\":0,\"multicast_subscribers_count\":0,\"max_multicast_subscribers\":0,\"multicast_publishers_count\":0,\"max_multicast_publishers\":0,\"status\":\"Activated\",\"health\":\"ReadyForUsers\",\"desired_status\":\"Activated\",\"mgmt_vrf\":\"default\",\"agent_ip\":\"\",\"metrics_publisher_pk\":\"11111111111111111111111111111111\",\"reference_count\":0,\"owner\":\"1111111FVAiSujNZVgYSc27t6zUTWoKfAGxbRzzPB\"}]\n");
         // Narrow output: drops dz_prefixes, mgmt_vrf, owner; fits within 240 cols.
         let mut output = Vec::new();
         let res = block_on(

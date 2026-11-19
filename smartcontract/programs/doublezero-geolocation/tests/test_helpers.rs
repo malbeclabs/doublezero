@@ -103,6 +103,23 @@ pub async fn setup_test_with_exchange(
     Keypair,
     Pubkey,
 ) {
+    let (context, program_id, exchange_pubkey) = setup_context_with_exchange(exchange_status).await;
+    let recent_blockhash = tokio::sync::RwLock::new(context.last_blockhash);
+
+    (
+        context.banks_client,
+        program_id,
+        recent_blockhash,
+        context.payer,
+        exchange_pubkey,
+    )
+}
+
+/// Like `setup_test_with_exchange`, but returns the context so a test can seed more accounts.
+#[allow(dead_code)]
+pub async fn setup_context_with_exchange(
+    exchange_status: ExchangeStatus,
+) -> (ProgramTestContext, Pubkey, Pubkey) {
     let program_id = Pubkey::new_unique();
     let program_test = ProgramTest::new(
         "doublezero_geolocation",
@@ -152,13 +169,5 @@ pub async fn setup_test_with_exchange(
     );
     context.banks_client.process_transaction(tx).await.unwrap();
 
-    let recent_blockhash = tokio::sync::RwLock::new(context.last_blockhash);
-
-    (
-        context.banks_client,
-        program_id,
-        recent_blockhash,
-        context.payer,
-        exchange_pubkey,
-    )
+    (context, program_id, exchange_pubkey)
 }

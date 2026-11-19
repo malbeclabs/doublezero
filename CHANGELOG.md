@@ -16,6 +16,8 @@ All notable changes to this project will be documented in this file.
   - `SetAccessPass` takes `private_group_users`, the number of private multicast group users on the pass. The airdrop funds that many users on top of the unicast and public multicast caps on a pass with `allow_multiple_ip`, and on top of the one user on a pass without it. The pass does not store it. A client that does not send it gets 0, and an older program ignores it. (malbeclabs/infra#3863)
 - CLI
   - `doublezero access-pass get` needs `--client-ip` only when the user payer holds more than one access pass. Without the flag, such a payer gets an error that lists each pass with its client IP and address. With `--client-ip`, the command shows the pass at that IP, not the 0.0.0.0 pass of the payer. It shows the 0.0.0.0 pass only when there is no pass at that IP. The new `--pubkey` flag selects a pass by its address.
+- E2E/QA
+  - `TestE2E_BackwardCompatibility` tests client releases from v0.45.0, not v0.31.0. v0.45.0 is the newest client release that has been on mainnet-beta for more than two weeks. Each release in the window starts one ledger in each environment, and the 41 ledgers of the old window ran a 64 GB runner out of memory. The program's `MIN_COMPATIBLE_VERSION` does not change.
 
 ## [v0.49.0](https://github.com/malbeclabs/doublezero/compare/client/v0.48.0...client/v0.49.0) - 2026-11-17
 

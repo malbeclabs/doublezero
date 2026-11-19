@@ -63,7 +63,7 @@ impl KeyGenCliCommand {
                 eyre::bail!("no DZ_ token given");
             }
             let keypair = parse_keypair_token(&token)?;
-            write_keypair_file(&keypair, self.force, self.outfile)?;
+            write_keypair_file(&keypair, self.force, self.outfile.or(keypair_flag))?;
             writeln!(out, "Pubkey: {}", keypair.pubkey())?;
             return Ok(());
         }
@@ -107,6 +107,39 @@ mod tests {
             || Ok(token),
         ));
         (res, String::from_utf8(out).unwrap())
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn test_keygen_import_writes_to_keypair_flag_over_config() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let config_path = tmp.path().join("config.yml");
+        let configured = tmp.path().join("configured.json");
+        let flagged = tmp.path().join("flagged.json");
+
+        temp_env::with_var("DOUBLEZERO_CONFIG_FILE", Some(&config_path), || {
+            doublezero_sdk::write_doublezero_config(&doublezero_sdk::ClientConfig {
+                keypair_path: configured.clone(),
+                ..Default::default()
+            })
+            .unwrap();
+            let cmd = KeyGenCliCommand {
+                force: false,
+                outfile: None,
+                import: true,
+                export: false,
+            };
+            futures::executor::block_on(cmd.execute(
+                &create_test_context(),
+                Some(flagged.clone()),
+                &mut Vec::new(),
+                || Ok(TOKEN.to_string()),
+            ))
+            .unwrap();
+        });
+
+        assert!(flagged.exists());
+        assert!(!configured.exists());
     }
 
     #[test]

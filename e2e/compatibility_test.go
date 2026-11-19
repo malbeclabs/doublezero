@@ -561,6 +561,14 @@ func createAndStartDiscoveryDevnet(t *testing.T, cloneEnv string, log *slog.Logg
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
 
+	// Cleanup runs after the parallel version subtests of t, which clone from this devnet.
+	t.Cleanup(func() {
+		log.Debug("==> Destroying discovery devnet")
+		if err := dn.Destroy(context.Background(), false); err != nil {
+			log.Error("Failed to destroy discovery devnet", "error", err)
+		}
+	})
+
 	// Read the manager pubkey from the auto-generated keypair so we can set it
 	// as the upgrade authority for the cloned program.
 	managerKeypairJSON, err := os.ReadFile(dn.Spec.Manager.ManagerKeypairPath)
@@ -718,6 +726,12 @@ func createAndStartVersionDevnet(
 		SkipProgramDeploy: true,
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		log.Debug("==> Destroying version devnet")
+		if err := dn.Destroy(context.Background(), false); err != nil {
+			log.Error("Failed to destroy version devnet", "error", err)
+		}
+	})
 
 	// Read the manager pubkey for the upgrade authority.
 	managerKeypairJSON, err := os.ReadFile(dn.Spec.Manager.ManagerKeypairPath)
@@ -811,16 +825,6 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 		containerAccessibleHost(), discoveryDn.Ledger.ExternalRPCPort)
 	log.Debug("--> Discovery RPC URL for version cloning", "url", discoveryRPCURL)
 
-	// Keep the discovery devnet alive until all version subtests finish.
-	// Go's testing framework ensures the parent doesn't return until all parallel
-	// subtests complete, and t.Cleanup runs after that.
-	t.Cleanup(func() {
-		log.Debug("==> Destroying discovery devnet")
-		if err := discoveryDn.Destroy(context.Background(), false); err != nil {
-			log.Error("Failed to destroy discovery devnet", "error", err)
-		}
-	})
-
 	// --- Phase 2: Per-version parallel execution ---
 	recordResult := envResults.record
 
@@ -844,14 +848,6 @@ func testBackwardCompatibilityForEnv(t *testing.T, cloneEnv string, envResults *
 				discoveryRPCURL, programID, serviceabilityProgramKeypairPath,
 				vLog,
 			)
-
-			// Destroy the version devnet when the subtest finishes.
-			t.Cleanup(func() {
-				vLog.Debug("==> Destroying version devnet")
-				if err := dn.Destroy(context.Background(), false); err != nil {
-					vLog.Error("Failed to destroy version devnet", "error", err)
-				}
-			})
 
 			// Use the unversioned binary for "current" (branch build already in container),
 			// versioned binary for released versions (installed from GitHub releases).

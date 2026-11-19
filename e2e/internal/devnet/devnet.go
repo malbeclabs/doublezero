@@ -448,6 +448,11 @@ func LoadContainerImagesEnvFile(log *slog.Logger, workspaceDir string) error {
 	return nil
 }
 
+// Labels returns a copy of the labels that Destroy uses to find the devnet's resources.
+func (d *Devnet) Labels() map[string]string {
+	return maps.Clone(d.labels)
+}
+
 func (d *Devnet) Close() {}
 
 type BuildConfig struct {

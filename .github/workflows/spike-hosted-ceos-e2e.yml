@@ -60,8 +60,8 @@ jobs:
             awk -v t="$(date +%s)" '/^MemTotal:/{tot=$2} /^MemAvailable:/{av=$2}
               /^SwapTotal:/{st=$2} /^SwapFree:/{sf=$2}
               END{printf "%s,%d,%d\n", t, (tot-av)/1024, (st-sf)/1024}' /proc/meminfo >> "$out"
-            if (( i % 6 == 0 )); then
-              { echo "# $(date -u +%FT%TZ)"; docker stats --no-stream --format '{{.Name}},{{.MemUsage}},{{.CPUPerc}}'; } \
+            if (( i % 2 == 0 )); then
+              { echo "# $(date +%s)"; docker stats --no-stream --format '{{.Name}},{{.MemUsage}},{{.CPUPerc}}'; } \
                 >> "$RUNNER_TEMP/docker-stats.log" 2>&1
             fi
             i=$((i + 1))
@@ -69,6 +69,43 @@ jobs:
           done
           EOF
           nohup bash "$RUNNER_TEMP/sampler.sh" >/dev/null 2>&1 &
+          # measure.sh start|end NAME: the peak memory, swap and top containers between the two calls.
+          cat > "$RUNNER_TEMP/measure.sh" <<'EOF'
+          set -euo pipefail
+          mark="$RUNNER_TEMP/measure-${2//[^A-Za-z0-9_]/_}.start"
+          if [ "$1" = start ]; then date +%s > "$mark"; exit 0; fi
+          start=$(cat "$mark"); end=$(date +%s)
+          read -r peak_t used swap base_used base_swap < <(awk -F, -v s="$start" -v e="$end" '
+            NR > 1 && $1 >= s && $1 <= e {
+              if (!n++) { bu = $2; bs = $3 }
+              if ($2 > m) { m = $2; t = $1 }
+              if ($3 > sw) sw = $3
+            }
+            END { printf "%d %d %d %d %d\n", t, m, sw, bu, bs }' "$RUNNER_TEMP/mem.csv")
+          # The docker stats snapshot nearest to the memory peak.
+          snap=$(awk -v p="$peak_t" -v s="$start" -v e="$end" '
+            /^# / { t = $2; d = (t > p ? t - p : p - t)
+                    if (t >= s && t <= e && (b == "" || d < bd)) { b = t; bd = d } }
+            END { print b }' "$RUNNER_TEMP/docker-stats.log")
+          total=$(free -m | awk '/^Mem:/{print $2}')
+          {
+            echo "### $2"
+            echo "- Runtime: $(( (end - start) / 60 ))m $(( (end - start) % 60 ))s"
+            echo "- Peak used: $used of $total MiB (at step start: $base_used MiB)"
+            echo "- Peak swap: $swap MiB (at step start: $base_swap MiB)"
+            if [ -z "$snap" ]; then
+              echo "- No docker stats snapshot in this step."
+            else
+              echo "- Top containers, $(( snap - peak_t )) s from the peak:"
+              awk -F, -v b="$snap" '
+                function mib(s,  v, u) { v = s + 0; u = s; sub(/^[0-9.]+/, "", u)
+                  return u == "GiB" ? v * 1024 : u == "MiB" ? v : u == "KiB" ? v / 1024 : u == "TiB" ? v * 1048576 : v / 1048576 }
+                /^# / { on = (substr($0, 3) == b); next }
+                on && NF >= 2 { split($2, a, " / "); printf "%d %s\n", mib(a[1]), $1 }' \
+                "$RUNNER_TEMP/docker-stats.log" | sort -rn | head -8 | awk '{ printf "  - %s: %d MiB\n", $2, $1 }'
+            fi
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          EOF
       - name: Pull cEOS
         run: &pull-ceos |
           # Log out in the same step, so no later step (which runs PR code) finds the token on disk.
@@ -184,20 +221,32 @@ jobs:
             --build-arg "ARISTA_CEOS_IMAGE=$ARISTA_CEOS_IMAGE" \
             --build-arg DOCKERFILE_DIR=e2e/docker/device \
             --platform linux/amd64 .
-      - name: TestE2E_BackwardCompatibility
-        # This test starts no cEOS device, so a failed cEOS pull or device build must not skip it.
-        if: ${{ !cancelled() && steps.load.outcome == 'success' }}
-        env:
-          DZ_E2E_NO_BUILD: "1"
-          # The test lists client releases through the GitHub API, which rate-limits anonymous callers.
-          GITHUB_TOKEN: ${{ github.token }}
-        run: go test -tags=e2e -timeout=20m -parallel=12 -count=1 -run '^TestE2E_BackwardCompatibility$' -v .
       - name: TestE2E_Multicast
         # BackwardCompatibility starts no cEOS device, so this step checks GRE, PIM and multicast.
         if: ${{ !cancelled() && steps.device.outcome == 'success' }}
         env:
           DZ_E2E_NO_BUILD: "1"
-        run: go test -tags=e2e -timeout=12m -count=1 -run '^TestE2E_Multicast$' -v .
+        run: |
+          bash "$RUNNER_TEMP/measure.sh" start TestE2E_Multicast
+          rc=0
+          go test -tags=e2e -timeout=12m -count=1 -run '^TestE2E_Multicast$' -v . || rc=$?
+          bash "$RUNNER_TEMP/measure.sh" end TestE2E_Multicast
+          exit "$rc"
+      - name: TestE2E_BackwardCompatibility -parallel=12
+        # This test starts no cEOS device, so a failed cEOS pull or device build must not skip it.
+        if: ${{ !cancelled() && steps.load.outcome == 'success' }}
+        env:
+          DZ_E2E_NO_BUILD: "1"
+          PARALLEL: "12"
+          # The test lists client releases through the GitHub API, which rate-limits anonymous callers.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: &backward-compat-test |
+          name="TestE2E_BackwardCompatibility -parallel=$PARALLEL"
+          bash "$RUNNER_TEMP/measure.sh" start "$name"
+          rc=0
+          go test -tags=e2e -timeout=20m -parallel="$PARALLEL" -count=1 -run '^TestE2E_BackwardCompatibility$' -v . || rc=$?
+          bash "$RUNNER_TEMP/measure.sh" end "$name"
+          exit "$rc"
       - name: Memory summary
         if: always()
         run: *mem-summary
@@ -205,6 +254,66 @@ jobs:
         if: always()
         with:
           name: measurements-backward-compat
+          path: |
+            ${{ runner.temp }}/mem.csv
+            ${{ runner.temp }}/docker-stats.log
+          retention-days: 7
+
+  backward-compat-p6:
+    # Same as backward-compat, but only TestE2E_BackwardCompatibility, with -parallel=6.
+    needs: setup
+    runs-on: ubuntu-24.04-16c-64gb
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read # cEOS pull for the device build.
+    defaults:
+      run:
+        shell: bash
+        working-directory: e2e/
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
+        with:
+          go-version-file: go.mod
+          cache: false
+      - name: Start memory sampler
+        run: *sampler
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: dz-e2e-images
+          path: ${{ runner.temp }}
+      - name: Load images
+        id: load
+        run: time (zstd -dc "$RUNNER_TEMP/dz-e2e-images.tar.zst" | docker load)
+      - name: Pull cEOS
+        run: *pull-ceos
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+          GHCR_USER: ${{ github.actor }}
+      - name: Build device image
+        working-directory: .
+        run: |
+          time docker build -t "$DZ_DEVICE_IMAGE" -f e2e/docker/device/Dockerfile \
+            --build-arg "ARISTA_CEOS_IMAGE=$ARISTA_CEOS_IMAGE" \
+            --build-arg DOCKERFILE_DIR=e2e/docker/device \
+            --platform linux/amd64 .
+      - name: TestE2E_BackwardCompatibility -parallel=6
+        if: ${{ !cancelled() && steps.load.outcome == 'success' }}
+        env:
+          DZ_E2E_NO_BUILD: "1"
+          PARALLEL: "6"
+          GITHUB_TOKEN: ${{ github.token }}
+        run: *backward-compat-test
+      - name: Memory summary
+        if: always()
+        run: *mem-summary
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: measurements-backward-compat-p6
           path: |
             ${{ runner.temp }}/mem.csv
             ${{ runner.temp }}/docker-stats.log

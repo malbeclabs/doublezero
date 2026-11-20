@@ -268,7 +268,9 @@ async fn resolve_connect_client_ip_with<D: DaemonClient, L: LedgerClient, W: Wri
     // one sent, where `accesspass_is_ip_bound` is false and the proof is required after all:
     // precisely the late `IpOwnershipProofRequired` this gate exists to turn into an early,
     // legible refusal. Saying so here is the honest half of the fix; letting the pin choose which
-    // pass is charged for the seat is a larger change than this flag should make.
+    // pass is charged for the seat is a larger change than this flag should make. A feed join
+    // attaches `--access-pass` when given, but this gate runs before the mode is known, so it
+    // refuses that case too.
     if ledger
         .resolve_accesspass(Ipv4Addr::UNSPECIFIED, ledger.get_payer())?
         .is_some()
@@ -296,7 +298,8 @@ async fn resolve_connect_client_ip_with<D: DaemonClient, L: LedgerClient, W: Wri
 ///
 /// This check finds an access pass before a new user exists.
 /// It tries the `0.0.0.0` address before the exact-IP address.
-/// New users record the selected address. Feed changes use that address.
+/// New users record the selected address, or `--access-pass` on a feed join.
+/// Feed changes use the recorded address.
 /// Legacy users must provide `--access-pass`.
 fn check_accesspass<L: LedgerClient>(
     ledger: &L,
@@ -338,8 +341,8 @@ fn require_accesspass<L: LedgerClient, W: Write>(
     }
 }
 
-/// Read the AccessPass that `--access-pass` selects for the user that a feed join creates.
-/// `CreateUser` accepts only the payer's pass at `client_ip` or at 0.0.0.0, so refuse any other.
+/// Read the AccessPass that `--access-pass` selects for a feed join. `CreateUser` accepts only the
+/// payer's pass at `client_ip` or at 0.0.0.0, and only a pass with feeds can serve the join.
 fn get_selected_accesspass<L: LedgerClient>(
     ledger: &L,
     client_ip: Ipv4Addr,
@@ -355,14 +358,20 @@ fn get_selected_accesspass<L: LedgerClient>(
         Ipv4Addr::UNSPECIFIED
     } else {
         eyre::bail!(
-            "Access pass {selected} cannot be recorded by a new user at {client_ip}. Use the pass \
-             of UserPayer {payer} at {client_ip} ({exact_pk}) or at 0.0.0.0 ({dynamic_pk}), or \
-             remove --access-pass."
+            "Access pass {selected} is not the pass of UserPayer {payer} at {client_ip} \
+             ({exact_pk}) or at 0.0.0.0 ({dynamic_pk})."
         );
     };
-    ledger
+    let accesspass = ledger
         .get_accesspass(pass_ip, payer)?
-        .ok_or_else(|| eyre::eyre!("Access pass {selected} not found"))
+        .ok_or_else(|| eyre::eyre!("Access pass {selected} not found"))?;
+    if accesspass.feed_seats().is_empty() {
+        eyre::bail!(
+            "Access pass {selected} carries no feeds, and --access-pass selects only the pass of \
+             a feed join."
+        );
+    }
+    Ok(accesspass)
 }
 
 /// Render the per-leg summary for a bare `doublezero connect` and decide its exit status.
@@ -761,6 +770,11 @@ impl Connect {
         out: &mut W,
     ) -> eyre::Result<()> {
         let accesspass = require_accesspass(ledger, client_ip, out)?;
+        // The multicast leg joins on --access-pass when given, so its checks read that pass.
+        let mcast_pass = match self.access_pass {
+            Some(selected) => get_selected_accesspass(ledger, client_ip, selected)?,
+            None => accesspass.clone(),
+        };
 
         spinner.inc(1);
         writeln!(out, "    DoubleZero ID: {}", ledger.get_payer())?;
@@ -847,18 +861,18 @@ impl Connect {
         // No allowlist/feed pre-check: `execute_multicast` already reports an empty
         // allowlist itself, and its EdgeSeat path diagnoses full seats and wrong metros
         // far better than a gate here could.
-        let at_multicast_cap = edge_seat
+        let at_multicast_cap = matches!(mcast_pass.accesspass_type, AccessPassType::EdgeSeat(_))
             && !mcast_exists
-            && accesspass.public_multicast_user_count >= accesspass.max_public_multicast_users;
+            && mcast_pass.public_multicast_user_count >= mcast_pass.max_public_multicast_users;
         // A pass without feed seats joins the groups on its allowlists. When every one of those
         // groups is private, the user does not count against the pass-wide cap, so the cap does
         // not stop the join.
-        let joins_only_private_groups = if at_multicast_cap && accesspass.feed_seats().is_empty() {
+        let joins_only_private_groups = if at_multicast_cap && mcast_pass.feed_seats().is_empty() {
             let groups = ledger.list_multicastgroup()?;
-            let mut allowlisted = accesspass
+            let mut allowlisted = mcast_pass
                 .mgroup_pub_allowlist
                 .iter()
-                .chain(&accesspass.mgroup_sub_allowlist)
+                .chain(&mcast_pass.mgroup_sub_allowlist)
                 .filter_map(|group_pk| groups.get(group_pk))
                 .peekable();
             allowlisted.peek().is_some() && allowlisted.all(|group| group.private)
@@ -868,7 +882,7 @@ impl Connect {
         let multicast = if at_multicast_cap && !joins_only_private_groups {
             LegOutcome::Skipped(format!(
                 "the EdgeSeat AccessPass has no free multicast seat ({} of {} in use)",
-                accesspass.public_multicast_user_count, accesspass.max_public_multicast_users
+                mcast_pass.public_multicast_user_count, mcast_pass.max_public_multicast_users
             ))
         } else {
             let ip_proof = IpProofFetcher::new(
@@ -938,30 +952,28 @@ impl Connect {
             // AccessPass — publish to its publisher allowlist and subscribe to its
             // subscriber allowlist. The pass is guaranteed to exist (validated by
             // check_accesspass before dispatch); the ok_or_else is defensive.
-            let accesspass = ledger
-                .resolve_accesspass(client_ip, ledger.get_payer())?
-                .ok_or_else(|| {
-                    eyre::eyre!(
-                        "No valid AccessPass found for IP: {} user_payer: {}",
-                        client_ip,
-                        ledger.get_payer()
-                    )
-                })?;
+            let accesspass = match self.access_pass {
+                Some(selected) => get_selected_accesspass(ledger, client_ip, selected)?,
+                None => ledger
+                    .resolve_accesspass(client_ip, ledger.get_payer())?
+                    .ok_or_else(|| {
+                        eyre::eyre!(
+                            "No valid AccessPass found for IP: {} user_payer: {}",
+                            client_ip,
+                            ledger.get_payer()
+                        )
+                    })?,
+            };
 
             // A pass carrying purchased feeds gates access through the Feed account, not the
             // multicast allowlists, which stay empty on it. Selecting its feeds here is what
-            // makes a zero-argument connect work for a feed customer. A feed join creates the
-            // user on --access-pass, but a group join below creates it on `accesspass`.
-            let feed_accesspass = match self.access_pass {
-                Some(selected) => get_selected_accesspass(ledger, client_ip, selected)?,
-                None => accesspass.clone(),
-            };
-            if !feed_accesspass.feed_seats().is_empty() {
+            // makes a zero-argument connect work for a feed customer.
+            if !accesspass.feed_seats().is_empty() {
                 return self
                     .auto_join_purchased_feeds(
                         ledger,
                         daemon,
-                        &feed_accesspass,
+                        &accesspass,
                         client_ip,
                         ip_proof,
                         spinner,
@@ -6746,9 +6758,8 @@ mod tests {
             assert_eq!(
                 result.unwrap_err().to_string(),
                 format!(
-                    "Access pass {foreign_pk} cannot be recorded by a new user at 1.2.3.4. Use the \
-                     pass of UserPayer {payer} at 1.2.3.4 ({exact_pk}) or at 0.0.0.0 \
-                     ({dynamic_pk}), or remove --access-pass."
+                    "Access pass {foreign_pk} is not the pass of UserPayer {payer} at 1.2.3.4 \
+                     ({exact_pk}) or at 0.0.0.0 ({dynamic_pk})."
                 ),
                 "{output}"
             );
@@ -6824,36 +6835,33 @@ mod tests {
         });
     }
 
-    /// CreateSubscribeUser takes no --access-pass, so a selected pass without feeds leaves the
-    /// groups to the pass that the IP lookup finds.
+    /// The user holds the feed of the fixture pass, so this re-run must fail rather than exit 0
+    /// without activating it.
     #[test]
-    fn test_connect_command_bare_joins_the_groups_of_the_resolved_pass() {
+    fn test_connect_command_bare_refuses_a_selected_pass_without_feeds() {
         block_on(async {
             let mut fixture = TestFixture::new();
-            let (device_pk, _) = fixture.add_device(DeviceType::Hybrid, 100, true);
-            let (group_pk, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
+            let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let shreds_pk =
+                fixture.add_feed("shreds", device.exchange_pk, vec![Pubkey::new_unique()]);
+            fixture.seat_feeds(&[shreds_pk]);
             let selected_pk = fixture.add_selected_accesspass(AccessPassType::Prepaid);
-            fixture.accesspass.lock().unwrap().mgroup_sub_allowlist = vec![group_pk];
 
-            let user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
-            fixture.expect_create_subscribe_user(
-                Pubkey::new_unique(),
-                &user,
-                vec![group_pk],
-                false,
-                true,
-            );
+            let mut user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
+            user.feed_pks = vec![shreds_pk];
+            fixture.add_user(&user);
 
             let command = Connect {
                 access_pass: Some(selected_pk),
                 ..bare_multicast()
             };
             let (result, output) = run(&fixture, command).await;
-            assert!(result.is_ok(), "{:?}\n{output}", result.err());
-            assert!(
-                output
-                    .lines()
-                    .any(|line| line == "    Subscribing to (from AccessPass): test-group"),
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                format!(
+                    "Access pass {selected_pk} carries no feeds, and --access-pass selects only \
+                     the pass of a feed join."
+                ),
                 "{output}"
             );
         });
@@ -7812,6 +7820,37 @@ mod tests {
             );
             assert!(
                 output.contains("no free multicast seat (0 of 0 in use)"),
+                "{output}"
+            );
+        });
+    }
+
+    /// The fixture pass has a free multicast seat and the selected pass has none. A create call
+    /// would panic the mock.
+    #[test]
+    fn test_connect_bare_gates_the_multicast_leg_on_the_selected_pass() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (_device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let shreds_pk =
+                fixture.add_feed("shreds", device.exchange_pk, vec![Pubkey::new_unique()]);
+            fixture.edge_seat_user_caps((1, 1), (1, 1));
+            let selected_pk = fixture
+                .add_selected_accesspass(AccessPassType::EdgeSeat(vec![seat(shreds_pk, 2, 0)]));
+            fixture.edge_seat_user_caps((1, 1), (0, 1));
+
+            let command = Connect {
+                access_pass: Some(selected_pk),
+                ..bare_connect()
+            };
+            let (result, output) = run(&fixture, command).await;
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "nothing to connect: the AccessPass authorizes no unicast connection and no \
+                 multicast groups or feeds"
+            );
+            assert!(
+                output.contains("no free multicast seat (1 of 1 in use)"),
                 "{output}"
             );
         });

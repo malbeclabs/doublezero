@@ -240,7 +240,7 @@ jobs:
           PARALLEL: "12"
           # The test lists client releases through the GitHub API, which rate-limits anonymous callers.
           GITHUB_TOKEN: ${{ github.token }}
-        run: &backward-compat-test |
+        run: |
           name="TestE2E_BackwardCompatibility -parallel=$PARALLEL"
           bash "$RUNNER_TEMP/measure.sh" start "$name"
           rc=0
@@ -254,66 +254,6 @@ jobs:
         if: always()
         with:
           name: measurements-backward-compat
-          path: |
-            ${{ runner.temp }}/mem.csv
-            ${{ runner.temp }}/docker-stats.log
-          retention-days: 7
-
-  backward-compat-p6:
-    # Same as backward-compat, but only TestE2E_BackwardCompatibility, with -parallel=6.
-    needs: setup
-    runs-on: ubuntu-24.04-16c-64gb
-    timeout-minutes: 45
-    permissions:
-      contents: read
-      packages: read # cEOS pull for the device build.
-    defaults:
-      run:
-        shell: bash
-        working-directory: e2e/
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5.6.0
-        with:
-          go-version-file: go.mod
-          cache: false
-      - name: Start memory sampler
-        run: *sampler
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: dz-e2e-images
-          path: ${{ runner.temp }}
-      - name: Load images
-        id: load
-        run: time (zstd -dc "$RUNNER_TEMP/dz-e2e-images.tar.zst" | docker load)
-      - name: Pull cEOS
-        run: *pull-ceos
-        env:
-          GHCR_TOKEN: ${{ github.token }}
-          GHCR_USER: ${{ github.actor }}
-      - name: Build device image
-        working-directory: .
-        run: |
-          time docker build -t "$DZ_DEVICE_IMAGE" -f e2e/docker/device/Dockerfile \
-            --build-arg "ARISTA_CEOS_IMAGE=$ARISTA_CEOS_IMAGE" \
-            --build-arg DOCKERFILE_DIR=e2e/docker/device \
-            --platform linux/amd64 .
-      - name: TestE2E_BackwardCompatibility -parallel=6
-        if: ${{ !cancelled() && steps.load.outcome == 'success' }}
-        env:
-          DZ_E2E_NO_BUILD: "1"
-          PARALLEL: "6"
-          GITHUB_TOKEN: ${{ github.token }}
-        run: *backward-compat-test
-      - name: Memory summary
-        if: always()
-        run: *mem-summary
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: always()
-        with:
-          name: measurements-backward-compat-p6
           path: |
             ${{ runner.temp }}/mem.csv
             ${{ runner.temp }}/docker-stats.log

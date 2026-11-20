@@ -1303,6 +1303,8 @@ impl Connect {
                         }
                     }
                 }
+                // SubscribeFeed takes a pass seat from `accesspass`, which the new user records.
+                require_free_pass_seat(accesspass)?;
                 let exclude_ips = exclude_ips(&users, &client_ip, &devices);
                 let (device_pk, device, tunnel_endpoint) = self
                     .find_or_create_device(ledger, daemon, &devices, spinner, &exclude_ips, false)
@@ -1466,13 +1468,12 @@ impl Connect {
         }
 
         // SubscribeFeed takes a pass seat for a user that holds none, from the pass that the user
-        // records. A new user holds none and records `accesspass`.
-        match &mcast_user {
-            None => require_free_pass_seat(accesspass)?,
-            Some((pk, user)) if !user.holds_pass_seat => require_free_pass_seat(
-                &ledger.resolve_user_accesspass(*pk, user, self.access_pass)?,
-            )?,
-            Some(_) => {}
+        // records.
+        if let Some((pk, user)) = &mcast_user {
+            if !user.holds_pass_seat {
+                let recorded = ledger.resolve_user_accesspass(*pk, user, self.access_pass)?;
+                require_free_pass_seat(&recorded)?;
+            }
         }
 
         let codes: Vec<String> = selection.join.iter().map(code_of).collect();
@@ -2693,7 +2694,9 @@ fn feeds_at_capacity_error(
 
 /// Refuse before any transaction what `AccessPass::try_take_pass_seat` refuses onchain.
 fn require_free_pass_seat(accesspass: &AccessPass) -> eyre::Result<()> {
-    if accesspass.public_multicast_user_count >= accesspass.max_public_multicast_users {
+    if matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_))
+        && accesspass.public_multicast_user_count >= accesspass.max_public_multicast_users
+    {
         eyre::bail!(
             "the access pass is at its multicast user cap ({} of {} in use). Free a seat by disconnecting another machine, or raise the cap.",
             accesspass.public_multicast_user_count,
@@ -6347,6 +6350,7 @@ mod tests {
                 "the access pass is at its multicast user cap (4 of 4 in use). Free a seat by disconnecting another machine, or raise the cap.",
                 "{output}"
             );
+            assert!(!output.contains("Device selected"), "{output}");
         });
     }
 
@@ -6489,6 +6493,18 @@ mod tests {
             let (result, output) = run(&fixture, feed_flags(&["shreds"], &[])).await;
             assert!(result.is_ok(), "{:?}\n{output}", result.err());
         });
+    }
+
+    /// `try_take_pass_seat` enforces the cap on an EdgeSeat pass only.
+    #[test]
+    fn test_require_free_pass_seat_enforces_the_cap_on_an_edge_seat_pass_only() {
+        let mut fixture = TestFixture::new();
+        fixture.edge_seat_user_caps((0, 0), (1, 1));
+        let mut accesspass = fixture.accesspass.lock().unwrap().clone();
+        assert!(require_free_pass_seat(&accesspass).is_err());
+
+        accesspass.accesspass_type = AccessPassType::Prepaid;
+        assert!(require_free_pass_seat(&accesspass).is_ok());
     }
 
     #[test]

@@ -520,11 +520,6 @@ func containerAccessibleHost() string {
 	return "host.docker.internal"
 }
 
-// goRun runs f as subtest name in a goroutine that wg tracks. Wait on wg before t returns.
-func goRun(wg *sync.WaitGroup, t *testing.T, name string, f func(t *testing.T)) {
-	wg.Go(func() { t.Run(name, f) })
-}
-
 // createAndStartDiscoveryDevnet creates a minimal devnet that clones state from a
 // remote cluster and deploys the upgraded program. It only starts the components
 // needed for version discovery: network, ledger, manager, and funder.

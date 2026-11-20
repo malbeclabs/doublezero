@@ -21,6 +21,8 @@ All notable changes to this project will be documented in this file.
 - E2E/QA
   - `TestE2E_BackwardCompatibility` tests client releases from v0.45.0, the new `MIN_COMPATIBLE_VERSION`, not from v0.31.0. Each release in the window starts one ledger in each environment, and the 41 ledgers of the old window ran a 64 GB runner out of memory.
   - The IBRL `user list` fixtures expect `prepaid`, the pass type that `user list` prints since #4499, not `Prepaid: (MAX)`. `TestE2E_IBRL`, `TestE2E_IBRL_EnableDisable` and `TestE2E_IBRL_WithAllocatedIP` failed on main without this.
+  - `TestE2E_BackwardCompatibility` keeps at most `-parallel` version devnets alive, plus one discovery devnet per environment, and `DZ_COMPAT_MAX_CONCURRENCY` is gone. Its read and write steps ran as parallel subtests. That let each version give up its slot while its devnet stayed up, and a CI run held 41 ledgers at once.
+  - Each e2e test destroys its devnet when the test ends, so a `go test` process no longer keeps every devnet it ran until it exits. `make test-keep` (`TESTCONTAINERS_RYUK_DISABLED=true`) still keeps them.
 
 ## [v0.49.0](https://github.com/malbeclabs/doublezero/compare/client/v0.48.0...client/v0.49.0) - 2026-11-17
 

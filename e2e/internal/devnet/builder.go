@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"time"
 
@@ -17,6 +18,13 @@ const (
 	dockerfilesDirRelativeToWorkspace         = "e2e/docker"
 	dockerfilesEnvFilePathRelativeToWorkspace = "e2e/.env.local"
 )
+
+type buildTask struct {
+	name       string
+	image      string
+	dockerfile string
+	args       []string
+}
 
 func BuildContainerImages(ctx context.Context, log *slog.Logger, workspaceDir string, verbose bool) error {
 	log.Info("==> Building docker images (this may take a while)", "verbose", verbose, "parallel", !verbose)
@@ -58,12 +66,7 @@ func BuildContainerImages(ctx context.Context, log *slog.Logger, workspaceDir st
 	}
 
 	// Define build tasks
-	buildTasks := []struct {
-		name       string
-		image      string
-		dockerfile string
-		args       []string
-	}{
+	buildTasks := []buildTask{
 		{
 			name:       "client",
 			image:      os.Getenv("DZ_CLIENT_IMAGE"),
@@ -132,6 +135,12 @@ func BuildContainerImages(ctx context.Context, log *slog.Logger, workspaceDir st
 		},
 	}
 
+	// CI builds the device image in each shard, because it holds the licensed cEOS
+	// image and must not go into a shared artifact.
+	if os.Getenv("DZ_E2E_SKIP_DEVICE_BUILD") != "" {
+		buildTasks = slices.DeleteFunc(buildTasks, func(t buildTask) bool { return t.name == "device" })
+	}
+
 	if verbose {
 		// Build sequentially when verbose is true
 		for _, task := range buildTasks {
@@ -153,12 +162,7 @@ func BuildContainerImages(ctx context.Context, log *slog.Logger, workspaceDir st
 
 		for _, task := range buildTasks {
 			wg.Add(1)
-			go func(task struct {
-				name       string
-				image      string
-				dockerfile string
-				args       []string
-			}) {
+			go func(task buildTask) {
 				defer wg.Done()
 
 				select {

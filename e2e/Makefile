@@ -39,7 +39,7 @@ build-debug:
 # -----------------------------------------------------------------------------
 PARALLEL ?= 10
 TIMEOUT ?= $(if $(RUN),20m,90m)
-GO_TEST = go test -tags=e2e -timeout=$(TIMEOUT) -parallel=$(PARALLEL) -v -count=1 $(if $(RUN),-run '$(RUN)') .
+GO_TEST = go test -tags=e2e -timeout=$(TIMEOUT) -parallel=$(PARALLEL) -v -count=1 $(if $(RUN),-run '$(value RUN)') .
 
 test:
 	$(GO_TEST)

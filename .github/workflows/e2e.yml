@@ -120,7 +120,13 @@ jobs:
           REPO: ${{ github.repository }}
         run: |
           set -u -o pipefail
+          # The shards pull the private cEOS image and then run PR code, so a fork PR
+          # that needs e2e fails, and e2e-ok fails with it.
           decide() {
+            if [ "$1" = true ] && [ "$EVENT" = pull_request ] && [ "$HEAD_REPO" != "$REPO" ]; then
+              echo "::error::e2e does not run on fork PRs, because the shards pull the private cEOS image. A maintainer can push the branch to this repo to run it."
+              exit 1
+            fi
             echo "run=$1" >> "$GITHUB_OUTPUT"
             echo "run=$1: $2"
             exit 0
@@ -133,12 +139,6 @@ jobs:
           # A push still runs everything, because the gap-filler counts each push run
           # on main as a run of e2e.
           [ "$EVENT" = pull_request ] || decide true "event $EVENT runs everything"
-          # The shards pull the private cEOS image and then run PR code, so a fork PR
-          # fails here, and e2e-ok fails with it.
-          if [ "$HEAD_REPO" != "$REPO" ]; then
-            echo "::error::e2e does not run on fork PRs, because the shards pull the private cEOS image."
-            exit 1
-          fi
           if [[ ! "$BASE" =~ ^[0-9a-f]{40}$ || "$BASE" =~ ^0+$ ]]; then
             decide true "no base commit"
           fi
@@ -223,12 +223,10 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      # dzctl also builds a device image, which setup does not save. A public base
-      # stands in for cEOS, so setup needs no registry login.
       - name: Build images
         working-directory: e2e/
         env:
-          ARISTA_CEOS_IMAGE: ubuntu:24.04
+          DZ_E2E_SKIP_DEVICE_BUILD: "1"
         run: go run ./cmd/dzctl/main.go build
       # cEOS is licensed, so the device image never goes into an artifact. The
       # shards build it, and they do not need the base image.

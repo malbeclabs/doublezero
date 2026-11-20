@@ -5,10 +5,8 @@ on:
   pull_request:
   workflow_dispatch:
   schedule:
-    # Flake gap-filler, daily at 06:23 UTC (off the congested :00/:30 scheduler
-    # slots). Each tick runs only the lightweight schedule-gate. Setup and the
-    # shards run only when the gate returns proceed=true. Daily, not every 6h,
-    # because a full run on the larger runners costs about $5.
+    # Flake gap-filler, off the congested :00/:30 slots. Daily, not every 6h,
+    # because a full run on the larger runners costs about $4.
     - cron: '23 6 * * *'
 
 concurrency:
@@ -37,9 +35,6 @@ env:
 
 jobs:
   schedule-gate:
-    # Flake gap-filler gate. On every event except schedule it returns
-    # proceed=true. On schedule it returns true only when the gap-filler is
-    # enabled AND no merge ran e2e on main in STALE_HOURS AND no e2e run is active.
     name: Flake gap-filler gate
     runs-on: ubuntu-latest
     permissions:
@@ -130,7 +125,6 @@ jobs:
             echo "run=$1: $2"
             exit 0
           }
-          # A Cargo file can skip e2e only when every changed line is a version line.
           version_lines_only() {
             local lines
             lines=$(git diff -U0 "$BASE" HEAD -- "$1" | grep -E '^[+-]' | grep -vE '^(\+\+\+|---) ') || true
@@ -195,7 +189,6 @@ jobs:
             | xargs grep -h '^func TestE2E_' \
             | sed 's/func \(TestE2E_[a-zA-Z0-9_]*\).*/\1/' \
             | sort -u > "$RUNNER_TEMP/tests.txt"
-          # Longest first, each test to the least loaded shard.
           python3 - shard-durations.txt "$RUNNER_TEMP/tests.txt" "$SHARD_COUNT" >> "$GITHUB_OUTPUT" <<'EOF'
           import json, re, statistics, sys
           durations_path, tests_path, count = sys.argv[1], sys.argv[2], int(sys.argv[3])
@@ -328,8 +321,7 @@ jobs:
           echo "$msg" >> "$GITHUB_STEP_SUMMARY"
 
   e2e-ok:
-    # The one check to require on main. It reports on every run, also when the
-    # shards are skipped, and fails on any failure or cancellation.
+    # The one check to require on main, so skipped shards never leave it unreported.
     name: e2e-ok
     if: always()
     needs: [schedule-gate, changes, setup, e2e]

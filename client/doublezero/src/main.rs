@@ -115,6 +115,18 @@ impl<C: CliCommand + Sync> doublezero_daemon_cli::LedgerClient for LedgerAdapter
             .map(|(_, accesspass)| accesspass))
     }
 
+    fn resolve_user_accesspass(
+        &self,
+        user_pk: solana_sdk::pubkey::Pubkey,
+        user: &doublezero_sdk::User,
+        selected_accesspass_pk: Option<solana_sdk::pubkey::Pubkey>,
+    ) -> eyre::Result<doublezero_serviceability::state::accesspass::AccessPass> {
+        let (_, accesspass) =
+            self.client
+                .resolve_user_accesspass(user_pk, user, selected_accesspass_pk)?;
+        Ok(accesspass)
+    }
+
     fn get_accesspass(
         &self,
         client_ip: std::net::Ipv4Addr,

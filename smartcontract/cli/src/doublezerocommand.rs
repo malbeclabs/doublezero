@@ -3,7 +3,7 @@ use doublezero_sdk::{
     commands::{
         accesspass::{
             close::CloseAccessPassCommand,
-            get::{GetAccessPassCommand, ResolveAccessPassCommand},
+            get::{resolve_user_accesspass, GetAccessPassCommand, ResolveAccessPassCommand},
             list::ListAccessPassCommand,
             set::SetAccessPassCommand,
             set_counts::SetAccessPassCountsCommand,
@@ -347,6 +347,12 @@ pub trait CliCommand {
         &self,
         cmd: ResolveAccessPassCommand,
     ) -> eyre::Result<Option<(Pubkey, AccessPass)>>;
+    fn resolve_user_accesspass(
+        &self,
+        user_pk: Pubkey,
+        user: &User,
+        selected_accesspass_pk: Option<Pubkey>,
+    ) -> eyre::Result<(Pubkey, AccessPass)>;
     fn get_accesspass(
         &self,
         cmd: GetAccessPassCommand,
@@ -844,6 +850,14 @@ impl CliCommand for CliCommandImpl<'_> {
         cmd: ResolveAccessPassCommand,
     ) -> eyre::Result<Option<(Pubkey, AccessPass)>> {
         cmd.execute(self.client)
+    }
+    fn resolve_user_accesspass(
+        &self,
+        user_pk: Pubkey,
+        user: &User,
+        selected_accesspass_pk: Option<Pubkey>,
+    ) -> eyre::Result<(Pubkey, AccessPass)> {
+        resolve_user_accesspass(self.client, user_pk, user, selected_accesspass_pk)
     }
     fn get_accesspass(
         &self,

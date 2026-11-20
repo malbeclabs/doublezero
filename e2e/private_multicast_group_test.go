@@ -300,15 +300,16 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 	}
 
 	if !t.Run("host_e_cannot_join_the_feed_while_the_pass_wide_cap_is_full", func(t *testing.T) {
-		// The feed gets a fifth seat, so the CLI sends the join. The pass-wide cap stays at 4,
-		// so the program refuses the join.
+		// The feed gets a fifth seat, but the pass-wide cap stays at 4. Host E holds no pass
+		// seat, so the CLI refuses the join before it sends a transaction.
 		manager(t, "doublezero access-pass add-feed --user-payer "+dzID+" --feed solana-shreds-full-ewr --max-users 5"+
 			" --terminates-at "+time.Now().UTC().AddDate(0, 1, 0).Format("2006-01-02")+" --yes")
 		manager(t, "doublezero access-pass set --accesspass-type edge-seat --epochs max --allow-multiple-ip"+
 			" --user-payer "+dzID+" --max-unicast-users 0 --max-public-multicast-users 4")
 		require.Equal(t, uint16(4), readState(t).passCap)
 
-		connectRefused(t, hostE, "--subscribe-feed solana-shreds-full", "Access pass max multicast users exceeded")
+		connectRefused(t, hostE, "--subscribe-feed solana-shreds-full",
+			"the access pass is at its multicast user cap (4 of 4 in use)")
 		requireCounts(t, 4, 4, 2, 3)
 		require.Empty(t, userOf(t, hostE).FeedPks)
 	}) {

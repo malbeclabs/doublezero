@@ -65,11 +65,23 @@ func (s *MulticastService) Setup(p *api.ProvisionRequest) error {
 	isPublisher := len(p.MulticastPubGroups) > 0
 	isSubscriber := len(p.MulticastSubGroups) > 0
 
+	if isPublisher {
+		err = createTunnelWithIP(s.nl, tun, p.DoubleZeroIP)
+	} else {
+		err = createBaseTunnel(s.nl, tun)
+	}
+	if err != nil {
+		return fmt.Errorf("error creating tunnel interface: %v", err)
+	}
+	// A publisher sends from its DoubleZero IP, which this host routes out its main interface, so
+	// strict rp_filter drops every datagram on the tunnel. A publisher's tunnel needs it too, because
+	// UpdateGroups can add subscriber groups to it.
+	if err := s.nl.LinkSetRPFilter(tun.Name, routing.RPFilterLoose); err != nil {
+		slog.Warn("tunnel: could not set loose rp_filter; strict filtering may drop multicast", "tunnel", tun.Name, "error", err)
+	}
+
 	nlri := []bgp.NLRI{}
 	if isPublisher {
-		if err = createTunnelWithIP(s.nl, tun, p.DoubleZeroIP); err != nil {
-			return fmt.Errorf("error creating tunnel interface: %v", err)
-		}
 		s.DoubleZeroAddr = p.DoubleZeroIP
 		s.MulticastPubGroups = p.MulticastPubGroups
 		// advertise DZ IP over session
@@ -101,11 +113,6 @@ func (s *MulticastService) Setup(p *api.ProvisionRequest) error {
 	}
 
 	if isSubscriber {
-		if !isPublisher {
-			if err = createBaseTunnel(s.nl, tun); err != nil {
-				return fmt.Errorf("error creating tunnel interface: %v", err)
-			}
-		}
 		s.MulticastSubGroups = p.MulticastSubGroups
 		for _, group := range s.MulticastSubGroups {
 			// Skip groups already routed by the publisher block (which sets Src for correct source IP).
@@ -135,13 +142,6 @@ func (s *MulticastService) Setup(p *api.ProvisionRequest) error {
 		if err := s.pim.Start(r, s.Tunnel.Name, s.Tunnel.RemoteOverlay, s.MulticastSubGroups); err != nil {
 			return fmt.Errorf("error starting pim FSM: %v", err)
 		}
-	}
-
-	// A publisher sends from its DoubleZero IP, which this host routes out its main interface, so
-	// strict rp_filter drops every datagram on the tunnel. A publisher's tunnel needs it too, because
-	// UpdateGroups can add subscriber groups to it.
-	if err := s.nl.LinkSetRPFilter(tun.Name, routing.RPFilterLoose); err != nil {
-		slog.Warn("tunnel: could not set loose rp_filter; strict filtering may drop multicast", "tunnel", tun.Name, "error", err)
 	}
 
 	s.Tunnel = tun

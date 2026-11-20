@@ -35,6 +35,9 @@ pub trait LedgerClient: Send + Sync {
     /// The operator's payer pubkey (used to distinguish self-owned users).
     fn get_payer(&self) -> Pubkey;
 
+    /// The serviceability program ID (`connect` derives access pass PDAs from it).
+    fn get_program_id(&self) -> Pubkey;
+
     /// Verify the operator has a usable keypair (id.json or an alternative
     /// keypair source) and a non-zero credit balance — the preconditions for
     /// mutating ledger operations. Diagnostics route through `tracing`.

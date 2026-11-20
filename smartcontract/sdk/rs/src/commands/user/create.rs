@@ -23,6 +23,8 @@ pub struct CreateUserCommand {
     pub client_ip: Ipv4Addr,
     pub tunnel_endpoint: Ipv4Addr,
     pub tenant_pk: Option<Pubkey>,
+    /// The AccessPass to attach. `None` attaches the one that `ResolveAccessPassCommand` finds.
+    pub accesspass_pk: Option<Pubkey>,
     /// RFC-27 proof that the payer originated a request from `client_ip`, obtained from the
     /// DoubleZero IP verification service. Supplying it also pulls the Instructions sysvar into
     /// the account list and a native `Ed25519SigVerify` instruction into the transaction; leaving
@@ -33,14 +35,20 @@ pub struct CreateUserCommand {
 
 impl CreateUserCommand {
     pub fn execute(&self, client: &dyn DoubleZeroClient) -> eyre::Result<(Signature, Pubkey)> {
-        // ResolveAccessPassCommand prefers a shared dynamic (UNSPECIFIED) pass and falls
-        // back to the exact client-IP pass, matching the onchain create_user path.
-        let (accesspass_pk, _) = ResolveAccessPassCommand {
-            client_ip: self.client_ip,
-            user_payer: client.get_payer(),
-        }
-        .execute(client)?
-        .ok_or_else(|| eyre::eyre!("You have no Access Pass"))?;
+        let accesspass_pk = match self.accesspass_pk {
+            Some(accesspass_pk) => accesspass_pk,
+            // ResolveAccessPassCommand prefers a shared dynamic (UNSPECIFIED) pass and falls
+            // back to the exact client-IP pass, matching the onchain create_user path.
+            None => {
+                ResolveAccessPassCommand {
+                    client_ip: self.client_ip,
+                    user_payer: client.get_payer(),
+                }
+                .execute(client)?
+                .ok_or_else(|| eyre::eyre!("You have no Access Pass"))?
+                .0
+            }
+        };
 
         let program_id = client.get_program_id();
         let (pda_pubkey, _) = get_user_pda(&program_id, &self.client_ip, self.user_type);
@@ -209,11 +217,62 @@ mod tests {
             client_ip,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             tenant_pk: None,
+            accesspass_pk: None,
             ip_proof: None,
         }
         .execute(&client);
 
         assert!(res.is_ok());
+    }
+
+    /// A selected pass is attached as given. The mock holds no pass, so a lookup would panic.
+    #[test]
+    fn test_commands_user_create_with_selected_accesspass() {
+        let mut client = create_test_client();
+
+        let program_id = client.get_program_id();
+        let payer = client.get_payer();
+        let device_pk = Pubkey::new_unique();
+        let client_ip = Ipv4Addr::new(192, 168, 1, 10);
+        let (accesspass_pk, _) = get_accesspass_pda(&program_id, &client_ip, &payer);
+
+        let device = Device {
+            account_type: AccountType::Device,
+            dz_prefixes: "10.0.0.0/24".parse().unwrap(),
+            ..Default::default()
+        };
+        client
+            .expect_get()
+            .with(predicate::eq(device_pk))
+            .returning(move |_| Ok(AccountData::Device(device.clone())));
+
+        let expected = create_user(
+            &program_id,
+            &payer,
+            &device_pk,
+            &accesspass_pk,
+            1,
+            None,
+            UserCreateArgs {
+                user_type: UserType::IBRLWithAllocatedIP,
+                cyoa_type: UserCYOA::GREOverDIA,
+                client_ip,
+                tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
+                dz_prefix_count: 1,
+                ip_proof: None,
+            },
+        );
+        client
+            .expect_send_transaction()
+            .with(predicate::eq(expected))
+            .returning(|_| Ok(Signature::new_unique()));
+
+        let res = CreateUserCommand {
+            accesspass_pk: Some(accesspass_pk),
+            ..command(client_ip, device_pk, None)
+        }
+        .execute(&client);
+        assert!(res.is_ok(), "{res:?}");
     }
 
     /// The RFC-27 path. The proof rides in the args (which is what makes the builder append the
@@ -403,6 +462,7 @@ mod tests {
             client_ip,
             tunnel_endpoint: Ipv4Addr::UNSPECIFIED,
             tenant_pk: None,
+            accesspass_pk: None,
             ip_proof,
         }
     }

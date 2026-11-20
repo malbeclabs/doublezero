@@ -107,7 +107,6 @@ jobs:
     timeout-minutes: 30
     permissions:
       contents: read
-      packages: read
     outputs:
       matrix: ${{ steps.shard.outputs.matrix }}
     steps:
@@ -159,17 +158,12 @@ jobs:
         with:
           go-version-file: go.mod
           cache: false
-      - name: Pull cEOS
-        env:
-          GH_TOKEN: ${{ github.token }}
-          GH_ACTOR: ${{ github.actor }}
-        run: |
-          set -euo pipefail
-          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
-          trap 'docker logout ghcr.io' EXIT
-          docker pull "$ARISTA_CEOS_IMAGE"
+      # dzctl also builds a device image, which setup does not save. A public base
+      # stands in for cEOS, so setup needs no registry login.
       - name: Build images
         working-directory: e2e/
+        env:
+          ARISTA_CEOS_IMAGE: ubuntu:24.04
         run: go run ./cmd/dzctl/main.go build
       # cEOS is licensed, so the device image never goes into an artifact. The
       # shards build it, and they do not need the base image.
@@ -220,7 +214,9 @@ jobs:
           rm -rf "$RUNNER_TEMP/images"
           docker pull docker.io/prom/prometheus:v2.54.1@sha256:f6639335d34a77d9d9db382b92eeb7fc00934be8eae81dbc03b31cfe90411a94
           docker pull public.ecr.aws/influxdb/influxdb:1.8
-      - name: Pull cEOS
+      # BuildKit resolves the cEOS base on the registry even after a pull, so the
+      # login lasts for the build. The build runs no PR code on the host.
+      - name: Build device image
         env:
           GH_TOKEN: ${{ github.token }}
           GH_ACTOR: ${{ github.actor }}
@@ -228,11 +224,6 @@ jobs:
           set -euo pipefail
           printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
           trap 'docker logout ghcr.io' EXIT
-          docker pull "$ARISTA_CEOS_IMAGE"
-      - name: Build device image
-        env:
-          DOCKER_BUILDKIT: "1"
-        run: |
           docker build -t "$DZ_DEVICE_IMAGE" -f e2e/docker/device/Dockerfile --platform linux/amd64 \
             --build-arg "ARISTA_CEOS_IMAGE=$ARISTA_CEOS_IMAGE" --build-arg DOCKERFILE_DIR=e2e/docker/device .
       - name: test

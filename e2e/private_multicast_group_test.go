@@ -292,7 +292,7 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 
 	if !t.Run("host_e_cannot_join_the_feed_while_its_seats_are_full", func(t *testing.T) {
 		connectRefused(t, hostE, "--subscribe-feed solana-shreds-full",
-			"every purchased feed is already at capacity: solana-shreds-full (4 of 4 seats in use)")
+			"feed solana-shreds-full (4 of 4 seats in use) is at capacity")
 		requireCounts(t, 4, 4, 2, 3)
 		require.Empty(t, userOf(t, hostE).FeedPks)
 	}) {

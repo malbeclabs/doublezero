@@ -1616,14 +1616,20 @@ impl Connect {
 
         // Refuse here what the program would refuse after the create: by then the bare user
         // would already exist, holding a multicast slot and a device seat for nothing.
-        let accesspass = ledger
-            .resolve_accesspass(client_ip, ledger.get_payer())?
-            .ok_or_else(|| {
-                eyre::eyre!(
-                    "No valid AccessPass found for IP: {client_ip} user_payer: {}",
-                    ledger.get_payer()
-                )
-            })?;
+        // Read the pass that SubscribeFeed takes the seats from.
+        let accesspass = match mcast_user {
+            Some((user_pk, user)) => {
+                ledger.resolve_user_accesspass(*user_pk, user, self.access_pass)?
+            }
+            None => ledger
+                .resolve_accesspass(client_ip, ledger.get_payer())?
+                .ok_or_else(|| {
+                    eyre::eyre!(
+                        "No valid AccessPass found for IP: {client_ip} user_payer: {}",
+                        ledger.get_payer()
+                    )
+                })?,
+        };
         if !matches!(accesspass.accesspass_type, AccessPassType::EdgeSeat(_)) {
             eyre::bail!(
                 "the access pass is {}; only an EdgeSeat pass carries feeds",
@@ -1645,11 +1651,15 @@ impl Connect {
             }
         }
         if !full.is_empty() {
-            return Err(feeds_at_capacity_error(
-                &full,
-                accesspass.feed_seats(),
-                feeds,
-            ));
+            let (noun, verb) = if full.len() == 1 {
+                ("feed", "is")
+            } else {
+                ("feeds", "are")
+            };
+            eyre::bail!(
+                "{noun} {} {verb} at capacity. Free a seat by disconnecting another machine, or buy more.",
+                full_feeds_description(&full, accesspass.feed_seats(), feeds)
+            );
         }
         // The cap applies to the state the join will see: the leave half runs first, so feeds
         // being left do not count as held.
@@ -3234,6 +3244,15 @@ mod tests {
                 .expect_resolve_accesspass()
                 .with(predicate::eq(Ipv4Addr::UNSPECIFIED), predicate::eq(payer))
                 .returning(|_, _| Ok(None));
+
+            // Mockall uses the first expectation that matches, so a test gives a user with a
+            // recorded pass its own expectation.
+            let accesspass = fixture.accesspass.clone();
+            fixture
+                .ledger
+                .expect_resolve_user_accesspass()
+                .withf(|_, user, _| user.accesspass_pk == Pubkey::default())
+                .returning_st(move |_, _, _| Ok(accesspass.lock().unwrap().clone()));
 
             let users = fixture.users.clone();
             fixture
@@ -6185,15 +6204,15 @@ mod tests {
         }
     }
 
-    fn subscribe_feeds(feeds: &[&str]) -> Connect {
+    fn feed_flags(subscribe: &[&str], unsubscribe: &[&str]) -> Connect {
         Connect {
             dz_mode: Some(DzMode::Multicast {
                 mode: None,
                 multicast_groups: vec![],
                 pub_groups: vec![],
                 sub_groups: vec![],
-                sub_feeds: feeds.iter().map(|feed| feed.to_string()).collect(),
-                unsub_feeds: vec![],
+                sub_feeds: subscribe.iter().map(|feed| feed.to_string()).collect(),
+                unsub_feeds: unsubscribe.iter().map(|feed| feed.to_string()).collect(),
             }),
             ..Default::default()
         }
@@ -6287,18 +6306,20 @@ mod tests {
 
     /// No create_user or subscribe_feed expectation is set, so either call would panic the mock.
     #[test]
-    fn test_connect_command_subscribe_feed_refuses_a_full_feed_before_the_create() {
+    fn test_connect_command_subscribe_feed_refuses_full_feeds_before_the_create() {
         block_on(async {
             let mut fixture = TestFixture::new();
             let (_device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
             let shreds_pk =
                 fixture.add_feed("shreds", device.exchange_pk, vec![Pubkey::new_unique()]);
-            fixture.seat_feeds_with_caps(&[(shreds_pk, 2, 2)]);
+            let kalshi_pk =
+                fixture.add_feed("kalshi", device.exchange_pk, vec![Pubkey::new_unique()]);
+            fixture.seat_feeds_with_caps(&[(shreds_pk, 2, 2), (kalshi_pk, 1, 1)]);
 
-            let (result, output) = run(&fixture, subscribe_feeds(&["shreds"])).await;
+            let (result, output) = run(&fixture, feed_flags(&["shreds", "kalshi"], &[])).await;
             assert_eq!(
                 result.unwrap_err().to_string(),
-                "every purchased feed is already at capacity: shreds (2 of 2 seats in use). Free a seat by disconnecting another machine, or buy more.",
+                "feeds shreds (2 of 2 seats in use), kalshi (1 of 1 seats in use) are at capacity. Free a seat by disconnecting another machine, or buy more.",
                 "{output}"
             );
         });
@@ -6318,7 +6339,7 @@ mod tests {
             fixture.expect_create_user_with_tenant(user_pk, &user, None);
             fixture.expect_subscribe_feed(user_pk, vec![shreds_pk]);
 
-            let (result, output) = run(&fixture, subscribe_feeds(&["shreds"])).await;
+            let (result, output) = run(&fixture, feed_flags(&["shreds"], &[])).await;
             assert!(result.is_ok(), "{:?}\n{output}", result.err());
             assert!(
                 output
@@ -6345,12 +6366,64 @@ mod tests {
             user.feed_pks = vec![shreds_pk];
             fixture.add_user(&user);
 
-            let (result, output) = run(&fixture, subscribe_feeds(&["shreds", "kalshi"])).await;
+            let (result, output) = run(&fixture, feed_flags(&["shreds", "kalshi"], &[])).await;
             assert_eq!(
                 result.unwrap_err().to_string(),
-                "every purchased feed is already at capacity: kalshi (1 of 1 seats in use). Free a seat by disconnecting another machine, or buy more.",
+                "feed kalshi (1 of 1 seats in use) is at capacity. Free a seat by disconnecting another machine, or buy more.",
                 "{output}"
             );
+        });
+    }
+
+    /// No unsubscribe_feed or subscribe_feed expectation is set, so a send would panic the mock.
+    #[test]
+    fn test_connect_command_feed_swap_refuses_a_full_feed_before_the_leave() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let shreds_pk =
+                fixture.add_feed("shreds", device.exchange_pk, vec![Pubkey::new_unique()]);
+            let kalshi_group = Pubkey::new_unique();
+            let kalshi_pk = fixture.add_feed("kalshi", device.exchange_pk, vec![kalshi_group]);
+            fixture.seat_feeds_with_caps(&[(shreds_pk, 2, 2), (kalshi_pk, 1, 1)]);
+
+            let mut user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
+            user.feed_pks = vec![kalshi_pk];
+            user.subscribers = vec![kalshi_group];
+            fixture.add_user(&user);
+
+            let (result, output) = run(&fixture, feed_flags(&["shreds"], &["kalshi"])).await;
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "feed shreds (2 of 2 seats in use) is at capacity. Free a seat by disconnecting another machine, or buy more.",
+                "{output}"
+            );
+        });
+    }
+
+    #[test]
+    fn test_connect_command_subscribe_feed_checks_the_pass_that_the_user_records() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let shreds_pk =
+                fixture.add_feed("shreds", device.exchange_pk, vec![Pubkey::new_unique()]);
+            fixture.seat_feeds_with_caps(&[(shreds_pk, 2, 1)]);
+            let recorded_pass = fixture.accesspass.lock().unwrap().clone();
+            // The payer's pass, which resolve_accesspass returns, has no free seat.
+            fixture.seat_feeds_with_caps(&[(shreds_pk, 2, 2)]);
+
+            let mut user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
+            user.accesspass_pk = Pubkey::new_unique();
+            let user_pk = fixture.add_user(&user);
+            fixture
+                .ledger
+                .expect_resolve_user_accesspass()
+                .returning_st(move |_, _, _| Ok(recorded_pass.clone()));
+            fixture.expect_subscribe_feed(user_pk, vec![shreds_pk]);
+
+            let (result, output) = run(&fixture, feed_flags(&["shreds"], &[])).await;
+            assert!(result.is_ok(), "{:?}\n{output}", result.err());
         });
     }
 

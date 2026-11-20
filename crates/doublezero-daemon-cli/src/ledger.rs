@@ -79,6 +79,14 @@ pub trait LedgerClient: Send + Sync {
         user_payer: Pubkey,
     ) -> eyre::Result<Option<AccessPass>>;
 
+    /// The AccessPass that SubscribeFeed and UnsubscribeFeed use for an existing user.
+    fn resolve_user_accesspass(
+        &self,
+        user_pk: Pubkey,
+        user: &User,
+        selected_accesspass_pk: Option<Pubkey>,
+    ) -> eyre::Result<AccessPass>;
+
     /// Fetch the AccessPass stored at the `(client_ip, user_payer)` PDA, or `None` if there is
     /// none. Unlike [`LedgerClient::resolve_accesspass`], this never reads a different address.
     fn get_accesspass(

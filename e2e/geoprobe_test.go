@@ -64,6 +64,7 @@ func TestE2E_GeoprobeDiscovery(t *testing.T) {
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	log.Debug("==> Starting containernet")
 	err = dn.Start(t.Context(), nil)
@@ -447,6 +448,7 @@ func startGeoprobeAgent(t *testing.T, log *slog.Logger, dn *devnet.Devnet, cyoaI
 			NanoCPUs: 1_000_000_000,
 			Memory:   512 * 1024 * 1024,
 		},
+		Labels: dn.Labels(),
 	}
 
 	if opts != nil && opts.capNetRaw {
@@ -583,6 +585,7 @@ func startGeoprobeTarget(t *testing.T, log *slog.Logger, dn *devnet.Devnet, cyoa
 			NanoCPUs: 1_000_000_000,
 			Memory:   512 * 1024 * 1024,
 		},
+		Labels: dn.Labels(),
 	}
 
 	container, err := testcontainers.GenericContainer(t.Context(), testcontainers.GenericContainerRequest{
@@ -721,6 +724,7 @@ func TestE2E_GeoprobeIcmpTargets(t *testing.T) {
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	log.Debug("==> Starting containernet")
 	err = dn.Start(t.Context(), nil)
@@ -984,6 +988,7 @@ func startClickhouseContainer(t *testing.T, log *slog.Logger, dn *devnet.Devnet)
 		NetworkAliases: map[string][]string{
 			dn.DefaultNetwork.Name: {"clickhouse"},
 		},
+		Labels: dn.Labels(),
 	}
 
 	container, err := testcontainers.GenericContainer(t.Context(), testcontainers.GenericContainerRequest{
@@ -1109,6 +1114,7 @@ func TestE2E_GeoprobeResultDestination(t *testing.T) {
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	log.Debug("==> Starting containernet")
 	err = dn.Start(t.Context(), nil)

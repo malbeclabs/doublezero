@@ -64,6 +64,7 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 		DeviceHealthOracle: devnet.DeviceHealthOracleSpec{Enabled: true},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	log.Debug("==> Starting devnet")
 	err = dn.Start(t.Context(), nil)

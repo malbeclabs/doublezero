@@ -52,6 +52,7 @@ func TestE2E_DzPrefix_RolloverAllocation(t *testing.T) {
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	ctx := t.Context()
 
@@ -366,6 +367,7 @@ func TestE2E_DzPrefix_GrowAndShrink(t *testing.T) {
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	ctx := t.Context()
 

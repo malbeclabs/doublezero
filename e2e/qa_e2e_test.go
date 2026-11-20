@@ -48,6 +48,7 @@ func TestE2E_QAAgent_UnicastConnectivity(t *testing.T) {
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	log.Debug("==> Starting devnet")
 	err = dn.Start(ctx, nil)
@@ -259,7 +260,7 @@ func TestE2E_QAAgent_UnicastConnectivity(t *testing.T) {
 
 	// Disconnect both clients. We skip waiting for status and deletion since BGP
 	// teardown can exceed the 90s timeout under QEMU emulation. The containers are
-	// cleaned up by Ryuk regardless.
+	// destroyed when the test ends regardless.
 	log.Debug("==> Disconnecting users")
 	err = qaClient1.DisconnectUser(ctx, false, false)
 	require.NoError(t, err)
@@ -298,6 +299,7 @@ func TestE2E_QAAgent_MultiTunnelConnectivity(t *testing.T) {
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	log.Debug("==> Starting devnet")
 	err = dn.Start(ctx, nil)

@@ -13,7 +13,7 @@ All notable changes to this project will be documented in this file.
 
 - CLI
   - `doublezero connect multicast` refuses a feed join before it sends a transaction when the access pass is at its multicast user cap. A host whose multicast user already counts against the cap is not refused. Before, the program refused the join only after the command created the multicast user of a new host. The new user then held a device seat for nothing.
-  - `doublezero connect multicast --access-pass` creates the multicast user of a feed join on that pass, for `--subscribe-feed` and for a bare `connect multicast` on a pass with feeds. Before, the new user recorded the 0.0.0.0 pass of the payer when one existed, and `SubscribeFeed` then refused the named pass, so the user held a device seat for nothing. The checks before the join read the named pass. The command refuses a pass that is not the payer's pass at the client IP or at 0.0.0.0. IBRL and group joins still ignore `--access-pass`.
+  - `doublezero connect multicast --access-pass` creates the multicast user of a feed join on that pass, for `--subscribe-feed` and for a bare `connect multicast`. Before, the new user recorded the 0.0.0.0 pass of the payer when one existed, and `SubscribeFeed` then refused the named pass, so the user held a device seat for nothing. The checks before the join, and the multicast leg of a bare `doublezero connect`, read the named pass. The command refuses a pass that is not the payer's pass at the client IP or at 0.0.0.0, or that carries no feeds. IBRL and `--publish`/`--subscribe` joins still ignore `--access-pass`.
 
 ## [v0.50.0](https://github.com/malbeclabs/doublezero/compare/client/v0.49.0...client/v0.50.0) - 2026-11-20
 

@@ -8,7 +8,6 @@ All notable changes to this project will be documented in this file.
 
 - SDK
   - `SetAccessPassArgs` takes `private_group_users`. Code that builds it field by field must set it, or set it to 0.
-  - A multicast group stores `max_publishers` and `max_subscribers` as u16, not u32, and `UpdateMulticastGroup`, `MulticastGroup::private_caps_hash` and `doublezero multicast group update` take them as u16. A client, the feed oracle and subscription-api must move to this version together with the program. On testnet, run `doublezero migrate feed-count` again after the upgrade, because 21 groups hold the old 4-byte caps and read a feed count of 0 until then.
 - Serviceability
   - `MIN_COMPATIBLE_VERSION` moves from `0.30.0` to `0.45.0`, the newest client release that has been on mainnet-beta for more than two weeks. A client older than v0.45.0 fails at startup with "A new version of the client is available". The floor takes effect on each cluster at its next program deploy, when `doublezero init` writes it to `ProgramConfig`.
 

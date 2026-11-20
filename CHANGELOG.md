@@ -6,6 +6,12 @@ All notable changes to this project will be documented in this file.
 
 ### Breaking
 
+### Changes
+
+## [v0.50.0](https://github.com/malbeclabs/doublezero/compare/client/v0.49.0...client/v0.50.0) - 2026-11-20
+
+### Breaking
+
 - SDK
   - `SetAccessPassArgs` takes `private_group_users`. Code that builds it field by field must set it, or set it to 0.
 - Serviceability

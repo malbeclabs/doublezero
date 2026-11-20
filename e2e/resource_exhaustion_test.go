@@ -52,6 +52,7 @@ func TestE2E_DzPrefix_ResourceExhaustion(t *testing.T) {
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	ctx := t.Context()
 

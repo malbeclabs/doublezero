@@ -88,6 +88,7 @@ func setupMultiTunnelDevnetWithSecondDevice(t *testing.T, second secondDeviceSpe
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	log.Info("==> Starting devnet")
 	err = dn.Start(t.Context(), nil)
@@ -372,6 +373,7 @@ func setupSimultaneousTunnelDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	log.Info("==> Starting devnet")
 	err = dn.Start(t.Context(), nil)

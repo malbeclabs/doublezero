@@ -10,6 +10,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -46,6 +47,7 @@ func TestE2E_Multicast(t *testing.T) {
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	tdn := &TestDevnet{
 		Devnet: dn,
@@ -434,6 +436,7 @@ func checkMulticastBothUsersRemovedAgentConfig(t *testing.T, dn *TestDevnet, dev
 // mode should be "publisher" or "subscriber".
 func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *TestDevnet, device *devnet.Device, client *devnet.Client) {
 	t.Run("check_post_connect_"+mode, func(t *testing.T) {
+		var wg sync.WaitGroup
 		log.Debug("==> Checking multicast post-connect requirements", "mode", mode)
 
 		var expectedMulticastGroups string
@@ -497,9 +500,7 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 		}
 
 		for _, test := range tests {
-			if !t.Run(test.name, func(t *testing.T) {
-				t.Parallel()
-
+			goRun(&wg, t, test.name, func(t *testing.T) {
 				want, err := fixtures.Render(test.fixturePath, test.data)
 				require.NoError(t, err, "error reading fixture")
 
@@ -537,14 +538,10 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 						t.Fatalf("output mismatch: -(want), +(got):%s", diff)
 					}
 				}
-			}) {
-				t.Fail()
-			}
+			})
 		}
 
-		if !t.Run("check_tunnel_interface_is_configured", func(t *testing.T) {
-			t.Parallel()
-
+		goRun(&wg, t, "check_tunnel_interface_is_configured", func(t *testing.T) {
 			links, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", "ip -j link show dev doublezero1"})
 			require.NoError(t, err)
 
@@ -569,13 +566,9 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 				"link_pointtopoint": true,
 				"broadcast":         device.CYOANetworkIP,
 			}, links[0])
-		}) {
-			t.Fail()
-		}
+		})
 
-		if !t.Run("check_multicast_static_routes", func(t *testing.T) {
-			t.Parallel()
-
+		goRun(&wg, t, "check_multicast_static_routes", func(t *testing.T) {
 			expectedAddrs := []string{"233.84.178.0", "233.84.178.1"}
 			require.Eventually(t, func() bool {
 				routes, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", "ip -j route show table main"})
@@ -596,13 +589,9 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 				}
 				return true
 			}, 60*time.Second, 1*time.Second, "multicast routes %v not found for %s", expectedAddrs, mode)
-		}) {
-			t.Fail()
-		}
+		})
 
-		if !t.Run("check_device_tunnel_interface", func(t *testing.T) {
-			t.Parallel()
-
+		goRun(&wg, t, "check_device_tunnel_interface", func(t *testing.T) {
 			pubTunnelNum := controllerconfig.StartUserTunnelNum
 			subTunnelNum := controllerconfig.StartUserTunnelNum + 1
 			tunnelName := fmt.Sprintf("Tunnel%d", pubTunnelNum)
@@ -625,15 +614,11 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 				time.Sleep(1 * time.Second)
 			}
 			t.Fatalf("%s interface not up on device", tunnelName)
-		}) {
-			t.Fail()
-		}
+		})
 
 		// Mode-specific checks.
 		if mode == "publisher" {
-			if !t.Run("check_s_comma_g_is_created", func(t *testing.T) {
-				t.Parallel()
-
+			goRun(&wg, t, "check_s_comma_g_is_created", func(t *testing.T) {
 				mGroups := []string{"233.84.178.0", "233.84.178.1"}
 
 				// The publisher's heartbeat sender automatically sends UDP heartbeat
@@ -662,15 +647,11 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 						return true
 					}, 60*time.Second, 1*time.Second, "multicast group %s not found in mroutes", mGroup)
 				}
-			}) {
-				t.Fail()
-			}
+			})
 		}
 
 		if mode == "subscriber" {
-			if !t.Run("check_pim_neighbor", func(t *testing.T) {
-				t.Parallel()
-
+			goRun(&wg, t, "check_pim_neighbor", func(t *testing.T) {
 				subTunnelName := fmt.Sprintf("Tunnel%d", controllerconfig.StartUserTunnelNum+1)
 
 				require.Eventually(t, func() bool {
@@ -696,13 +677,9 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 					log.Debug("PIM neighbor not yet on subscriber tunnel", "tunnel", subTunnelName)
 					return false
 				}, 60*time.Second, 1*time.Second, "PIM neighbor not established on %s", subTunnelName)
-			}) {
-				t.Fail()
-			}
+			})
 
-			if !t.Run("check_pim_join_received", func(t *testing.T) {
-				t.Parallel()
-
+			goRun(&wg, t, "check_pim_join_received", func(t *testing.T) {
 				mGroups := []string{"233.84.178.0", "233.84.178.1"}
 
 				for _, mGroup := range mGroups {
@@ -734,11 +711,10 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 						return true
 					}, 60*time.Second, 1*time.Second, "PIM join not received for %s", mGroup)
 				}
-			}) {
-				t.Fail()
-			}
+			})
 		}
 
+		wg.Wait()
 		log.Debug("--> Multicast post-connect requirements checked", "mode", mode)
 	})
 }
@@ -747,6 +723,7 @@ func checkMulticastPostConnect(t *testing.T, log *slog.Logger, mode string, dn *
 // mode should be "publisher" or "subscriber".
 func checkMulticastPostDisconnect(t *testing.T, log *slog.Logger, mode string, dn *TestDevnet, device *devnet.Device, client *devnet.Client) {
 	t.Run("check_post_disconnect_"+mode, func(t *testing.T) {
+		var wg sync.WaitGroup
 		log.Debug("==> Checking multicast post-disconnect requirements", "mode", mode)
 
 		tests := []struct {
@@ -764,9 +741,7 @@ func checkMulticastPostDisconnect(t *testing.T, log *slog.Logger, mode string, d
 		}
 
 		for _, test := range tests {
-			if !t.Run(test.name, func(t *testing.T) {
-				t.Parallel()
-
+			goRun(&wg, t, test.name, func(t *testing.T) {
 				got, err := client.Exec(t.Context(), test.cmd)
 				require.NoError(t, err, "error executing command on client")
 
@@ -778,24 +753,16 @@ func checkMulticastPostDisconnect(t *testing.T, log *slog.Logger, mode string, d
 					fmt.Println(string(got))
 					t.Fatalf("output mismatch: -(want), +(got):%s", diff)
 				}
-			}) {
-				t.Fail()
-			}
+			})
 		}
 
-		if !t.Run("check_tunnel_interface_is_removed", func(t *testing.T) {
-			t.Parallel()
-
+		goRun(&wg, t, "check_tunnel_interface_is_removed", func(t *testing.T) {
 			got, err := client.Exec(t.Context(), []string{"bash", "-c", "ip -j link show dev doublezero1"}, docker.NoPrintOnError())
 			require.Error(t, err)
 			require.Equal(t, `Device "doublezero1" does not exist.`, strings.TrimSpace(string(got)), err.Error())
-		}) {
-			t.Fail()
-		}
+		})
 
-		if !t.Run("check_multicast_routes_removed", func(t *testing.T) {
-			t.Parallel()
-
+		goRun(&wg, t, "check_multicast_routes_removed", func(t *testing.T) {
 			routes, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", "ip -j route show table main"})
 			require.NoError(t, err)
 
@@ -807,13 +774,9 @@ func checkMulticastPostDisconnect(t *testing.T, log *slog.Logger, mode string, d
 					}
 				}
 			}
-		}) {
-			t.Fail()
-		}
+		})
 
-		if !t.Run("check_device_tunnel_interface_removed", func(t *testing.T) {
-			t.Parallel()
-
+		goRun(&wg, t, "check_device_tunnel_interface_removed", func(t *testing.T) {
 			pubTunnelNum := controllerconfig.StartUserTunnelNum
 			subTunnelNum := controllerconfig.StartUserTunnelNum + 1
 			tunnelName := fmt.Sprintf("Tunnel%d", pubTunnelNum)
@@ -835,13 +798,9 @@ func checkMulticastPostDisconnect(t *testing.T, log *slog.Logger, mode string, d
 				time.Sleep(1 * time.Second)
 			}
 			t.Fatalf("%s interface still up on device after disconnect", tunnelName)
-		}) {
-			t.Fail()
-		}
+		})
 
-		if !t.Run("check_user_tunnel_is_removed_from_agent", func(t *testing.T) {
-			t.Parallel()
-
+		goRun(&wg, t, "check_user_tunnel_is_removed_from_agent", func(t *testing.T) {
 			// Publisher tunnel is slot +0 (169.254.0.1), subscriber is slot +1 (169.254.0.3).
 			pubBGPNeighbor := fmt.Sprintf("169.254.0.%d", 2*0+1)
 			subBGPNeighbor := fmt.Sprintf("169.254.0.%d", 2*1+1)
@@ -862,10 +821,9 @@ func checkMulticastPostDisconnect(t *testing.T, log *slog.Logger, mode string, d
 				time.Sleep(1 * time.Second)
 			}
 			t.Fatalf("bgp neighbor %s has not been removed from doublezero device", expectedAddr)
-		}) {
-			t.Fail()
-		}
+		})
 
+		wg.Wait()
 		log.Debug("--> Multicast post-disconnect requirements checked", "mode", mode)
 	})
 }

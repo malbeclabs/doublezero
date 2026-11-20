@@ -9,15 +9,25 @@ All notable changes to this project will be documented in this file.
 - SDK
   - `SetAccessPassArgs` takes `private_group_users`. Code that builds it field by field must set it, or set it to 0.
   - A multicast group stores `max_publishers` and `max_subscribers` as u16, not u32, and `UpdateMulticastGroup`, `MulticastGroup::private_caps_hash` and `doublezero multicast group update` take them as u16. A client, the feed oracle and subscription-api must move to this version together with the program. On testnet, run `doublezero migrate feed-count` again after the upgrade, because 21 groups hold the old 4-byte caps and read a feed count of 0 until then.
+- Serviceability
+  - `MIN_COMPATIBLE_VERSION` moves from `0.30.0` to `0.45.0`, the newest client release that has been on mainnet-beta for more than two weeks. A client older than v0.45.0 fails at startup with "A new version of the client is available". The floor takes effect on each cluster at its next program deploy, when `doublezero init` writes it to `ProgramConfig`.
 
 ### Changes
 
 - Serviceability
   - `SetAccessPass` takes `private_group_users`, the number of private multicast group users on the pass. The airdrop funds that many users on top of the unicast and public multicast caps on a pass with `allow_multiple_ip`, and on top of the one user on a pass without it. The pass does not store it. A client that does not send it gets 0, and an older program ignores it. (malbeclabs/infra#3863)
 - CLI
+  - `doublezero keygen --import` saves the keypair in a `DZ_` token, the format that the Edge Connect installer takes. It reads the token from a hidden prompt, or from stdin when piped. `doublezero keygen --export` prints the keypair that the CLI signs with as a `DZ_` token. `doublezero keygen` now writes the keypair file with mode 0600.
   - `doublezero access-pass get` needs `--client-ip` only when the user payer holds more than one access pass. Without the flag, such a payer gets an error that lists each pass with its client IP and address. With `--client-ip`, the command shows the pass at that IP, not the 0.0.0.0 pass of the payer. It shows the 0.0.0.0 pass only when there is no pass at that IP. The new `--pubkey` flag selects a pass by its address.
 - Client
   - `doublezerod` sets loose reverse-path filtering (`rp_filter=2`) on `doublezero1` each time it creates the multicast tunnel. A publisher sends from its DoubleZero IP, which a subscriber host routes out its main interface. On a host with strict filtering, such as a Google Cloud image, the kernel dropped every datagram that arrived on `doublezero1`. The daemon sets the value over rtnetlink, as it does for `doublezero0`, so it also works in the client container. Other interfaces keep their values. ([#4457](https://github.com/malbeclabs/doublezero/issues/4457))
+- E2E/QA
+  - `TestE2E_BackwardCompatibility` tests client releases from v0.45.0, the new `MIN_COMPATIBLE_VERSION`, not from v0.31.0. Each release in the window starts one ledger in each environment, and the 41 ledgers of the old window ran a 64 GB runner out of memory.
+  - The IBRL `user list` fixtures expect `prepaid`, the pass type that `user list` prints since #4499, not `Prepaid: (MAX)`. `TestE2E_IBRL`, `TestE2E_IBRL_EnableDisable` and `TestE2E_IBRL_WithAllocatedIP` failed on main without this.
+  - `TestE2E_BackwardCompatibility` keeps at most `-parallel` version devnets alive, plus one discovery devnet per environment, and `DZ_COMPAT_MAX_CONCURRENCY` is gone. Its read and write steps ran as parallel subtests. That let each version give up its slot while its devnet stayed up, and a CI run held 41 ledgers at once.
+  - Each e2e test destroys its devnet when the test ends, so a `go test` process no longer keeps every devnet it ran until it exits. `make test-keep` (`TESTCONTAINERS_RYUK_DISABLED=true`) still keeps them.
+  - `TestE2E_IBRL`, `TestE2E_IBRL_EnableDisable`, `TestE2E_IBRL_WithAllocatedIP` and `TestE2E_Multicast` run their checks through `goRun`, not as parallel subtests. A parallel subtest let its test give up its `-parallel` slot while its devnet stayed up, and a full run at `-parallel=4` held 7 devnets at once.
+  - `TestQA_AllDevices_UnicastConnectivity` takes `-pin-devices`, a list of `device:host` pairs. A pinned device goes to its host only, also when no other host can reach it, and the pin does not change the host of any other device. Before, the test dropped a device without a log line when the exchange isolation of allocate-addr hosts blocked the only host that can reach it. The test now skips the ping between two hosts on one exchange when one of them uses an allocated address, because the devices do not route between users of one exchange. A host that has no other peer to ping does not test its device in that batch, and the batch is not counted. The test logs a `NO PEER` line with each device that only such batches had. The test stops when a pin names a device that does not exist onchain, and it logs a warning for each device that no host can take.
 
 ## [v0.49.0](https://github.com/malbeclabs/doublezero/compare/client/v0.48.0...client/v0.49.0) - 2026-11-17
 

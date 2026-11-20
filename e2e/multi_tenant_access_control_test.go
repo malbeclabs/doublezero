@@ -51,6 +51,7 @@ func TestE2E_MultiTenantAccessControl(t *testing.T) {
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	log.Debug("==> Starting devnet")
 	err = dn.Start(t.Context(), nil)

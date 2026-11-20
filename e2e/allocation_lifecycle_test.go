@@ -49,6 +49,7 @@ func TestE2E_User_AllocationLifecycle(t *testing.T) {
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	ctx := t.Context()
 
@@ -275,6 +276,7 @@ func TestE2E_MulticastGroup_AllocationLifecycle(t *testing.T) {
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	ctx := t.Context()
 
@@ -415,6 +417,7 @@ func TestE2E_MultipleLinks_AllocationLifecycle(t *testing.T) {
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	ctx := t.Context()
 
@@ -614,6 +617,7 @@ func TestE2E_Multicast_ReactivationPreservesAllocations(t *testing.T) {
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	ctx := t.Context()
 
@@ -958,6 +962,7 @@ func TestE2E_LoopbackInterface_AllocationLifecycle(t *testing.T) {
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	ctx := t.Context()
 

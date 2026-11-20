@@ -69,7 +69,7 @@ impl PreviousEpochCache {
             );
 
             // Fetch previous epoch data
-            let (_epoch, prev_data) = fetcher.fetch(Some(previous_epoch)).await?;
+            let (_epoch, prev_data) = fetcher.fetch_previous_epoch(previous_epoch).await?;
 
             // Process the telemetry data
             use crate::processor::{

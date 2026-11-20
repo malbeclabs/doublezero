@@ -42,6 +42,13 @@ pub enum KeypairLoadError {
         origin: String,
     },
 
+    /// Malformed `DZ_` keypair token
+    #[error("Invalid DZ_ token: {message}")]
+    InvalidToken {
+        /// Error message
+        message: String,
+    },
+
     /// Stdin is a TTY, cannot read interactively
     #[error(
         "Stdin is a TTY - cannot read keypair interactively. Pipe keypair JSON via stdin or use --keypair"

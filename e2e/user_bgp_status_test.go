@@ -54,6 +54,7 @@ func TestE2E_UserBGPStatus(t *testing.T) {
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	err = dn.Start(t.Context(), nil)
 	require.NoError(t, err)
@@ -260,6 +261,7 @@ func TestE2E_UserBGPStatus_MulticastUser(t *testing.T) {
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	err = dn.Start(t.Context(), nil)
 	require.NoError(t, err)
@@ -475,6 +477,7 @@ func TestE2E_UserBGPStatus_NonDefaultTenant(t *testing.T) {
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	err = dn.Start(t.Context(), nil)
 	require.NoError(t, err)

@@ -7,6 +7,7 @@ use std::{
     default::Default,
     env, fs,
     io::Write,
+    os::unix::fs::{OpenOptionsExt, PermissionsExt},
     path::{Path, PathBuf},
     str::FromStr,
 };
@@ -70,7 +71,7 @@ pub struct ClientConfig {
     pub geo_program_id: Option<String>,
 }
 
-pub(crate) fn default_keypair_path() -> PathBuf {
+pub fn default_keypair_path() -> PathBuf {
     let mut keypair_path = dirs_next::home_dir().unwrap_or_default();
     keypair_path.extend([".config", "doublezero", "id.json"]);
     keypair_path
@@ -180,6 +181,17 @@ pub fn convert_url_to_ws(url: &str) -> eyre::Result<String> {
 }
 
 pub fn create_new_pubkey_user(force: bool, outfile: Option<PathBuf>) -> eyre::Result<Keypair> {
+    let key = Keypair::new();
+    write_keypair_file(&key, force, outfile)?;
+    Ok(key)
+}
+
+/// Write `key` as owner-only JSON to `outfile`, or else to the configured keypair path.
+pub fn write_keypair_file(
+    key: &Keypair,
+    force: bool,
+    outfile: Option<PathBuf>,
+) -> eyre::Result<()> {
     let file_path = match outfile {
         Some(path) => path,
         None => {
@@ -195,8 +207,6 @@ pub fn create_new_pubkey_user(force: bool, outfile: Option<PathBuf>) -> eyre::Re
         .ok_or_else(|| eyre::eyre!("Invalid keypair path: contains invalid UTF-8"))?
         .to_string();
 
-    let key = Keypair::new();
-
     if !Path::new(&dir_path).exists() {
         fs::create_dir_all(&dir_path)?;
     }
@@ -210,10 +220,17 @@ pub fn create_new_pubkey_user(force: bool, outfile: Option<PathBuf>) -> eyre::Re
 
     let data = key.to_bytes().to_vec();
     let json = serde_json::to_string(&data)?;
-    let mut file = fs::File::create(&file_path)?;
+    let mut file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(&file_path)?;
+    // `mode` applies only to a new file, not to one that `force` overwrites.
+    file.set_permissions(fs::Permissions::from_mode(0o600))?;
     file.write_all(json.as_bytes())?;
 
-    Ok(key)
+    Ok(())
 }
 
 pub fn get_doublezero_pubkey() -> eyre::Result<Keypair> {
@@ -351,6 +368,27 @@ mod tests {
         let first = create_new_pubkey_user(false, None).unwrap();
         let second = create_new_pubkey_user(true, None).unwrap();
         assert_ne!(first.pubkey(), second.pubkey());
+    }
+
+    #[test]
+    fn test_write_keypair_file_is_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let tmp = TempDir::new().unwrap();
+        let path = tmp.path().join("id.json");
+        let mode = |p: &Path| fs::metadata(p).unwrap().permissions().mode() & 0o777;
+
+        let key = Keypair::new();
+        write_keypair_file(&key, false, Some(path.clone())).unwrap();
+        assert_eq!(mode(&path), 0o600);
+        let bytes: Vec<u8> = serde_json::from_str(&fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(
+            Keypair::try_from(&bytes[..]).unwrap().pubkey(),
+            key.pubkey()
+        );
+
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        write_keypair_file(&Keypair::new(), true, Some(path.clone())).unwrap();
+        assert_eq!(mode(&path), 0o600);
     }
 
     #[test]

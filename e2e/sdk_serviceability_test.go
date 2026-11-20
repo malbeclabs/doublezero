@@ -37,6 +37,7 @@ func TestE2E_SDK_Serviceability(t *testing.T) {
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	ctx := t.Context()
 

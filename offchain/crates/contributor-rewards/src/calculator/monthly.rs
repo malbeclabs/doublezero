@@ -339,7 +339,7 @@ async fn try_epoch_end(
 }
 
 /// Find an epoch's last block by walking back over its skipped final slots.
-async fn try_find_epoch_end(
+pub(crate) async fn try_find_epoch_end(
     schedule: &EpochSchedule,
     epoch: u64,
     get_block_time: &impl AsyncFn(u64) -> Result<Option<i64>>,

@@ -178,6 +178,7 @@ func setupIPProofDevnet(t *testing.T, verifier devnet.IPVerifierSpec, clientSpec
 		IPVerifier: verifier,
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	log.Info("==> Starting devnet")
 	require.NoError(t, dn.Start(t.Context(), nil))

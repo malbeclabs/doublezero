@@ -46,6 +46,7 @@ func TestE2E_Multicast(t *testing.T) {
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	tdn := &TestDevnet{
 		Devnet: dn,

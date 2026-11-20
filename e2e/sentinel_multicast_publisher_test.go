@@ -38,7 +38,7 @@ func TestE2E_SentinelMulticastPublisherCreatesPublishers(t *testing.T) {
 	require.NoError(t, err)
 
 	err = dn.Start(ctx, nil)
-	t.Cleanup(func() { _ = dn.Destroy(context.Background(), false) })
+	destroyOnCleanup(t, dn)
 	require.NoError(t, err)
 
 	// Dump sentinel logs on test failure for debugging.

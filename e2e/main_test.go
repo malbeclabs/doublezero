@@ -123,6 +123,19 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
+// destroyOnCleanup destroys dn when t ends, because Ryuk removes containers only at process exit.
+// Keep mode (TESTCONTAINERS_RYUK_DISABLED=true) skips it so that the containers stay for debug.
+func destroyOnCleanup(t *testing.T, dn *devnet.Devnet) {
+	if os.Getenv("TESTCONTAINERS_RYUK_DISABLED") == "true" {
+		return
+	}
+	t.Cleanup(func() {
+		if err := dn.Destroy(context.Background(), false); err != nil {
+			t.Errorf("failed to destroy devnet %s: %v", dn.Spec.DeployID, err)
+		}
+	})
+}
+
 type TestDevnet struct {
 	*devnet.Devnet
 	log *slog.Logger
@@ -154,6 +167,7 @@ func NewSingleDeviceSingleClientTestDevnet(t *testing.T) (*TestDevnet, *devnet.D
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	tdn := &TestDevnet{
 		Devnet: dn,
@@ -187,6 +201,7 @@ func NewSingleDeviceSingleClientTestDevnetWithOnchainAllocation(t *testing.T) (*
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	tdn := &TestDevnet{
 		Devnet: dn,

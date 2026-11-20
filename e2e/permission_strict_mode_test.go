@@ -76,7 +76,7 @@ func TestE2E_PermissionAccounts_StrictMode(t *testing.T) {
 
 	ctx := t.Context()
 	err = dn.Start(ctx, nil)
-	t.Cleanup(func() { _ = dn.Destroy(context.Background(), false) })
+	destroyOnCleanup(t, dn)
 	require.NoError(t, err)
 
 	t.Cleanup(func() {

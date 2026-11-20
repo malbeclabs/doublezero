@@ -380,6 +380,7 @@ func setupSingleClientTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, 
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	log.Debug("==> Starting devnet")
 	err = dn.Start(t.Context(), nil)
@@ -681,6 +682,7 @@ func setupCoexistenceTestDevnet(t *testing.T) (*devnet.Devnet, *devnet.Device, *
 		},
 	}, log, dockerClient, subnetAllocator)
 	require.NoError(t, err)
+	destroyOnCleanup(t, dn)
 
 	log.Debug("==> Starting devnet")
 	err = dn.Start(t.Context(), nil)

@@ -5,6 +5,7 @@ package e2e_test
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -145,10 +146,8 @@ func checkDeviceUndrain(t *testing.T, dn *TestDevnet, device *devnet.Device) {
 
 // checkIBRLPostConnect checks requirements after connecting a user tunnel.
 func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, client *devnet.Client) {
-	// NOTE: Since we have inner parallel tests in this method, we need to wrap them in a
-	// non-parallel test to ensure methods that follow this one wait for the inner tests to
-	// complete.
 	t.Run("check_post_connect", func(t *testing.T) {
+		var wg sync.WaitGroup
 		dn.log.Debug("==> Checking IBRL post-connect requirements")
 
 		if !t.Run("wait_for_agent_config_from_controller_post_connect", func(t *testing.T) {
@@ -194,9 +193,7 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 		}
 
 		for _, test := range tests {
-			if !t.Run(test.name, func(t *testing.T) {
-				t.Parallel()
-
+			goRun(&wg, t, test.name, func(t *testing.T) {
 				got, err := client.Exec(t.Context(), test.cmd)
 				require.NoError(t, err, "error executing command on client")
 
@@ -208,14 +205,10 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 					fmt.Println(string(got))
 					t.Fatalf("output mismatch: -(want), +(got):%s", diff)
 				}
-			}) {
-				t.Fail()
-			}
+			})
 		}
 
-		if !t.Run("check_tunnel_interface_is_configured", func(t *testing.T) {
-			t.Parallel()
-
+		goRun(&wg, t, "check_tunnel_interface_is_configured", func(t *testing.T) {
 			links, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", "ip -j link show dev doublezero0"})
 			require.NoError(t, err)
 
@@ -240,24 +233,16 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 				"link_pointtopoint": true,
 				"broadcast":         device.CYOANetworkIP,
 			}, links[0])
-		}) {
-			t.Fail()
-		}
+		})
 
-		if !t.Run("check_doublezero_address_is_configured", func(t *testing.T) {
-			t.Parallel()
-
+		goRun(&wg, t, "check_doublezero_address_is_configured", func(t *testing.T) {
 			ifaces, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", "ip -j -4 addr show dev doublezero0"})
 			require.NoError(t, err)
 
 			require.True(t, netlink.HasAddr(ifaces, "doublezero0", expectedLinkLocalAddr), fmt.Sprintf("doublezero0 should have link-local address %s in: %+v", expectedLinkLocalAddr, ifaces))
-		}) {
-			t.Fail()
-		}
+		})
 
-		if !t.Run("check_learned_route_installed", func(t *testing.T) {
-			t.Parallel()
-
+		goRun(&wg, t, "check_learned_route_installed", func(t *testing.T) {
 			var matchingRoute map[string]any
 			deadline := time.Now().Add(5 * time.Second)
 			for time.Now().Before(deadline) {
@@ -285,12 +270,9 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 			require.Equal(t, "169.254.0.0", matchingRoute["gateway"])
 			require.Equal(t, "doublezero0", matchingRoute["dev"])
 			require.Equal(t, client.CYOANetworkIP, matchingRoute["prefsrc"])
-		}) {
-			t.Fail()
-		}
+		})
 
-		if !t.Run("check_user_session_is_established", func(t *testing.T) {
-			t.Parallel()
+		goRun(&wg, t, "check_user_session_is_established", func(t *testing.T) {
 			ctx := t.Context()
 
 			neighbors, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPBGPSummary](ctx, device, arista.ShowIPBGPSummaryCmd("vrf1"))
@@ -307,20 +289,17 @@ func checkIBRLPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, c
 			clientRoute := client.CYOANetworkIP + "/32"
 			_, ok = routes.VRFs["vrf1"].Routes[clientRoute]
 			require.True(t, ok, "expected client route of %s installed; got none\n", clientRoute)
-		}) {
-			t.Fail()
-		}
+		})
 
+		wg.Wait()
 		dn.log.Debug("--> IBRL post-connect requirements checked")
 	})
 }
 
 // checkIBRLPostDisconnect checks requirements after disconnecting a user tunnel.
 func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device, client *devnet.Client) {
-	// NOTE: Since we have inner parallel tests in this method, we need to wrap them in a
-	// non-parallel test to ensure methods that follow this one wait for the inner tests to
-	// complete.
 	t.Run("check_post_disconnect", func(t *testing.T) {
+		var wg sync.WaitGroup
 		dn.log.Debug("==> Checking IBRL post-disconnect requirements")
 
 		if !t.Run("wait_for_agent_config_from_controller_post_disconnect", func(t *testing.T) {
@@ -358,9 +337,7 @@ func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device
 		}
 
 		for _, test := range tests {
-			if !t.Run(test.name, func(t *testing.T) {
-				t.Parallel()
-
+			goRun(&wg, t, test.name, func(t *testing.T) {
 				got, err := client.Exec(t.Context(), test.cmd)
 				require.NoError(t, err, "error executing command on client")
 
@@ -372,24 +349,16 @@ func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device
 					fmt.Println(string(got))
 					t.Fatalf("output mismatch: -(want), +(got):%s", diff)
 				}
-			}) {
-				t.Fail()
-			}
+			})
 		}
 
-		if !t.Run("check_tunnel_interface_is_removed", func(t *testing.T) {
-			t.Parallel()
-
+		goRun(&wg, t, "check_tunnel_interface_is_removed", func(t *testing.T) {
 			got, err := client.Exec(t.Context(), []string{"bash", "-c", "ip -j link show dev doublezero0"}, docker.NoPrintOnError())
 			require.Error(t, err)
 			require.Equal(t, `Device "doublezero0" does not exist.`, strings.TrimSpace(string(got)), err.Error())
-		}) {
-			t.Fail()
-		}
+		})
 
-		if !t.Run("check_user_contract_is_removed", func(t *testing.T) {
-			t.Parallel()
-
+		goRun(&wg, t, "check_user_contract_is_removed", func(t *testing.T) {
 			got, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero user list"})
 			require.NoError(t, err)
 
@@ -401,13 +370,9 @@ func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device
 				fmt.Println(string(got))
 				t.Fatalf("output mismatch: -(want), +(got):%s", diff)
 			}
-		}) {
-			t.Fail()
-		}
+		})
 
-		if !t.Run("check_user_tunnel_is_removed_from_agent", func(t *testing.T) {
-			t.Parallel()
-
+		goRun(&wg, t, "check_user_tunnel_is_removed_from_agent", func(t *testing.T) {
 			deadline := time.Now().Add(60 * time.Second)
 			for time.Now().Before(deadline) {
 				neighbors, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPBGPSummary](t.Context(), device, arista.ShowIPBGPSummaryCmd("vrf1"))
@@ -420,10 +385,9 @@ func checkIBRLPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device
 				time.Sleep(1 * time.Second)
 			}
 			t.Fatalf("bgp neighbor %s has not been removed from doublezero device", expectedLinkLocalAddr)
-		}) {
-			t.Fail()
-		}
+		})
 
+		wg.Wait()
 		dn.log.Debug("--> IBRL post-disconnect requirements checked")
 	})
 }

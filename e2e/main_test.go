@@ -136,6 +136,12 @@ func destroyOnCleanup(t *testing.T, dn *devnet.Devnet) {
 	})
 }
 
+// goRun runs f as subtest name in a goroutine that wg tracks. Wait on wg before t returns.
+// Use it, not t.Parallel, under a devnet: a parallel subtest frees the -parallel slot of its test.
+func goRun(wg *sync.WaitGroup, t *testing.T, name string, f func(t *testing.T)) {
+	wg.Go(func() { t.Run(name, f) })
+}
+
 type TestDevnet struct {
 	*devnet.Devnet
 	log *slog.Logger

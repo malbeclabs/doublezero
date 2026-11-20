@@ -5,6 +5,7 @@ package e2e_test
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -107,10 +108,8 @@ func createMultipleIBRLUsersOnSameDeviceWithAllocatedIPs(t *testing.T, dn *TestD
 
 // checkIBRLWithAllocatedIPPostConnect checks requirements after connecting a user tunnel with an allocated IP.
 func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *devnet.Device, client *devnet.Client) {
-	// NOTE: Since we have inner parallel tests in this method, we need to wrap them in a
-	// non-parallel test to ensure methods that follow this one wait for the inner tests to
-	// complete.
 	t.Run("check_post_connect", func(t *testing.T) {
+		var wg sync.WaitGroup
 		dn.log.Debug("==> Checking IBRL with allocated IP post-connect requirements")
 
 		// Parse the dz_prefix to get the base IP and prefix length
@@ -201,9 +200,7 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 		}
 
 		for _, test := range tests {
-			if !t.Run(test.name, func(t *testing.T) {
-				t.Parallel()
-
+			goRun(&wg, t, test.name, func(t *testing.T) {
 				got := test.output
 				if got == nil {
 					var err error
@@ -219,14 +216,10 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 					fmt.Println(string(got))
 					t.Fatalf("output mismatch: -(want), +(got):%s", diff)
 				}
-			}) {
-				t.Fail()
-			}
+			})
 		}
 
-		if !t.Run("check_tunnel_interface_is_configured", func(t *testing.T) {
-			t.Parallel()
-
+		goRun(&wg, t, "check_tunnel_interface_is_configured", func(t *testing.T) {
 			links, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", "ip -j link show dev doublezero0"})
 			require.NoError(t, err)
 
@@ -251,24 +244,17 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 				"link_pointtopoint": true,
 				"broadcast":         device.CYOANetworkIP,
 			}, links[0])
-		}) {
-			t.Fail()
-		}
+		})
 
-		if !t.Run("check_doublezero_address_is_configured", func(t *testing.T) {
-			t.Parallel()
-
+		goRun(&wg, t, "check_doublezero_address_is_configured", func(t *testing.T) {
 			ifaces, err := client.ExecReturnJSONList(t.Context(), []string{"bash", "-c", "ip -j -4 addr show dev doublezero0"})
 			require.NoError(t, err)
 
 			require.True(t, netlink.HasAddr(ifaces, "doublezero0", expectedLinkLocalAddr), fmt.Sprintf("doublezero0 should have link-local address %s in: %+v", expectedLinkLocalAddr, ifaces))
 			require.True(t, netlink.HasAddr(ifaces, "doublezero0", expectedAllocatedClientIP), fmt.Sprintf("doublezero0 should have allocated client IP %s in: %+v", expectedAllocatedClientIP, ifaces))
-		}) {
-			t.Fail()
-		}
+		})
 
-		if !t.Run("check_user_session_is_established", func(t *testing.T) {
-			t.Parallel()
+		goRun(&wg, t, "check_user_session_is_established", func(t *testing.T) {
 			ctx := t.Context()
 
 			neighbors, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPBGPSummary](ctx, device, arista.ShowIPBGPSummaryCmd("vrf1"))
@@ -287,14 +273,10 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 				fmt.Println(routes)
 				t.Fatalf("expected allocated client IP %s installed; got none\n", expectedAllocatedClientIP)
 			}
-		}) {
-			t.Fail()
-		}
+		})
 
 		// User ban verified in the `doublezero_user_list_user_removed.tmpl` fixture.
-		if !t.Run("ban_user", func(t *testing.T) {
-			t.Parallel()
-
+		goRun(&wg, t, "ban_user", func(t *testing.T) {
 			// Find IBRL user with client_ip 3.4.5.6
 			output, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero user list | grep 3.4.5.6"})
 			require.NoError(t, err)
@@ -304,20 +286,17 @@ func checkIBRLWithAllocatedIPPostConnect(t *testing.T, dn *TestDevnet, device *d
 			// TODO: This is brittle, come up with a better solution.
 			_, err = dn.Manager.Exec(t.Context(), []string{"bash", "-c", "doublezero user request-ban --pubkey " + userID})
 			require.NoError(t, err)
-		}) {
-			t.Fail()
-		}
+		})
 
+		wg.Wait()
 		dn.log.Debug("--> IBRL with allocated IP post-connect requirements checked")
 	})
 }
 
 // checkIBRLWithAllocatedIPPostDisconnect checks requirements after disconnecting a user tunnel with an allocated IP.
 func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, dn *TestDevnet, device *devnet.Device, client *devnet.Client) {
-	// NOTE: Since we have inner parallel tests in this method, we need to wrap them in a
-	// non-parallel test to ensure methods that follow this one wait for the inner tests to
-	// complete.
 	t.Run("check_post_disconnect", func(t *testing.T) {
+		var wg sync.WaitGroup
 		dn.log.Debug("==> Checking IBRL with allocated IP post-disconnect requirements")
 
 		if !t.Run("wait_for_agent_config_from_controller", func(t *testing.T) {
@@ -349,9 +328,7 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, dn *TestDevnet, device
 		}
 
 		for _, test := range tests {
-			if !t.Run(test.name, func(t *testing.T) {
-				t.Parallel()
-
+			goRun(&wg, t, test.name, func(t *testing.T) {
 				got, err := client.Exec(t.Context(), test.cmd)
 				require.NoError(t, err, "error executing command on client")
 
@@ -363,24 +340,16 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, dn *TestDevnet, device
 					fmt.Println(string(got))
 					t.Fatalf("output mismatch: -(want), +(got):%s", diff)
 				}
-			}) {
-				t.Fail()
-			}
+			})
 		}
 
-		if !t.Run("check_tunnel_interface_is_removed", func(t *testing.T) {
-			t.Parallel()
-
+		goRun(&wg, t, "check_tunnel_interface_is_removed", func(t *testing.T) {
 			got, err := client.Exec(t.Context(), []string{"bash", "-c", "ip -j link show dev doublezero0"}, docker.NoPrintOnError())
 			require.Error(t, err)
 			require.Equal(t, `Device "doublezero0" does not exist.`, strings.TrimSpace(string(got)), err.Error())
-		}) {
-			t.Fail()
-		}
+		})
 
-		if !t.Run("check_user_contract_is_removed", func(t *testing.T) {
-			t.Parallel()
-
+		goRun(&wg, t, "check_user_contract_is_removed", func(t *testing.T) {
 			got, err := client.Exec(t.Context(), []string{"bash", "-c", "doublezero user list"})
 			require.NoError(t, err)
 
@@ -398,13 +367,9 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, dn *TestDevnet, device
 				fmt.Println(string(got))
 				t.Fatalf("output mismatch: -(want), +(got):%s", diff)
 			}
-		}) {
-			t.Fail()
-		}
+		})
 
-		if !t.Run("check_user_tunnel_is_removed_from_agent", func(t *testing.T) {
-			t.Parallel()
-
+		goRun(&wg, t, "check_user_tunnel_is_removed_from_agent", func(t *testing.T) {
 			deadline := time.Now().Add(60 * time.Second)
 			for time.Now().Before(deadline) {
 				neighbors, err := devnet.DeviceExecAristaCliJSON[*arista.ShowIPBGPSummary](t.Context(), device, arista.ShowIPBGPSummaryCmd("vrf1"))
@@ -417,10 +382,9 @@ func checkIBRLWithAllocatedIPPostDisconnect(t *testing.T, dn *TestDevnet, device
 				time.Sleep(1 * time.Second)
 			}
 			t.Fatalf("bgp neighbor %s has not been removed from doublezero device", expectedLinkLocalAddr)
-		}) {
-			t.Fail()
-		}
+		})
 
+		wg.Wait()
 		dn.log.Debug("--> IBRL with allocated IP post-disconnect requirements checked")
 	})
 }

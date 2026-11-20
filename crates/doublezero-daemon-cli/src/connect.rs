@@ -1465,6 +1465,16 @@ impl Connect {
             );
         }
 
+        // SubscribeFeed takes a pass seat for a user that holds none, from the pass that the user
+        // records. A new user holds none and records `accesspass`.
+        match &mcast_user {
+            None => require_free_pass_seat(accesspass)?,
+            Some((pk, user)) if !user.holds_pass_seat => require_free_pass_seat(
+                &ledger.resolve_user_accesspass(*pk, user, self.access_pass)?,
+            )?,
+            Some(_) => {}
+        }
+
         let codes: Vec<String> = selection.join.iter().map(code_of).collect();
         self.execute_feed_join(
             ledger,
@@ -1678,6 +1688,10 @@ impl Connect {
                 "this join would leave the user holding {} feeds; a user may hold at most {MAX_USER_FEEDS}",
                 remaining.len() + new_feeds
             );
+        }
+        // SubscribeFeed takes a pass seat for a user that holds none. A new user holds none.
+        if mcast_user.is_none_or(|(_, user)| !user.holds_pass_seat) {
+            require_free_pass_seat(&accesspass)?;
         }
 
         Ok(join)
@@ -2675,6 +2689,18 @@ fn feeds_at_capacity_error(
         "every purchased feed is already at capacity: {}. Free a seat by disconnecting another machine, or buy more.",
         full_feeds_description(full, seats, feeds)
     )
+}
+
+/// Refuse before any transaction what `AccessPass::try_take_pass_seat` refuses onchain.
+fn require_free_pass_seat(accesspass: &AccessPass) -> eyre::Result<()> {
+    if accesspass.public_multicast_user_count >= accesspass.max_public_multicast_users {
+        eyre::bail!(
+            "the access pass is at its multicast user cap ({} of {} in use). Free a seat by disconnecting another machine, or raise the cap.",
+            accesspass.public_multicast_user_count,
+            accesspass.max_public_multicast_users
+        );
+    }
+    Ok(())
 }
 
 // Latency tolerance for the informational "a nearer device exists outside your feeds' metro"
@@ -6306,6 +6332,82 @@ mod tests {
 
     /// No create_user or subscribe_feed expectation is set, so either call would panic the mock.
     #[test]
+    fn test_connect_command_bare_refuses_a_full_pass_before_the_create() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (_device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let shreds_pk =
+                fixture.add_feed("shreds", device.exchange_pk, vec![Pubkey::new_unique()]);
+            fixture.edge_seat_user_caps((0, 0), (4, 4));
+            fixture.seat_feeds_with_caps(&[(shreds_pk, 5, 4)]);
+
+            let (result, output) = run(&fixture, bare_multicast()).await;
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "the access pass is at its multicast user cap (4 of 4 in use). Free a seat by disconnecting another machine, or raise the cap.",
+                "{output}"
+            );
+        });
+    }
+
+    /// The payer's pass has a free pass seat and the pass that the user records does not. A
+    /// subscribe_feed call would panic the mock.
+    #[test]
+    fn test_connect_command_bare_checks_the_pass_seat_on_the_pass_that_the_user_records() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let shreds_pk =
+                fixture.add_feed("shreds", device.exchange_pk, vec![Pubkey::new_unique()]);
+            fixture.edge_seat_user_caps((0, 0), (4, 4));
+            fixture.seat_feeds_with_caps(&[(shreds_pk, 5, 4)]);
+            let recorded_pass = fixture.accesspass.lock().unwrap().clone();
+            fixture
+                .accesspass
+                .lock()
+                .unwrap()
+                .public_multicast_user_count = 3;
+
+            let mut user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
+            user.accesspass_pk = Pubkey::new_unique();
+            user.holds_pass_seat = false;
+            fixture.add_user(&user);
+            fixture
+                .ledger
+                .expect_resolve_user_accesspass()
+                .returning_st(move |_, _, _| Ok(recorded_pass.clone()));
+
+            let (result, output) = run(&fixture, bare_multicast()).await;
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "the access pass is at its multicast user cap (4 of 4 in use). Free a seat by disconnecting another machine, or raise the cap.",
+                "{output}"
+            );
+        });
+    }
+
+    #[test]
+    fn test_connect_command_bare_joins_at_a_full_pass_for_a_user_with_a_pass_seat() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let shreds_pk =
+                fixture.add_feed("shreds", device.exchange_pk, vec![Pubkey::new_unique()]);
+            fixture.edge_seat_user_caps((0, 0), (4, 4));
+            fixture.seat_feeds_with_caps(&[(shreds_pk, 5, 4)]);
+
+            let mut user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
+            user.holds_pass_seat = true;
+            let user_pk = fixture.add_user(&user);
+            fixture.expect_subscribe_feed(user_pk, vec![shreds_pk]);
+
+            let (result, output) = run(&fixture, bare_multicast()).await;
+            assert!(result.is_ok(), "{:?}\n{output}", result.err());
+        });
+    }
+
+    /// No create_user or subscribe_feed expectation is set, so either call would panic the mock.
+    #[test]
     fn test_connect_command_subscribe_feed_refuses_full_feeds_before_the_create() {
         block_on(async {
             let mut fixture = TestFixture::new();
@@ -6322,6 +6424,70 @@ mod tests {
                 "feeds shreds (2 of 2 seats in use), kalshi (1 of 1 seats in use) are at capacity. Free a seat by disconnecting another machine, or buy more.",
                 "{output}"
             );
+        });
+    }
+
+    /// No create_user or subscribe_feed expectation is set, so either call would panic the mock.
+    #[test]
+    fn test_connect_command_subscribe_feed_refuses_a_full_pass_before_the_create() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (_device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let shreds_pk =
+                fixture.add_feed("shreds", device.exchange_pk, vec![Pubkey::new_unique()]);
+            fixture.edge_seat_user_caps((0, 0), (4, 4));
+            fixture.seat_feeds_with_caps(&[(shreds_pk, 5, 4)]);
+
+            let (result, output) = run(&fixture, feed_flags(&["shreds"], &[])).await;
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "the access pass is at its multicast user cap (4 of 4 in use). Free a seat by disconnecting another machine, or raise the cap.",
+                "{output}"
+            );
+        });
+    }
+
+    /// A subscribe_feed call would panic the mock.
+    #[test]
+    fn test_connect_command_subscribe_feed_refuses_a_full_pass_for_a_user_without_a_pass_seat() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let shreds_pk =
+                fixture.add_feed("shreds", device.exchange_pk, vec![Pubkey::new_unique()]);
+            fixture.edge_seat_user_caps((0, 0), (4, 4));
+            fixture.seat_feeds_with_caps(&[(shreds_pk, 5, 4)]);
+
+            let mut user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
+            user.holds_pass_seat = false;
+            fixture.add_user(&user);
+
+            let (result, output) = run(&fixture, feed_flags(&["shreds"], &[])).await;
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "the access pass is at its multicast user cap (4 of 4 in use). Free a seat by disconnecting another machine, or raise the cap.",
+                "{output}"
+            );
+        });
+    }
+
+    #[test]
+    fn test_connect_command_subscribe_feed_joins_at_a_full_pass_for_a_user_with_a_pass_seat() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let shreds_pk =
+                fixture.add_feed("shreds", device.exchange_pk, vec![Pubkey::new_unique()]);
+            fixture.edge_seat_user_caps((0, 0), (4, 4));
+            fixture.seat_feeds_with_caps(&[(shreds_pk, 5, 4)]);
+
+            let mut user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
+            user.holds_pass_seat = true;
+            let user_pk = fixture.add_user(&user);
+            fixture.expect_subscribe_feed(user_pk, vec![shreds_pk]);
+
+            let (result, output) = run(&fixture, feed_flags(&["shreds"], &[])).await;
+            assert!(result.is_ok(), "{:?}\n{output}", result.err());
         });
     }
 

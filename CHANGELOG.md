@@ -8,6 +8,9 @@ All notable changes to this project will be documented in this file.
 
 ### Changes
 
+- CLI
+  - `doublezero connect multicast` refuses a feed join before it sends a transaction when the access pass is at its multicast user cap. A host whose multicast user already counts against the cap is not refused. Before, the program refused the join only after the command created the multicast user of a new host. The new user then held a device seat for nothing.
+
 ## [v0.50.0](https://github.com/malbeclabs/doublezero/compare/client/v0.49.0...client/v0.50.0) - 2026-11-20
 
 ### Breaking

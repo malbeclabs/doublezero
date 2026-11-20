@@ -89,17 +89,17 @@ make e2e-test-keep-nobuild RUN=TestE2E_MultiClient
 # Clean up leftover containers from previous runs
 make e2e-test-cleanup
 
-# Run all tests (needs 64 GB for Docker)
+# Run all tests (needs 64 GB for Docker on Linux)
 make e2e-test
 
-# Run all tests with 32 GB for Docker
-make e2e-test PARALLEL=4 TIMEOUT=2h
+# Run all tests on a Mac with 32 GB for Docker
+make e2e-test PARALLEL=3 TIMEOUT=2h
 ```
 
 > ⚠️ Note:
 >
 > E2E tests are resource-intensive. It’s recommended to run them individually.
-> A full run starts at most `PARALLEL` tests at once (default 10), and each running test holds one devnet. The default fits 64 GB of memory available to Docker.
+> A full run starts at most `PARALLEL` tests at once (default 10), and each running test holds one devnet. The default fits 64 GB of memory available to Docker on Linux. On a Mac, cEOS runs under emulation and each device needs about 3.2 GB instead of 1.4 GB, so `PARALLEL=3` is the most that fits 32 GB.
 >
 
 ### Running the local devnet

@@ -24,13 +24,14 @@ build-debug:
 # before running `test`.
 #
 # PARALLEL caps the tests that run at once. Each running test holds one devnet,
-# so PARALLEL sets the memory: the default fits 64 GB for Docker. TIMEOUT covers
+# so PARALLEL sets the memory: the default fits 64 GB for Docker on Linux. On a
+# Mac, cEOS runs under emulation and needs about twice the memory. TIMEOUT covers
 # the whole run, so a full run gets longer than a single test.
 #
 # Usage:
 #   make test                           # run all tests
 #   make test RUN=TestE2E_Multicast     # run a specific test
-#   make test PARALLEL=4 TIMEOUT=2h     # run all tests with 32 GB for Docker
+#   make test PARALLEL=3 TIMEOUT=2h     # run all tests on a Mac with 32 GB for Docker
 #   make test-debug RUN=TestE2E_Multicast # with debug logging
 #   make test-nobuild                   # skip docker image build
 #   make test-keep                      # keep containers after test

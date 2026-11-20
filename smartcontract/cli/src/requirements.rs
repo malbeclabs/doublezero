@@ -47,6 +47,7 @@ pub fn check_id(spinner: Option<&ProgressBar>) -> eyre::Result<()> {
                  - doublezero --keypair /path/to/key.json\n  \
                  - cat key.json | doublezero ...\n  \
                  - export DOUBLEZERO_KEYPAIR=/path/to/key.json\n  \
+                 - doublezero keygen --import (to use a DZ_ token)\n  \
                  - doublezero keygen"
             ))
         }

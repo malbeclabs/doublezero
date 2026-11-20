@@ -36,7 +36,7 @@ use crate::{
     doublezerocommand::CliCommand,
     export::ExportCliCommand,
     init::InitCliCommand,
-    keygen::KeyGenCliCommand,
+    keygen::{read_token_from_stdin, KeyGenCliCommand},
     logcommand::LogCliCommand,
     subscribe::SubscribeCliCommand,
     transfer::TransferCliCommand,
@@ -130,7 +130,7 @@ impl ServiceabilityCommand {
             Self::Balance(args) => args.execute(ctx, client, out).await,
             Self::Transfer(args) => args.execute(ctx, client, out).await,
             Self::Export(args) => args.execute(ctx, client, out).await,
-            Self::Keygen(args) => args.execute(ctx, client, out).await,
+            Self::Keygen(args) => args.execute(ctx, None, out, read_token_from_stdin).await,
 
             Self::Config(cmd) => match cmd.command {
                 ConfigCommands::Get(args) => args.execute(ctx, client, out).await,

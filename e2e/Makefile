@@ -23,32 +23,37 @@ build-debug:
 # This will build the docker images first, so it's not necessary to run `build`
 # before running `test`.
 #
-# We configure -timeout=20m for the case where the user is running the tests
-# sequentially. This should be more than enough time for the tests to run in
-# that case, and leave room in case more tests are added in the future.
+# PARALLEL caps the tests that run at once. Each running test holds one devnet,
+# so PARALLEL sets the memory: the default fits 64 GB for Docker. TIMEOUT covers
+# the whole run, so a full run gets longer than a single test.
 #
 # Usage:
 #   make test                           # run all tests
 #   make test RUN=TestE2E_Multicast     # run a specific test
+#   make test PARALLEL=4 TIMEOUT=2h     # run all tests with 32 GB for Docker
 #   make test-debug RUN=TestE2E_Multicast # with debug logging
 #   make test-nobuild                   # skip docker image build
 #   make test-keep                      # keep containers after test
 #   make test-keep-nobuild              # both
 # -----------------------------------------------------------------------------
+PARALLEL ?= 10
+TIMEOUT ?= $(if $(RUN),20m,90m)
+GO_TEST = go test -tags=e2e -timeout=$(TIMEOUT) -parallel=$(PARALLEL) -v -count=1 $(if $(RUN),-run $(RUN)) .
+
 test:
-	go test -tags=e2e -timeout=20m -v -count=1 $(if $(RUN),-run $(RUN)) .
+	$(GO_TEST)
 
 test-debug:
-	DEBUG=1 go test -tags=e2e -timeout=20m -v -count=1 $(if $(RUN),-run $(RUN)) .
+	DEBUG=1 $(GO_TEST)
 
 test-nobuild:
-	DZ_E2E_NO_BUILD=1 go test -tags=e2e -timeout=20m -v -count=1 $(if $(RUN),-run $(RUN)) .
+	DZ_E2E_NO_BUILD=1 $(GO_TEST)
 
 test-keep:
-	TESTCONTAINERS_RYUK_DISABLED=true go test -tags=e2e -timeout=20m -v -count=1 $(if $(RUN),-run $(RUN)) .
+	TESTCONTAINERS_RYUK_DISABLED=true $(GO_TEST)
 
 test-keep-nobuild:
-	TESTCONTAINERS_RYUK_DISABLED=true DZ_E2E_NO_BUILD=1 go test -tags=e2e -timeout=20m -v -count=1 $(if $(RUN),-run $(RUN)) .
+	TESTCONTAINERS_RYUK_DISABLED=true DZ_E2E_NO_BUILD=1 $(GO_TEST)
 
 test-cleanup:
 	@echo "Removing containers with label dz.malbeclabs.com..."

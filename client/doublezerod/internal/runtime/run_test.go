@@ -752,6 +752,16 @@ func TestMulticastPublisher(t *testing.T) {
 		}
 	})
 
+	t.Run("verify_rp_filter_is_loose", func(t *testing.T) {
+		got, err := os.ReadFile("/proc/sys/net/ipv4/conf/doublezero1/rp_filter")
+		if err != nil {
+			t.Fatalf("error reading rp_filter: %v", err)
+		}
+		if v := strings.TrimSpace(string(got)); v != "2" {
+			t.Fatalf("rp_filter should be 2 (loose); got %s", v)
+		}
+	})
+
 	t.Run("verify_doublezero_ip_is_added_to_tunnel", func(t *testing.T) {
 		tun, err := nl.LinkByName("doublezero1")
 		if err != nil {
@@ -1029,6 +1039,16 @@ func TestMulticastSubscriber(t *testing.T) {
 		}
 		if tun.Attrs().MTU != 1476 {
 			t.Fatalf("tunnel mtu should be 1476; got %d", tun.Attrs().MTU)
+		}
+	})
+
+	t.Run("verify_rp_filter_is_loose", func(t *testing.T) {
+		got, err := os.ReadFile("/proc/sys/net/ipv4/conf/doublezero1/rp_filter")
+		if err != nil {
+			t.Fatalf("error reading rp_filter: %v", err)
+		}
+		if v := strings.TrimSpace(string(got)); v != "2" {
+			t.Fatalf("rp_filter should be 2 (loose); got %s", v)
 		}
 	})
 

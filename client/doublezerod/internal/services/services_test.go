@@ -471,6 +471,7 @@ func TestServices(t *testing.T) {
 			},
 			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31", Scope: syscall.RT_SCOPE_LINK}},
 			wantTunUp:        true,
+			wantRPFilter:     map[string]int{"doublezero1": routing.RPFilterLoose},
 			wantRulesAdded:   nil,
 			wantRoutesAdded: []*routing.Route{
 				{
@@ -528,6 +529,7 @@ func TestServices(t *testing.T) {
 			},
 			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31", Scope: syscall.RT_SCOPE_LINK}, {IP: "7.7.7.7/32", Scope: syscall.RT_SCOPE_UNIVERSE}},
 			wantTunUp:        true,
+			wantRPFilter:     map[string]int{"doublezero1": routing.RPFilterLoose},
 			wantRulesAdded:   nil,
 			wantRoutesAdded: []*routing.Route{
 				{
@@ -593,6 +595,7 @@ func TestServices(t *testing.T) {
 			},
 			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31", Scope: syscall.RT_SCOPE_LINK}, {IP: "7.7.7.7/32", Scope: syscall.RT_SCOPE_UNIVERSE}},
 			wantTunUp:        true,
+			wantRPFilter:     map[string]int{"doublezero1": routing.RPFilterLoose},
 			wantRulesAdded:   nil,
 			// Only one route — the publisher route with Src set. The subscriber
 			// skips the duplicate group because it's already routed by the publisher.
@@ -652,6 +655,7 @@ func TestServices(t *testing.T) {
 			},
 			wantTunAddrAdded: []MockTunAddr{{IP: "169.254.0.1/31", Scope: syscall.RT_SCOPE_LINK}, {IP: "7.7.7.7/32", Scope: syscall.RT_SCOPE_UNIVERSE}},
 			wantTunUp:        true,
+			wantRPFilter:     map[string]int{"doublezero1": routing.RPFilterLoose},
 			wantRulesAdded:   nil,
 			wantRoutesAdded: []*routing.Route{
 				{

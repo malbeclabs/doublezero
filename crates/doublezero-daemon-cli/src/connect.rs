@@ -1197,30 +1197,7 @@ impl Connect {
             .find(|(_, u)| u.client_ip == client_ip && u.user_type == UserType::Multicast)
             .map(|(pk, u)| (*pk, u.clone()));
 
-        // Defined before device selection: none of these depend on which device gets chosen, and
-        // the pre-device capacity check below needs `describe_full` too.
-        let seat_of = |feed_pk: &Pubkey| {
-            accesspass
-                .feed_seats()
-                .iter()
-                .find(|seat| seat.feed_key == *feed_pk)
-                .map(|seat| (seat.current_users, seat.max_users))
-                .unwrap_or((0, 0))
-        };
         let code_of = |feed_pk: &Pubkey| feed_code_or_pubkey(feed_pk, &feeds);
-        let describe_full = |feed_pks: &[Pubkey]| {
-            feed_pks
-                .iter()
-                .map(|pk| {
-                    let (current_users, max_users) = seat_of(pk);
-                    format!(
-                        "{} ({current_users} of {max_users} seats in use)",
-                        code_of(pk)
-                    )
-                })
-                .collect::<Vec<String>>()
-                .join(", ")
-        };
 
         let (join_user, device, held_feed_pks) = match &mcast_user {
             Some((pk, user)) => {
@@ -1282,10 +1259,11 @@ impl Connect {
                         // No purchased feed has headroom, so no device could ever help; fail
                         // now with the same wording the post-device path below would give.
                         if !full.is_empty() {
-                            eyre::bail!(
-                                "every purchased feed is already at capacity: {}. Free a seat by disconnecting another machine, or buy more.",
-                                describe_full(&full)
-                            );
+                            return Err(feeds_at_capacity_error(
+                                &full,
+                                accesspass.feed_seats(),
+                                &feeds,
+                            ));
                         }
                         eyre::bail!(
                             "the access pass carries {} purchased feed(s) but none could be joined: 0 over this machine's feed limit of {MAX_USER_FEEDS}, {} feed account(s) not found",
@@ -1320,7 +1298,7 @@ impl Connect {
                             eyre::bail!(
                                 "no eligible device serves the metro of purchased feed(s) with a free seat: {}; also already at capacity: {}. Connect from a machine in {destination}.",
                                 candidate_descriptions.join(", "),
-                                describe_full(&full)
+                                full_feeds_description(&full, accesspass.feed_seats(), &feeds)
                             );
                         }
                     }
@@ -1418,7 +1396,7 @@ impl Connect {
             writeln!(
                 out,
                 "    Skipped, no free seat: {}",
-                describe_full(&selection.full)
+                full_feeds_description(&selection.full, accesspass.feed_seats(), &feeds)
             )?;
         }
         if !selection.other_metro.is_empty() {
@@ -1454,10 +1432,11 @@ impl Connect {
                 return Ok(true);
             }
             if !selection.full.is_empty() {
-                eyre::bail!(
-                    "every purchased feed is already at capacity: {}. Free a seat by disconnecting another machine, or buy more.",
-                    describe_full(&selection.full)
-                );
+                return Err(feeds_at_capacity_error(
+                    &selection.full,
+                    accesspass.feed_seats(),
+                    &feeds,
+                ));
             }
             if !selection.other_metro.is_empty() {
                 // The full per-feed comparison lives only here: this is the one place it appears.
@@ -1651,14 +1630,26 @@ impl Connect {
                 accesspass.accesspass_type
             );
         }
+        let mut full: Vec<Pubkey> = Vec::new();
         for feed_pk in &join.feed_pks {
-            if !accesspass
+            let Some(seat) = accesspass
                 .feed_seats()
                 .iter()
-                .any(|seat| seat.feed_key == *feed_pk)
-            {
+                .find(|seat| seat.feed_key == *feed_pk)
+            else {
                 eyre::bail!("feed {feed_pk} is not provisioned on the access pass");
+            };
+            // The program does not take a seat for a feed that the user holds.
+            if !held.contains(feed_pk) && seat.current_users >= seat.max_users {
+                full.push(*feed_pk);
             }
+        }
+        if !full.is_empty() {
+            return Err(feeds_at_capacity_error(
+                &full,
+                accesspass.feed_seats(),
+                feeds,
+            ));
         }
         // The cap applies to the state the join will see: the leave half runs first, so feeds
         // being left do not count as held.
@@ -2642,6 +2633,38 @@ fn feed_seats_by_code<'a>(
         feed_code_or_pubkey(&left.feed_key, feeds).cmp(&feed_code_or_pubkey(&right.feed_key, feeds))
     });
     ordered
+}
+
+fn full_feeds_description(
+    full: &[Pubkey],
+    seats: &[FeedSeat],
+    feeds: &HashMap<Pubkey, Feed>,
+) -> String {
+    full.iter()
+        .map(|pk| {
+            let (current_users, max_users) = seats
+                .iter()
+                .find(|seat| seat.feed_key == *pk)
+                .map(|seat| (seat.current_users, seat.max_users))
+                .unwrap_or((0, 0));
+            format!(
+                "{} ({current_users} of {max_users} seats in use)",
+                feed_code_or_pubkey(pk, feeds)
+            )
+        })
+        .collect::<Vec<String>>()
+        .join(", ")
+}
+
+fn feeds_at_capacity_error(
+    full: &[Pubkey],
+    seats: &[FeedSeat],
+    feeds: &HashMap<Pubkey, Feed>,
+) -> eyre::Report {
+    eyre::eyre!(
+        "every purchased feed is already at capacity: {}. Free a seat by disconnecting another machine, or buy more.",
+        full_feeds_description(full, seats, feeds)
+    )
 }
 
 // Latency tolerance for the informational "a nearer device exists outside your feeds' metro"
@@ -6162,6 +6185,20 @@ mod tests {
         }
     }
 
+    fn subscribe_feeds(feeds: &[&str]) -> Connect {
+        Connect {
+            dz_mode: Some(DzMode::Multicast {
+                mode: None,
+                multicast_groups: vec![],
+                pub_groups: vec![],
+                sub_groups: vec![],
+                sub_feeds: feeds.iter().map(|feed| feed.to_string()).collect(),
+                unsub_feeds: vec![],
+            }),
+            ..Default::default()
+        }
+    }
+
     /// Machine A: a bare connect on a pass carrying two purchased feeds joins both, one seat each.
     #[test]
     fn test_connect_command_bare_joins_every_purchased_feed_with_headroom() {
@@ -6243,6 +6280,75 @@ mod tests {
             assert_eq!(
                 result.unwrap_err().to_string(),
                 "every purchased feed is already at capacity: kalshi (1 of 1 seats in use), shreds (2 of 2 seats in use). Free a seat by disconnecting another machine, or buy more.",
+                "{output}"
+            );
+        });
+    }
+
+    /// No create_user or subscribe_feed expectation is set, so either call would panic the mock.
+    #[test]
+    fn test_connect_command_subscribe_feed_refuses_a_full_feed_before_the_create() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (_device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let shreds_pk =
+                fixture.add_feed("shreds", device.exchange_pk, vec![Pubkey::new_unique()]);
+            fixture.seat_feeds_with_caps(&[(shreds_pk, 2, 2)]);
+
+            let (result, output) = run(&fixture, subscribe_feeds(&["shreds"])).await;
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "every purchased feed is already at capacity: shreds (2 of 2 seats in use). Free a seat by disconnecting another machine, or buy more.",
+                "{output}"
+            );
+        });
+    }
+
+    #[test]
+    fn test_connect_command_subscribe_feed_takes_the_last_free_seat() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let shreds_pk =
+                fixture.add_feed("shreds", device.exchange_pk, vec![Pubkey::new_unique()]);
+            fixture.seat_feeds_with_caps(&[(shreds_pk, 2, 1)]);
+
+            let user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
+            let user_pk = Pubkey::new_unique();
+            fixture.expect_create_user_with_tenant(user_pk, &user, None);
+            fixture.expect_subscribe_feed(user_pk, vec![shreds_pk]);
+
+            let (result, output) = run(&fixture, subscribe_feeds(&["shreds"])).await;
+            assert!(result.is_ok(), "{:?}\n{output}", result.err());
+            assert!(
+                output
+                    .lines()
+                    .any(|line| line == "    Joined feed(s): shreds"),
+                "{output}"
+            );
+        });
+    }
+
+    /// A subscribe_feed call would panic the mock.
+    #[test]
+    fn test_connect_command_subscribe_feed_existing_user_refuses_only_an_unheld_full_feed() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let shreds_pk =
+                fixture.add_feed("shreds", device.exchange_pk, vec![Pubkey::new_unique()]);
+            let kalshi_pk =
+                fixture.add_feed("kalshi", device.exchange_pk, vec![Pubkey::new_unique()]);
+            fixture.seat_feeds_with_caps(&[(shreds_pk, 2, 2), (kalshi_pk, 1, 1)]);
+
+            let mut user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
+            user.feed_pks = vec![shreds_pk];
+            fixture.add_user(&user);
+
+            let (result, output) = run(&fixture, subscribe_feeds(&["shreds", "kalshi"])).await;
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "every purchased feed is already at capacity: kalshi (1 of 1 seats in use). Free a seat by disconnecting another machine, or buy more.",
                 "{output}"
             );
         });

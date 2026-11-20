@@ -24,6 +24,7 @@ use doublezero_sdk::{
     Device, DeviceStatus, DeviceType, Exchange, Feed, User, UserCYOA, UserStatus, UserType,
 };
 use doublezero_serviceability::{
+    pda::get_accesspass_pda,
     processors::multicastgroup::subscribe_feed::MAX_USER_FEEDS,
     state::accesspass::{AccessPass, AccessPassType, FeedSeat},
 };
@@ -125,7 +126,8 @@ pub struct Connect {
     #[arg(long, global = true)]
     pub device: Option<String>,
 
-    /// Access pass for a legacy user that does not record one
+    /// Access pass for a feed join or leave: the pass that a new multicast user records, or the
+    /// pass of a legacy user that records none
     #[arg(long, global = true)]
     pub access_pass: Option<Pubkey>,
 
@@ -334,6 +336,33 @@ fn require_accesspass<L: LedgerClient, W: Write>(
             ))
         }
     }
+}
+
+/// Read the AccessPass that `--access-pass` selects for the user that a feed join creates.
+/// `CreateUser` accepts only the payer's pass at `client_ip` or at 0.0.0.0, so refuse any other.
+fn get_selected_accesspass<L: LedgerClient>(
+    ledger: &L,
+    client_ip: Ipv4Addr,
+    selected: Pubkey,
+) -> eyre::Result<AccessPass> {
+    let payer = ledger.get_payer();
+    let program_id = ledger.get_program_id();
+    let (exact_pk, _) = get_accesspass_pda(&program_id, &client_ip, &payer);
+    let (dynamic_pk, _) = get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
+    let pass_ip = if selected == exact_pk {
+        client_ip
+    } else if selected == dynamic_pk {
+        Ipv4Addr::UNSPECIFIED
+    } else {
+        eyre::bail!(
+            "Access pass {selected} cannot be recorded by a new user at {client_ip}. Use the pass \
+             of UserPayer {payer} at {client_ip} ({exact_pk}) or at 0.0.0.0 ({dynamic_pk}), or \
+             remove --access-pass."
+        );
+    };
+    ledger
+        .get_accesspass(pass_ip, payer)?
+        .ok_or_else(|| eyre::eyre!("Access pass {selected} not found"))
 }
 
 /// Render the per-leg summary for a bare `doublezero connect` and decide its exit status.
@@ -921,13 +950,18 @@ impl Connect {
 
             // A pass carrying purchased feeds gates access through the Feed account, not the
             // multicast allowlists, which stay empty on it. Selecting its feeds here is what
-            // makes a zero-argument connect work for a feed customer.
-            if !accesspass.feed_seats().is_empty() {
+            // makes a zero-argument connect work for a feed customer. A feed join creates the
+            // user on --access-pass, but a group join below creates it on `accesspass`.
+            let feed_accesspass = match self.access_pass {
+                Some(selected) => get_selected_accesspass(ledger, client_ip, selected)?,
+                None => accesspass.clone(),
+            };
+            if !feed_accesspass.feed_seats().is_empty() {
                 return self
                     .auto_join_purchased_feeds(
                         ledger,
                         daemon,
-                        &accesspass,
+                        &feed_accesspass,
                         client_ip,
                         ip_proof,
                         spinner,
@@ -1628,11 +1662,12 @@ impl Connect {
         // Refuse here what the program would refuse after the create: by then the bare user
         // would already exist, holding a multicast slot and a device seat for nothing.
         // Read the pass that SubscribeFeed takes the seats from.
-        let accesspass = match mcast_user {
-            Some((user_pk, user)) => {
+        let accesspass = match (mcast_user, self.access_pass) {
+            (Some((user_pk, user)), _) => {
                 ledger.resolve_user_accesspass(*user_pk, user, self.access_pass)?
             }
-            None => ledger
+            (None, Some(selected)) => get_selected_accesspass(ledger, client_ip, selected)?,
+            (None, None) => ledger
                 .resolve_accesspass(client_ip, ledger.get_payer())?
                 .ok_or_else(|| {
                     eyre::eyre!(
@@ -1724,6 +1759,7 @@ impl Connect {
                     client_ip,
                     tunnel_endpoint,
                     tenant_pk: None,
+                    accesspass_pk: self.access_pass,
                     ip_proof: ip_proof.get(out)?,
                 })?;
                 spinner.set_message("Multicast user created");
@@ -2061,6 +2097,8 @@ impl Connect {
                     client_ip: *client_ip,
                     tunnel_endpoint,
                     tenant_pk,
+                    // The tenant and epoch checks read the pass that resolve_accesspass finds.
+                    accesspass_pk: None,
                     ip_proof: ip_proof.get(out)?,
                 });
 
@@ -3199,6 +3237,10 @@ mod tests {
             };
 
             fixture.ledger.expect_get_payer().return_const(payer);
+            fixture
+                .ledger
+                .expect_get_program_id()
+                .return_const(Pubkey::new_unique());
             fixture.ledger.expect_get_epoch().returning(|| Ok(10));
             fixture
                 .ledger
@@ -3600,6 +3642,18 @@ mod tests {
             tenant_pk: Option<Pubkey>,
             ip_proof: Option<IpOwnershipProof>,
         ) {
+            self.expect_create_user_with_accesspass(pk, user, tenant_pk, None, ip_proof);
+        }
+
+        /// The `--access-pass` variant: asserts the pass the command selects as well.
+        pub fn expect_create_user_with_accesspass(
+            &mut self,
+            pk: Pubkey,
+            user: &User,
+            tenant_pk: Option<Pubkey>,
+            accesspass_pk: Option<Pubkey>,
+            ip_proof: Option<IpOwnershipProof>,
+        ) {
             let expected_create_user_command = CreateUserCommand {
                 user_type: user.user_type,
                 device_pk: user.device_pk,
@@ -3607,6 +3661,7 @@ mod tests {
                 client_ip: user.client_ip,
                 tunnel_endpoint: user.tunnel_endpoint,
                 tenant_pk,
+                accesspass_pk,
                 ip_proof,
             };
 
@@ -3774,6 +3829,20 @@ mod tests {
             ) = multicast;
         }
 
+        /// Give the payer a second pass, at the exact PDA of 1.2.3.4, and return its address for
+        /// `--access-pass`. The fixture pass stands for the 0.0.0.0 pass that the IP lookup prefers.
+        pub fn add_selected_accesspass(&mut self, accesspass_type: AccessPassType) -> Pubkey {
+            let client_ip = Ipv4Addr::new(1, 2, 3, 4);
+            let payer = self.ledger.get_payer();
+            let mut accesspass = self.accesspass.lock().unwrap().clone();
+            accesspass.accesspass_type = accesspass_type;
+            self.ledger
+                .expect_get_accesspass()
+                .with(predicate::eq(client_ip), predicate::eq(payer))
+                .returning_st(move |_, _| Ok(Some(accesspass.clone())));
+            get_accesspass_pda(&self.ledger.get_program_id(), &client_ip, &payer).0
+        }
+
         pub fn add_feed(&mut self, code: &str, exchange: Pubkey, groups: Vec<Pubkey>) -> Pubkey {
             let pk = Pubkey::new_unique();
             let feed = Feed {
@@ -3791,10 +3860,19 @@ mod tests {
         }
 
         pub fn expect_subscribe_feed(&mut self, user_pk: Pubkey, feed_pks: Vec<Pubkey>) {
+            self.expect_subscribe_feed_with_accesspass(user_pk, feed_pks, None);
+        }
+
+        pub fn expect_subscribe_feed_with_accesspass(
+            &mut self,
+            user_pk: Pubkey,
+            feed_pks: Vec<Pubkey>,
+            accesspass_pk: Option<Pubkey>,
+        ) {
             let expected_command = SubscribeFeedCommand {
                 user_pk,
                 feed_pks,
-                accesspass_pk: None,
+                accesspass_pk,
             };
 
             let users = self.users.clone();
@@ -6606,6 +6684,178 @@ mod tests {
 
             let (result, output) = run(&fixture, feed_flags(&["shreds"], &[])).await;
             assert!(result.is_ok(), "{:?}\n{output}", result.err());
+        });
+    }
+
+    /// The fixture pass is Prepaid, so the join fails if a check reads it instead.
+    #[test]
+    fn test_connect_command_subscribe_feed_creates_the_user_on_the_selected_pass() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let shreds_pk =
+                fixture.add_feed("shreds", device.exchange_pk, vec![Pubkey::new_unique()]);
+            let selected_pk = fixture
+                .add_selected_accesspass(AccessPassType::EdgeSeat(vec![seat(shreds_pk, 2, 0)]));
+
+            let user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
+            let user_pk = Pubkey::new_unique();
+            fixture.expect_create_user_with_accesspass(
+                user_pk,
+                &user,
+                None,
+                Some(selected_pk),
+                None,
+            );
+            fixture.expect_subscribe_feed_with_accesspass(
+                user_pk,
+                vec![shreds_pk],
+                Some(selected_pk),
+            );
+
+            let command = Connect {
+                access_pass: Some(selected_pk),
+                ..feed_flags(&["shreds"], &[])
+            };
+            let (result, output) = run(&fixture, command).await;
+            assert!(result.is_ok(), "{:?}\n{output}", result.err());
+        });
+    }
+
+    /// No create_user expectation is set, so a create would panic the mock.
+    #[test]
+    fn test_connect_command_subscribe_feed_refuses_a_pass_that_create_user_would_refuse() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (_device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            fixture.add_feed("shreds", device.exchange_pk, vec![Pubkey::new_unique()]);
+            let client_ip = Ipv4Addr::new(1, 2, 3, 4);
+            let program_id = fixture.ledger.get_program_id();
+            let payer = fixture.ledger.get_payer();
+            // The pass of another payer at this address.
+            let (foreign_pk, _) =
+                get_accesspass_pda(&program_id, &client_ip, &Pubkey::new_unique());
+            let (exact_pk, _) = get_accesspass_pda(&program_id, &client_ip, &payer);
+            let (dynamic_pk, _) = get_accesspass_pda(&program_id, &Ipv4Addr::UNSPECIFIED, &payer);
+
+            let command = Connect {
+                access_pass: Some(foreign_pk),
+                ..feed_flags(&["shreds"], &[])
+            };
+            let (result, output) = run(&fixture, command).await;
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                format!(
+                    "Access pass {foreign_pk} cannot be recorded by a new user at 1.2.3.4. Use the \
+                     pass of UserPayer {payer} at 1.2.3.4 ({exact_pk}) or at 0.0.0.0 \
+                     ({dynamic_pk}), or remove --access-pass."
+                ),
+                "{output}"
+            );
+        });
+    }
+
+    /// The fixture pass, which the IP lookup returns, still has a free seat.
+    #[test]
+    fn test_connect_command_subscribe_feed_checks_the_seats_of_the_selected_pass() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (_device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let shreds_pk =
+                fixture.add_feed("shreds", device.exchange_pk, vec![Pubkey::new_unique()]);
+            fixture.seat_feeds_with_caps(&[(shreds_pk, 2, 1)]);
+            let selected_pk = fixture
+                .add_selected_accesspass(AccessPassType::EdgeSeat(vec![seat(shreds_pk, 1, 1)]));
+
+            let command = Connect {
+                access_pass: Some(selected_pk),
+                ..feed_flags(&["shreds"], &[])
+            };
+            let (result, output) = run(&fixture, command).await;
+            assert_eq!(
+                result.unwrap_err().to_string(),
+                "feed shreds (1 of 1 seats in use) is at capacity. Free a seat by disconnecting another machine, or buy more.",
+                "{output}"
+            );
+        });
+    }
+
+    /// The fixture pass seats shreds and the selected pass seats kalshi.
+    #[test]
+    fn test_connect_command_bare_joins_the_feeds_of_the_selected_pass() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device_pk, device) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let shreds_pk =
+                fixture.add_feed("shreds", device.exchange_pk, vec![Pubkey::new_unique()]);
+            let kalshi_pk =
+                fixture.add_feed("kalshi", device.exchange_pk, vec![Pubkey::new_unique()]);
+            fixture.seat_feeds(&[shreds_pk]);
+            let selected_pk = fixture
+                .add_selected_accesspass(AccessPassType::EdgeSeat(vec![seat(kalshi_pk, 1, 0)]));
+
+            let user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
+            let user_pk = Pubkey::new_unique();
+            fixture.expect_create_user_with_accesspass(
+                user_pk,
+                &user,
+                None,
+                Some(selected_pk),
+                None,
+            );
+            fixture.expect_subscribe_feed_with_accesspass(
+                user_pk,
+                vec![kalshi_pk],
+                Some(selected_pk),
+            );
+
+            let command = Connect {
+                access_pass: Some(selected_pk),
+                ..bare_multicast()
+            };
+            let (result, output) = run(&fixture, command).await;
+            assert!(result.is_ok(), "{:?}\n{output}", result.err());
+            assert!(
+                output
+                    .lines()
+                    .any(|line| line == "    Joined feed(s): kalshi"),
+                "{output}"
+            );
+        });
+    }
+
+    /// CreateSubscribeUser takes no --access-pass, so a selected pass without feeds leaves the
+    /// groups to the pass that the IP lookup finds.
+    #[test]
+    fn test_connect_command_bare_joins_the_groups_of_the_resolved_pass() {
+        block_on(async {
+            let mut fixture = TestFixture::new();
+            let (device_pk, _) = fixture.add_device(DeviceType::Hybrid, 100, true);
+            let (group_pk, _) = fixture.add_multicast_group("test-group", "239.0.0.1");
+            let selected_pk = fixture.add_selected_accesspass(AccessPassType::Prepaid);
+            fixture.accesspass.lock().unwrap().mgroup_sub_allowlist = vec![group_pk];
+
+            let user = fixture.create_user(UserType::Multicast, device_pk, "1.2.3.4");
+            fixture.expect_create_subscribe_user(
+                Pubkey::new_unique(),
+                &user,
+                vec![group_pk],
+                false,
+                true,
+            );
+
+            let command = Connect {
+                access_pass: Some(selected_pk),
+                ..bare_multicast()
+            };
+            let (result, output) = run(&fixture, command).await;
+            assert!(result.is_ok(), "{:?}\n{output}", result.err());
+            assert!(
+                output
+                    .lines()
+                    .any(|line| line == "    Subscribing to (from AccessPass): test-group"),
+                "{output}"
+            );
         });
     }
 

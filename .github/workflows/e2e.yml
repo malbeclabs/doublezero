@@ -104,8 +104,8 @@ jobs:
             ).write();
 
   changes:
-    # Docs-only and version-bump-only changes get no signal from e2e. Any doubt
-    # (an error, no base commit, schedule or dispatch) gives run=true.
+    # Docs-only and version-bump-only PRs get no signal from e2e. Any doubt (an
+    # error, no base commit, or an event that is not a PR) gives run=true.
     name: Detect e2e-relevant changes
     runs-on: ubuntu-latest
     permissions:
@@ -120,7 +120,9 @@ jobs:
         id: changes
         env:
           EVENT: ${{ github.event_name }}
-          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          REPO: ${{ github.repository }}
         run: |
           set -u -o pipefail
           decide() {
@@ -134,10 +136,15 @@ jobs:
             lines=$(git diff -U0 "$BASE" HEAD -- "$1" | grep -E '^[+-]' | grep -vE '^(\+\+\+|---) ') || true
             [ -n "$lines" ] && ! grep -qvE '^[+-]version = "' <<< "$lines"
           }
-          case "$EVENT" in
-            pull_request|push) ;;
-            *) decide true "event $EVENT runs everything" ;;
-          esac
+          # A push still runs everything, because the gap-filler counts each push run
+          # on main as a run of e2e.
+          [ "$EVENT" = pull_request ] || decide true "event $EVENT runs everything"
+          # The shards pull the private cEOS image and then run PR code, so a fork PR
+          # fails here, and e2e-ok fails with it.
+          if [ "$HEAD_REPO" != "$REPO" ]; then
+            echo "::error::e2e does not run on fork PRs, because the shards pull the private cEOS image."
+            exit 1
+          fi
           if [[ ! "$BASE" =~ ^[0-9a-f]{40}$ || "$BASE" =~ ^0+$ ]]; then
             decide true "no base commit"
           fi

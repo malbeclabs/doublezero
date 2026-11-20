@@ -47,10 +47,10 @@ pub struct UpdateMulticastGroupCliCommand {
     pub private: Option<bool>,
     /// Maximum number of publishers on a private multicast group. A private group with 0 admits no publisher
     #[arg(long)]
-    pub max_publishers: Option<u16>,
+    pub max_publishers: Option<u32>,
     /// Maximum number of subscribers on a private multicast group. A private group with 0 admits no subscriber
     #[arg(long)]
-    pub max_subscribers: Option<u16>,
+    pub max_subscribers: Option<u32>,
     /// Number of feeds that list the multicast group. Set it on a group created before the program counted feeds
     #[arg(long)]
     pub feed_count: Option<u32>,

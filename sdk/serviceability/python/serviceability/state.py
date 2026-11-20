@@ -964,10 +964,10 @@ class MulticastGroup:
         # A group created before the field existed ends here, and the reader raises past the end.
         if r.remaining >= 32:
             mg.bond_ref = _read_pubkey(r)
-        if r.remaining >= 5:
+        if r.remaining >= 9:
             mg.private = r.read_u8() != 0
-            mg.max_publishers = r.read_u16()
-            mg.max_subscribers = r.read_u16()
+            mg.max_publishers = r.read_u32()
+            mg.max_subscribers = r.read_u32()
         if r.remaining >= 4:
             mg.feed_count = r.read_u32()
         return mg

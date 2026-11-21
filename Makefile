@@ -256,23 +256,23 @@ e2e-build-debug:
 
 .PHONY: e2e-test
 e2e-test:
-	cd e2e && $(MAKE) test $(if $(RUN),RUN=$(RUN))
+	cd e2e && $(MAKE) test
 
 .PHONY: e2e-test-debug
 e2e-test-debug:
-	cd e2e && $(MAKE) test-debug $(if $(RUN),RUN=$(RUN))
+	cd e2e && $(MAKE) test-debug
 
 .PHONY: e2e-test-nobuild
 e2e-test-nobuild:
-	cd e2e && $(MAKE) test-nobuild $(if $(RUN),RUN=$(RUN))
+	cd e2e && $(MAKE) test-nobuild
 
 .PHONY: e2e-test-keep
 e2e-test-keep:
-	cd e2e && $(MAKE) test-keep $(if $(RUN),RUN=$(RUN))
+	cd e2e && $(MAKE) test-keep
 
 .PHONY: e2e-test-keep-nobuild
 e2e-test-keep-nobuild:
-	cd e2e && $(MAKE) test-keep-nobuild $(if $(RUN),RUN=$(RUN))
+	cd e2e && $(MAKE) test-keep-nobuild
 
 .PHONY: e2e-test-cleanup
 e2e-test-cleanup:

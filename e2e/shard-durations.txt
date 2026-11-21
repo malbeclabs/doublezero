@@ -1,0 +1,72 @@
+# Cost of each top-level e2e test in slot-seconds, for packing the CI shards.
+# A test holds one -parallel slot, so its cost is its runtime in seconds.
+# TestE2E_BackwardCompatibility runs its versions in parallel, so its cost is
+# the sum of its version and environment subtests. A test that is not in this
+# file gets the median. Update the values from the "--- PASS: TestE2E_X (Ns)"
+# lines of a green run of the e2e workflow.
+TestE2E_BackwardCompatibility 400
+TestE2E_Connect_AllModesFromAccessPass 173
+TestE2E_Connect_SameMetroThenDisconnectPerMode 213
+TestE2E_ContributorAuth 83
+TestE2E_DeviceMaxusersRollover 259
+TestE2E_DeviceTelemetry 240
+TestE2E_DzPrefix_GrowAndShrink 94
+TestE2E_DzPrefix_ResourceExhaustion 162
+TestE2E_DzPrefix_RolloverAllocation 146
+TestE2E_Feed_CRUD 54
+TestE2E_Funder 180
+TestE2E_GeoprobeDiscovery 203
+TestE2E_GeoprobeIcmpTargets 165
+TestE2E_GeoprobeResultDestination 168
+TestE2E_IBRL 252
+TestE2E_IBRL_AllocatedAddr_Multicast_Coexistence 211
+TestE2E_IBRL_AllocatedAddr_Multicast_Publisher_Coexistence 203
+TestE2E_IBRL_EnableDisable 198
+TestE2E_IBRL_Multicast_Coexistence 228
+TestE2E_IBRL_Multicast_Publisher_Coexistence 192
+TestE2E_IBRL_WithAllocatedIP 215
+TestE2E_IPOwnershipProof_Enforced 121
+TestE2E_IPOwnershipProof_NoProof 115
+TestE2E_IPOwnershipProof_UntrustedSigner 89
+TestE2E_IPOwnershipProof_ValidProof 115
+TestE2E_InterfaceValidation 274
+TestE2E_Link_OnchainAllocation 98
+TestE2E_LoopbackInterface_AllocationLifecycle 82
+TestE2E_MultiClientIBRL 355
+TestE2E_MultiClientIBRLAllocatedIP 243
+TestE2E_MultiClientIBRL_RouteLiveness 375
+TestE2E_MultiTenantAccessControl 166
+TestE2E_MultiTenantVRF 367
+TestE2E_MultiTunnel_FallbackToSecondDevice 212
+TestE2E_MultiTunnel_FallbackToSecondDevice_AllocatedAddr 226
+TestE2E_MultiTunnel_SimultaneousToSingleDevice 232
+TestE2E_Multicast 286
+TestE2E_MulticastGroup_AllocationLifecycle 81
+TestE2E_MulticastPublisherRegisterLifecycle 219
+TestE2E_MulticastPublisher_BothAllocationPaths 236
+TestE2E_MulticastPublisher_IPDeallocation 257
+TestE2E_MulticastPublisher_MixedUsers 237
+TestE2E_MulticastPublisher_MultipleAllocations 295
+TestE2E_Multicast_AutoJoinFromAccessPass 174
+TestE2E_Multicast_CounterLifecycle 238
+TestE2E_Multicast_PublisherAndSubscriber 167
+TestE2E_Multicast_ReactivationPreservesAllocations 177
+TestE2E_MultipleLinks_AllocationLifecycle 100
+TestE2E_PermissionAccounts_StrictMode 148
+TestE2E_PrivateMulticastGroup 374
+TestE2E_QAAgent_MultiTunnelConnectivity 303
+TestE2E_QAAgent_UnicastConnectivity 237
+TestE2E_SDK_Serviceability 63
+TestE2E_SDK_Telemetry_DeviceLatencySamples 143
+TestE2E_SDK_Telemetry_InternetLatencySamples 121
+TestE2E_SentinelMulticastPublisherCreatesPublishers 66
+TestE2E_SingleClient_IBRL_AllocatedAddr_Then_Multicast 213
+TestE2E_SingleClient_IBRL_Multicast_PubSub_Swap 396
+TestE2E_SingleClient_IBRL_Then_Multicast_Publisher 215
+TestE2E_TenantDeletionLifecycle 192
+TestE2E_UserBGPStatus 176
+TestE2E_UserBGPStatus_MulticastUser 168
+TestE2E_UserBGPStatus_NonDefaultTenant 163
+TestE2E_UserBan 249
+TestE2E_UserLimits 210
+TestE2E_User_AllocationLifecycle 97

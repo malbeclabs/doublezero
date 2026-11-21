@@ -45,7 +45,6 @@ jobs:
         run: |
           disabled=(
             # Self-hosted runners
-            e2e.yml
             qa.devnet.yml
             shreds-e2e.yml
             # Releases

@@ -39,9 +39,9 @@ type PacketConner interface {
 type HeartbeatSender struct {
 	mu   sync.Mutex
 	dsts []*net.UDPAddr
-	// conn and stop are set while a run is live, and nil otherwise.
-	conn PacketConner
+	// stop and kick are set while a run is live, and nil otherwise.
 	stop chan struct{}
+	kick chan struct{}
 	wg   sync.WaitGroup
 }
 
@@ -67,20 +67,24 @@ func (h *HeartbeatSender) Start(iface string, srcIP net.IP, groups []net.IP, ttl
 }
 
 // UpdateGroups applies a new set of multicast groups in-place without
-// restarting the goroutine or connection. It sends an immediate heartbeat
-// to the new destinations so callers don't have to wait for the next tick.
+// restarting the goroutine or connection. It asks the run to send an immediate
+// heartbeat to the new destinations so callers don't have to wait for the next tick.
 func (h *HeartbeatSender) UpdateGroups(groups []net.IP) error {
 	dsts := make([]*net.UDPAddr, len(groups))
 	for i, group := range groups {
 		dsts[i] = &net.UDPAddr{IP: group, Port: HeartbeatPort}
 	}
 
-	// Send under the lock, so Close cannot close the connection while this sends.
+	// Only the run's goroutine writes, so Close never closes the connection under a write.
 	h.mu.Lock()
-	defer h.mu.Unlock()
 	h.dsts = dsts
-	if h.conn != nil {
-		sendHeartbeats(h.conn, dsts)
+	kick := h.kick
+	h.mu.Unlock()
+	if kick != nil {
+		select {
+		case kick <- struct{}{}:
+		default:
+		}
 	}
 	return nil
 }
@@ -105,10 +109,11 @@ func (h *HeartbeatSender) startWithConn(p PacketConner, intf *net.Interface, gro
 	h.Close()
 
 	stop := make(chan struct{})
+	kick := make(chan struct{}, 1)
 	h.mu.Lock()
 	h.dsts = dsts
-	h.conn = p
 	h.stop = stop
+	h.kick = kick
 	h.wg.Add(1)
 	h.mu.Unlock()
 
@@ -128,13 +133,14 @@ func (h *HeartbeatSender) startWithConn(p PacketConner, intf *net.Interface, gro
 		for {
 			select {
 			case <-ticker.C:
-				h.mu.Lock()
-				currentDsts := h.dsts
-				h.mu.Unlock()
-				sendHeartbeats(p, currentDsts)
+			case <-kick:
 			case <-stop:
 				return
 			}
+			h.mu.Lock()
+			currentDsts := h.dsts
+			h.mu.Unlock()
+			sendHeartbeats(p, currentDsts)
 		}
 	}()
 	return nil
@@ -153,7 +159,7 @@ func (h *HeartbeatSender) Close() error {
 	h.mu.Lock()
 	stop := h.stop
 	h.stop = nil
-	h.conn = nil
+	h.kick = nil
 	h.mu.Unlock()
 	if stop != nil {
 		close(stop)

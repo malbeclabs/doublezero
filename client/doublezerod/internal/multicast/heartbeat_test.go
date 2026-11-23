@@ -357,3 +357,87 @@ func TestHeartbeatSender_CloseStopsSending(t *testing.T) {
 		t.Error("connection was not closed")
 	}
 }
+
+func (m *mockPacketConn) isClosed() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.closed
+}
+
+func TestHeartbeatSender_StartWithoutCloseStopsTheFirstRun(t *testing.T) {
+	sender := NewHeartbeatSender()
+	groups := []net.IP{net.IPv4(239, 0, 0, 1)}
+	intf := &net.Interface{Index: 1, Name: "lo0"}
+
+	conn1 := newMockPacketConn()
+	if err := sender.startWithConn(conn1, intf, groups, 32, 10*time.Second); err != nil {
+		t.Fatalf("first start failed: %v", err)
+	}
+	<-conn1.writeCh
+
+	// A Setup retry calls Start again with no Close.
+	conn2 := newMockPacketConn()
+	if err := sender.startWithConn(conn2, intf, groups, 32, 10*time.Second); err != nil {
+		t.Fatalf("second start failed: %v", err)
+	}
+	<-conn2.writeCh
+	if !conn1.isClosed() {
+		t.Fatal("the first connection should be closed when Start runs again")
+	}
+
+	sender.Close()
+	if !conn2.isClosed() {
+		t.Fatal("the second connection should be closed after sender.Close()")
+	}
+}
+
+func TestHeartbeatSender_ConcurrentClose(t *testing.T) {
+	conn := newMockPacketConn()
+	sender := NewHeartbeatSender()
+	intf := &net.Interface{Index: 1, Name: "lo0"}
+	if err := sender.startWithConn(conn, intf, []net.IP{net.IPv4(239, 0, 0, 1)}, 32, 10*time.Second); err != nil {
+		t.Fatalf("failed to start: %v", err)
+	}
+	<-conn.writeCh
+
+	done := make(chan struct{})
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			sender.Close()
+		}()
+	}
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("concurrent Close calls should not block")
+	}
+	if !conn.isClosed() {
+		t.Fatal("connection should be closed after sender.Close()")
+	}
+}
+
+func TestHeartbeatSender_UpdateGroupsAfterCloseSendsNothing(t *testing.T) {
+	conn := newMockPacketConn()
+	sender := NewHeartbeatSender()
+	intf := &net.Interface{Index: 1, Name: "lo0"}
+	if err := sender.startWithConn(conn, intf, []net.IP{net.IPv4(239, 0, 0, 1)}, 32, 10*time.Second); err != nil {
+		t.Fatalf("failed to start: %v", err)
+	}
+	<-conn.writeCh
+	sender.Close()
+
+	before := len(conn.getWrites())
+	if err := sender.UpdateGroups([]net.IP{net.IPv4(239, 0, 0, 2)}); err != nil {
+		t.Fatalf("UpdateGroups failed: %v", err)
+	}
+	if after := len(conn.getWrites()); after != before {
+		t.Fatalf("UpdateGroups after Close sent %d heartbeats on a closed connection", after-before)
+	}
+}

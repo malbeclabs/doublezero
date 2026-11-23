@@ -16,8 +16,9 @@ import (
 // publisher's groups to the RP, so the RP originates the source into MSDP.
 // It ignores Register-Stop: there is no inbound path.
 type RegisterSender struct {
-	done       chan struct{}
-	wg         *sync.WaitGroup
+	// stop is set while a run is live, and nil otherwise.
+	stop       chan struct{}
+	wg         sync.WaitGroup
 	mu         sync.Mutex
 	conn       RawConner
 	iface      string
@@ -30,7 +31,7 @@ type RegisterSender struct {
 }
 
 func NewRegisterSender() *RegisterSender {
-	return &RegisterSender{done: make(chan struct{})}
+	return &RegisterSender{}
 }
 
 func (s *RegisterSender) Start(iface string, srcOverlay, innerSrc net.IP, groups []net.IP, rp net.IP, dport int, payload []byte, interval time.Duration) error {
@@ -52,6 +53,9 @@ func (s *RegisterSender) Start(iface string, srcOverlay, innerSrc net.IP, groups
 		r.Close()
 		return fmt.Errorf("register: failed to get interface: %v", err)
 	}
+	// A Setup that failed after Start can call Start again with no Close. Stop that
+	// run before the fields below change, because its goroutine reads them.
+	s.Close()
 	s.srcOverlay = srcOverlay
 	s.innerSrc = innerSrc
 	s.rp = rp
@@ -61,21 +65,26 @@ func (s *RegisterSender) Start(iface string, srcOverlay, innerSrc net.IP, groups
 }
 
 func (s *RegisterSender) startWithConn(conn RawConner, intf *net.Interface, groups []net.IP, interval time.Duration) error {
+	s.Close()
+	stop := make(chan struct{})
+	s.mu.Lock()
 	s.conn = conn
 	s.iface = intf.Name
 	s.groups = groups
-	s.wg = &sync.WaitGroup{}
+	s.stop = stop
 	s.wg.Add(1)
+	s.mu.Unlock()
 	go func() {
-		defer conn.Close()
+		// Defers run last first. Close the connection before Done, so Close returns after it.
 		defer s.wg.Done()
+		defer conn.Close()
 
 		// Stagger the first send within the interval so publishers across the
 		// fleet do not synchronize into CoPP-stressing bursts.
 		jitter := time.Duration(rand.Int63n(int64(interval)))
 		select {
 		case <-time.After(jitter):
-		case <-s.done:
+		case <-stop:
 			return
 		}
 
@@ -86,7 +95,7 @@ func (s *RegisterSender) startWithConn(conn RawConner, intf *net.Interface, grou
 			select {
 			case <-ticker.C:
 				s.sendAll(intf)
-			case <-s.done:
+			case <-stop:
 				return
 			}
 		}
@@ -141,14 +150,17 @@ func (s *RegisterSender) UpdateGroups(groups []net.IP) error {
 	return nil
 }
 
-// Close stops the sender goroutine. It signals done rather than closing it, so
-// this daemon-lifetime singleton can be restarted by a later Start after a
-// teardown or reconnect. It resets wg so a repeated Close is a no-op.
+// Close stops the run and returns after its connection is closed. Each run has
+// its own stop channel, so this daemon-lifetime singleton can start again after a
+// teardown or reconnect, and a second or concurrent Close does nothing.
 func (s *RegisterSender) Close() error {
-	if s.wg != nil {
-		s.done <- struct{}{}
-		s.wg.Wait()
-		s.wg = nil
+	s.mu.Lock()
+	stop := s.stop
+	s.stop = nil
+	s.mu.Unlock()
+	if stop != nil {
+		close(stop)
 	}
+	s.wg.Wait()
 	return nil
 }

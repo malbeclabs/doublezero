@@ -18,6 +18,13 @@ permissions: {}
 env:
   SHARD_COUNT: "5"
   ARISTA_CEOS_IMAGE: ghcr.io/malbeclabs/ceos:4.33.1F
+  # Copies of upstream images, made with `crane copy` so the digests are the
+  # same. The shards pull them with the job token, not anonymously, so registry
+  # limits for anonymous pulls cannot fail a shard.
+  # docker.io/prom/prometheus:v2.54.1
+  DZ_PROMETHEUS_IMAGE: ghcr.io/malbeclabs/e2e-prometheus@sha256:f6639335d34a77d9d9db382b92eeb7fc00934be8eae81dbc03b31cfe90411a94
+  # public.ecr.aws/influxdb/influxdb:1.8, as pulled in run 45207108458
+  DZ_INFLUXDB_IMAGE: ghcr.io/malbeclabs/e2e-influxdb@sha256:951292a96756693195c5a96e11b8e1c79f14749f2c004f1de9ac9d502624188e
   # The local names from e2e/.env.local. Setup builds these, and the shards load
   # them from the artifact, so no image goes to a registry.
   DZ_BASE_IMAGE: dz-local/base:dev
@@ -271,20 +278,24 @@ jobs:
           name: e2e-images
           path: ${{ runner.temp }}/images
       - name: Load images
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_ACTOR: ${{ github.actor }}
         run: |
           set -euo pipefail
           zstd -dc "$RUNNER_TEMP/images/images.tar.zst" | docker load
           rm -rf "$RUNNER_TEMP/images"
-          # Anonymous pulls hit rate limits ("toomanyrequests") when 5 shards start at once.
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
+          trap 'docker logout ghcr.io' EXIT
           pull() {
-            for delay in 10 30 60; do
+            for delay in 10 30; do
               docker pull "$1" && return 0
               sleep "$delay"
             done
             docker pull "$1"
           }
-          pull docker.io/prom/prometheus:v2.54.1@sha256:f6639335d34a77d9d9db382b92eeb7fc00934be8eae81dbc03b31cfe90411a94
-          pull public.ecr.aws/influxdb/influxdb:1.8
+          pull "$DZ_PROMETHEUS_IMAGE"
+          pull "$DZ_INFLUXDB_IMAGE"
       # BuildKit resolves the cEOS base on the registry even after a pull, so the
       # login lasts for the build. The build runs no PR code on the host.
       - name: Build device image

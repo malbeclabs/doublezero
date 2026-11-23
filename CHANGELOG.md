@@ -14,6 +14,8 @@ All notable changes to this project will be documented in this file.
 - CLI
   - `doublezero connect multicast` refuses a feed join before it sends a transaction when the access pass is at its multicast user cap. A host whose multicast user already counts against the cap is not refused. Before, the program refused the join only after the command created the multicast user of a new host. The new user then held a device seat for nothing.
   - `doublezero connect multicast --access-pass` creates the multicast user of a feed join on that pass. This covers `--subscribe-feed`, and a bare `connect multicast` or `doublezero connect` whose IP-lookup pass carries feeds. Before, the new user recorded the 0.0.0.0 pass of the payer when one existed, and `SubscribeFeed` then refused the named pass, so the user held a device seat for nothing. The checks before such a join read the named pass. The command refuses a pass that is not the payer's pass at the client IP or at 0.0.0.0, or that carries no feeds. Other runs use the flag as before.
+- E2E/QA
+  - The e2e shards pull Prometheus and InfluxDB from copies in GHCR with the job token, not anonymously from Docker Hub and ECR Public. An anonymous pull limit failed a shard on main, and `e2e-ok` with it. InfluxDB is now pinned by digest. Local runs still pull from upstream unless `DZ_PROMETHEUS_IMAGE` or `DZ_INFLUXDB_IMAGE` is set.
 
 ## [v0.50.0](https://github.com/malbeclabs/doublezero/compare/client/v0.49.0...client/v0.50.0) - 2026-11-20
 

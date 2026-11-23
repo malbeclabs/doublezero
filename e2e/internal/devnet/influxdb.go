@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"strings"
 	"time"
 
@@ -17,7 +18,7 @@ import (
 )
 
 const (
-	influxDBImage        = "public.ecr.aws/influxdb/influxdb:1.8"
+	influxDBImage        = "public.ecr.aws/influxdb/influxdb:1.8@sha256:951292a96756693195c5a96e11b8e1c79f14749f2c004f1de9ac9d502624188e"
 	influxDBInternalPort = 8086
 	influxDBDatabase     = "doublezero_devnet"
 )
@@ -28,6 +29,10 @@ type InfluxDBSpec struct {
 }
 
 func (s *InfluxDBSpec) Validate() error {
+	// CI sets DZ_INFLUXDB_IMAGE to a GHCR copy. Local runs pull from upstream.
+	if s.ContainerImage == "" {
+		s.ContainerImage = os.Getenv("DZ_INFLUXDB_IMAGE")
+	}
 	if s.ContainerImage == "" {
 		s.ContainerImage = influxDBImage
 	}

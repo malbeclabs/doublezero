@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"time"
 
 	dockercontainer "github.com/docker/docker/api/types/container"
@@ -28,6 +29,10 @@ type PrometheusSpec struct {
 }
 
 func (s *PrometheusSpec) Validate() error {
+	// CI sets DZ_PROMETHEUS_IMAGE to a GHCR copy. Local runs pull from upstream.
+	if s.ContainerImage == "" {
+		s.ContainerImage = os.Getenv("DZ_PROMETHEUS_IMAGE")
+	}
 	if s.ContainerImage == "" {
 		s.ContainerImage = prometheusImage
 	}

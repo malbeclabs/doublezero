@@ -37,15 +37,16 @@ type PacketConner interface {
 // HeartbeatSender sends periodic UDP heartbeat packets to multicast groups
 // to keep PIM (S, G) state and MSDP SA caches alive in the network.
 type HeartbeatSender struct {
-	done chan struct{}
-	wg   *sync.WaitGroup
 	mu   sync.Mutex
 	dsts []*net.UDPAddr
-	conn PacketConner
+	// stop and kick are set while a run is live, and nil otherwise.
+	stop chan struct{}
+	kick chan struct{}
+	wg   sync.WaitGroup
 }
 
 func NewHeartbeatSender() *HeartbeatSender {
-	return &HeartbeatSender{done: make(chan struct{})}
+	return &HeartbeatSender{}
 }
 
 // Start begins sending heartbeat packets to each multicast group at the given interval.
@@ -66,20 +67,25 @@ func (h *HeartbeatSender) Start(iface string, srcIP net.IP, groups []net.IP, ttl
 }
 
 // UpdateGroups applies a new set of multicast groups in-place without
-// restarting the goroutine or connection. It sends an immediate heartbeat
-// to the new destinations so callers don't have to wait for the next tick.
+// restarting the goroutine or connection. It asks the run to send an immediate
+// heartbeat to the new destinations so callers don't have to wait for the next tick.
 func (h *HeartbeatSender) UpdateGroups(groups []net.IP) error {
 	dsts := make([]*net.UDPAddr, len(groups))
 	for i, group := range groups {
 		dsts[i] = &net.UDPAddr{IP: group, Port: HeartbeatPort}
 	}
 
+	// Only the run's goroutine writes, so Close never closes the connection under a write.
 	h.mu.Lock()
 	h.dsts = dsts
-	conn := h.conn
+	kick := h.kick
 	h.mu.Unlock()
-
-	sendHeartbeats(conn, dsts)
+	if kick != nil {
+		select {
+		case kick <- struct{}{}:
+		default:
+		}
+	}
 	return nil
 }
 
@@ -99,16 +105,22 @@ func (h *HeartbeatSender) startWithConn(p PacketConner, intf *net.Interface, gro
 		dsts[i] = &net.UDPAddr{IP: group, Port: HeartbeatPort}
 	}
 
+	// A Setup that failed after Start can call Start again with no Close, so stop that run first.
+	h.Close()
+
+	stop := make(chan struct{})
+	kick := make(chan struct{}, 1)
 	h.mu.Lock()
 	h.dsts = dsts
-	h.conn = p
+	h.stop = stop
+	h.kick = kick
+	h.wg.Add(1)
 	h.mu.Unlock()
 
-	h.wg = &sync.WaitGroup{}
-	h.wg.Add(1)
 	go func() {
-		defer p.Close()
+		// Defers run last first. Close the connection before Done, so Close returns after it.
 		defer h.wg.Done()
+		defer p.Close()
 
 		// Send immediately before starting ticker so we don't delay by the interval.
 		h.mu.Lock()
@@ -121,13 +133,14 @@ func (h *HeartbeatSender) startWithConn(p PacketConner, intf *net.Interface, gro
 		for {
 			select {
 			case <-ticker.C:
-				h.mu.Lock()
-				currentDsts := h.dsts
-				h.mu.Unlock()
-				sendHeartbeats(p, currentDsts)
-			case <-h.done:
+			case <-kick:
+			case <-stop:
 				return
 			}
+			h.mu.Lock()
+			currentDsts := h.dsts
+			h.mu.Unlock()
+			sendHeartbeats(p, currentDsts)
 		}
 	}()
 	return nil
@@ -141,11 +154,16 @@ func sendHeartbeats(p PacketConner, dsts []*net.UDPAddr) {
 	}
 }
 
+// Close stops the run and returns after its connection is closed. A second or concurrent call does nothing.
 func (h *HeartbeatSender) Close() error {
-	if h.wg != nil {
-		h.done <- struct{}{}
-		h.wg.Wait()
-		h.wg = nil
+	h.mu.Lock()
+	stop := h.stop
+	h.stop = nil
+	h.kick = nil
+	h.mu.Unlock()
+	if stop != nil {
+		close(stop)
 	}
+	h.wg.Wait()
 	return nil
 }

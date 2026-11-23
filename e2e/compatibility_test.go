@@ -608,7 +608,7 @@ func createAndStartDiscoveryDevnet(t *testing.T, cloneEnv string, log *slog.Logg
 }
 
 // discoverVersions enumerates CLI versions compatible with the current onchain program
-// by querying GitHub releases for all client/vX.Y.Z tags.
+// from the GitHub releases tagged client/vX.Y.Z.
 func discoverVersions(t *testing.T, dn *devnet.Devnet, cloneEnv, programID string, log *slog.Logger) []string {
 	// Read ProgramConfig to get min_compatible_version and current version.
 	log.Debug("==> Reading ProgramConfig from ledger")
@@ -643,14 +643,13 @@ func discoverVersions(t *testing.T, dn *devnet.Devnet, cloneEnv, programID strin
 		"minCompatVersion", devnet.FormatProgramVersion(minVersion),
 	)
 
-	// Fetch available versions from GitHub releases.
-	log.Debug("==> Fetching client release tags from GitHub")
 	githubToken := os.Getenv("GITHUB_TOKEN")
 	if githubToken == "" {
 		githubToken = os.Getenv("GH_TOKEN")
 	}
-	releaseTags, err := devnet.FetchGitHubClientReleaseTags(t.Context(), githubToken)
+	releaseTags, source, err := devnet.ClientReleaseTags(t.Context(), githubToken)
 	require.NoError(t, err)
+	log.Info("--> Listed client release tags", "source", source, "count", len(releaseTags))
 
 	compatVersions := devnet.EnumerateCompatibleVersions(releaseTags, minVersion, currentVersion)
 

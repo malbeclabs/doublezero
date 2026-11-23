@@ -6,11 +6,69 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"sort"
 	"strings"
 
 	serviceability "github.com/malbeclabs/doublezero/smartcontract/sdk/go/serviceability"
 )
+
+// ClientReleasesFileEnv names the env var that holds the path to a JSON array of
+// release tag names. CI lists the releases in a step of its own, so the test code
+// does not get the job token.
+const ClientReleasesFileEnv = "DZ_E2E_CLIENT_RELEASES_FILE"
+
+// fetchClientReleaseTags is a variable so that tests can replace the API call.
+var fetchClientReleaseTags = FetchGitHubClientReleaseTags
+
+// ClientReleaseTags returns the client release tags in "vX.Y.Z" format, from the
+// file that ClientReleasesFileEnv names when set, else from the GitHub API.
+func ClientReleaseTags(ctx context.Context, githubToken string) (tags []string, source string, err error) {
+	if path := os.Getenv(ClientReleasesFileEnv); path != "" {
+		tags, err := readClientReleaseTagsFile(path)
+		return tags, "file " + path, err
+	}
+	tags, err = fetchClientReleaseTags(ctx, githubToken)
+	return tags, "GitHub API", err
+}
+
+// readClientReleaseTagsFile reads a JSON array of release tag names, the
+// tag_name field of each release, and keeps the client tags.
+func readClientReleaseTagsFile(path string) ([]string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read %s=%s: %w", ClientReleasesFileEnv, path, err)
+	}
+	// Decode to pointers because Go decodes a null element of []string as "",
+	// which would hide a malformed file.
+	var entries []*string
+	if err := json.Unmarshal(data, &entries); err != nil {
+		return nil, fmt.Errorf("failed to decode %s=%s as a JSON array of tag names: %w", ClientReleasesFileEnv, path, err)
+	}
+	if entries == nil {
+		return nil, fmt.Errorf("%s=%s holds null, not a JSON array of tag names", ClientReleasesFileEnv, path)
+	}
+	tagNames := make([]string, len(entries))
+	for i, entry := range entries {
+		if entry == nil {
+			return nil, fmt.Errorf("%s=%s holds null at index %d, not a tag name", ClientReleasesFileEnv, path, i)
+		}
+		tagNames[i] = *entry
+	}
+	return clientTags(tagNames), nil
+}
+
+// clientTags keeps the client release tags, tagged as client/vX.Y.Z, and strips
+// the "client/" prefix.
+func clientTags(tagNames []string) []string {
+	var tags []string
+	for _, name := range tagNames {
+		if after, ok := strings.CutPrefix(name, "client/"); ok {
+			tags = append(tags, after) // e.g. "v0.10.0"
+		}
+	}
+	return tags
+}
 
 // FetchGitHubClientReleaseTags fetches all client release tags from the GitHub API.
 // Returns version strings in "vX.Y.Z" format (e.g. "v0.10.0").
@@ -49,12 +107,11 @@ func FetchGitHubClientReleaseTags(ctx context.Context, githubToken string) ([]st
 			return nil, fmt.Errorf("failed to decode releases: %w", err)
 		}
 
+		tagNames := make([]string, 0, len(releases))
 		for _, r := range releases {
-			// Only include client releases tagged as client/vX.Y.Z.
-			if after, ok := strings.CutPrefix(r.TagName, "client/"); ok {
-				allTags = append(allTags, after) // e.g. "v0.10.0"
-			}
+			tagNames = append(tagNames, r.TagName)
 		}
+		allTags = append(allTags, clientTags(tagNames)...)
 
 		if len(releases) < 100 {
 			break

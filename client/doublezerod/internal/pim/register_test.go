@@ -53,8 +53,9 @@ func TestConstructRegisterMessage(t *testing.T) {
 }
 
 type mockRawConn struct {
-	mu    sync.Mutex
-	calls []writeCall
+	mu     sync.Mutex
+	calls  []writeCall
+	closed bool
 }
 
 type writeCall struct {
@@ -71,7 +72,17 @@ func (m *mockRawConn) WriteTo(h *ipv4.Header, b []byte, cm *ipv4.ControlMessage)
 	m.calls = append(m.calls, writeCall{h: h, b: cp, cm: cm})
 	return nil
 }
-func (m *mockRawConn) Close() error                                    { return nil }
+func (m *mockRawConn) Close() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.closed = true
+	return nil
+}
+func (m *mockRawConn) isClosed() bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.closed
+}
 func (m *mockRawConn) SetMulticastInterface(*net.Interface) error      { return nil }
 func (m *mockRawConn) SetControlMessage(ipv4.ControlFlags, bool) error { return nil }
 
@@ -210,5 +221,76 @@ func TestRegisterSenderUpdateGroupsDoesNotBlock(t *testing.T) {
 	s.mu.Unlock()
 	if len(got) != 1 || !got[0].Equal(g2) {
 		t.Fatalf("groups not updated in place: %v", got)
+	}
+}
+
+// TestRegisterSenderStartWithoutCloseStopsTheFirstRun covers a Setup retry: a
+// failed Setup leaves the sender running, and the retry calls Start again with no
+// Close. Before, the first goroutine kept running on the shared done channel, so
+// the next Close could wait for the wrong run forever under the manager mutex.
+func TestRegisterSenderStartWithoutCloseStopsTheFirstRun(t *testing.T) {
+	s := newTestRegisterSender()
+	intf := &net.Interface{Index: 7, Name: "doublezero1"}
+	groups := []net.IP{net.IPv4(233, 84, 178, 5)}
+
+	m1 := &mockRawConn{}
+	if err := s.startWithConn(m1, intf, groups, 10*time.Millisecond); err != nil {
+		t.Fatalf("first start: %v", err)
+	}
+	waitForRegisterWrite(t, m1)
+
+	m2 := &mockRawConn{}
+	if err := s.startWithConn(m2, intf, groups, 10*time.Millisecond); err != nil {
+		t.Fatalf("second start: %v", err)
+	}
+	if !m1.isClosed() {
+		t.Fatal("the first connection should be closed when Start runs again")
+	}
+	waitForRegisterWrite(t, m2)
+
+	closed := make(chan struct{})
+	go func() {
+		s.Close()
+		close(closed)
+	}()
+	select {
+	case <-closed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Close blocked after a Start with no Close")
+	}
+	if !m2.isClosed() {
+		t.Fatal("the second connection should be closed after Close")
+	}
+}
+
+func TestRegisterSenderConcurrentClose(t *testing.T) {
+	s := newTestRegisterSender()
+	intf := &net.Interface{Index: 7, Name: "doublezero1"}
+	m := &mockRawConn{}
+	if err := s.startWithConn(m, intf, []net.IP{net.IPv4(233, 84, 178, 5)}, 10*time.Millisecond); err != nil {
+		t.Fatalf("start: %v", err)
+	}
+	waitForRegisterWrite(t, m)
+
+	var wg sync.WaitGroup
+	for range 4 {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.Close()
+		}()
+	}
+	done := make(chan struct{})
+	go func() {
+		wg.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("concurrent Close calls should not block")
+	}
+	if !m.isClosed() {
+		t.Fatal("connection should be closed after Close")
 	}
 }

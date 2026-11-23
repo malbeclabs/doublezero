@@ -37,15 +37,16 @@ type PacketConner interface {
 // HeartbeatSender sends periodic UDP heartbeat packets to multicast groups
 // to keep PIM (S, G) state and MSDP SA caches alive in the network.
 type HeartbeatSender struct {
-	done chan struct{}
-	wg   *sync.WaitGroup
 	mu   sync.Mutex
 	dsts []*net.UDPAddr
+	// conn and stop are set while a run is live, and nil otherwise.
 	conn PacketConner
+	stop chan struct{}
+	wg   sync.WaitGroup
 }
 
 func NewHeartbeatSender() *HeartbeatSender {
-	return &HeartbeatSender{done: make(chan struct{})}
+	return &HeartbeatSender{}
 }
 
 // Start begins sending heartbeat packets to each multicast group at the given interval.
@@ -74,12 +75,13 @@ func (h *HeartbeatSender) UpdateGroups(groups []net.IP) error {
 		dsts[i] = &net.UDPAddr{IP: group, Port: HeartbeatPort}
 	}
 
+	// Send under the lock, so Close cannot close the connection while this sends.
 	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.dsts = dsts
-	conn := h.conn
-	h.mu.Unlock()
-
-	sendHeartbeats(conn, dsts)
+	if h.conn != nil {
+		sendHeartbeats(h.conn, dsts)
+	}
 	return nil
 }
 
@@ -99,13 +101,17 @@ func (h *HeartbeatSender) startWithConn(p PacketConner, intf *net.Interface, gro
 		dsts[i] = &net.UDPAddr{IP: group, Port: HeartbeatPort}
 	}
 
+	// A Setup that failed after Start can call Start again with no Close, so stop that run first.
+	h.Close()
+
+	stop := make(chan struct{})
 	h.mu.Lock()
 	h.dsts = dsts
 	h.conn = p
+	h.stop = stop
+	h.wg.Add(1)
 	h.mu.Unlock()
 
-	h.wg = &sync.WaitGroup{}
-	h.wg.Add(1)
 	go func() {
 		// Defers run last first. Close the connection before Done, so Close returns after it.
 		defer h.wg.Done()
@@ -126,7 +132,7 @@ func (h *HeartbeatSender) startWithConn(p PacketConner, intf *net.Interface, gro
 				currentDsts := h.dsts
 				h.mu.Unlock()
 				sendHeartbeats(p, currentDsts)
-			case <-h.done:
+			case <-stop:
 				return
 			}
 		}
@@ -142,11 +148,16 @@ func sendHeartbeats(p PacketConner, dsts []*net.UDPAddr) {
 	}
 }
 
+// Close stops the run and returns after its connection is closed. A second or concurrent call does nothing.
 func (h *HeartbeatSender) Close() error {
-	if h.wg != nil {
-		h.done <- struct{}{}
-		h.wg.Wait()
-		h.wg = nil
+	h.mu.Lock()
+	stop := h.stop
+	h.stop = nil
+	h.conn = nil
+	h.mu.Unlock()
+	if stop != nil {
+		close(stop)
 	}
+	h.wg.Wait()
 	return nil
 }

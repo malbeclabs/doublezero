@@ -13,6 +13,8 @@ All notable changes to this project will be documented in this file.
 
 - Client
   - `doublezerod` closes the multicast heartbeat connection before the heartbeat sender's close returns. Before, the close could return while the connection was still open, and `TestHeartbeatSender_UpdateGroups` failed now and then.
+  - The heartbeat sender stops its earlier run when `Start` runs again with no close, as a retry of a failed multicast setup does. Before, the earlier run kept sending on its own connection.
+  - Two close calls at the same time no longer block, and a group update after a close sends nothing.
 - CLI
   - `doublezero connect multicast` refuses a feed join before it sends a transaction when the access pass is at its multicast user cap. A host whose multicast user already counts against the cap is not refused. Before, the program refused the join only after the command created the multicast user of a new host. The new user then held a device seat for nothing.
   - `doublezero connect multicast --access-pass` creates the multicast user of a feed join on that pass. This covers `--subscribe-feed`, and a bare `connect multicast` or `doublezero connect` whose IP-lookup pass carries feeds. Before, the new user recorded the 0.0.0.0 pass of the payer when one existed, and `SubscribeFeed` then refused the named pass, so the user held a device seat for nothing. The checks before such a join read the named pass. The command refuses a pass that is not the payer's pass at the client IP or at 0.0.0.0, or that carries no feeds. Other runs use the flag as before.

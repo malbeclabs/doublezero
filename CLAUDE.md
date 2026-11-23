@@ -295,7 +295,7 @@ Only use `dev/dzctl destroy -y` when you need a completely clean slate (e.g., le
 
 ### Running E2E Tests
 
-**Important:** E2E tests are resource-intensive (each test spins up multiple Docker containers including cEOS devices). Always run specific tests rather than the full suite, as running all tests concurrently will exhaust memory on most machines.
+**Important:** E2E tests are resource-intensive (each test spins up multiple Docker containers including cEOS devices). Prefer specific tests to the full suite. A full run holds one devnet for each running test, and `PARALLEL` (default 10) caps the running tests to fit 64 GB for Docker on Linux. On a Mac, cEOS runs under emulation at about twice the memory, so use `make e2e-test PARALLEL=3 TIMEOUT=2h` with 32 GB for Docker.
 
 ```bash
 # Run a specific test (preferred)
@@ -310,7 +310,7 @@ make e2e-test-nobuild RUN=TestE2E_Multicast_Publisher
 # Keep containers after test completion/failure for debugging
 make e2e-test-keep RUN=TestE2E_Multicast_Publisher
 
-# Run all tests (requires high-memory machine)
+# Run all tests (needs 64 GB for Docker on Linux)
 make e2e-test
 
 # Clean up leftover containers

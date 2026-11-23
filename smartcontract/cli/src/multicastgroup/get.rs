@@ -35,8 +35,8 @@ struct MulticastGroupDisplay {
     pub publisher_count: u32,
     pub subscriber_count: u32,
     pub private: bool,
-    pub max_publishers: u16,
-    pub max_subscribers: u16,
+    pub max_publishers: u32,
+    pub max_subscribers: u32,
     pub status: String,
     pub owner: String,
 }

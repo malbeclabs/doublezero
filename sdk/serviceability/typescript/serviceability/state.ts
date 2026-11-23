@@ -966,10 +966,10 @@ export function deserializeMulticastGroup(data: Uint8Array): MulticastGroup {
     maxSubscribers: 0,
     feedCount: 0,
   };
-  if (r.remaining >= 5) {
+  if (r.remaining >= 9) {
     mg.private = r.readU8() !== 0;
-    mg.maxPublishers = r.readU16();
-    mg.maxSubscribers = r.readU16();
+    mg.maxPublishers = r.readU32();
+    mg.maxSubscribers = r.readU32();
   }
   if (r.remaining >= 4) {
     mg.feedCount = r.readU32();

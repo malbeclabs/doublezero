@@ -35,6 +35,9 @@ pub trait LedgerClient: Send + Sync {
     /// The operator's payer pubkey (used to distinguish self-owned users).
     fn get_payer(&self) -> Pubkey;
 
+    /// The serviceability program ID (`connect` derives access pass PDAs from it).
+    fn get_program_id(&self) -> Pubkey;
+
     /// Verify the operator has a usable keypair (id.json or an alternative
     /// keypair source) and a non-zero credit balance — the preconditions for
     /// mutating ledger operations. Diagnostics route through `tracing`.
@@ -78,6 +81,14 @@ pub trait LedgerClient: Send + Sync {
         client_ip: Ipv4Addr,
         user_payer: Pubkey,
     ) -> eyre::Result<Option<AccessPass>>;
+
+    /// The AccessPass that SubscribeFeed and UnsubscribeFeed use for an existing user.
+    fn resolve_user_accesspass(
+        &self,
+        user_pk: Pubkey,
+        user: &User,
+        selected_accesspass_pk: Option<Pubkey>,
+    ) -> eyre::Result<AccessPass>;
 
     /// Fetch the AccessPass stored at the `(client_ip, user_payer)` PDA, or `None` if there is
     /// none. Unlike [`LedgerClient::resolve_accesspass`], this never reads a different address.

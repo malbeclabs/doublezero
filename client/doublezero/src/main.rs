@@ -38,6 +38,10 @@ impl<C: CliCommand + Sync> doublezero_daemon_cli::LedgerClient for LedgerAdapter
         self.client.get_payer()
     }
 
+    fn get_program_id(&self) -> solana_sdk::pubkey::Pubkey {
+        self.client.get_program_id()
+    }
+
     fn check_requirements(&self) -> eyre::Result<()> {
         check_requirements(self.client, None, CHECK_ID_JSON | CHECK_BALANCE)
     }
@@ -113,6 +117,18 @@ impl<C: CliCommand + Sync> doublezero_daemon_cli::LedgerClient for LedgerAdapter
                 },
             )?
             .map(|(_, accesspass)| accesspass))
+    }
+
+    fn resolve_user_accesspass(
+        &self,
+        user_pk: solana_sdk::pubkey::Pubkey,
+        user: &doublezero_sdk::User,
+        selected_accesspass_pk: Option<solana_sdk::pubkey::Pubkey>,
+    ) -> eyre::Result<doublezero_serviceability::state::accesspass::AccessPass> {
+        let (_, accesspass) =
+            self.client
+                .resolve_user_accesspass(user_pk, user, selected_accesspass_pk)?;
+        Ok(accesspass)
     }
 
     fn get_accesspass(

@@ -424,7 +424,7 @@ class TestFixtureMulticastGroup:
         # A group from before the private flag and the caps has no bytes for them.
         data, meta = _load_fixture("multicast_group")
         fields = {f["name"]: f["value"] for f in meta["fields"]}
-        mg = MulticastGroup.from_bytes(data[:-9])
+        mg = MulticastGroup.from_bytes(data[:-13])
         assert mg.bond_ref == Pubkey.from_string(fields["BondRef"])
         assert mg.private is False
         assert mg.max_publishers == 0

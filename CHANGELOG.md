@@ -7,8 +7,22 @@ All notable changes to this project will be documented in this file.
 ### Breaking
 
 - SDK
+  - `CreateUserCommand` takes `accesspass_pk`, the access pass to attach. Code that builds it field by field must set it, or set it to `None`, which keeps the lookup that prefers the 0.0.0.0 pass of the payer.
+
+### Changes
+
+- CLI
+  - `doublezero connect multicast` refuses a feed join before it sends a transaction when the access pass is at its multicast user cap. A host whose multicast user already counts against the cap is not refused. Before, the program refused the join only after the command created the multicast user of a new host. The new user then held a device seat for nothing.
+  - `doublezero connect multicast --access-pass` creates the multicast user of a feed join on that pass. This covers `--subscribe-feed`, and a bare `connect multicast` or `doublezero connect` whose IP-lookup pass carries feeds. Before, the new user recorded the 0.0.0.0 pass of the payer when one existed, and `SubscribeFeed` then refused the named pass, so the user held a device seat for nothing. The checks before such a join read the named pass. The command refuses a pass that is not the payer's pass at the client IP or at 0.0.0.0, or that carries no feeds. Other runs use the flag as before.
+- Client
+  - `doublezerod` sets loose reverse-path filtering (`rp_filter=2`) on `doublezero1` each time it creates the multicast tunnel. A publisher sends from its DoubleZero IP, which a subscriber host routes out its main interface. On a host with strict filtering, such as a Google Cloud image, the kernel dropped every datagram that arrived on `doublezero1`. The daemon sets the value over rtnetlink, as it does for `doublezero0`, so it also works in the client container. Other interfaces keep their values. ([#4457](https://github.com/malbeclabs/doublezero/issues/4457))
+
+## [v0.50.0](https://github.com/malbeclabs/doublezero/compare/client/v0.49.0...client/v0.50.0) - 2026-11-20
+
+### Breaking
+
+- SDK
   - `SetAccessPassArgs` takes `private_group_users`. Code that builds it field by field must set it, or set it to 0.
-  - A multicast group stores `max_publishers` and `max_subscribers` as u16, not u32, and `UpdateMulticastGroup`, `MulticastGroup::private_caps_hash` and `doublezero multicast group update` take them as u16. A client, the feed oracle and subscription-api must move to this version together with the program. On testnet, run `doublezero migrate feed-count` again after the upgrade, because 21 groups hold the old 4-byte caps and read a feed count of 0 until then.
 - Serviceability
   - `MIN_COMPATIBLE_VERSION` moves from `0.30.0` to `0.45.0`, the newest client release that has been on mainnet-beta for more than two weeks. A client older than v0.45.0 fails at startup with "A new version of the client is available". The floor takes effect on each cluster at its next program deploy, when `doublezero init` writes it to `ProgramConfig`.
 
@@ -19,14 +33,17 @@ All notable changes to this project will be documented in this file.
 - CLI
   - `doublezero keygen --import` saves the keypair in a `DZ_` token, the format that the Edge Connect installer takes. It reads the token from a hidden prompt, or from stdin when piped. `doublezero keygen --export` prints the keypair that the CLI signs with as a `DZ_` token. `doublezero keygen` now writes the keypair file with mode 0600.
   - `doublezero access-pass get` needs `--client-ip` only when the user payer holds more than one access pass. Without the flag, such a payer gets an error that lists each pass with its client IP and address. With `--client-ip`, the command shows the pass at that IP, not the 0.0.0.0 pass of the payer. It shows the 0.0.0.0 pass only when there is no pass at that IP. The new `--pubkey` flag selects a pass by its address.
-- Client
-  - `doublezerod` sets loose reverse-path filtering (`rp_filter=2`) on `doublezero1` each time it creates the multicast tunnel. A publisher sends from its DoubleZero IP, which a subscriber host routes out its main interface. On a host with strict filtering, such as a Google Cloud image, the kernel dropped every datagram that arrived on `doublezero1`. The daemon sets the value over rtnetlink, as it does for `doublezero0`, so it also works in the client container. Other interfaces keep their values. ([#4457](https://github.com/malbeclabs/doublezero/issues/4457))
+  - `doublezero connect multicast --subscribe-feed` refuses a full feed before it sends a transaction, and the error names each requested feed that is full. Before, the program refused the join only after the command created the multicast user of a new host, or left the feeds in `--unsubscribe-feed`. The new user then held a device seat for nothing. For a host that has a multicast user, the checks before the join now read the access pass that the user records. The program takes the seats from that pass.
 - E2E/QA
+  - The e2e workflow moves from the self-hosted hosts and the shared cluster to GitHub-hosted `ubuntu-24.04-16c-64gb` runners. It uses no secret but the job token and pushes no image. One `e2e-ok` check replaces the `e2e (shard N)` checks as the check to require on main. The flake gap-filler runs daily, not every 6 hours, because a full run costs about $4. `workflow_dispatch` takes no inputs.
+  - `make e2e-test RUN=<regex>` quotes `RUN`, so a pattern with `(` or `|` no longer fails with a shell syntax error.
   - `TestE2E_BackwardCompatibility` tests client releases from v0.45.0, the new `MIN_COMPATIBLE_VERSION`, not from v0.31.0. Each release in the window starts one ledger in each environment, and the 41 ledgers of the old window ran a 64 GB runner out of memory.
   - The IBRL `user list` fixtures expect `prepaid`, the pass type that `user list` prints since #4499, not `Prepaid: (MAX)`. `TestE2E_IBRL`, `TestE2E_IBRL_EnableDisable` and `TestE2E_IBRL_WithAllocatedIP` failed on main without this.
+  - `TestE2E_PrivateMulticastGroup` reads the ledger at confirmed commitment, the level that the CLI waits for. It read at finalized, which is about 13 seconds behind, so its first check found no access pass. The test failed on main without this change and the `--subscribe-feed` fix under CLI.
   - `TestE2E_BackwardCompatibility` keeps at most `-parallel` version devnets alive, plus one discovery devnet per environment, and `DZ_COMPAT_MAX_CONCURRENCY` is gone. Its read and write steps ran as parallel subtests. That let each version give up its slot while its devnet stayed up, and a CI run held 41 ledgers at once.
   - Each e2e test destroys its devnet when the test ends, so a `go test` process no longer keeps every devnet it ran until it exits. `make test-keep` (`TESTCONTAINERS_RYUK_DISABLED=true`) still keeps them.
   - `TestE2E_IBRL`, `TestE2E_IBRL_EnableDisable`, `TestE2E_IBRL_WithAllocatedIP` and `TestE2E_Multicast` run their checks through `goRun`, not as parallel subtests. A parallel subtest let its test give up its `-parallel` slot while its devnet stayed up, and a full run at `-parallel=4` held 7 devnets at once.
+  - The `make e2e-test` targets take `PARALLEL` (default 10) and `TIMEOUT` (default 20m with `RUN`, 90m without). Before, `go test` ran as many tests at once as the machine has cores, whatever its memory, and a full run hit the 20m timeout. Ten fits the 64 GB for Docker that DEVELOPMENT.md asks for on Linux. On a Mac, cEOS runs under emulation at about twice the memory, and `PARALLEL=3 TIMEOUT=2h` fits 32 GB.
   - `TestQA_AllDevices_UnicastConnectivity` takes `-pin-devices`, a list of `device:host` pairs. A pinned device goes to its host only, also when no other host can reach it, and the pin does not change the host of any other device. Before, the test dropped a device without a log line when the exchange isolation of allocate-addr hosts blocked the only host that can reach it. The test now skips the ping between two hosts on one exchange when one of them uses an allocated address, because the devices do not route between users of one exchange. A host that has no other peer to ping does not test its device in that batch, and the batch is not counted. The test logs a `NO PEER` line with each device that only such batches had. The test stops when a pin names a device that does not exist onchain, and it logs a warning for each device that no host can take.
 
 ## [v0.49.0](https://github.com/malbeclabs/doublezero/compare/client/v0.48.0...client/v0.49.0) - 2026-11-17

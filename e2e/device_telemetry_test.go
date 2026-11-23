@@ -383,8 +383,10 @@ func TestE2E_DeviceTelemetry(t *testing.T) {
 	_, err = reflector.Exec(t.Context(), []string{"iptables", "-I", "INPUT", "-p", "udp", "--dport", strconv.Itoa(port), "-j", "ACCEPT"})
 	require.NoError(t, err)
 	go func() {
-		_, err = reflector.Exec(ctx, []string{"twamp-reflector", fmt.Sprintf(":%d", port)})
-		require.NoError(t, err)
+		// The reflector runs until the test ends: cancel, then the devnet teardown, stop it.
+		if _, err := reflector.Exec(ctx, []string{"twamp-reflector", fmt.Sprintf(":%d", port)}); err != nil && ctx.Err() == nil {
+			t.Errorf("twamp-reflector exited: %v", err)
+		}
 	}()
 	require.Eventually(t, func() bool {
 		_, err := reflector.Exec(t.Context(), []string{"bash", "-c", fmt.Sprintf("ss -uln '( dport = :%d )' | grep -q .", port)})

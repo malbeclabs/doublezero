@@ -3,12 +3,14 @@
 package e2e_test
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"testing"
 	"time"
 
 	"github.com/gagliardetto/solana-go"
+	solanarpc "github.com/gagliardetto/solana-go/rpc"
 	"github.com/malbeclabs/doublezero/e2e/internal/devnet"
 	"github.com/malbeclabs/doublezero/e2e/internal/docker"
 	e2esolana "github.com/malbeclabs/doublezero/e2e/internal/solana"
@@ -80,8 +82,8 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 		require.Contains(t, string(output), reason)
 	}
 
-	serviceabilityClient, err := dn.Ledger.GetServiceabilityClient()
-	require.NoError(t, err)
+	serviceabilityClient := serviceability.New(confirmedReads{dn.Ledger.GetRPCClient()},
+		solana.MustPublicKeyFromBase58(dn.Manager.ServiceabilityProgramID))
 	programData := func(t *testing.T) *serviceability.ProgramData {
 		t.Helper()
 		data, err := serviceabilityClient.GetProgramData(ctx)
@@ -155,8 +157,7 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 		require.True(t, ok, "no multicast user for host %s", hostIP(host))
 		return user
 	}
-	// requireCounts waits until the pass, the feed seat and the private group hold the given
-	// counts, because a disconnect returns before the ledger shows the deleted user.
+	// requireCounts waits until the pass, the feed seat and the private group hold the given counts.
 	requireCounts := func(t *testing.T, passUsers uint16, feedSeatUsers uint8, privatePublishers, privateSubscribers uint32) {
 		t.Helper()
 		var last state
@@ -291,7 +292,7 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 
 	if !t.Run("host_e_cannot_join_the_feed_while_its_seats_are_full", func(t *testing.T) {
 		connectRefused(t, hostE, "--subscribe-feed solana-shreds-full",
-			"every purchased feed is already at capacity: solana-shreds-full (4 of 4 seats in use)")
+			"feed solana-shreds-full (4 of 4 seats in use) is at capacity")
 		requireCounts(t, 4, 4, 2, 3)
 		require.Empty(t, userOf(t, hostE).FeedPks)
 	}) {
@@ -299,15 +300,16 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 	}
 
 	if !t.Run("host_e_cannot_join_the_feed_while_the_pass_wide_cap_is_full", func(t *testing.T) {
-		// The feed gets a fifth seat, so the CLI sends the join. The pass-wide cap stays at 4,
-		// so the program refuses the join.
+		// The feed gets a fifth seat, but the pass-wide cap stays at 4. Host E holds no pass
+		// seat, so the CLI refuses the join before it sends a transaction.
 		manager(t, "doublezero access-pass add-feed --user-payer "+dzID+" --feed solana-shreds-full-ewr --max-users 5"+
 			" --terminates-at "+time.Now().UTC().AddDate(0, 1, 0).Format("2006-01-02")+" --yes")
 		manager(t, "doublezero access-pass set --accesspass-type edge-seat --epochs max --allow-multiple-ip"+
 			" --user-payer "+dzID+" --max-unicast-users 0 --max-public-multicast-users 4")
 		require.Equal(t, uint16(4), readState(t).passCap)
 
-		connectRefused(t, hostE, "--subscribe-feed solana-shreds-full", "Access pass max multicast users exceeded")
+		connectRefused(t, hostE, "--subscribe-feed solana-shreds-full",
+			"the access pass is at its multicast user cap (4 of 4 in use)")
 		requireCounts(t, 4, 4, 2, 3)
 		require.Empty(t, userOf(t, hostE).FeedPks)
 	}) {
@@ -364,4 +366,12 @@ func TestE2E_PrivateMulticastGroup(t *testing.T) {
 			return readState(t).passPubkey == [32]byte{}
 		}, func() string { return "the access pass " + passPubkey.String() + " must be closed" })
 	})
+}
+
+// confirmedReads lists program accounts at confirmed commitment, as the CLI does. The RPC default,
+// finalized, is about 32 slots older, so it can miss the last CLI write.
+type confirmedReads struct{ *solanarpc.Client }
+
+func (c confirmedReads) GetProgramAccounts(ctx context.Context, program solana.PublicKey) (solanarpc.GetProgramAccountsResult, error) {
+	return c.GetProgramAccountsWithOpts(ctx, program, &solanarpc.GetProgramAccountsOpts{Commitment: solanarpc.CommitmentConfirmed})
 }

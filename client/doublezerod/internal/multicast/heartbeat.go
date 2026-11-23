@@ -107,8 +107,9 @@ func (h *HeartbeatSender) startWithConn(p PacketConner, intf *net.Interface, gro
 	h.wg = &sync.WaitGroup{}
 	h.wg.Add(1)
 	go func() {
-		defer p.Close()
+		// Defers run last first. Close the connection before Done, so Close returns after it.
 		defer h.wg.Done()
+		defer p.Close()
 
 		// Send immediately before starting ticker so we don't delay by the interval.
 		h.mu.Lock()

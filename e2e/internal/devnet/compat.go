@@ -21,9 +21,8 @@ const ClientReleasesFileEnv = "DZ_E2E_CLIENT_RELEASES_FILE"
 // fetchClientReleaseTags is a variable so that tests can replace the API call.
 var fetchClientReleaseTags = FetchGitHubClientReleaseTags
 
-// ClientReleaseTags returns the client release tags in "vX.Y.Z" format. It reads
-// the file that ClientReleasesFileEnv names when the env var is set, and otherwise
-// it uses the GitHub API. The source return value says which one it used.
+// ClientReleaseTags returns the client release tags in "vX.Y.Z" format, from the
+// file that ClientReleasesFileEnv names when set, else from the GitHub API.
 func ClientReleaseTags(ctx context.Context, githubToken string) (tags []string, source string, err error) {
 	if path := os.Getenv(ClientReleasesFileEnv); path != "" {
 		tags, err := readClientReleaseTagsFile(path)

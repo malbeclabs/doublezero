@@ -643,7 +643,6 @@ func discoverVersions(t *testing.T, dn *devnet.Devnet, cloneEnv, programID strin
 		"minCompatVersion", devnet.FormatProgramVersion(minVersion),
 	)
 
-	// List the client releases from the CI file, or from the GitHub API on local runs.
 	githubToken := os.Getenv("GITHUB_TOKEN")
 	if githubToken == "" {
 		githubToken = os.Getenv("GH_TOKEN")

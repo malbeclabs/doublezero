@@ -39,12 +39,21 @@ func readClientReleaseTagsFile(path string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to read %s=%s: %w", ClientReleasesFileEnv, path, err)
 	}
-	var tagNames []string
-	if err := json.Unmarshal(data, &tagNames); err != nil {
+	// Decode to pointers because Go decodes a null element of []string as "",
+	// which would hide a malformed file.
+	var entries []*string
+	if err := json.Unmarshal(data, &entries); err != nil {
 		return nil, fmt.Errorf("failed to decode %s=%s as a JSON array of tag names: %w", ClientReleasesFileEnv, path, err)
 	}
-	if tagNames == nil {
+	if entries == nil {
 		return nil, fmt.Errorf("%s=%s holds null, not a JSON array of tag names", ClientReleasesFileEnv, path)
+	}
+	tagNames := make([]string, len(entries))
+	for i, entry := range entries {
+		if entry == nil {
+			return nil, fmt.Errorf("%s=%s holds null at index %d, not a tag name", ClientReleasesFileEnv, path, i)
+		}
+		tagNames[i] = *entry
 	}
 	return clientTags(tagNames), nil
 }

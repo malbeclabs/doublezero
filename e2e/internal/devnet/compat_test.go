@@ -65,11 +65,13 @@ func TestClientReleaseTags_FileMissingFails(t *testing.T) {
 
 func TestClientReleaseTags_FileMalformedFails(t *testing.T) {
 	for name, content := range map[string]string{
-		"not json":       `client/v0.10.0`,
-		"object":         `{"tag_name":"client/v0.10.0"}`,
-		"non-string tag": `[{"tag_name":"client/v0.10.0"}]`,
-		"null":           `null`,
-		"empty":          ``,
+		"not json":        `client/v0.10.0`,
+		"object":          `{"tag_name":"client/v0.10.0"}`,
+		"non-string tag":  `[{"tag_name":"client/v0.10.0"}]`,
+		"null":            `null`,
+		"null tag":        `[null]`,
+		"null among tags": `["client/v0.10.0",null]`,
+		"empty":           ``,
 	} {
 		t.Run(name, func(t *testing.T) {
 			called := stubFetch(t, nil)

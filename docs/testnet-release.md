@@ -96,12 +96,10 @@ past, and a loose requirement plus a dependency added on another branch can comb
 into a rebind neither PR failed on. When it does fail here, read the guard output:
 the fix is to pin the rebound requirement to its locked minor.
 
-`bump-version.sh` folds the `changelog.d/` fragments into `## Unreleased` before it
-promotes the section, and it deletes them. It fails before it changes a file if a
-fragment does not parse. The fragments it folds are only those on the bump branch.
-A fragment that merges after the branch is cut goes into the next release. To credit
-it to this one, move its entry into the version section and delete the fragment in a
-follow-up PR. `changelog.d/README.md` has the fragment format.
+`bump-version.sh` folds the `changelog.d/` fragments into `## Unreleased`, deletes
+them and then promotes the section. It fails before it changes a file if a fragment
+does not parse. `changelog.d/README.md` has the format and the fix for a fragment
+that merges after the bump branch is cut.
 
 The `open-prs` commit step sends additions only. Before the workflow is re-enabled,
 it must also send deletions for the folded fragments, or the next bump folds them

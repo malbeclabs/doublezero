@@ -2,9 +2,13 @@ use clap::Args;
 use doublezero_cli_core::CliContext;
 use doublezero_sdk::{
     create_new_pubkey_user, default_keypair_path,
-    keypair::{encode_keypair_token, load_keypair, parse_keypair_token},
+    keypair::{
+        encode_keypair_token, is_keypair_json_content, load_keypair, parse_keypair_json,
+        parse_keypair_token,
+    },
     write_keypair_file,
 };
+use eyre::WrapErr;
 use solana_sdk::signer::Signer;
 use std::{
     io::{self, IsTerminal, Write},
@@ -19,7 +23,7 @@ pub struct KeyGenCliCommand {
     /// Path to generated file
     #[arg(short, long)]
     outfile: Option<PathBuf>,
-    /// Import a DZ_ token instead of generating a keypair. Reads it from a hidden prompt, or from stdin when piped
+    /// Import a DZ_ token or keypair JSON array instead of generating a keypair. Reads it from a hidden prompt, or from stdin when piped
     #[arg(long)]
     import: bool,
     /// Print the keypair that the CLI signs with as a DZ_ token
@@ -27,14 +31,14 @@ pub struct KeyGenCliCommand {
     export: bool,
 }
 
-/// Read a `DZ_` token from a hidden prompt, or from stdin when it is not a terminal.
+/// Read a `DZ_` token or keypair JSON array from a hidden prompt, or from stdin when it is not a terminal.
 pub fn read_token_from_stdin() -> io::Result<String> {
     let stdin = io::stdin();
     if !stdin.is_terminal() {
         return io::read_to_string(stdin);
     }
     let term = console::Term::stderr();
-    term.write_str("Paste your DZ_ token (input is hidden): ")?;
+    term.write_str("Paste your DZ_ token or keypair JSON (input is hidden): ")?;
     term.read_secure_line()
 }
 
@@ -58,11 +62,16 @@ impl KeyGenCliCommand {
         }
 
         if self.import {
-            let token = read_token()?;
-            if token.trim().is_empty() {
-                eyre::bail!("no DZ_ token given");
+            let input = read_token()?;
+            if input.trim().is_empty() {
+                eyre::bail!("no DZ_ token or keypair JSON given");
             }
-            let keypair = parse_keypair_token(&token)?;
+            let keypair = if is_keypair_json_content(&input) {
+                parse_keypair_json(input.trim(), "--import input")
+            } else {
+                parse_keypair_token(&input)
+            }
+            .wrap_err("expected a DZ_ token or a JSON array of 64 bytes")?;
             write_keypair_file(&keypair, self.force, self.outfile.or(keypair_flag))?;
             writeln!(out, "Pubkey: {}", keypair.pubkey())?;
             return Ok(());
@@ -181,12 +190,40 @@ mod tests {
         assert_eq!(keypair.pubkey().to_string(), PUBKEY);
     }
 
+    fn token_bytes() -> Vec<u16> {
+        let keypair = parse_keypair_token(TOKEN).unwrap();
+        keypair.to_bytes().iter().map(|&b| b.into()).collect()
+    }
+
+    fn json(bytes: &[u16]) -> String {
+        serde_json::to_string(bytes).unwrap()
+    }
+
+    #[test]
+    fn test_keygen_import_writes_json_keypair() {
+        let json = json(&token_bytes());
+        for input in [json.clone(), format!("{json}\n"), format!("{json} \t\n")] {
+            let tmp = tempfile::TempDir::new().unwrap();
+            let path = tmp.path().join("id.json");
+
+            let (res, out) = import(&input, &path);
+
+            res.unwrap();
+            assert_eq!(out, format!("Pubkey: {PUBKEY}\n"), "{input:?}");
+            assert!(path.exists(), "{input:?}");
+        }
+    }
+
     #[test]
     fn test_keygen_import_rejects_bad_input_without_writing() {
         let tmp = tempfile::TempDir::new().unwrap();
         let path = tmp.path().join("id.json");
+        let short = json(&token_bytes()[..63]);
+        let mut over_255 = token_bytes();
+        over_255[0] = 256;
+        let over_255 = json(&over_255);
 
-        for bad in ["", "\n", &TOKEN[..TOKEN.len() - 4]] {
+        for bad in ["", "\n", &TOKEN[..TOKEN.len() - 4], &short, &over_255] {
             let (res, _) = import(bad, &path);
             assert!(res.is_err(), "{bad:?}");
             assert!(!path.exists(), "{bad:?}");

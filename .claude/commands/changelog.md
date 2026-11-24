@@ -6,7 +6,7 @@ Analyze the **net changes** between the current branch and origin/main by examin
 
 IMPORTANT: Focus on what the branch adds/changes compared to origin/main as a whole. Do NOT describe individual commits or intermediate work. The reviewer only sees the final diff.
 
-Do NOT edit `CHANGELOG.md`. Write the entry to a new file, `changelog.d/<branch>.md`, where `<branch>` is the current branch name with `/` replaced by `-`. If that file exists, update it. `changelog.d/README.md` describes the format, and the release bump folds the fragments into `CHANGELOG.md`. Read the recent sections of `CHANGELOG.md` to match the component names and style.
+Do NOT edit `CHANGELOG.md`. Write the entry to a new file, `changelog.d/<branch>.md`, where `<branch>` is the current branch name with `/` replaced by `-`. If this branch already added that file, update it. If the file exists on origin/main, it belongs to another PR, so pick a new name; the `changelog-reminder` check accepts only a fragment that this branch adds. `changelog.d/README.md` describes the format, and the release bump folds the fragments into `CHANGELOG.md`. Read the recent sections of `CHANGELOG.md` to match the component names and style.
 
 A fragment holds the lines that would go under `## Unreleased`: entries grouped by component, with sub-bullets for details. Include `### Breaking` only when the change breaks a caller:
 

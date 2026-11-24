@@ -124,6 +124,9 @@ def collate(root, mode):
     parse(lines[start + 1 : end], "CHANGELOG.md", merged)
     for path in fragments:
         source = f"changelog.d/{path.name}"
+        # A symlink could make the bump read, and print in an error, a file outside the repo.
+        if path.is_symlink() or not path.is_file():
+            raise FragmentError(f"{source}: is not a regular file")
         if parse(path.read_text().splitlines(), source, merged) == 0:
             raise FragmentError(f"{source}: has no entries")
 

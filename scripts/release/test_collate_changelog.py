@@ -157,6 +157,15 @@ class CollateTest(unittest.TestCase):
                 self.assertEqual(self.changelog(), CHANGELOG)
                 self.assertEqual(self.fragments(), ["README.md", "a-good.md", "x.md"])
 
+    def test_symlinked_fragment_is_refused(self):
+        (self.root / "secret").write_text("token\n")
+        (self.root / "changelog.d" / "a.md").symlink_to(self.root / "secret")
+        code, _, err = self.run_main()
+        self.assertEqual(code, 1)
+        self.assertIn("changelog.d/a.md: is not a regular file", err)
+        self.assertNotIn("token", err)
+        self.assertEqual(self.changelog(), CHANGELOG)
+
     def test_missing_unreleased_writes_and_deletes_nothing(self):
         text = CHANGELOG.replace("## Unreleased", "## Next")
         self.write_changelog(text)
@@ -177,14 +186,15 @@ class CollateTest(unittest.TestCase):
         self.assertEqual(self.changelog(), CHANGELOG)
         self.assertEqual(self.fragments(), ["README.md", "a.md"])
 
-    def test_repo_unreleased_section_round_trips(self):
-        text = (REPO / "CHANGELOG.md").read_text()
-        lines = text.splitlines()
+    def test_repo_unreleased_entries_survive_collation(self):
+        # Blank lines may be normalized, so compare only the lines that carry text.
+        lines = (REPO / "CHANGELOG.md").read_text().splitlines()
         start = lines.index("## Unreleased")
-        end = next(i for i in range(start + 1, len(lines)) if lines[i].startswith("## "))
+        end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
         merged = {name: collate_changelog.Section() for name in collate_changelog.SECTIONS}
         collate_changelog.parse(lines[start + 1 : end], "CHANGELOG.md", merged)
-        self.assertEqual(collate_changelog.render(merged), lines[start:end])
+        rendered = [line for line in collate_changelog.render(merged) if line.strip()]
+        self.assertEqual(rendered, [line for line in lines[start:end] if line.strip()])
 
 
 if __name__ == "__main__":

@@ -115,6 +115,10 @@ make generate-fixtures   # Regenerate .bin/.json fixtures from Rust
 - The serviceability module crate is named `doublezero-serviceability-cli` (crate path `smartcontract/cli/`, import path `doublezero_serviceability_cli`).
 - Migration is opportunistic. Existing verbs are grandfathered; new verbs conform from day one.
 
+## Changelog
+
+- Add a changelog entry as a new file `changelog.d/<branch>.md`, not as an edit to `CHANGELOG.md`. Concurrent edits to `## Unreleased` conflicted, and the release bump folds the fragments in. `changelog.d/README.md` has the format. The per-crate changelogs under `offchain/` are still edited directly.
+
 ## Style & Terminology
 
 - Use "onchain" (one word, no hyphen), never "on-chain"

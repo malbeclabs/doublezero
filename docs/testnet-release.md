@@ -62,7 +62,7 @@ gh workflow run release.testnet.yml -R malbeclabs/doublezero -f version=X.Y.Z
 | Stage | Automated | Human action required |
 | --- | --- | --- |
 | `preflight` | Validates the version, reads the current workspace version, checks the latest devnet daily release succeeded. | — |
-| `open-prs` | Opens the doublezero version-bump PR (`release/vX.Y.Z`: Cargo.toml, Cargo.lock, CHANGELOG promotion) and the infra pinned-versions PR (`release/testnet-vX.Y.Z`). PR links appear in the run summary and are posted to the Slack thread. | Review and **merge both PRs**. |
+| `open-prs` | Opens the doublezero version-bump PR (`release/vX.Y.Z`: Cargo.toml, Cargo.lock, CHANGELOG promotion with the `changelog.d/` fragments folded in) and the infra pinned-versions PR (`release/testnet-vX.Y.Z`). PR links appear in the run summary and are posted to the Slack thread. | Review and **merge both PRs**. |
 | `gate-tags` | Waits on the `testnet` environment, then verifies both PRs are merged (the gate fails if you approve early). | **Approve gate 1 only after both PRs are merged** — this one approval confirms the merges and authorizes pushing the tags. |
 | `push-tags` | Pushes the 9 component tags (`controller`, `internet-latency-collector`, `agent`, `device-telemetry-agent`, `geoprobe-agent`, `geoprobe-target`, `funder`, `monitor`, `client`) via the reusable tag workflow, which carries no environment — gate 1 already authorized the push (manual dispatches prompt via their own `approve` job on `testnet`). | — |
 | `verify-cloudsmith` | Polls CloudSmith (up to ~60 min) until all 9 packages exist at the new version. | — |
@@ -95,6 +95,17 @@ advisory until its context is added to the `main` ruleset, so a red X can be mer
 past, and a loose requirement plus a dependency added on another branch can combine
 into a rebind neither PR failed on. When it does fail here, read the guard output:
 the fix is to pin the rebound requirement to its locked minor.
+
+`bump-version.sh` folds the `changelog.d/` fragments into `## Unreleased` before it
+promotes the section, and it deletes them. It fails before it changes a file if a
+fragment does not parse. The fragments it folds are only those on the bump branch.
+A fragment that merges after the branch is cut goes into the next release. To credit
+it to this one, move its entry into the version section and delete the fragment in a
+follow-up PR. `changelog.d/README.md` has the fragment format.
+
+The `open-prs` commit step sends additions only. Before the workflow is re-enabled,
+it must also send deletions for the folded fragments, or the next bump folds them
+again.
 
 ## Dry-run mode
 

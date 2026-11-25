@@ -37,7 +37,9 @@ Use a component name that `CHANGELOG.md` already uses, such as CLI, Client,
 Serviceability, SDK, Telemetry or E2E/QA. Names that differ only in case merge,
 and the first spelling wins.
 
-Any other line makes the bump fail before it changes a file. Check your fragment
+Any other line makes the bump fail before it changes a file. So does an entry that is
+already in a released section, which means an earlier bump folded the fragment but
+did not delete it. Check your fragment
 with:
 
 ```bash

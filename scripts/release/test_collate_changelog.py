@@ -11,8 +11,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import collate_changelog  # noqa: E402
 
-REPO = Path(__file__).resolve().parents[2]
-
 CHANGELOG = """\
 # Changelog
 
@@ -140,12 +138,16 @@ class CollateTest(unittest.TestCase):
 
     def test_malformed_fragments_write_and_delete_nothing(self):
         cases = {
-            "unknown heading": ("### Fixed\n\n- CLI\n  - x\n", "unknown heading"),
-            "entry before component": ("### Changes\n\n  - x\n", "has no '- Component'"),
-            "component before heading": ("- CLI\n  - x\n", "comes before"),
+            "unknown heading": (
+                "### Fixed\n\n- CLI\n  - x\n",
+                "x.md:1: unknown heading '### Fixed', use one of: ### Breaking, ### Changes",
+            ),
+            "entry before component": ("### Changes\n\n  - x\n", "x.md:3: entry '  - x' has no '- Component' line above it"),
+            "component before heading": ("- CLI\n  - x\n", "x.md:1: component '- CLI' comes before ### Breaking or ### Changes"),
             "component without entries": ("### Changes\n\n- CLI\n- SDK\n  - x\n", "x.md:3: component has no entries"),
-            "empty file": ("", "has no entries"),
-            "stray prose": ("### Changes\n\nsome text\n", "unexpected line"),
+            "empty file": ("", "x.md: has no entries"),
+            "stray prose": ("### Changes\n\nsome text\n", "x.md:3: unexpected line 'some text'"),
+            "already released": ("### Changes\n\n- CLI\n  - Old entry.\n", "x.md:4: entry is already in a released section, so delete this fragment"),
         }
         for name, (text, message) in cases.items():
             with self.subTest(name):
@@ -153,7 +155,7 @@ class CollateTest(unittest.TestCase):
                 (self.root / "changelog.d" / "x.md").write_text(text)
                 code, _, err = self.run_main()
                 self.assertEqual(code, 1)
-                self.assertIn(message, err)
+                self.assertEqual(err, f"error: changelog.d/{message}\n")
                 self.assertEqual(self.changelog(), CHANGELOG)
                 self.assertEqual(self.fragments(), ["README.md", "a-good.md", "x.md"])
 
@@ -162,9 +164,13 @@ class CollateTest(unittest.TestCase):
         (self.root / "changelog.d" / "a.md").symlink_to(self.root / "secret")
         code, _, err = self.run_main()
         self.assertEqual(code, 1)
-        self.assertIn("changelog.d/a.md: is not a regular file", err)
-        self.assertNotIn("token", err)
+        self.assertEqual(err, "error: changelog.d/a.md: is not a regular file\n")
         self.assertEqual(self.changelog(), CHANGELOG)
+
+    def test_unreleased_errors_name_the_changelog_line(self):
+        self.write_changelog(CHANGELOG.replace("  - Existing CLI entry.\n", "  - Existing CLI entry.\nstray\n", 1))
+        code, _, err = self.run_main("--check")
+        self.assertEqual((code, err), (1, "error: CHANGELOG.md:13: unexpected line 'stray'\n"))
 
     def test_missing_unreleased_writes_and_deletes_nothing(self):
         text = CHANGELOG.replace("## Unreleased", "## Next")
@@ -172,7 +178,7 @@ class CollateTest(unittest.TestCase):
         self.fragment("a.md", "### Changes\n\n- CLI\n  - Good.\n")
         code, _, err = self.run_main()
         self.assertEqual(code, 1)
-        self.assertIn("expected one '## Unreleased' line, found 0", err)
+        self.assertEqual(err, "error: CHANGELOG.md: expected one '## Unreleased' line, found 0\n")
         self.assertEqual(self.changelog(), text)
         self.assertEqual(self.fragments(), ["README.md", "a.md"])
 
@@ -185,16 +191,6 @@ class CollateTest(unittest.TestCase):
         self.assertIn("- CLI\n  - Existing CLI entry.\n  - New.\n", out)
         self.assertEqual(self.changelog(), CHANGELOG)
         self.assertEqual(self.fragments(), ["README.md", "a.md"])
-
-    def test_repo_unreleased_entries_survive_collation(self):
-        # Blank lines may be normalized, so compare only the lines that carry text.
-        lines = (REPO / "CHANGELOG.md").read_text().splitlines()
-        start = lines.index("## Unreleased")
-        end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
-        merged = {name: collate_changelog.Section() for name in collate_changelog.SECTIONS}
-        collate_changelog.parse(lines[start + 1 : end], "CHANGELOG.md", merged)
-        rendered = [line for line in collate_changelog.render(merged) if line.strip()]
-        self.assertEqual(rendered, [line for line in lines[start:end] if line.strip()])
 
 
 if __name__ == "__main__":

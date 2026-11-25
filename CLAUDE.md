@@ -117,7 +117,7 @@ make generate-fixtures   # Regenerate .bin/.json fixtures from Rust
 
 ## Changelog
 
-- Add a changelog entry as a new file `changelog.d/<branch>.md`, not as an edit to `CHANGELOG.md`. Concurrent edits to `## Unreleased` conflicted, and the release bump folds the fragments in. `changelog.d/README.md` has the format. The per-crate changelogs under `offchain/` are still edited directly.
+- Add a changelog entry as a new file `changelog.d/<branch>.md`, with `/` in the branch name replaced by `-`, not as an edit to `CHANGELOG.md`. Concurrent edits to `## Unreleased` conflicted, and the release bump folds the fragments in. `changelog.d/README.md` has the format. The per-crate changelogs under `offchain/` are still edited directly.
 
 ## Style & Terminology
 

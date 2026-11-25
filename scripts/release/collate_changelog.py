@@ -37,7 +37,7 @@ class Section:
         return self.components[key][1]
 
 
-def parse(lines, source, changelog):
+def parse(lines, source, changelog, first=1):
     """Parse lines into changelog, a dict of section name to Section.
 
     Return the number of entries found. Raise FragmentError on any line
@@ -49,7 +49,7 @@ def parse(lines, source, changelog):
     count = 0
     # The line of a component that has no entry yet in these lines.
     empty = None
-    for number, line in enumerate(lines, 1):
+    for number, line in enumerate(lines, first):
         where = f"{source}:{number}"
         if not line.strip():
             continue
@@ -121,14 +121,20 @@ def collate(root, mode):
     end = next((i for i in range(start + 1, len(lines)) if lines[i].startswith("## ")), len(lines))
 
     merged = {name: Section() for name in SECTIONS}
-    parse(lines[start + 1 : end], "CHANGELOG.md", merged)
+    parse(lines[start + 1 : end], "CHANGELOG.md", merged, start + 2)
+    released = {line for line in lines[end:] if line.startswith("  - ")}
     for path in fragments:
         source = f"changelog.d/{path.name}"
         # A symlink could make the bump read, and print in an error, a file outside the repo.
         if path.is_symlink() or not path.is_file():
             raise FragmentError(f"{source}: is not a regular file")
-        if parse(path.read_text().splitlines(), source, merged) == 0:
+        fragment = path.read_text().splitlines()
+        if parse(fragment, source, merged) == 0:
             raise FragmentError(f"{source}: has no entries")
+        # A bump commit that leaves out the deletions would make the next bump fold the fragment again.
+        for number, line in enumerate(fragment, 1):
+            if line in released:
+                raise FragmentError(f"{source}:{number}: entry is already in a released section, so delete this fragment")
 
     section = render(merged)
     if mode == "check":

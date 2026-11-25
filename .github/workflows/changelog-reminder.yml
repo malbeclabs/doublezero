@@ -42,8 +42,11 @@ jobs:
 
           changed_files=$(git diff --name-only "$base_ref"..."$head_ref")
 
-          if ! echo "$changed_files" | grep -q "^CHANGELOG.md$"; then
-            echo "CHANGELOG.md was not updated."
+          added_fragments=$(git diff --name-only --diff-filter=A "$base_ref"..."$head_ref" | grep -E '^changelog\.d/[^/]+\.md$' | grep -v '^changelog\.d/README\.md$' || true)
+
+          if [ -z "$added_fragments" ] && ! echo "$changed_files" | grep -q "^CHANGELOG.md$"; then
+            echo "Neither a new changelog.d/*.md fragment nor a CHANGELOG.md change was found."
+            echo "Add a fragment as changelog.d/README.md describes."
             echo "If this change intentionally does not require a changelog, add the 'skip-changelog' label to the PR."
             exit 1
           fi

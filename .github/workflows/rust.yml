@@ -142,6 +142,14 @@ jobs:
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # Add 1.99.1 patch release (master, 2026-10-16)
         with:
           toolchain: "1.97.1"
+      - name: Test the changelog collator
+        run: python3 -m unittest discover -s scripts/release
+      - name: Check the changelog.d fragments
+        run: |
+          if ! python3 scripts/release/collate_changelog.py --check; then
+            echo "::error::A changelog.d fragment does not parse, so the next release bump would fail. Fix the file and line named above; changelog.d/README.md gives the format."
+            exit 1
+          fi
       - name: Dry-run the release version bump
         run: |
           set -euo pipefail
